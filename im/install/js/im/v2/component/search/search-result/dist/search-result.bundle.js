@@ -1,3 +1,4 @@
+/* eslint-disable */
 this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
@@ -335,7 +336,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    const {
 	      type
 	    } = itemOptions.dialog;
-	    if (type === im_v2_const.DialogType.user) {
+	    if (type === im_v2_const.ChatType.user) {
 	      this.entityType = itemOptions.user.extranet ? 'extranet' : 'employee';
 	    } else {
 	      this.entityType = type;
@@ -570,7 +571,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  return {
 	    id: 'im-bot',
 	    options: {
-	      searchableBotTypes: ['H', 'B', 'S', 'N'],
+	      searchableBotTypes: ['H', 'B', 'S'],
 	      fillDialogWithDefaultValues: false
 	    },
 	    dynamicLoad: true,
@@ -732,10 +733,10 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	}
 	function _addDialoguesToModel2(dialogues) {
-	  return babelHelpers.classPrivateFieldLooseBase(this, _store$1)[_store$1].dispatch('dialogues/add', dialogues);
+	  return babelHelpers.classPrivateFieldLooseBase(this, _store$1)[_store$1].dispatch('chats/add', dialogues);
 	}
 	function _setDialoguesToModel2(dialogues) {
-	  return babelHelpers.classPrivateFieldLooseBase(this, _store$1)[_store$1].dispatch('dialogues/set', dialogues);
+	  return babelHelpers.classPrivateFieldLooseBase(this, _store$1)[_store$1].dispatch('chats/set', dialogues);
 	}
 	function _removeActivityData2(users) {
 	  return users.map(user => {
@@ -931,7 +932,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  load() {
 	    const recentUsers = [];
 	    babelHelpers.classPrivateFieldLooseBase(this, _store$3)[_store$3].getters['recent/getSortedCollection'].forEach(recentItem => {
-	      const dialog = babelHelpers.classPrivateFieldLooseBase(this, _store$3)[_store$3].getters['dialogues/get'](recentItem.dialogId, true);
+	      const dialog = babelHelpers.classPrivateFieldLooseBase(this, _store$3)[_store$3].getters['chats/get'](recentItem.dialogId, true);
 	      const user = babelHelpers.classPrivateFieldLooseBase(this, _store$3)[_store$3].getters['users/get'](recentItem.dialogId, true);
 	      recentUsers.push({
 	        dialogId: recentItem.dialogId,
@@ -968,15 +969,13 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    });
 	    return foundItems;
 	  }
-	  //endregion
-
 	  getRecentListItems() {
 	    return babelHelpers.classPrivateFieldLooseBase(this, _store$3)[_store$3].getters['recent/getSortedCollection'].map(item => {
-	      const dialog = babelHelpers.classPrivateFieldLooseBase(this, _store$3)[_store$3].getters['dialogues/get'](item.dialogId, true);
-	      const isUser = dialog.type === im_v2_const.DialogType.user;
+	      const dialog = babelHelpers.classPrivateFieldLooseBase(this, _store$3)[_store$3].getters['chats/get'](item.dialogId, true);
+	      const isUser = dialog.type === im_v2_const.ChatType.user;
 	      const recentListItem = {
 	        dialogId: item.dialogId,
-	        dialog: dialog
+	        dialog
 	      };
 	      if (isUser) {
 	        recentListItem.user = babelHelpers.classPrivateFieldLooseBase(this, _store$3)[_store$3].getters['users/get'](item.dialogId, true);
@@ -1042,19 +1041,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  constructor(currentUserId) {
 	    /** @type {Dexie} */
 	    this.db = new ui_dexie.Dexie('bx-im-search-results');
-	    this.db.version(2).stores({
-	      items: 'id, *title, *name, *lastName, *secondName, *position, date',
+	    this.db.version(6).stores({
+	      items: 'id, *title, *name, *lastName, *position, date',
 	      recentItems: '++id, cacheId, date',
 	      settings: '&name'
 	    }).upgrade(transaction => {
 	      const clearItemsPromise = transaction.table('items').clear();
 	      const clearRecentItemsPromise = transaction.table('recentItems').clear();
 	      return ui_dexie.Dexie.Promise.all([clearItemsPromise, clearRecentItemsPromise]);
-	    });
-	    this.db.version(3).stores({
-	      items: 'id, *title, *name, *lastName, *position, date',
-	      recentItems: '++id, cacheId, date',
-	      settings: '&name'
 	    });
 	    this.checkTables(currentUserId);
 	    this.onAccessDeniedHandler = this.onAccessDenied.bind(this);
@@ -1568,7 +1562,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	  return this.storeUpdater.update({
 	    items: filteredItems,
-	    onlyAdd: onlyAdd
+	    onlyAdd
 	  }).then(() => {
 	    return filteredItems;
 	  });
@@ -1593,7 +1587,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 
 	class SearchContextMenu extends im_v2_lib_menu.RecentMenu {
 	  getMenuItems() {
-	    return [this.getSendMessageItem(), this.getCallItem(), this.getHistoryItem(), this.getOpenProfileItem()];
+	    return [this.getOpenItem(), this.getCallItem(), this.getOpenProfileItem()];
 	  }
 	}
 
@@ -2007,21 +2001,17 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      return this.$store.getters['users/get'](this.dialogId, true);
 	    },
 	    dialog() {
-	      return this.$store.getters['dialogues/get'](this.dialogId, true);
+	      return this.$store.getters['chats/get'](this.dialogId, true);
 	    },
 	    isChat() {
 	      return !this.isUser;
 	    },
 	    isUser() {
-	      return this.dialog.type === im_v2_const.DialogType.user;
+	      return this.dialog.type === im_v2_const.ChatType.user;
 	    },
 	    userItemText() {
 	      if (!this.isUser) {
 	        return '';
-	      }
-	      const status = this.$store.getters['users/getLastOnline'](this.dialogId);
-	      if (status) {
-	        return status;
 	      }
 	      return this.$store.getters['users/getPosition'](this.dialogId);
 	    },
@@ -2239,7 +2229,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    SearchResultNetworkItem,
 	    SearchResultDepartmentItem,
 	    SearchResultItem,
-	    Button: im_v2_component_elements.Button,
+	    MessengerButton: im_v2_component_elements.Button,
 	    Loader: im_v2_component_elements.Loader
 	  },
 	  props: {
@@ -2265,7 +2255,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      default: () => []
 	    }
 	  },
-	  data: function () {
+	  data() {
 	    return {
 	      isRecentLoading: false,
 	      isLocalLoading: false,
@@ -2315,13 +2305,16 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      return this.cleanQuery.length > 0;
 	    },
 	    isNetworkSearchCode() {
-	      return !!(this.cleanQuery.length === 32 && /[\da-f]{32}/.test(this.cleanQuery));
+	      return Boolean(this.cleanQuery.length === 32 && /[\da-f]{32}/.test(this.cleanQuery));
 	    },
 	    isNetworkSectionAvailable() {
 	      if (!this.searchService.isNetworkAvailable()) {
 	        return false;
 	      }
 	      return this.isNetworkSearchEnabled || this.isNetworkSearchCode;
+	    },
+	    recentUsers() {
+	      return this.$store.getters['recent/getSortedCollection'];
 	    }
 	  },
 	  watch: {
@@ -2343,6 +2336,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          this.searchService.disableNetworkSearch();
 	        }
 	      this.loadRecentSearchFromServer();
+	    },
+	    recentUsers() {
+	      this.loadRecentUsers();
 	    }
 	  },
 	  created() {
@@ -2364,10 +2360,13 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    main_core_events.EventEmitter.unsubscribe(im_v2_const.EventType.search.keyPressed, this.onPressEnterKey);
 	  },
 	  methods: {
-	    loadInitialRecentResult() {
+	    loadRecentUsers() {
 	      this.searchService.loadRecentUsers().then(items => {
 	        this.result.recentUsers = items;
 	      });
+	    },
+	    loadInitialRecentResult() {
+	      this.loadRecentUsers();
 
 	      // we don't need an extra request to get recent items while messenger initialization
 	      this.searchService.loadRecentSearchFromCache().then(recentItems => {
@@ -2617,9 +2616,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 							@clickItem="onClickItem"
 						/>
 						<div class="bx-im-search-result__network-button-container">
-							<Button
+							<MessengerButton
 								v-if="!isNetworkButtonClicked"
-								:text="$Bitrix.Loc.getMessage('IM_SEARCH_SECTION_NETWORK_BUTTON')"
+								:text="$Bitrix.Loc.getMessage('IM_SEARCH_SECTION_NETWORK_BUTTON_MSGVER_1')"
 								:color="ButtonColor.Primary"
 								:size="ButtonSize.L"
 								:isLoading="isNetworkLoading"

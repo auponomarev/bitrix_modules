@@ -25,7 +25,10 @@ $arJSCoreConfig = array(
 		'lang' => $pathLang.'/js_core_admin_interface.php',
 		'css' => $pathCSSPanel.'/admin-public.css',
 		'rel' => array('ui.design-tokens', 'ui.fonts.opensans', 'ajax', 'popup', 'window', 'date', 'fx'),
-		'lang_additional' => array('TITLE_PREFIX' => CUtil::JSEscape(COption::GetOptionString("main", "site_name", $_SERVER["SERVER_NAME"]))." - ")
+		'lang_additional' => array(
+			'TITLE_PREFIX' => CUtil::JSEscape(COption::GetOptionString("main", "site_name", $_SERVER["SERVER_NAME"] ?? ''))
+				. " - ",
+		),
 	),
 	"admin_login" => array(
 		'js' => $pathJS."/core_admin_login.js",
@@ -249,7 +252,7 @@ $arJSCoreConfig = array(
 		'js' => '/bitrix/js/main/spotlight/spotlight.js',
 		'css' => '/bitrix/js/main/spotlight/css/spotlight.css',
 		'lang' => $pathLang.'/js/spotlight.php',
-		'rel' => array('popup', 'ajax'),
+		'rel' => array('ui.dialogs.messagebox', 'ajax'),
 		'bundle_js' => 'spotlight',
 		'bundle_css' => 'spotlight',
 	),
@@ -259,7 +262,16 @@ $arJSCoreConfig = array(
 			'/bitrix/js/main/sidepanel/slider.js'
 		),
 		'css' => '/bitrix/js/main/sidepanel/css/sidepanel.css',
-		'rel' => array('ajax', 'fx', 'main.pageobject', 'clipboard', 'ui.fonts.opensans'),
+		'rel' => array(
+			'ajax',
+			'fx',
+			'main.pageobject',
+			'clipboard',
+			'ui.fonts.opensans',
+			'popup',
+			'ui.icon-set.actions',
+			'ui.icon-set.main',
+		),
 		'lang' => $pathLang.'/js/sidepanel.php',
 		'bundle_js' => 'sidepanel',
 		'bundle_css' => 'sidepanel'

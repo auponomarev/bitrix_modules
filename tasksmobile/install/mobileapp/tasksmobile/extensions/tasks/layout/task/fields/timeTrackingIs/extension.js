@@ -2,8 +2,8 @@
  * @module tasks/layout/task/fields/timeTrackingIs
  */
 jn.define('tasks/layout/task/fields/timeTrackingIs', (require, exports, module) => {
-	const {Loc} = require('loc');
-	const {BooleanField, BooleanMode} = require('layout/ui/fields/boolean');
+	const { Loc } = require('loc');
+	const { BooleanField, BooleanMode } = require('layout/ui/fields/boolean');
 
 	class TimeTrackingIs extends LayoutComponent
 	{
@@ -14,6 +14,8 @@ jn.define('tasks/layout/task/fields/timeTrackingIs', (require, exports, module) 
 			this.state = {
 				isTimeTracking: props.isTimeTracking,
 			};
+
+			this.handleOnChange = this.handleOnChange.bind(this);
 		}
 
 		componentWillReceiveProps(props)
@@ -21,6 +23,12 @@ jn.define('tasks/layout/task/fields/timeTrackingIs', (require, exports, module) 
 			this.state = {
 				isTimeTracking: props.isTimeTracking,
 			};
+		}
+
+		handleOnChange(value)
+		{
+			this.setState({ isTimeTracking: value });
+			this.props.onChange(value);
 		}
 
 		render()
@@ -43,13 +51,10 @@ jn.define('tasks/layout/task/fields/timeTrackingIs', (require, exports, module) 
 					showSwitcher: true,
 				},
 				testId: 'timeTrackingIs',
-				onChange: (value) => {
-					this.setState({isTimeTracking: value});
-					this.props.onChange(value);
-				},
+				onChange: this.handleOnChange,
 			});
 		}
 	}
 
-	module.exports = {TimeTrackingIs};
+	module.exports = { TimeTrackingIs };
 });

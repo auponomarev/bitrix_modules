@@ -2,11 +2,13 @@
  * @module crm/terminal/payment-pay
  */
 jn.define('crm/terminal/payment-pay', (require, exports, module) => {
-	const { EventEmitter } = require('event-emitter');
 	const { Loc } = require('loc');
-	const { withPressed } = require('utils/color');
 	const { Alert } = require('alert');
+	const AppTheme = require('apptheme');
+	const { Random } = require('utils/random');
 	const { Haptics } = require('haptics');
+	const { withPressed } = require('utils/color');
+	const { EventEmitter } = require('event-emitter');
 	const { PureComponent } = require('layout/pure-component');
 	const { PaymentButtonFactory } = require('crm/terminal/payment-pay/components/payment-button/factory');
 	const { PaymentButton } = require('crm/terminal/payment-pay/components/payment-button/button');
@@ -16,6 +18,8 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 	const { Before } = require('crm/payment-system/creation/actions/before');
 	const { PaymentSystemService } = require('crm/terminal/services/payment-system');
 	const { PaymentService } = require('crm/terminal/services/payment');
+	const { ProductList } = require('crm/terminal/product-list');
+
 	const {
 		FieldManagerService,
 		FieldNameSum,
@@ -24,6 +28,7 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 		FieldNameStatus,
 	} = require('crm/terminal/services/field-manager');
 	const { AnalyticsLabel } = require('analytics-label');
+	const FISCALIZATION_ERROR_CODE = 'fiscalization_enabled';
 
 	/**
 	 * @class PaymentPay
@@ -58,7 +63,7 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 				step: 'view',
 				qrCode: null,
 				paymentMethod,
-				paymentSystems: this.payment.paymentSystems,
+				paymentSystems: this.payment.terminalPaymentSystems,
 			};
 
 			this.pullUnsubscribe = null;
@@ -94,19 +99,12 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 
 		renderPayment()
 		{
-			return ScrollView(
+			return View(
 				{
-					style: styles.paymentContainer,
+					style: styles.paymentContainer(this.isStep(Steps.loading)),
 				},
-				View(
-					{
-						style: {
-							opacity: this.isStep(Steps.loading) ? 0.3 : 1,
-						},
-					},
-					this.renderPaymentFields(),
-					this.renderPaymentContent(),
-				),
+				this.renderPaymentFields(),
+				this.renderPaymentContent(),
 			);
 		}
 
@@ -119,6 +117,53 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 				this.fieldManagerService.renderField(FieldNameSum, {
 					testId: 'TerminalPaymentPayFieldSum',
 					readOnly: true,
+					config: {
+						styles: {
+							moneyValueWrapper: {
+								flex: 1,
+							},
+						},
+					},
+					renderAdditionalRightContent: () => {
+						if (
+							!(
+								this.payment.hasEntityBinding
+								&& this.payment.productsCnt > 0
+							)
+						)
+						{
+							return;
+						}
+
+						return View(
+							{
+								style: {
+									flex: 1,
+									alignItems: 'flex-end',
+									alignSelf: 'flex-end',
+								},
+								onClick: () => {
+									ProductList.open({
+										id: this.payment.id,
+										uid: this.uid,
+										productsCnt: this.payment.productsCnt,
+									}, this.layout);
+								},
+							},
+							Text({
+								style: {
+									fontSize: 13,
+									color: AppTheme.colors.accentMainLinks,
+								},
+								text: Loc.getMessage(
+									'M_CRM_TL_PAYMENT_PAY_PRODUCTS_CNT',
+									{
+										'#CNT#': this.payment.productsCnt,
+									},
+								),
+							}),
+						);
+					},
 				}),
 				this.fieldManagerService.renderField(FieldNamePhone, {
 					testId: 'TerminalPaymentPayFieldPhone',
@@ -131,13 +176,10 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 						parentWidget: this.layout,
 					},
 				}),
-				(
-					this.isStatusVisible
-					&& this.fieldManagerService.renderField(FieldNameStatus, {
-						testId: 'TerminalPaymentPayFieldStatus',
-						readOnly: true,
-					})
-				),
+				this.isStatusVisible && this.fieldManagerService.renderField(FieldNameStatus, {
+					testId: 'TerminalPaymentPayFieldStatus',
+					readOnly: true,
+				}),
 			);
 		}
 
@@ -153,7 +195,13 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 				return this.renderPaymentQr();
 			}
 
-			return this.renderPaymentMethods();
+			return ScrollView(
+				{
+					style: styles.paymentMethodsContainer,
+					showsVerticalScrollIndicator: false,
+				},
+				this.renderPaymentMethods(),
+			);
 		}
 
 		renderPaymentLoader()
@@ -164,7 +212,7 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 				},
 				Loader({
 					style: styles.loader,
-					tintColor: '#2FC6F6',
+					tintColor: AppTheme.colors.accentBrandBlue,
 					animating: true,
 					size: 'large',
 				}),
@@ -183,28 +231,24 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 		renderPaymentQr()
 		{
 			return View(
-				{},
+				{
+					style: styles.paymentQrContainer,
+				},
+				Text({
+					id: 'TerminalPaymentPayScanQrText',
+					style: styles.paymentQrText,
+					text: Loc.getMessage('M_CRM_TL_PAYMENT_PAY_SCAN_QR'),
+				}),
 				View(
 					{
-						style: styles.paymentQrContainer,
+						style: styles.paymentQrImageContainer,
 					},
-					Text({
-						id: 'TerminalPaymentPayScanQrText',
-						style: styles.paymentQrText,
-						text: Loc.getMessage('M_CRM_TL_PAYMENT_PAY_SCAN_QR'),
+					Image({
+						testId: 'TerminalPaymentPayQrCode',
+						style: styles.paymentQrImage,
+						base64: this.state.qrCode,
 					}),
-					View(
-						{
-							style: styles.paymentQrImageContainer,
-						},
-						Image({
-							testId: 'TerminalPaymentPayQrCode',
-							style: styles.paymentQrImage,
-							base64: this.state.qrCode,
-						}),
-					),
 				),
-
 				View(
 					{
 						testId: 'TerminalPaymentPayBackToPaymentMethodsButton',
@@ -233,9 +277,20 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 		renderPaymentMethods()
 		{
 			return View(
-				{
-					style: styles.paymentMethodsContainer,
-				},
+				{},
+				this.state.paymentSystems.length === 0
+				&& !this.payment.isLinkPaymentEnabled
+				&& Text(
+					{
+						style: {
+							color: AppTheme.colors.base3,
+							fontSize: 15,
+							textAlign: 'center',
+							lineHeightMultiple: 1.2,
+						},
+						text: Loc.getMessage('M_CRM_TL_PAYMENT_PAY_NO_PAY_METHODS'),
+					},
+				),
 				...this.state.paymentSystems.map((paymentSystem, index) => {
 					return View(
 						{
@@ -253,7 +308,7 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 						),
 					);
 				}),
-				View(
+				this.payment.isLinkPaymentEnabled && View(
 					{
 						style: styles.paymentMethodContainer(this.state.paymentSystems.length === 0),
 					},
@@ -402,6 +457,7 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 				.then(() => this.psCreationOauthAction.run(this.getActionProviderData('oauth')))
 				.then(() => {
 					this.setStep(Steps.loading);
+
 					return Promise.resolve();
 				})
 				.then(() => this.psCreationBeforeAction.run(this.getActionProviderData('before')))
@@ -425,6 +481,7 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 				if (this.state.paymentMethod.paymentSystem.connected === true)
 				{
 					resolve();
+
 					return;
 				}
 
@@ -445,6 +502,7 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 									message: Loc.getMessage('M_CRM_TL_PAYMENT_PAY_PAYMENT_SYSTEM_CREATION_ERROR_MESSAGE'),
 								},
 							});
+
 							return;
 						}
 
@@ -516,11 +574,33 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 		showError(errors = [])
 		{
 			const errorText = errors.map((error) => error.message).join('\n');
+			const hasFiscalizationError = errors.some((error) => error.code === FISCALIZATION_ERROR_CODE);
 
-			Alert.alert(
-				Loc.getMessage('M_CRM_TL_PAYMENT_PAY_DEFAULT_ERROR_TITLE'),
-				errorText || Loc.getMessage('M_CRM_TL_PAYMENT_PAY_DEFAULT_ERROR_MESSAGE'),
-			);
+			if (hasFiscalizationError)
+			{
+				Alert.confirm(
+					Loc.getMessage('M_CRM_TL_PAYMENT_PAY_DEFAULT_ERROR_TITLE'),
+					errorText || Loc.getMessage('M_CRM_TL_PAYMENT_PAY_DEFAULT_ERROR_MESSAGE'),
+					[
+						{
+							text: Loc.getMessage('M_CRM_TL_PAYMENT_PAY_DEFAULT_ERROR_BUTTON_CONFIRM_TITLE'),
+							type: 'default',
+						},
+						{
+							text: Loc.getMessage('M_CRM_TL_PAYMENT_PAY_DEFAULT_ERROR_BUTTON_HELP_TITLE'),
+							type: 'default',
+							onPress: () => helpdesk.openHelpArticle('17886650', 'helpdesk'),
+						},
+					],
+				);
+			}
+			else
+			{
+				Alert.alert(
+					Loc.getMessage('M_CRM_TL_PAYMENT_PAY_DEFAULT_ERROR_TITLE'),
+					errorText || Loc.getMessage('M_CRM_TL_PAYMENT_PAY_DEFAULT_ERROR_MESSAGE'),
+				);
+			}
 
 			this.setStep(Steps.view);
 		}
@@ -530,7 +610,10 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 			if (this.layout)
 			{
 				this.layout.enableNavigationBarBorder(false);
-				this.layout.setBottomSheetHeight(PaymentPay.getHeight());
+				this.layout.setBottomSheetHeight(this.getHeight());
+				this.layout.setTitle({
+					text: this.payment.name,
+				});
 			}
 
 			this.customEventEmitter.on(
@@ -626,11 +709,37 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 			return `${currentDomain}/bitrix/mobileapp/crmmobile/extensions/crm/terminal/payment-pay/images/${image}.png`;
 		}
 
-		static getHeight()
+		getHeight()
 		{
-			return 660;
+			const buttonsCount = this.payment.terminalPaymentSystems.length + 1;
+
+			const result = TITLE_HEIGHT
+				+ FIELDS_HEIGHT
+				+ PAYMENT_METHODS_CONTAINER_MARGIN_TOP
+				+ PAYMENT_METHODS_CONTAINER_MARGIN_BOTTOM
+				+ buttonsCount * PaymentButton.getHeight()
+				+ (buttonsCount - 1) * PAYMENT_BUTTON_MARGIN_TOP;
+
+			if (result < PaymentPay.getMinHeight())
+			{
+				return PaymentPay.getMinHeight();
+			}
+
+			return result;
+		}
+
+		static getMinHeight()
+		{
+			return MIN_HEIGHT;
 		}
 	}
+
+	const MIN_HEIGHT = 630;
+	const TITLE_HEIGHT = 55;
+	const FIELDS_HEIGHT = 245;
+	const PAYMENT_METHODS_CONTAINER_MARGIN_TOP = 50;
+	const PAYMENT_METHODS_CONTAINER_MARGIN_BOTTOM = 25;
+	const PAYMENT_BUTTON_MARGIN_TOP = 16;
 
 	const Steps = {
 		view: 'view',
@@ -651,16 +760,15 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 
 	const styles = {
 		container: {
-			flexDirection: 'column',
-			flexGrow: 1,
+			flex: 1,
+			backgroundColor: AppTheme.colors.bgSecondary,
 		},
-		paymentContainer: {
-			flexDirection: 'column',
-			flexGrow: 1,
-			backgroundColor: '#EEF2F4',
-		},
+		paymentContainer: (isLoading) => ({
+			flex: 1,
+			opacity: isLoading ? 0.3 : 1,
+		}),
 		fieldsContainer: {
-			backgroundColor: '#FFFFFF',
+			backgroundColor: AppTheme.colors.bgContentPrimary,
 			borderRadius: 12,
 			paddingTop: 14,
 			paddingBottom: 8,
@@ -668,7 +776,7 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 		},
 		loaderContainer: {
 			marginTop: 116,
-			backgroundColor: '#EEF2F4',
+			backgroundColor: AppTheme.colors.bgSecondary,
 			alignItems: 'center',
 		},
 		loader: {
@@ -681,25 +789,24 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 		loaderBottomText: {
 			fontWeight: '400',
 			fontSize: 18,
-			color: '#333333',
+			color: AppTheme.colors.base1,
 		},
 		paymentQrContainer: {
-			marginTop: 24,
-			backgroundColor: '#EEF2F4',
+			flex: 1,
+			justifyContent: 'space-evenly',
 			alignItems: 'center',
 		},
 		paymentQrText: {
 			marginHorizontal: 30,
 			fontWeight: '700',
 			fontSize: 18,
-			color: '#333333',
+			color: AppTheme.colors.base1,
 			textAlign: 'center',
 		},
 		paymentQrImageContainer: {
 			width: 218,
 			height: 218,
-			marginTop: 24,
-			backgroundColor: '#FFFFFF',
+			backgroundColor: AppTheme.colors.bgContentPrimary,
 			borderRadius: 12,
 			flexDirection: 'row',
 			justifyContent: 'center',
@@ -714,14 +821,13 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 			flexDirection: 'row',
 			alignItems: 'center',
 			justifyContent: 'center',
-			marginHorizontal: 46,
+			paddingHorizontal: 14,
 			paddingTop: 9,
 			paddingBottom: 9,
-			marginTop: 28,
 			borderRadius: 6,
 			borderWidth: 1,
-			borderColor: '#828B95',
-			backgroundColor: withPressed('#EEF2F4'),
+			borderColor: AppTheme.colors.base3,
+			backgroundColor: withPressed(AppTheme.colors.bgPrimary),
 			height: 42,
 		},
 		backToPaymentMethodsButtonIconContainer: {
@@ -735,18 +841,19 @@ jn.define('crm/terminal/payment-pay', (require, exports, module) => {
 			height: 15,
 		},
 		backToPaymentMethodsButtonText: {
-			color: '#333333',
+			color: AppTheme.colors.base1,
 			fontSize: 17,
 			fontWeight: '400',
 		},
 		paymentMethodsContainer: {
-			marginTop: 77,
-			marginLeft: 46,
-			marginRight: 46,
+			flex: 1,
+			marginTop: PAYMENT_METHODS_CONTAINER_MARGIN_TOP,
+			marginBottom: PAYMENT_METHODS_CONTAINER_MARGIN_BOTTOM,
+			marginHorizontal: 38,
 		},
 		paymentMethodContainer: (isFirst) => {
 			return {
-				marginTop: isFirst ? 0 : 16,
+				marginTop: isFirst ? 0 : PAYMENT_BUTTON_MARGIN_TOP,
 			};
 		},
 	};

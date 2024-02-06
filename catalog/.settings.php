@@ -61,20 +61,6 @@ return [
 					],
 				],
 				[
-					'entityId' => 'iblock-element',
-					'provider' => [
-						'moduleId' => 'catalog',
-						'className' => '\\Bitrix\\Catalog\\v2\\Integration\\UI\\EntitySelector\\IblockElementProvider',
-					],
-				],
-				[
-					'entityId' => 'iblock-element-xml',
-					'provider' => [
-						'moduleId' => 'catalog',
-						'className' => '\\Bitrix\\Catalog\\v2\\Integration\\UI\\EntitySelector\\IblockElementXmlProvider',
-					],
-				],
-				[
 					'entityId' => 'brand',
 					'provider' => [
 						'moduleId' => 'catalog',
@@ -93,6 +79,20 @@ return [
 					'provider' => [
 						'moduleId' => 'catalog',
 						'className' => '\\Bitrix\\Catalog\\v2\\Integration\\UI\\EntitySelector\\StoreProvider',
+					],
+				],
+				[
+					'entityId' => 'agent-contractor-product-variation',
+					'provider' => [
+						'moduleId' => 'catalog',
+						'className' => '\\Bitrix\\Catalog\\v2\\Integration\\UI\\EntitySelector\\AgentContract\\ProductVariationProvider',
+					],
+				],
+				[
+					'entityId' => 'agent-contractor-section',
+					'provider' => [
+						'moduleId' => 'catalog',
+						'className' => '\\Bitrix\\Catalog\\v2\\Integration\\UI\\EntitySelector\\AgentContract\\SectionProvider',
 					],
 				],
 			],

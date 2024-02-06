@@ -20,12 +20,25 @@ use \Bitrix\Main\UI\Extension;
 Loc::loadMessages(__FILE__);
 
 $this->setFrameMode(true);
-$landing = $arResult['LANDING'];/** @var \Bitrix\Landing\Landing $landing */
-$b24Installed = \Bitrix\Main\ModuleManager::isModuleInstalled('bitrix24');
-$formEditor = $arResult['SPECIAL_TYPE'] == \Bitrix\Landing\Site\Type::PSEUDO_SCOPE_CODE_FORMS;
-$masterFrame = $component->request('master') == 'Y' && Rights::hasAccessForSite(
-	$landing->getSiteId(), Rights::ACCESS_TYPES['edit']
-);
+
+if (isset($arResult['LANDING']))
+{
+	$landing = $arResult['LANDING'];/** @var \Bitrix\Landing\Landing $landing */
+	$b24Installed = \Bitrix\Main\ModuleManager::isModuleInstalled('bitrix24');
+	$formEditor = $arResult['SPECIAL_TYPE'] == \Bitrix\Landing\Site\Type::PSEUDO_SCOPE_CODE_FORMS;
+	$masterFrame = $component->request('master') == 'Y' && Rights::hasAccessForSite(
+		$landing->getSiteId(), Rights::ACCESS_TYPES['edit']
+	);
+}
+
+// Tool availability (by intranet settings) - only kb
+if ($arParams['TYPE'] === 'KNOWLEDGE' || $arParams['TYPE'] === 'GROUP')
+{
+	if (!$component->isToolAvailable())
+	{
+		echo $component->getToolUnavailableInfoScript();
+	}
+}
 
 Manager::setPageTitle(
 	Loc::getMessage('LANDING_TPL_TITLE')
@@ -56,7 +69,6 @@ if ($b24Installed)
 	$extensions[] = 'landing.metrika';
 }
 $extensions[] = 'sidepanel';
-$extensions[] = 'ui.hint';
 
 Extension::load($extensions);
 
@@ -283,7 +295,6 @@ $assets->addAsset('landing_critical_grid', Assets\Location::LOCATION_BEFORE_ALL)
 <script>
 	BX.ready(function() {
 		void new BX.Landing.Pub.PageTransition();
-		BX.UI.Hint.init(BX('bitrix-footer-terms'));
 	});
 </script>
 

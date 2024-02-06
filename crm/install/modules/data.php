@@ -1190,10 +1190,10 @@ if (!empty($currentPresetInfo))
 			$strWhere .= ' OR ';
 		}
 
-		$strWhere .= "`XML_ID` = '{$info['XML_ID']}'";
+		$strWhere .= "XML_ID = '{$info['XML_ID']}'";
 	}
 
-	$res = $DB->Query("SELECT `ID`, `NAME`, `XML_ID` FROM `b_crm_preset` WHERE {$strWhere}");
+	$res = $DB->Query("SELECT ID, NAME, XML_ID FROM b_crm_preset WHERE {$strWhere}");
 	while ($preset = $res->Fetch())
 	{
 		$presetImport[$currentMap[$preset['XML_ID']]] = $preset;
@@ -1383,7 +1383,7 @@ $businessValueMap = [
 	Bitrix\Sale\BusinessValue::ENTITY_DOMAIN => "CRM_COMPANY",
 ];
 
-$res = $DB->Query("SELECT * FROM `b_sale_person_type` WHERE ENTITY_REGISTRY_TYPE = 'ORDER'");
+$res = $DB->Query("SELECT * FROM b_sale_person_type WHERE ENTITY_REGISTRY_TYPE = 'ORDER'");
 while ($personType = $res->Fetch())
 {
 	$domain = \Bitrix\Sale\Internals\BusinessValuePersonDomainTable::getList([
@@ -1395,7 +1395,7 @@ while ($personType = $res->Fetch())
 	if ($personTypeMatches)
 	{
 		$existingProps = [];
-		$propRes = $DB->Query("SELECT `ID`, `CODE` FROM `b_sale_order_props` WHERE `PERSON_TYPE_ID` = ".$personType['ID']." AND ENTITY_REGISTRY_TYPE = 'ORDER'");
+		$propRes = $DB->Query("SELECT ID, CODE FROM b_sale_order_props WHERE PERSON_TYPE_ID = ".$personType['ID']." AND ENTITY_REGISTRY_TYPE = 'ORDER'");
 		while ($property = $propRes->Fetch())
 		{
 			if (!empty($property['CODE']))
@@ -1407,7 +1407,7 @@ while ($personType = $res->Fetch())
 		if (!empty($existingProps))
 		{
 			$matchedProps = [];
-			$matchedPropRes = $DB->Query("SELECT `SALE_PROP_ID` FROM `b_crm_order_props_match` WHERE `SALE_PROP_ID` IN (".join(', ', array_keys($existingProps)).")");
+			$matchedPropRes = $DB->Query("SELECT SALE_PROP_ID FROM b_crm_order_props_match WHERE SALE_PROP_ID IN (".join(', ', array_keys($existingProps)).")");
 			while ($property = $matchedPropRes->Fetch())
 			{
 				$matchedProps[$property['SALE_PROP_ID']] = true;
@@ -1420,8 +1420,8 @@ while ($personType = $res->Fetch())
 					$propMatch = $personTypeMatches[$existingProp['CODE']];
 
 					$DB->Query(
-						"INSERT INTO `b_crm_order_props_match`
-							(`SALE_PROP_ID`, `CRM_ENTITY_TYPE`, `CRM_FIELD_TYPE`, `CRM_FIELD_CODE`, `SETTINGS`)
+						"INSERT INTO b_crm_order_props_match
+							(SALE_PROP_ID, CRM_ENTITY_TYPE, CRM_FIELD_TYPE, CRM_FIELD_CODE, SETTINGS)
 							VALUES ('{$existingProp['ID']}', '{$propMatch['CRM_ENTITY_TYPE']}', '{$propMatch['CRM_FIELD_TYPE']}',
 							'{$propMatch['CRM_FIELD_CODE']}', '".serialize($propMatch['SETTINGS'])."')"
 					);
@@ -1872,7 +1872,10 @@ foreach ($dynamicEntityTypeList as $type)
 
 if ($DB->TableExists("b_crm_shipment_realization") && $DB->TableExists("b_sale_order_delivery"))
 {
-	$DB->query("INSERT IGNORE INTO b_crm_shipment_realization (SHIPMENT_ID, IS_REALIZATION) SELECT ID, 'Y' FROM b_sale_order_delivery;");
+	$connection = \Bitrix\Main\Application::getConnection();
+	$helper = $connection->getSqlHelper();
+	$sql = $helper->getInsertIgnore("b_crm_shipment_realization", "(SHIPMENT_ID, IS_REALIZATION)", "SELECT ID, 'Y' FROM b_sale_order_delivery");
+	$DB->query($sql);
 }
 
 // catalog rights
@@ -1882,10 +1885,3 @@ if (!\Bitrix\Catalog\Access\Permission\PermissionTable::getCount())
 }
 
 \Bitrix\Main\Config\Option::set('crm', 'enable_entity_commodity_item_creation', 'N');
-
-$platformCode = \Bitrix\Crm\Order\TradingPlatform\Terminal::TRADING_PLATFORM_CODE;
-$platform = \Bitrix\Crm\Order\TradingPlatform\Terminal::getInstanceByCode($platformCode);
-if (!$platform->isInstalled())
-{
-	$platform->install();
-}

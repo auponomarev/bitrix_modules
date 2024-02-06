@@ -3,7 +3,6 @@
 
 	BX.namespace("BX.Landing");
 
-	var slice = BX.Landing.Utils.slice;
 	var proxy = BX.Landing.Utils.proxy;
 	var bind = BX.Landing.Utils.bind;
 	var addClass = BX.Landing.Utils.addClass;
@@ -26,7 +25,6 @@
 		this.description = document.querySelector(".landing-template-preview-input-description");
 		this.themesPalette = document.querySelector(".landing-template-preview-themes");
 		this.themesSiteColorNode = document.querySelector(".landing-template-preview-site-color");
-		this.themesSiteCustomColorNode = document.querySelector(".landing-demo-preview-custom-color");
 		this.imageContainer = document.querySelector(".preview-desktop-body-image");
 		this.loaderContainer = document.querySelector(".preview-desktop-body-loader-container");
 		this.previewFrame = document.querySelector(".preview-desktop-body-preview-frame");
@@ -57,19 +55,20 @@
 		this.zipInstallPath = params.zipInstallPath
 						? params.zipInstallPath
 						: null;
+		this.appCode = params.appCode || '';
 		this.siteId = params.siteId || 0;
 		this.langId = BX.type.isString(params.langId)
 						? params.langId
 						: '';
 		this.folderId = params.folderId || 0;
+		this.replaceLid = params.replaceLid || 0;
+		this.isCrmForm = (params.isCrmForm || 'N') === 'Y';
+		this.context = params.context || null;
 		this.urlPreview = params.urlPreview || '';
 
 		this.onCreateButtonClick = proxy(this.onCreateButtonClick, this);
 		this.onCancelButtonClick = proxy(this.onCancelButtonClick, this);
-		this.onColorPickerThemeSelect = proxy(this.onColorPickerThemeSelect, this);
 		this.onFrameLoad = proxy(this.onFrameLoad, this);
-
-		BX.addCustomEvent('BX.Landing.ColorPickerTheme:onSelectColor', this.onColorPickerThemeSelect);
 
 		this.init();
 
@@ -94,25 +93,6 @@
 		 */
 		init: function()
 		{
-			// themes
-			var colorItems = slice(this.themesPalette.children);
-			if(this.themesSiteColorNode)
-			{
-				colorItems = colorItems.concat(slice(this.themesSiteColorNode.children));
-			}
-			if(this.themesSiteCustomColorNode)
-			{
-				colorItems = colorItems.concat(slice(this.themesSiteCustomColorNode.children));
-			}
-			colorItems.forEach(this.initSelectableItem, this);
-
-			// site group
-			if(this.siteGroupPalette )
-			{
-				var siteGroupItems = slice(this.siteGroupPalette.children);
-				siteGroupItems.forEach(this.initSelectableItem, this);
-			}
-
 			bind(this.previewFrame, "load", this.onFrameLoad);
 			bind(this.closeButton, "click", this.onCancelButtonClick);
 
@@ -181,7 +161,7 @@
 		onFrameLoad: function() {
 			if (this.createStore)
 			{
-				new BX.Landing.SaveBtn(document.querySelector(".landing-template-preview-create"));
+				new BX.Landing.SaveBtn(this.createButton);
 			}
 			this.IsLoadedFrame = true;
 		},
@@ -196,10 +176,6 @@
 			if (!active && this.themesSiteColorNode)
 			{
 				active = this.themesSiteColorNode.querySelector(".active");
-			}
-			if (!active && this.themesSiteCustomColorNode)
-			{
-				active = this.themesSiteCustomColorNode.querySelector(".active");
 			}
 
 			return active;
@@ -421,15 +397,12 @@
 				{
 					result[this.themesSiteColorNode.dataset.name] = this.getActiveColorNode().dataset.value;
 				}
+
 				if (this.siteGroupPalette)
 				{
 					result[this.siteGroupPalette.dataset.name] = this.getActiveSiteGroupItem().dataset.value;
 				}
 				result[this.themesPalette.dataset.name] = this.getActiveColorNode().dataset.value;
-				if (this.themesSiteCustomColorNode)
-				{
-					result[this.themesPalette.dataset.name] = this.getActiveColorNode().dataset.value;
-				}
 			}
 			result[this.title.dataset.name] = this.title.value.replaceAll('&', '').replaceAll('?', '');
 			result[this.description.dataset.name] = this.description.value;
@@ -467,30 +440,48 @@
 			if (BX.Dom.hasClass(this.createButton.parentNode, 'needed-market-subscription'))
 			{
 				top.BX.UI.InfoHelper.show('limit_subscription_market_templates');
-				const promise = new Promise(function(resolve) {
-					setInterval(
-						() => {
-							if (BX.Dom.hasClass(this.createButton, 'ui-btn-clock'))
-							{
-								resolve();
-							}
-						},
-						500
-					);
-				}.bind(this));
-				promise.then(() => {
+				new Promise(resolve => {
+					const timerId = setInterval(() => {
+						if (BX.Dom.hasClass(this.createButton, 'ui-btn-clock'))
+						{
+							clearInterval(timerId);
+							resolve();
+						}
+					}, 500);
+				})
+				.then(() => {
 					BX.Dom.removeClass(this.createButton, 'ui-btn-clock');
 					BX.Dom.attr(this.createButton, 'style', '');
 				});
+
 				return;
 			}
 
+			// Analytic
 			const metrika = new BX.Landing.Metrika(true);
-			metrika.sendLabel(
-				null,
-				'createTemplate',
-				event.target.href
-			);
+			if (this.isCrmForm && this.replaceLid > 0)
+			{
+				const metrikaParams = {
+					category: 'crm_forms',
+					event: this.replaceLid > 0 ? 'replace_template' : 'create_template',
+					c_element: 'create_template_button',
+					params: {
+						appCode: this.appCode,
+					},
+				};
+				if (this.context)
+				{
+					metrikaParams.c_section = this.context;
+				}
+				metrika.sendData(metrikaParams);
+			}
+			else {
+				metrika.sendLabel(
+					null,
+					'createTemplate',
+					event.target.href
+				);
+			}
 
 			if (this.isStore() && this.IsLoadedFrame)
 			{
@@ -604,6 +595,26 @@
 
 				add['additional[siteId]'] = this.siteId;
 				add['additional[folderId]'] = this.folderId;
+				if (this.replaceLid > 0)
+				{
+					add['additional[replaceLid]'] = this.replaceLid;
+				}
+
+				// new analytic - now just for minisites for crm forms
+				if (this.isCrmForm && this.replaceLid > 0)
+				{
+					add['additional[st_category]'] = 'crm_forms';
+					add['additional[st_event]'] = this.replaceLid > 0 ? 'replace_template' : 'create_template';
+					add['additional[st_event]'] += '_success';
+					add['additional[st_element]'] = 'create_template_button';
+					if (this.context)
+					{
+						add['additional[st_section]'] = this.context;
+					}
+					add['additional[app_code]'] = this.appCode;
+				}
+
+				// 'form' is for analytic
 				add['from'] = this.createParamsStrFromUrl(url);
 
 				if (this.adminSection && this.langId !== '')
@@ -725,98 +736,15 @@
 			{
 				BX.Dom.addClass(popupImportError, 'hide');
 			}
-			const createButton = document.querySelector(".landing-template-preview-create");
-			if (createButton)
+			if (this.createButton)
 			{
-				createButton.click();
-			}
-		},
-
-		/**
-		 * Initializes selectable items
-		 * @param {HTMLElement} item
-		 */
-		initSelectableItem: function(item)
-		{
-			bind(item, "click", proxy(this.onSelectableItemClick, this));
-		},
-
-		/**
-		 * Handles click on selectable item
-		 * @param event
-		 */
-		onSelectableItemClick: function(event)
-		{
-			event.preventDefault();
-
-			// themes
-			if (
-				event.currentTarget.parentElement === this.themesPalette ||
-				(this.themesSiteColorNode && event.currentTarget.parentElement === this.themesSiteColorNode)
-			)
-			{
-				if (this.getActiveColorNode())
-				{
-					this.getActiveColorNode().classList.remove("active");
-				}
-				addClass(event.currentTarget, "active");
-
-				this.setColor(data(event.currentTarget, 'data-value'));
-				this.showPreview();
-			}
-
-			// site group
-			if (event.currentTarget.parentElement === this.siteGroupPalette)
-			{
-				removeClass(this.getActiveSiteGroupItem(), "active");
-				addClass(event.currentTarget, "active");
-				this.setBaseUrl(data(event.currentTarget, 'data-base-url'));
-				this.showPreview();
+				this.createButton.click();
 			}
 		},
 
 		isStore: function()
 		{
 			return this.createStore;
-		},
-
-		onColorPickerThemeSelect: function(params)
-		{
-			[
-				this.themesPalette,
-				this.themesSiteCustomColorNode,
-				this.themesSiteColorNode
-			].forEach(function(control) {
-				if (control)
-				{
-					BX.removeClass(control.querySelector('.active'), 'active');
-				}
-			});
-			params.data.node.classList.add("active");
-
-
-			var loader = new BX.Loader({});
-			var loaderContainer = document.querySelector(".preview-desktop-body-loader-container");
-			loader.show(loaderContainer);
-			var imageContainer = document.querySelector(".preview-desktop-body-image");
-			addClass(imageContainer, "landing-template-preview-overlay");
-
-			var frame = document.querySelector('.preview-desktop-body-preview-frame');
-			if (frame)
-			{
-				var url = new URL(frame.getAttribute('src'));
-				var search = new URLSearchParams(url.search);
-				search.set('color', params.data.color.substr(1));
-				url.search = search.toString();
-
-				frame.setAttribute('src', url.toString());
-				setTimeout(hideFrameLoader, 1600);
-			}
-
-			function hideFrameLoader() {
-				loader.hide();
-				removeClass(imageContainer, "landing-template-preview-overlay");
-			}
 		},
 
 		createParamsStrFromUrl(url)

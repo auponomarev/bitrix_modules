@@ -15,7 +15,6 @@ use Bitrix\Main\Application;
 use Bitrix\Main\Authentication\Policy;
 
 require_once(__DIR__."/../include/prolog_admin_before.php");
-require_once($_SERVER["DOCUMENT_ROOT"].BX_ROOT."/modules/main/prolog.php");
 define("HELP_FILE", "users/user_edit.php");
 $strRedirect_admin = BX_ROOT."/admin/user_admin.php?lang=".LANG;
 $strRedirect = BX_ROOT."/admin/user_edit.php?lang=".LANG;
@@ -59,20 +58,15 @@ else
 
 $selfEdit = ($USER->CanDoOperation('edit_own_profile') && $ID == $uid);
 
-$arUserSubordinateGroups = array();
-if($USER->CanDoOperation('edit_subordinate_users') && !$USER->CanDoOperation('edit_all_users'))
+$arUserSubordinateGroups = [];
+if ($USER->CanDoOperation('edit_subordinate_users') && !$USER->CanDoOperation('edit_all_users'))
 {
-	$arUserSubordinateGroups = array(2);
-	$arUserGroups_u = CUser::GetUserGroup($uid);
-	for ($j = 0,$len = count($arUserGroups_u); $j < $len; $j++)
-	{
-		$arSubordinateGroups = CGroup::GetSubordinateGroups($arUserGroups_u[$j]);
-		$arUserSubordinateGroups = array_merge ($arUserSubordinateGroups, $arSubordinateGroups);
-	}
-	$arUserSubordinateGroups = array_unique($arUserSubordinateGroups);
+	$arUserSubordinateGroups = CUser::GetSubordinateGroups();
 
 	if (!empty(array_diff($arUserGroups, $arUserSubordinateGroups)) && !$selfEdit)
+	{
 		LocalRedirect(BX_ROOT."/admin/user_admin.php?lang=".LANG);
+	}
 }
 
 $editable = ($USER->IsAdmin() ||
@@ -152,6 +146,8 @@ if(
 	&& check_bitrix_sessid()
 )
 {
+	global $adminSidePanelHelper;
+
 	$adminSidePanelHelper->decodeUriComponent();
 
 	if(COption::GetOptionString('main', 'use_encrypted_auth', 'N') == 'Y')
@@ -318,7 +314,7 @@ if(
 		$USER_FIELD_MANAGER->EditFormAddFields($PROPERTY_ID, $arFields);
 		if($ID>0 && $COPY_ID<=0)
 		{
-			$res = $user->Update($ID, $arFields, true);
+			$res = $user->Update($ID, $arFields);
 		}
 		elseif($USER->CanDoOperation('edit_all_users') || $USER->CanDoOperation('edit_subordinate_users'))
 		{
@@ -360,7 +356,7 @@ if(
 
 	if($strError == '' && $ID>0)
 	{
-		if (isset($_REQUEST["profile_module_id"]) && is_array($_REQUEST["profile_module_id"]) && !empty($_REQUEST["profile_module_id"]))
+		if (!empty($_REQUEST["profile_module_id"]) && is_array($_REQUEST["profile_module_id"]))
 		{
 			$db_opt_res = CModule::GetList();
 			while ($opt_res = $db_opt_res->Fetch())
@@ -497,7 +493,7 @@ $str_TIME_ZONE = '';
 $str_ADMIN_NOTES = '';
 
 $user = CUser::GetByID($ID);
-if(!$user->ExtractFields("str_"))
+if(!$user->ExtractFields())
 {
 	$ID = 0;
 	$str_ACTIVE = "Y";
@@ -530,7 +526,7 @@ if($strError <> '' || !$res)
 	$save_PERSONAL_PHOTO = $str_PERSONAL_PHOTO;
 	$save_WORK_LOGO = $str_WORK_LOGO;
 
-	$DB->InitTableVarsForEdit("b_user", "", "str_");
+	$DB->InitTableVarsForEdit("b_user", "");
 
 	$str_PERSONAL_PHOTO = $save_PERSONAL_PHOTO;
 	$str_WORK_LOGO = $save_WORK_LOGO;
@@ -654,16 +650,42 @@ $tabControl->EndEpilogContent();
 
 $limitUsersCount = 0;
 $users_cnt = 0;
-if($ID <= 0)
+$formAttributes = '';
+if ($ID <= 0)
 {
 	$license = Application::getInstance()->getLicense();
 	$users_cnt = $license->getActiveUsersCount();
 	$limitUsersCount = $license->getMaxUsers();
+
+	if ($limitUsersCount > 0 && $limitUsersCount <= $users_cnt)
+	{
+?>
+<script>
+function BxCheckUsers(form)
+{
+	if (form.elements['UF_DEPARTMENT[]'])
+	{
+		var multiselect = form.elements['UF_DEPARTMENT[]'];
+		for (var i in multiselect.options)
+		{
+			var option = multiselect.options[i];
+			if (option.selected && option.value > 0)
+			{
+				alert('<?=GetMessageJS("USER_EDIT_WARNING_MAX")?>');
+				break;
+			}
+		}
+	}
+}
+</script>
+<?php
+		$formAttributes = 'onsubmit="BxCheckUsers(this)"';
+	}
 }
 
 $tabControl->Begin(array(
 	"FORM_ACTION" => $APPLICATION->GetCurPage()."?ID=".intval($ID)."&lang=".LANG,
-	"FORM_ATTRIBUTES" => ($ID <= 0 && $limitUsersCount > 0 && $limitUsersCount <= $users_cnt? 'onsubmit="alert(\''.GetMessage("USER_EDIT_WARNING_MAX").'\')"':''),
+	"FORM_ATTRIBUTES" => $formAttributes,
 ));
 
 $tabControl->BeginNextFormTab();
@@ -866,10 +888,18 @@ if($showGroupTabs):
 			while ($arGroups = $dbGroups->Fetch())
 			{
 				$arGroups["ID"] = intval($arGroups["ID"]);
-				if (!$USER->CanDoOperation('edit_all_users') && $USER->CanDoOperation('edit_subordinate_users') && !in_array($arGroups["ID"], $arUserSubordinateGroups) || $arGroups["ID"] == 2)
+				if ($arGroups["ID"] == 2)
+				{
 					continue;
-				if($arGroups["ID"]==1 && !$USER->IsAdmin())
+				}
+				if (!$USER->CanDoOperation('edit_all_users') && $USER->CanDoOperation('edit_subordinate_users') && !in_array($arGroups["ID"], $arUserSubordinateGroups))
+				{
 					continue;
+				}
+				if ($arGroups["ID"] == 1 && !$USER->IsAdmin())
+				{
+					continue;
+				}
 				$ind++;
 				?>
 				<tr>
@@ -986,7 +1016,7 @@ $tabControl->AddEditField("WORK_MAILBOX", GetMessage('USER_MAILBOX'), false, arr
 $tabControl->AddTextField("WORK_NOTES", GetMessage("USER_NOTES"), $str_WORK_NOTES, array("cols"=>40, "rows"=>5));
 
 $tabControl->BeginNextFormTab();
-$tabControl->BeginCustomField("RATING_BOX", GetMessage("USER_RATING_INFO"), false);
+$tabControl->BeginCustomField("RATING_BOX", GetMessage("USER_RATING_INFO"));
 ?>
 	<tr>
 		<td width="100%" colspan="100%">

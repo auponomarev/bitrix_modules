@@ -1,4 +1,5 @@
-<?
+<?php
+
 $MESS["CT_BLLE_TOOLBAR_LIST_TITLE"] = "Просмотр и правка элементов списка";
 $MESS["CT_BLLE_TOOLBAR_FIELDS"] = "Поля списка";
 $MESS["CT_BLLE_TOOLBAR_FIELDS_TITLE"] = "Настроить поля списка";
@@ -32,6 +33,8 @@ $MESS["CT_BLLE_TOOLBAR_FIELDS_TITLE_PROCESS"] = "Настроить поля п�
 $MESS["CT_BLLE_TOOLBAR_DELETE_PROCESS"] = "Удалить процесс";
 $MESS["CT_BLLE_TOOLBAR_DELETE_TITLE_PROCESS"] = "Удаляет процесс и всю связанную с ним информацию";
 $MESS["CT_BLLE_TOOLBAR_DELETE_WARNING_PROCESS"] = "Вы уверены, что хотите удалить этот процесс?";
+$MESS["CT_BLLE_TOOLBAR_DELETE_WARNING_PROCESS_1"] = "Вы уверены, что хотите удалить процесс?";
+$MESS["CT_BLLE_TOOLBAR_DELETE_WARNING_1"] = "Вы уверены, что хотите удалить список?";
 $MESS["CT_BLLE_TAB_EDIT_TITLE_PROCESS"] = "Основные настройки процесса";
 $MESS["CT_BLLE_TAB_MESSAGES_TITLE_PROCESS"] = "Подписи к элементам и разделам процесса";
 $MESS["CT_BLLE_TAB_ACCESS_TITLE_PROCESS"] = "Управление правами доступа к элементам и разделам процесса";
@@ -49,10 +52,16 @@ $MESS["CT_BLLE_MIGRATE_POPUP_TITLE"] = "Подтверждение перено�
 $MESS["CT_BLLE_MIGRATE_POPUP_ACCEPT_BUTTON"] = "Перенести";
 $MESS["CT_BLLE_MIGRATE_POPUP_CANCEL_BUTTON"] = "Отмена";
 $MESS["CT_BLLE_DELETE_POPUP_TITLE"] = "Подтверждение удаления";
+$MESS["CT_BLLE_DELETE_POPUP_TITLE_1"] = "Удалить процесс";
 $MESS["CT_BLLE_DELETE_POPUP_ACCEPT_BUTTON"] = "Удалить";
+$MESS["CT_BLLE_DELETE_CONFIRM_BUTTON"] = "Да, удалить";
 $MESS["CT_BLLE_DELETE_POPUP_CANCEL_BUTTON"] = "Отмена";
 $MESS["CT_BLLE_COPY_POPUP_TITLE"] = "Подтверждение копирования";
+$MESS["CT_BLLE_COPY_POPUP_TITLE_1"] = "Копировать процесс";
 $MESS["CT_BLLE_COPY_POPUP_CONTENT"] = "Вы уверены, что хотите копировать?";
+$MESS["CT_BLLE_COPY_POPUP_TEXT_PROCESS"] = "Вы действительно хотите скопировать этот процесс?";
+$MESS["CT_BLLE_COPY_POPUP_TEXT"] = "Вы действительно хотите скопировать этот список?";
+$MESS["CT_BLLE_COPY_CONFIRM_BUTTON"] = "Да, скопировать";
 $MESS["CT_BLLE_COPY_POPUP_ACCEPT_BUTTON"] = "Копировать";
 $MESS["CT_BLLE_COPY_POPUP_CANCEL_BUTTON"] = "Отмена";
 $MESS["CT_BLLE_TOOLBAR_RETURN_LIST_ELEMENT"] = "К СПИСКУ";

@@ -4,6 +4,7 @@ use Bitrix\Main;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\ModuleManager;
 use Bitrix\Main\UI\Filter\Theme;
+use Bitrix\Mail\Helper\LicenseManager;
 
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 {
@@ -26,6 +27,7 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 	'ui.dialogs.messagebox',
 	'ui.hint',
 	'ui.icons.service',
+	'pull.client',
 ]);
 
 $APPLICATION->SetAdditionalCSS("/bitrix/css/main/font-awesome.css");
@@ -56,7 +58,7 @@ $unseenCountInOtherMailboxes = 0;
 $mailboxMenu = array();
 foreach ($arResult['MAILBOXES'] as $mailboxId => $item)
 {
-	if($item['ID'] !== $arResult['MAILBOX']['ID'])
+	if ($mailboxId !== $arResult['MAILBOX']['ID'])
 	{
 		$unseenCountInOtherMailboxes += $item['__unseen'];
 	}
@@ -65,10 +67,18 @@ foreach ($arResult['MAILBOXES'] as $mailboxId => $item)
 		$unseenCountInCurrentMailbox += $item['__unseen'];
 	}
 
-	$mailboxMenu[] = array(
+	$mailboxLockIconHtml = '';
+
+    if (!LicenseManager::checkTheMailboxForSyncAvailability($mailboxId))
+    {
+		$mailboxLockIconHtml = '<span class="mail-connect-lock-icon"></span>';
+    }
+
+    $mailboxMenu[] = array(
 		'html' => sprintf(
-			'<span class="main-buttons-item-text">%s</span> %s',
+			'<span class="mail-menu-popup-item-text-wrapper"><span class="main-buttons-item-text">%s</span>%s</span> %s',
 			htmlspecialcharsbx($item['NAME']),
+			$mailboxLockIconHtml,
 			sprintf('<span class="main-buttons-item-counter %s">%u</span>',
 				$item['__unseen'] > 0 ? 'js-unseen-mailbox' : 'main-ui-hide',
 				$item['__unseen']
@@ -103,16 +113,13 @@ $addMailboxMenuItem = array(
 $userMailboxesLimit = $arResult['MAX_ALLOWED_CONNECTED_MAILBOXES'];
 if ($userMailboxesLimit >= 0 && $arResult['USER_OWNED_MAILBOXES_COUNT'] >= $userMailboxesLimit)
 {
-	if (\CModule::includeModule('bitrix24'))
-	{
-		$addMailboxMenuItem = array(
-			'html' => '<div onclick="BX.UI.InfoHelper.show(\'limit_contact_center_mail_box_number\')">'.
-				'<span class="mail-connect-lock-text">' . Loc::getMessage('MAIL_CLIENT_MAILBOX_ADD') . '</span>' .
-				'<span class="mail-connect-lock-icon"></span>' .
-			'</div>',
-			'className' => 'dummy',
-		);
-	}
+    $addMailboxMenuItem = array(
+        'html' => '<div onclick="BX.UI.InfoHelper.show(\'limit_contact_center_mail_box_number\')">'.
+            '<span class="mail-connect-lock-text">' . Loc::getMessage('MAIL_CLIENT_MAILBOX_ADD') . '</span>' .
+            '<span class="mail-connect-lock-icon"></span>' .
+        '</div>',
+        'className' => 'dummy',
+    );
 }
 
 $mailboxMenu[] = array(
@@ -268,6 +275,8 @@ $this->endViewTarget();
 
 	<?=$APPLICATION->getViewContent('mail-msg-counter-panel') ?>
 
+	<?=$APPLICATION->getViewContent('mail-msg-temp-alert') ?>
+
 	<? $this->endViewTarget();
 
 $this->setViewTarget('mail-msg-counter-script');
@@ -277,7 +286,6 @@ $this->setViewTarget('mail-msg-counter-script');
 <script type="text/javascript">
 (function ()
 {
-
 	var uiManager = BX.Mail.Client.Message.List['<?=\CUtil::jsEscape($component->getComponentId()) ?>'].userInterfaceManager;
 	BX.onCustomEvent('Grid::updated',[uiManager.getGridInstance()]);
 	uiManager.initMailboxes(<?=Main\Web\Json::encode($mailboxMenu) ?>);
@@ -300,6 +308,13 @@ $this->setViewTarget('mail-msg-counter-script');
 		BXMailMailbox.sync(BX.Mail.Home.ProgressBar, '<?=\CUtil::jsEscape($arResult['GRID_ID']) ?>', true,true);
 	}
 
+	const curPage = <?= (int)$arResult['NAV_OBJECT']->getCurrentPage(); ?>
+
+	uiManager.updateMessageMailHrefList(
+		<?= Main\Web\Json::encode($arResult['MESSAGE_HREF_LIST']) ?>,
+		curPage,
+		<?= !empty($arResult['ENABLE_NEXT_PAGE']) ? 'true' : 'false' ?>
+	);
 })();
 </script>
 
@@ -578,6 +593,7 @@ $actionPanelActionButtons = array_merge($actionPanelActionButtons, [
 ]);
 
 ?>
+<div class="mail-msg-list-grid-stub-wrapper"><div class="mail-msg-list-grid-stub" data-role="mail-msg-list-grid-stub"></div>
 <div class="mail-msg-list-actionpanel-container" data-role="mail-msg-list-actionpanel-container"></div>
 <div class="mail-msg-list-grid" data-role="mail-msg-list-grid">
 
@@ -714,6 +730,7 @@ $APPLICATION->includeComponent(
 	}
 
 	BX.message({
+		MAILBOX_IS_SYNC_AVAILABILITY: '<?= CUtil::JSEscape($arResult['MAILBOX_IS_SYNC_AVAILABILITY']) ?>',
 		DEFAULT_DIR: '<?= CUtil::JSEscape($arResult['defaultDir']) ?>',
 		MESSAGES_ALREADY_EXIST_IN_FOLDER : '<?= Loc::getMessage('MESSAGES_ALREADY_EXIST_IN_FOLDER') ?>',
 		MAILBOX_LINK: '<?= CUtil::JSEscape($arResult['MAILBOX']['LINK'])?>',
@@ -789,6 +806,7 @@ $APPLICATION->includeComponent(
 			if(!Mail.Grid.getCountDisplayed())
 			{
 				Mail.Grid.setGridWrapper(document.querySelector('[data-role="mail-msg-list-grid"]'));
+				Mail.Grid.setGridStub(document.querySelector('[data-role="mail-msg-list-grid-stub"]'));
 				Mail.Grid.enableLoadingMessagesStub();
 			}
 		<?php
@@ -823,6 +841,8 @@ $APPLICATION->includeComponent(
 			inboxDir: '<?= CUtil::JSEscape($arResult['defaultDir']) ?>',
 			spamDir: '<?= CUtil::JSEscape($arResult['spamDir']) ?>',
 			trashDir: '<?= CUtil::JSEscape($arResult['trashDir']) ?>',
+			enableNextPage: '<?= !empty($arResult['ENABLE_NEXT_PAGE']) ?>' ?? false,
+			MESSAGE_MAIL_HREF_LIST: <?= Main\Web\Json::encode($arResult['MESSAGE_HREF_LIST']) ?>,
 			ENTITY_TYPE_NO_BIND: '<?= CUtil::JSEscape(\Bitrix\Mail\Internals\MessageAccessTable::ENTITY_TYPE_NO_BIND) ?>',
 			ENTITY_TYPE_CRM_ACTIVITY: '<?= CUtil::JSEscape(\Bitrix\Mail\Internals\MessageAccessTable::ENTITY_TYPE_CRM_ACTIVITY) ?>',
 			ENTITY_TYPE_TASKS_TASK: '<?= CUtil::JSEscape(\Bitrix\Mail\Internals\MessageAccessTable::ENTITY_TYPE_TASKS_TASK) ?>',
@@ -934,6 +954,29 @@ $APPLICATION->includeComponent(
 				}
 			}
 		);
+
+		top.BX.addCustomEvent("SidePanel.Slider:onOpen", (event) => {
+			const slider = event.getSlider();
+			const dictionary = slider.getData();
+			dictionary.set(
+				'hrefList',
+				mailMessageList.userInterfaceManager.MESSAGE_MAIL_HREF_LIST
+			);
+			dictionary.set('enableNextPage', mailMessageList.userInterfaceManager.enableNextPage ?? false);
+
+			const views = slider.getWindow()?.BXMailView?.__views
+			let view = null;
+			if(slider.getWindow()?.BXMailView?.__views)
+			{
+				const keys = Object.keys(views);
+				view = views[keys[0]];
+			}
+
+			if(view && view?.pageSwapper)
+			{
+				view.pageSwapper.updatePagesHref(slider.getData().get('hrefList'));
+			}
+		});
 
 		if (window === window.top)
 		{

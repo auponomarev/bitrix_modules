@@ -1,45 +1,31 @@
-import {Type} from 'main.core';
-import {BuilderModel} from 'ui.vue3.vuex';
+import { Type } from 'main.core';
+import { BuilderModel } from 'ui.vue3.vuex';
 
-import {Core} from 'im.v2.application.core';
-import {Utils} from 'im.v2.lib.utils';
-import {Logger} from 'im.v2.lib.logger';
-import {MessageComponent, MessageType} from 'im.v2.const';
+import { Core } from 'im.v2.application.core';
+import { Utils } from 'im.v2.lib.utils';
+import { Logger } from 'im.v2.lib.logger';
+import { MessageComponent, MessageType } from 'im.v2.const';
 
-import {PinModel} from './messages/pin';
-import {ReactionsModel} from './messages/reactions';
+import { PinModel } from './messages/pin';
+import { ReactionsModel } from './messages/reactions';
 
-import type {ImModelMessage, ImModelFile} from 'im.v2.model';
-import type {AttachConfig} from 'im.v2.const';
+import type { GetterTree, ActionTree, MutationTree } from 'ui.vue3.vuex';
+import type { ImModelMessage, ImModelFile } from 'im.v2.model';
+import type { RawMessage, RawMessageParams, PreparedMessageParams } from './type/message';
+import type { AttachConfig } from 'im.v2.const';
 
 type MessagesState = {
 	collection: {
 		[messageId: string]: ImModelMessage
 	},
 	chatCollection: {
-		[chatId: string]: Set
+		[chatId: string]: Set<string | number>
 	}
-};
-
-type RawMessageParams = {
-	COMPONENT_ID?: string,
-	FILE_ID?: number[],
-	IS_EDITED?: 'Y' | 'N',
-	IS_DELETED?: 'Y' | 'N',
-	ATTACH?: AttachConfig[]
-};
-
-type PreparedMessageParams = {
-	componentId: string,
-	files: number[],
-	isEdited: boolean,
-	isDeleted: boolean,
-	attach: AttachConfig[]
 };
 
 export class MessagesModel extends BuilderModel
 {
-	getName()
+	getName(): string
 	{
 		return 'messages';
 	}
@@ -48,24 +34,25 @@ export class MessagesModel extends BuilderModel
 	{
 		return {
 			pin: PinModel,
-			reactions: ReactionsModel
+			reactions: ReactionsModel,
 		};
 	}
 
-	getState()
+	getState(): MessagesState
 	{
 		return {
 			collection: {},
-			chatCollection: {}
+			chatCollection: {},
 		};
 	}
 
-	getElementState()
+	getElementState(): ImModelMessage
 	{
 		return {
 			id: 0,
 			chatId: 0,
 			authorId: 0,
+			replyId: 0,
 			date: new Date(),
 			text: '',
 			replaces: [],
@@ -78,36 +65,36 @@ export class MessagesModel extends BuilderModel
 			error: false,
 			retry: false,
 			componentId: MessageComponent.base,
+			componentParams: {},
 			isEdited: false,
 			isDeleted: false,
-			removeLinks: false
+			removeLinks: false,
 		};
 	}
 
-	getGetters()
+	// eslint-disable-next-line max-lines-per-function
+	getGetters(): GetterTree
 	{
 		return {
-			get: (state: MessagesState) => chatId =>
-			{
+			/** @function messages/get */
+			get: (state: MessagesState) => (chatId: number) => {
 				if (!state.chatCollection[chatId])
 				{
 					return [];
 				}
 
-				return [...state.chatCollection[chatId]].map(messageId => {
+				return [...state.chatCollection[chatId]].map((messageId: number | string) => {
 					return state.collection[messageId];
-				}).sort((a, b) => {
-					return a.id - b.id;
-				});
+				}).sort(this.#sortCollection);
 			},
-			getById: (state: MessagesState) => (id: number): ?ImModelMessage =>
-			{
+			/** @function messages/getById */
+			getById: (state: MessagesState) => (id: number): ?ImModelMessage => {
 				return state.collection[id];
 			},
-			getByIdList: (state: MessagesState) => (idList: number[]): ImModelMessage[] =>
-			{
+			/** @function messages/getByIdList */
+			getByIdList: (state: MessagesState) => (idList: number[]): ImModelMessage[] => {
 				const result = [];
-				idList.forEach(id => {
+				idList.forEach((id) => {
 					if (state.collection[id])
 					{
 						result.push(state.collection[id]);
@@ -116,8 +103,8 @@ export class MessagesModel extends BuilderModel
 
 				return result;
 			},
-			hasMessage: (state: MessagesState) => ({chatId, messageId}) =>
-			{
+			/** @function messages/hasMessage */
+			hasMessage: (state: MessagesState) => ({ chatId, messageId}) => {
 				if (!state.chatCollection[chatId])
 				{
 					return false;
@@ -125,38 +112,38 @@ export class MessagesModel extends BuilderModel
 
 				return state.chatCollection[chatId].has(messageId);
 			},
-			isInChatCollection: (state: MessagesState) => (payload: {messageId: number}): boolean =>
-			{
-				const {messageId} = payload;
+			/** @function messages/isInChatCollection */
+			isInChatCollection: (state: MessagesState) => (payload: {messageId: number}): boolean => {
+				const { messageId } = payload;
 				const message = state.collection[messageId];
 				if (!message)
 				{
 					return false;
 				}
-				const {chatId} = message;
+				const { chatId } = message;
 
 				return state.chatCollection[chatId]?.has(messageId);
 			},
-			getFirstId: (state: MessagesState) => chatId =>
-			{
+			/** @function messages/getFirstId */
+			getFirstId: (state: MessagesState) => (chatId: number): number => {
 				if (!state.chatCollection[chatId])
 				{
-					return;
+					return 0;
 				}
 
 				return this.#findLowestMessageId(state, chatId);
 			},
-			getLastId: (state: MessagesState) => chatId =>
-			{
+			/** @function messages/getLastId */
+			getLastId: (state: MessagesState) => (chatId: number): number => {
 				if (!state.chatCollection[chatId])
 				{
-					return;
+					return 0;
 				}
 
 				return this.#findMaxMessageId(state, chatId);
 			},
-			getLastOwnMessageId: (state: MessagesState) => (chatId): number =>
-			{
+			/** @function messages/getLastOwnMessageId */
+			getLastOwnMessageId: (state: MessagesState) => (chatId: number): number => {
 				if (!state.chatCollection[chatId])
 				{
 					return 0;
@@ -164,8 +151,8 @@ export class MessagesModel extends BuilderModel
 
 				return this.#findLastOwnMessageId(state, chatId);
 			},
-			getFirstUnread: (state: MessagesState) => (chatId: number): number =>
-			{
+			/** @function messages/getFirstUnread */
+			getFirstUnread: (state: MessagesState) => (chatId: number): number => {
 				if (!state.chatCollection[chatId])
 				{
 					return 0;
@@ -173,14 +160,14 @@ export class MessagesModel extends BuilderModel
 
 				return this.#findFirstUnread(state, chatId);
 			},
-			getChatUnreadMessages: (state: MessagesState) => (chatId: number): ImModelMessage[] =>
-			{
+			/** @function messages/getChatUnreadMessages */
+			getChatUnreadMessages: (state: MessagesState) => (chatId: number): ImModelMessage[] => {
 				if (!state.chatCollection[chatId])
 				{
 					return [];
 				}
 
-				const messages = [...state.chatCollection[chatId]].map(messageId => {
+				const messages = [...state.chatCollection[chatId]].map((messageId: number | string) => {
 					return state.collection[messageId];
 				});
 
@@ -188,24 +175,24 @@ export class MessagesModel extends BuilderModel
 					return message.unread === true;
 				});
 			},
-			getMessageFiles: (state: MessagesState) => (payload: number): ImModelFile[] =>
-			{
+			/** @function messages/getMessageFiles */
+			getMessageFiles: (state: MessagesState) => (payload: number): ImModelFile[] => {
 				const messageId = payload;
 				if (!state.collection[messageId])
 				{
 					return [];
 				}
 
-				return state.collection[messageId].files.map(fileId => {
+				return state.collection[messageId].files.map((fileId) => {
 					return this.store.getters['files/get'](fileId, true);
 				});
 			},
-			getMessageType: (state: MessagesState) => (payload: number): ?$Values<typeof MessageType> =>
-			{
-				const message = state.collection[payload];
+			/** @function messages/getMessageType */
+			getMessageType: (state: MessagesState) => (messageId: number): ?$Values<typeof MessageType> => {
+				const message = state.collection[messageId];
 				if (!message)
 				{
-					return;
+					return null;
 				}
 
 				const currentUserId = Core.getUserId();
@@ -213,79 +200,101 @@ export class MessagesModel extends BuilderModel
 				{
 					return MessageType.system;
 				}
-				else if (message.authorId === currentUserId)
+
+				if (message.authorId === currentUserId)
 				{
 					return MessageType.self;
 				}
 
 				return MessageType.opponent;
-			}
+			},
+			/** @function messages/getPreviousMessage */
+			getPreviousMessage: (state: MessagesState) => (payload: {messageId: number, chatId: number}): ?ImModelMessage => {
+				const { messageId, chatId } = payload;
+				const message = state.collection[messageId];
+				if (!message)
+				{
+					return null;
+				}
+
+				const chatCollection = [...state.chatCollection[chatId]];
+				const initialMessageIndex = chatCollection.indexOf(messageId);
+				const desiredMessageId = chatCollection[initialMessageIndex - 1];
+				if (!desiredMessageId)
+				{
+					return null;
+				}
+
+				return state.collection[desiredMessageId];
+			},
 		};
 	}
 
-	getActions()
+	// eslint-disable-next-line max-lines-per-function
+	getActions(): ActionTree
 	{
 		return {
-			setChatCollection: (store, payload: {messages: Array, clearCollection: boolean}) =>
-			{
-				let {messages, clearCollection} = payload;
+			/** @function messages/setChatCollection */
+			setChatCollection: (store, payload: {messages: RawMessage | RawMessage[], clearCollection: boolean}) => {
+				let { messages, clearCollection } = payload;
 				clearCollection = clearCollection ?? false;
 				if (!Array.isArray(messages) && Type.isPlainObject(messages))
 				{
 					messages = [messages];
 				}
 
-				messages = messages.map(message => {
-					return {...this.getElementState(), ...this.validate(message)};
+				messages = messages.map((message: RawMessage) => {
+					return { ...this.getElementState(), ...this.validate(message) };
 				});
 
 				const chatId = messages[0]?.chatId;
 				if (chatId && clearCollection)
 				{
-					store.commit('clearCollection', {chatId});
+					store.commit('clearCollection', { chatId });
 				}
 
-				store.commit('store', {messages});
-				store.commit('setChatCollection', {messages});
+				store.commit('store', { messages });
+				store.commit('setChatCollection', { messages });
 			},
-			store: (store, payload: Object | Object[]) =>
-			{
-				if (!Array.isArray(payload) && Type.isPlainObject(payload))
+			/** @function messages/store */
+			store: (store, payload: RawMessage | RawMessage[]) => {
+				let preparedMessages = payload;
+				if (Type.isPlainObject(payload))
 				{
-					payload = [payload];
+					preparedMessages = [payload];
 				}
 
-				payload = payload.map(message => {
-					return {...this.getElementState(), ...this.validate(message)};
+				preparedMessages = preparedMessages.map((message: RawMessage) => {
+					return { ...this.getElementState(), ...this.validate(message) };
 				});
 
-				if (payload.length === 0)
+				if (preparedMessages.length === 0)
 				{
 					return;
 				}
 
 				store.commit('store', {
-					messages: payload
+					messages: preparedMessages,
 				});
 			},
-			add: (store, payload: Object) =>
-			{
+			/** @function messages/add */
+			add: (store, payload: RawMessage) => {
 				const message = {
 					...this.getElementState(),
 					...this.validate(payload),
 				};
 				store.commit('store', {
-					messages: [message]
+					messages: [message],
 				});
 				store.commit('setChatCollection', {
-					messages: [message]
+					messages: [message],
 				});
 
 				return message.id;
 			},
-			updateWithId: (store, payload: {id: string | number, fields: Object}) =>
-			{
-				const {id, fields} = payload;
+			/** @function messages/updateWithId */
+			updateWithId: (store, payload: {id: string | number, fields: Object}) => {
+				const { id, fields } = payload;
 				if (!store.state.collection[id])
 				{
 					return;
@@ -293,12 +302,12 @@ export class MessagesModel extends BuilderModel
 
 				store.commit('updateWithId', {
 					id,
-					fields: this.validate(fields)
+					fields: this.validate(fields),
 				});
 			},
-			update: (store, payload: {id: string | number, fields: Object}) =>
-			{
-				const {id, fields} = payload;
+			/** @function messages/update */
+			update: (store, payload: {id: string | number, fields: Object}) => {
+				const { id, fields } = payload;
 				const currentMessage = store.state.collection[id];
 				if (!currentMessage)
 				{
@@ -307,12 +316,12 @@ export class MessagesModel extends BuilderModel
 
 				store.commit('update', {
 					id,
-					fields: {...currentMessage, ...this.validate(fields)}
+					fields: { ...currentMessage, ...this.validate(fields) }
 				});
 			},
-			readMessages: (store, payload: {chatId: number, messageIds: number[]}): number =>
-			{
-				const {chatId, messageIds} = payload;
+			/** @function messages/readMessages */
+			readMessages: (store, payload: {chatId: number, messageIds: number[]}): number => {
+				const { chatId, messageIds } = payload;
 				if (!store.state.chatCollection[chatId])
 				{
 					return 0;
@@ -341,43 +350,61 @@ export class MessagesModel extends BuilderModel
 
 				store.commit('readMessages', {
 					messageIdsToRead,
-					messageIdsToView
+					messageIdsToView,
 				});
 
 				return messagesToReadCount;
 			},
-			setViewedByOthers: (store, payload: {ids: number[]}): number =>
-			{
-				const {ids} = payload;
+			/** @function messages/setViewedByOthers */
+			setViewedByOthers: (store, payload: {ids: number[]}): number => {
+				const { ids } = payload;
 				store.commit('setViewedByOthers', {
-					ids
+					ids,
 				});
 			},
-			delete: (store, payload: {id: string | number}) =>
-			{
-				const {id} = payload;
+			/** @function messages/delete */
+			delete: (store, payload: {id: string | number}) => {
+				const { id } = payload;
 				if (!store.state.collection[id])
 				{
 					return;
 				}
 
-				store.commit('delete', {id});
+				store.commit('delete', { id });
 			},
-			clearChatCollection: (store, payload: {chatId: number}) =>
-			{
-				const {chatId} = payload;
-				store.commit('clearCollection', {chatId});
+			/** @function messages/clearChatCollection */
+			clearChatCollection: (store, payload: {chatId: number}) => {
+				const { chatId } = payload;
+				store.commit('clearCollection', { chatId });
+			},
+			/** @function messages/deleteAttach */
+			deleteAttach: (store, payload: {messageId: number, attachId: string }) => {
+				const { messageId, attachId } = payload;
+				const message: ImModelMessage = store.state.collection[messageId];
+				if (!message || !Type.isArray(message.attach))
+				{
+					return;
+				}
+
+				const attach = message.attach.filter((attachItem: AttachConfig) => {
+					return attachId !== attachItem.ID;
+				});
+
+				store.commit('update', {
+					id: messageId,
+					fields: { ...message, ...this.validate({ attach }) },
+				});
 			},
 		};
 	}
 
-	getMutations()
+	/* eslint-disable no-param-reassign */
+	getMutations(): MutationTree
 	{
 		return {
-			setChatCollection: (state: MessagesState, payload: {messages: ImModelMessage[]}) =>
-			{
+			setChatCollection: (state: MessagesState, payload: {messages: ImModelMessage[]}) => {
 				Logger.warn('Messages model: setChatCollection mutation', payload);
-				payload.messages.forEach(message => {
+				payload.messages.forEach((message) => {
 					if (!state.chatCollection[message.chatId])
 					{
 						state.chatCollection[message.chatId] = new Set();
@@ -385,21 +412,19 @@ export class MessagesModel extends BuilderModel
 					state.chatCollection[message.chatId].add(message.id);
 				});
 			},
-			store: (state: MessagesState, payload: {messages: ImModelMessage[]}) =>
-			{
+			store: (state: MessagesState, payload: {messages: ImModelMessage[]}) => {
 				Logger.warn('Messages model: store mutation', payload);
-				payload.messages.forEach(message => {
+				payload.messages.forEach((message) => {
 					state.collection[message.id] = message;
 				});
 			},
-			updateWithId: (state: MessagesState, payload: {id: number | string, fields: Object}) =>
-			{
+			updateWithId: (state: MessagesState, payload: {id: number | string, fields: Object}) => {
 				Logger.warn('Messages model: updateWithId mutation', payload);
-				const {id, fields} = payload;
-				const currentMessage = {...state.collection[id]};
+				const { id, fields } = payload;
+				const currentMessage = { ...state.collection[id] };
 
 				delete state.collection[id];
-				state.collection[fields.id] = {...currentMessage, ...fields, sending: false};
+				state.collection[fields.id] = { ...currentMessage, ...fields, sending: false };
 
 				if (state.chatCollection[currentMessage.chatId].has(id))
 				{
@@ -407,29 +432,25 @@ export class MessagesModel extends BuilderModel
 					state.chatCollection[currentMessage.chatId].add(fields.id);
 				}
 			},
-			update: (state: MessagesState, payload: {id: number | string, fields: Object}) =>
-			{
+			update: (state: MessagesState, payload: {id: number | string, fields: Object}) => {
 				Logger.warn('Messages model: update mutation', payload);
-				const {id, fields} = payload;
-				state.collection[id] = {...state.collection[id], ...fields};
+				const { id, fields } = payload;
+				state.collection[id] = { ...state.collection[id], ...fields };
 			},
-			delete: (state: MessagesState, payload: {id: number | string}) =>
-			{
+			delete: (state: MessagesState, payload: {id: number | string}) => {
 				Logger.warn('Messages model: delete mutation', payload);
-				const {id} = payload;
-				const {chatId} = state.collection[id];
+				const { id } = payload;
+				const { chatId } = state.collection[id];
 				state.chatCollection[chatId].delete(id);
 				delete state.collection[id];
 			},
-			clearCollection: (state: MessagesState, payload: {chatId: number}) =>
-			{
+			clearCollection: (state: MessagesState, payload: {chatId: number}) => {
 				Logger.warn('Messages model: clear collection mutation', payload.chatId);
 				state.chatCollection[payload.chatId] = new Set();
 			},
-			readMessages: (state: MessagesState, payload: {messageIdsToRead: number[], messageIdsToView: number[]}) =>
-			{
-				const {messageIdsToRead, messageIdsToView} = payload;
-				messageIdsToRead.forEach(messageId => {
+			readMessages: (state: MessagesState, payload: {messageIdsToRead: number[], messageIdsToView: number[]}) => {
+				const { messageIdsToRead, messageIdsToView } = payload;
+				messageIdsToRead.forEach((messageId) => {
 					const message = state.collection[messageId];
 					if (!message)
 					{
@@ -438,7 +459,7 @@ export class MessagesModel extends BuilderModel
 
 					message.unread = false;
 				});
-				messageIdsToView.forEach(messageId => {
+				messageIdsToView.forEach((messageId) => {
 					const message = state.collection[messageId];
 					if (!message)
 					{
@@ -448,10 +469,9 @@ export class MessagesModel extends BuilderModel
 					message.viewed = true;
 				});
 			},
-			setViewedByOthers: (state: MessagesState, payload: {ids: number[]}) =>
-			{
-				const {ids} = payload;
-				ids.forEach(id => {
+			setViewedByOthers: (state: MessagesState, payload: {ids: number[]}) => {
+				const { ids } = payload;
+				ids.forEach((id) => {
 					const message = state.collection[id];
 					if (!message)
 					{
@@ -465,7 +485,7 @@ export class MessagesModel extends BuilderModel
 
 					message.viewedByOthers = true;
 				});
-			}
+			},
 		};
 	}
 
@@ -589,6 +609,11 @@ export class MessagesModel extends BuilderModel
 			result.removeLinks = fields.removeLinks;
 		}
 
+		if (Type.isNumber(fields.replyId))
+		{
+			result.replyId = fields.replyId;
+		}
+
 		if (Type.isPlainObject(fields.params))
 		{
 			const preparedParams = this.prepareParams(fields.params);
@@ -605,7 +630,18 @@ export class MessagesModel extends BuilderModel
 		Object.entries(rawParams).forEach(([key, value]) => {
 			if (key === 'COMPONENT_ID' && Type.isStringFilled(value))
 			{
-				result.componentId = value;
+				if (Object.values(MessageComponent).includes(value))
+				{
+					result.componentId = value;
+				}
+				else
+				{
+					result.componentId = MessageComponent.unsupported;
+				}
+			}
+			else if (key === 'COMPONENT_PARAMS' && Type.isPlainObject(value))
+			{
+				result.componentParams = value;
 			}
 			else if (key === 'FILE_ID' && Type.isArray(value))
 			{
@@ -614,6 +650,10 @@ export class MessagesModel extends BuilderModel
 			else if (key === 'IS_EDITED' && Type.isStringFilled(value))
 			{
 				result.isEdited = value === 'Y';
+			}
+			else if (key === 'REPLY_ID' && (Type.isStringFilled(value) || Type.isNumber(value)))
+			{
+				result.replyId = Number(value);
 			}
 			else if (key === 'IS_DELETED' && Type.isStringFilled(value))
 			{
@@ -727,5 +767,25 @@ export class MessagesModel extends BuilderModel
 		}
 
 		return resultId;
+	}
+
+	#sortCollection(a: ImModelMessage, b: ImModelMessage): number
+	{
+		if (Utils.text.isUuidV4(a.id) && !Utils.text.isUuidV4(b.id))
+		{
+			return 1;
+		}
+
+		if (!Utils.text.isUuidV4(a.id) && Utils.text.isUuidV4(b.id))
+		{
+			return -1;
+		}
+
+		if (Utils.text.isUuidV4(a.id) && Utils.text.isUuidV4(b.id))
+		{
+			return a.date.getTime() - b.date.getTime();
+		}
+
+		return a.id - b.id;
 	}
 }

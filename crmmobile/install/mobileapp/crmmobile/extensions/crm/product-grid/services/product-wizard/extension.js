@@ -3,6 +3,7 @@
  */
 jn.define('crm/product-grid/services/product-wizard', (require, exports, module) => {
 	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
 
 	const WizardMode = {
 		NEW: 'new',
@@ -31,7 +32,7 @@ jn.define('crm/product-grid/services/product-wizard', (require, exports, module)
 		open(productId, productName)
 		{
 			ComponentHelper.openLayout({
-				name: 'catalog.product.wizard',
+				name: 'catalog:catalog.product.wizard',
 				componentParams: {
 					mode: WizardMode.EXISTED,
 					type: WizardType.CRM,
@@ -46,12 +47,12 @@ jn.define('crm/product-grid/services/product-wizard', (require, exports, module)
 					objectName: 'layout',
 					title: Loc.getMessage('PRODUCT_GRID_SERVICE_PRODUCT_WIZARD_TITLE'),
 					modal: true,
-					backgroundColor: '#eef2f4',
+					backgroundColor: AppTheme.colors.bgSecondary,
 					backdrop: {
 						horizontalSwipeAllowed: false,
 						bounceEnable: true,
 						showOnTop: true,
-						navigationBarColor: '#eef2f4',
+						navigationBarColor: AppTheme.colors.bgSecondary,
 					},
 				},
 			});
@@ -74,9 +75,11 @@ jn.define('crm/product-grid/services/product-wizard', (require, exports, module)
 		on(eventName, callback)
 		{
 			BX.addCustomEvent(eventName, callback);
+
 			return this;
 		}
 	}
 
 	module.exports = { ProductWizard };
 });
+

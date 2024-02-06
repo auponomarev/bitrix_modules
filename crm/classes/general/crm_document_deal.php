@@ -1,6 +1,8 @@
 <?php
 
 use Bitrix\Crm;
+use Bitrix\Crm\Category\DealCategory;
+use Bitrix\Main;
 
 if (!CModule::IncludeModule('bizproc'))
 {
@@ -8,9 +10,6 @@ if (!CModule::IncludeModule('bizproc'))
 }
 
 IncludeModuleLangFile(__DIR__ . '/crm_document.php');
-
-use Bitrix\Crm\Category\DealCategory;
-use Bitrix\Main;
 
 class CCrmDocumentDeal extends CCrmDocument implements IBPWorkflowDocument
 {
@@ -194,7 +193,7 @@ class CCrmDocumentDeal extends CCrmDocument implements IBPWorkflowDocument
 			'COMMENTS' => [
 				'Name' => GetMessage('CRM_FIELD_COMMENTS'),
 				'Type' => 'text',
-				'ValueContentType' => 'html',
+				'ValueContentType' => 'bb',
 				'Filterable' => false,
 				'Editable' => true,
 				'Required' => false,
@@ -446,6 +445,10 @@ class CCrmDocumentDeal extends CCrmDocument implements IBPWorkflowDocument
 			$CCrmBizProc = new CCrmBizProc('DEAL');
 			if (false === $CCrmBizProc->CheckFields(false, true))
 			{
+				if ($useTransaction)
+				{
+					$DB->Rollback();
+				}
 				throw new Exception($CCrmBizProc->LAST_ERROR);
 			}
 
@@ -575,6 +578,10 @@ class CCrmDocumentDeal extends CCrmDocument implements IBPWorkflowDocument
 			$CCrmBizProc = new CCrmBizProc('DEAL');
 			if (false === $CCrmBizProc->CheckFields($arDocumentID['ID'], true))
 			{
+				if ($useTransaction)
+				{
+					$DB->Rollback();
+				}
 				throw new Exception($CCrmBizProc->LAST_ERROR);
 			}
 
@@ -682,35 +689,12 @@ class CCrmDocumentDeal extends CCrmDocument implements IBPWorkflowDocument
 			}
 			elseif ($documentFields[$key]['Type'] == 'file')
 			{
-				$arFileOptions = ['ENABLE_ID' => true];
-				foreach ($fields[$key] as &$value)
-				{
-					//Issue #40380. Secure URLs and file IDs are allowed.
-					$file = false;
-					$resultResolveFile = CCrmFileProxy::TryResolveFile($value, $file, $arFileOptions);
-					if ($isUpdate && $resultResolveFile)
-					{
-						global $USER_FIELD_MANAGER;
-						if ($USER_FIELD_MANAGER instanceof \CUserTypeManager)
-						{
-							$prevValue = $USER_FIELD_MANAGER->GetUserFieldValue(
-								\CCrmOwnerType::ResolveUserFieldEntityID(\CCrmOwnerType::Deal),
-								$key,
-								$documentInfo['ID']
-							);
-							if ($prevValue)
-							{
-								$file['old_id'] = $prevValue;
-							}
-						}
-					}
-					$value = $file;
-				}
-				unset($value);
-				if ($isUpdate)
-				{
-					unset($prevValue);
-				}
+				$fields[$key] = static::castFileFieldValues(
+					$documentInfo['ID'],
+					\CCrmOwnerType::Deal,
+					$key,
+					$fields[$key],
+				);
 			}
 			elseif ($documentFields[$key]['Type'] == 'S:HTML')
 			{

@@ -3,6 +3,7 @@
 namespace Bitrix\Mail\Internals;
 
 use Bitrix\Main\Entity;
+use Bitrix\Main\ORM\Data\Internal\DeleteByFilterTrait;
 
 /**
  * Class MessageAccessTable
@@ -22,6 +23,8 @@ use Bitrix\Main\Entity;
  */
 class MessageAccessTable extends Entity\DataManager
 {
+	use DeleteByFilterTrait;
+
 	const ENTITY_TYPE_NO_BIND = 'NO_BIND';
 	const ENTITY_TYPE_TASKS_TASK = 'TASKS_TASK';
 	const ENTITY_TYPE_CRM_ACTIVITY = 'CRM_ACTIVITY';
@@ -83,6 +86,30 @@ class MessageAccessTable extends Entity\DataManager
 				)
 			),
 		);
+	}
+
+
+	/**
+	 * Get access binds as string
+	 *
+	 * @param int $mailboxId Mailbox ID
+	 * @param int $messageId Message ID
+	 *
+	 * @return array|string[]
+	 */
+	public static function getBinds(int $mailboxId, int $messageId): array
+	{
+		$binds = MessageAccessTable::query()
+			->where('MAILBOX_ID', $mailboxId)
+			->where('MESSAGE_ID', $messageId)
+			->setDistinct()
+			->setSelect([
+				'ENTITY_TYPE',
+				'ENTITY_ID',
+			])
+			->fetchAll();
+
+		return array_map(fn(array $bind): string => "{$bind['ENTITY_TYPE']}-{$bind['ENTITY_ID']}", $binds);
 	}
 
 }

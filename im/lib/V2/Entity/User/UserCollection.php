@@ -4,11 +4,12 @@ namespace Bitrix\Im\V2\Entity\User;
 
 use Bitrix\Im\Model\StatusTable;
 use Bitrix\Im\V2\Entity\EntityCollection;
+use Bitrix\Main\ORM\Fields\Relations\Reference;
+use Bitrix\Main\ORM\Query\Join;
 use Bitrix\Main\UserTable;
 
 /**
- * @method User next()
- * @method User current()
+ * @implements \IteratorAggregate<int,User>
  * @method User offsetGet($offset)
  * @method User getById(int $id)
  */
@@ -24,13 +25,13 @@ class UserCollection extends EntityCollection
 		}
 	}
 
-	public function fillOnlineData(): void
+	public function fillOnlineData(bool $withStatus = false): void
 	{
 		$idsUsersWithoutOnlineData = [];
 
 		foreach ($this as $user)
 		{
-			if (!$user->isOnlineDataFilled())
+			if (!$user->isOnlineDataFilled($withStatus))
 			{
 				$idsUsersWithoutOnlineData[] = $user->getId();
 			}
@@ -43,16 +44,27 @@ class UserCollection extends EntityCollection
 			return;
 		}
 
-		$select = ['USER_ID', 'STATUS', 'IDLE', 'MOBILE_LAST_DATE', 'LAST_ACTIVITY_DATE' => 'USER.LAST_ACTIVITY_DATE'];
-		$statusesData = StatusTable::query()
+		$select = $withStatus ? User::ONLINE_DATA_SELECTED_FIELDS : User::ONLINE_DATA_SELECTED_FIELDS_WITHOUT_STATUS;
+		$query = UserTable::query()
 			->setSelect($select)
-			->whereIn('USER_ID', $idsUsersWithoutOnlineData)
-			->fetchAll() ?: []
+			->whereIn('ID', $idsUsersWithoutOnlineData)
 		;
+		if ($withStatus)
+		{
+			$query->registerRuntimeField(
+				new Reference(
+					'STATUS',
+					StatusTable::class,
+					Join::on('this.ID', 'ref.USER_ID'),
+					['join_type' => Join::TYPE_LEFT]
+				)
+			);
+		}
+		$statusesData = $query->fetchAll() ?: [];
 
 		foreach ($statusesData as $statusData)
 		{
-			$this->getById((int)$statusData['USER_ID'])->setOnlineData($statusData);
+			$this->getById((int)$statusData['USER_ID'])->setOnlineData($statusData, $withStatus);
 		}
 	}
 

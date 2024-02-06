@@ -22,6 +22,7 @@
 		this.isTransformationError = false;
 		this.transformationErrorMessage = '';
 		this.transformationErrorCode = 0;
+		this.isDisplayTransformationErrors = true;
 		this.viewer = null;
 		this.publicUrl = null;
 		this.sendedToSign = false;
@@ -34,12 +35,22 @@
 		this.previewNode = document.getElementById('crm__document-view--node');
 		this.documentId = options.id;
 		this.publicUrl = options.publicUrl;
+
+		// set this prop only on init, dont allow override from options later
+		if (BX.type.isBoolean(options.isDisplayTransformationErrors))
+		{
+			this.isDisplayTransformationErrors = options.isDisplayTransformationErrors;
+		}
+		// eslint-disable-next-line no-param-reassign
+		delete options.isDisplayTransformationErrors;
+
 		options.previewNode = this.previewNode;
 		options.transformationErrorNode = this.transformationErrorNode;
 		options.onReady = BX.proxy(function(options)
 		{
-			this.applyOptions(options);
 			this.showError(false);
+			this.applyOptions(options);
+			// if transformation errors display enabled, will display error message if there is no pdfUrl
 			this.showPdf();
 		}, this);
 		this.preview = new BX.DocumentGenerator.DocumentPreview(options);
@@ -189,12 +200,23 @@
 
 	BX.Crm.DocumentView.initButtons = function()
 	{
-		BX.bind(document.getElementById('crm-document-stamp'), 'click', BX.proxy(this.showChangeStampsDisabledMessage, this));
-		BX.bind(document.getElementById('crm-document-stamp'), 'change', BX.proxy(this.onChangeStamps, this));
+		const stampInput = document.getElementById('crm-document-stamp');
+		if (stampInput)
+		{
+			if (stampInput.parentNode)
+			{
+				BX.bind(stampInput.parentNode, 'click', BX.proxy(this.showChangeStampsDisabledMessage, this));
+			}
+			BX.bind(document.getElementById('crm-document-stamp'), 'change', BX.proxy(this.onChangeStamps, this));
+		}
+
 		var qrCodeInput = document.getElementById('crm-document-qr');
 		if (qrCodeInput)
 		{
-			BX.Event.bind(qrCodeInput, 'click', this.handleQrCodeInputClick.bind(this));
+			if (qrCodeInput.parentNode)
+			{
+				BX.Event.bind(qrCodeInput.parentNode, 'click', this.handleQrCodeInputClick.bind(this));
+			}
 			BX.Event.bind(qrCodeInput, 'change', this.handleQrCodeInputChange.bind(this));
 		}
 		BX.bind(document.getElementById('crm-document-edit-template'), 'click', BX.proxy(function(event)
@@ -281,19 +303,23 @@
 			if (this.sendedToSign)
 			{
 				this.showError(BX.message('CRM_DOCUMENT_VIEW_SIGN_CLICKED'));
-				return
-			}
-			if (!this.isSigningEnabledInCurrentTariff)
-			{
-				BX.UI.InfoHelper.show(this.signingInfoHelperSliderCode)
+
 				return;
 			}
+
+			if (!this.isSigningEnabledInCurrentTariff)
+			{
+				BX.UI.InfoHelper.show(this.signingInfoHelperSliderCode);
+				return;
+			}
+
 			this.sendedToSign = true;
 			if (!this.rightPanelLoader)
 			{
 				this.rightPanelLoader = new BX.Loader({size: 100, offset: {left: "33%", top: "-10%"}})
 			}
 			this.rightPanelLoader.show(e.currentTarget.closest('.--company-information'));
+
 			return new Promise(function(resolve, reject) {
 				var convertDealAndStartSign = (function (usePrevious)
 				{
@@ -327,34 +353,35 @@
 					}
 				}).then(function(response) {
 					if (response.data.ID > 0) {
-						this.showMessage(BX.Loc.getMessage('CRM_DOCUMENT_VIEW_SIGN_DO_USE_PREVIOUS',
+						this.showMessage(BX.Loc.getMessage('CRM_DOCUMENT_VIEW_SIGN_DO_USE_PREVIOUS_MSG_MSGVER_3',
 							{
-								'%TITLE%': '<b>' + (response.data.TITLE || '') + '</b>',
-								'%CREATED_AT%': '<b>' + (response.data.CREATED_AT  || '') + '</b>',
-								'%INITIATOR%': '<b>' + (response.data.INITIATOR || '') + '</b>',
+								'%TITLE%': '<b>' + (BX.util.htmlspecialchars(response.data.TITLE || '')) + '</b>',
+								'%INITIATOR%': '<b>' + (BX.util.htmlspecialchars(response.data.INITIATOR || '')) + '</b>',
 							})
 							, [
-							new BX.PopupWindowButton({
-								text: BX.message('CRM_DOCUMENT_VIEW_SIGN_NEW_BUTTON_MSGVER_1'),
-								className: "ui-btn ui-btn-md ui-btn-primary",
-								events: {
-									click: function () {
-										convertDealAndStartSign(false);
-										this.popupWindow.destroy();
+								new BX.PopupWindowButton({
+									text: BX.message('CRM_DOCUMENT_VIEW_SIGN_OLD_BUTTON_MSGVER_2'),
+									className: "ui-btn ui-btn-md ui-btn-primary",
+									events: {
+										click: function ()
+										{
+											convertDealAndStartSign(true);
+											this.popupWindow.destroy();
+										}
 									}
-								}
-							}),
-							new BX.PopupWindowButton({
-								text: BX.message('CRM_DOCUMENT_VIEW_SIGN_OLD_BUTTON_MSGVER_1'),
-								className: "ui-btn ui-btn-md ui-btn-primary",
-								events: {
-									click: function () {
-										convertDealAndStartSign(true);
-										this.popupWindow.destroy();
+								}),
+								new BX.PopupWindowButton({
+									text: BX.message('CRM_DOCUMENT_VIEW_SIGN_NEW_BUTTON_MSGVER_3'),
+									className: "ui-btn ui-btn-md ui-btn-info",
+									events: {
+										click: function ()
+										{
+											convertDealAndStartSign(false);
+											this.popupWindow.destroy();
+										}
 									}
-								}
-							})
-						], BX.message('CRM_DOCUMENT_VIEW_SIGN_POPUP_TITLE_MSGVER_1'), (function () {
+								})
+						], BX.message('CRM_DOCUMENT_VIEW_SIGN_POPUP_TITLE_MSGVER_2'), (function () {
 							this.sendedToSign = false;
 							this.rightPanelLoader.hide();
 						}).bind(this));
@@ -440,7 +467,6 @@
 				children : content,
 			}),
 			titleBar: title,
-			contentColor: 'white',
 			className : 'bx-popup-documentgenerator-popup',
 			maxWidth: 470
 		});
@@ -673,9 +699,19 @@
 				viewer.setScale(1.2).open(0);
 			}
 		}
-		else
+		else if (this.isDisplayTransformationErrors)
 		{
-			this.showError(BX.message('CRM_DOCUMENT_VIEW_COMPONENT_PROCESSED_NO_PDF_ERROR'));
+			let message;
+			if (this.transformationErrorMessage)
+			{
+				message = this.transformationErrorMessage;
+			}
+			else
+			{
+				message = BX.Loc.getMessage('CRM_DOCUMENT_VIEW_COMPONENT_PROCESSED_NO_PDF_ERROR');
+			}
+
+			this.showError(message);
 		}
 	};
 	BX.Crm.DocumentView.handleQrCodeInputClick = function(event)
@@ -687,7 +723,7 @@
 		if (this.changeQrCodeDisabledReason)
 		{
 			BX.Crm.DocumentView.showPopupNotice(
-				this.this.changeQrCodeDisabledReason
+				this.changeQrCodeDisabledReason
 			);
 		}
 	};

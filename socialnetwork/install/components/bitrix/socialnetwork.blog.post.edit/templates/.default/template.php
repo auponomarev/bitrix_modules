@@ -22,6 +22,7 @@ use Bitrix\Main\UI;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Socialnetwork\Integration\Calendar\ApiVersion;
 use Bitrix\Main\Web\Json;
+use Bitrix\Socialnetwork\Integration\Intranet\Settings;
 
 $request = \Bitrix\Main\Context::getCurrent()->getRequest();
 
@@ -42,6 +43,7 @@ $extensionsList = [
 	'ui_date',
 	'ui.notification',
 	'ui.info-helper',
+	'ai.picker',
 ];
 
 if (in_array('tasks', $arResult['tabs'], true))
@@ -197,7 +199,10 @@ else
 		]
 	];
 
-	if (in_array('tasks', $arResult['tabs'], true))
+	$settings = new Settings();
+
+	$isTasksEnabled = $settings->isToolAvailable(Settings::TASKS_TOOLS['base_tasks']);
+	if (in_array('tasks', $arResult['tabs'], true) && $isTasksEnabled)
 	{
 		$arTabs[] = [
 			"ID" => "tasks",
@@ -206,7 +211,8 @@ else
 		];
 	}
 
-	if (in_array('calendar', $arResult['tabs'], true))
+	$isCalendarEnabled = $settings->isToolAvailable(Settings::CALENDAR_TOOLS['calendar']);
+	if (in_array('calendar', $arResult['tabs'], true) && $isCalendarEnabled)
 	{
 		$arTabs[] = [
 			"ID" => "calendar",
@@ -594,6 +600,7 @@ HTML;
 								"MentionUser",
 							],
 							"BUTTONS" => [
+								"Copilot",
 								"UploadImage",
 								"UploadFile",
 								"CreateLink",
@@ -623,12 +630,31 @@ HTML;
 							"PROPERTIES" => [
 								array_key_exists("UF_BLOG_POST_FILE", $arResult["POST_PROPERTIES"]["DATA"]) ?
 									array_merge(
-										(is_array($arResult["POST_PROPERTIES"]["DATA"]["UF_BLOG_POST_FILE"]) ? $arResult["POST_PROPERTIES"]["DATA"]["UF_BLOG_POST_FILE"] : []),
-										($arResult['bVarsFromForm'] && is_array($_POST["UF_BLOG_POST_FILE"]) ? [ "VALUE" => $_POST["UF_BLOG_POST_FILE"] ] : []))
+										(
+											is_array($arResult["POST_PROPERTIES"]["DATA"]["UF_BLOG_POST_FILE"])
+												? $arResult["POST_PROPERTIES"]["DATA"]["UF_BLOG_POST_FILE"]
+												: []
+										),
+										(
+											$arResult['bVarsFromForm']
+											&& is_array($_POST["UF_BLOG_POST_FILE"] ?? null)
+												? [ "VALUE" => $_POST["UF_BLOG_POST_FILE"] ]
+												: []
+										)
+									)
 									:
 									array_merge(
-										(is_array($arResult["POST_PROPERTIES"]["DATA"]["UF_BLOG_POST_DOC"]) ? $arResult["POST_PROPERTIES"]["DATA"]["UF_BLOG_POST_DOC"] : []),
-										($arResult['bVarsFromForm'] && is_array($_POST["UF_BLOG_POST_DOC"]) ? [ "VALUE" => $_POST["UF_BLOG_POST_DOC"] ] : []),
+										(
+											is_array($arResult["POST_PROPERTIES"]["DATA"]["UF_BLOG_POST_DOC"])
+												? $arResult["POST_PROPERTIES"]["DATA"]["UF_BLOG_POST_DOC"]
+												: []
+										),
+										(
+											$arResult['bVarsFromForm']
+											&& is_array($_POST["UF_BLOG_POST_DOC"] ?? null)
+												? [ "VALUE" => $_POST["UF_BLOG_POST_DOC"] ]
+												: []
+										),
 										[ "POSTFIX" => "file"]
 									),
 								array_key_exists("UF_BLOG_POST_URL_PRV", $arResult["POST_PROPERTIES"]["DATA"]) ?
@@ -671,6 +697,13 @@ HTML;
 									!$arResult['bVarsFromForm']
 									&& ($arParams["TOP_TABS_VISIBLE"] ?? null) === "Y"
 								),
+								'copilotParams' => [
+									'moduleId' => 'socialnetwork',
+									'contextId' => 'sonet_post_' . $USER->GetID(),
+									'category' => 'livefeed',
+								],
+								'isCopilotImageEnabledBySettings' => \Bitrix\Socialnetwork\Integration\AI\Settings::isImageAvailable(),
+								'isCopilotTextEnabledBySettings' => \Bitrix\Socialnetwork\Integration\AI\Settings::isTextAvailable(),
 							],
 							"USE_CLIENT_DATABASE" => "Y",
 							"DEST_CONTEXT" => "BLOG_POST",

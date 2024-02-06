@@ -97,9 +97,9 @@ class TaskCounter
 	public function getMobileRowCounter(int $taskId): array
 	{
 		$result = [
-			'COUNTERS' => [],
-			'COLOR' => CounterStyle::STYLE_GRAY,
-			'VALUE' => 0,
+			'counters' => [],
+			'color' => CounterStyle::STYLE_GRAY,
+			'value' => 0,
 		];
 
 		if (!$taskId)
@@ -115,6 +115,8 @@ class TaskCounter
 				'new_comments' => 0,
 				'project_expired' => 0,
 				'project_new_comments' => 0,
+				'muted_expired' => 0,
+				'muted_new_comments' => 0,
 			];
 		}
 		else
@@ -124,19 +126,21 @@ class TaskCounter
 				'new_comments' => $counters[CounterDictionary::COUNTER_MY_NEW_COMMENTS],
 				'project_expired' => $counters[CounterDictionary::COUNTER_GROUP_EXPIRED],
 				'project_new_comments' => $counters[CounterDictionary::COUNTER_GROUP_COMMENTS],
+				'muted_expired' => $counters[CounterDictionary::COUNTER_MY_MUTED_EXPIRED],
+				'muted_new_comments' => $counters[CounterDictionary::COUNTER_MY_MUTED_NEW_COMMENTS],
 			];
 		}
 
-		$result['COUNTERS'] = $counters;
-		$result['VALUE'] = array_sum($counters);
+		$result['counters'] = $counters;
+		$result['value'] = array_sum($counters);
 
 		if ($counters['new_comments'] > 0)
 		{
-			$result['COLOR'] = CounterStyle::STYLE_GREEN;
+			$result['color'] = CounterStyle::STYLE_GREEN;
 		}
 		if ($counters['expired'] > 0)
 		{
-			$result['COLOR'] = CounterStyle::STYLE_RED;
+			$result['color'] = CounterStyle::STYLE_RED;
 		}
 
 		return $result;

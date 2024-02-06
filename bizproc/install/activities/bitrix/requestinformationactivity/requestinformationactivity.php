@@ -369,8 +369,11 @@ class CBPRequestInformationActivity extends CBPCompositeActivity implements
 			$eventParameters["REAL_USER_ID"]
 		);
 
-		$this->ResponcedInformation = $eventParameters["RESPONCE"];
-		$rootActivity->setVariables($eventParameters["RESPONCE"]);
+		if (!empty($eventParameters["RESPONCE"]))
+		{
+			$this->ResponcedInformation = $eventParameters["RESPONCE"];
+			$rootActivity->setVariables($eventParameters["RESPONCE"]);
+		}
 
 		$this->taskStatus = CBPTaskStatus::CompleteOk;
 		$this->Unsubscribe($this);
@@ -429,7 +432,7 @@ class CBPRequestInformationActivity extends CBPCompositeActivity implements
 				}
 				else
 				{
-					$realValue = $arRequest[static::CONTROLS_PREFIX . $parameter['Name']];
+					$realValue = $arRequest[static::CONTROLS_PREFIX . $parameter['Name']] ?? null;
 				}
 
 				$controlHtml = $documentService->getFieldInputControl(
@@ -524,31 +527,59 @@ class CBPRequestInformationActivity extends CBPCompositeActivity implements
 		return $required;
 	}
 
-	public static function getTaskControls($arTask)
+	public static function getTaskControls($task)
 	{
-		return [
+		$controls = [
 			'BUTTONS' => [
 				[
 					'TYPE' => 'submit',
 					'TARGET_USER_STATUS' => CBPTaskUserStatus::Ok,
 					'NAME' => 'approve',
 					'VALUE' => 'Y',
-					'TEXT' =>
-						$arTask["PARAMETERS"]["TaskButtonMessage"] <> ''
-							? $arTask["PARAMETERS"]["TaskButtonMessage"]
-							: Loc::getMessage("BPAA_ACT_BUTTON1")
-					,
+					'TEXT' => $task["PARAMETERS"]["TaskButtonMessage"] ?: Loc::getMessage("BPRIA_ACT_BUTTON1"),
 				],
 			],
 		];
+
+		$fields = [];
+
+		if (!empty($task["PARAMETERS"]["REQUEST"]))
+		{
+			foreach ($task["PARAMETERS"]["REQUEST"] as $field)
+			{
+				if (!empty($field["Name"]))
+				{
+					$field['Id'] = $field['Name']; //compatible
+					unset($field['Name']);
+
+					$fields[] = Bizproc\FieldType::normalizeProperty($field);
+				}
+			}
+		}
+
+		if (($task["PARAMETERS"]["ShowComment"] ?? 'N') !== "N")
+		{
+			$fields[] = [
+				'Id' => 'task_comment',
+				'Type' => 'text',
+				'Name' => $task["PARAMETERS"]["CommentLabelMessage"] ?: Loc::getMessage("BPRIA_ACT_COMMENT"),
+				'Required' => (($task['PARAMETERS']['CommentRequired'] ?? '') === 'Y'),
+			];
+		}
+
+		$controls['FIELDS'] = $fields;
+
+		return $controls;
 	}
 
 	protected static function getEventParameters($task, $request)
 	{
 		return [
-			"COMMENT" => isset($request["task_comment"]) ? trim($request["task_comment"]) : '',
+			"COMMENT" => trim($request['fields']['task_comment'] ?? ($request['task_comment'] ?? '')),
 			"RESPONCE" => isset($request['fields'])
-				? static::prepareResponseFields($task, $request['fields']) : static::getTaskResponse($task),
+				? static::prepareResponseFields($task, $request['fields'])
+				: static::getTaskResponse($task)
+			,
 		];
 	}
 
@@ -574,7 +605,7 @@ class CBPRequestInformationActivity extends CBPCompositeActivity implements
 					if (is_array($v["name"]))
 					{
 						$ks = array_keys($v["name"]);
-						if (!is_array($request[$k]))
+						if (!is_array($request[$k] ?? null))
 						{
 							$request[$k] = [];
 						}
@@ -654,6 +685,8 @@ class CBPRequestInformationActivity extends CBPCompositeActivity implements
 			foreach ($task["PARAMETERS"]["REQUEST"] as $property)
 			{
 				$title = $property["Title"];
+				$propertyId = $property['Name'];
+
 				$property = Bizproc\FieldType::normalizeProperty($property);
 				$fieldTypeObject = $documentService->getFieldTypeObject(
 					$task["PARAMETERS"]["DOCUMENT_TYPE"],
@@ -662,19 +695,19 @@ class CBPRequestInformationActivity extends CBPCompositeActivity implements
 				if ($fieldTypeObject)
 				{
 					$fieldTypeObject->setDocumentId($task["PARAMETERS"]["DOCUMENT_ID"]);
-					$result[$property['Name']] = $fieldTypeObject->internalizeValue(
+					$result[$propertyId] = $fieldTypeObject->internalizeValue(
 						$task['ACTIVITY_NAME'],
-						$values[$property['Name']]
+						$values[$propertyId] ?? null
 					);
 				}
 
 				if (
 					CBPHelper::getBool($property['Required'])
-					&& CBPHelper::isEmptyValue($result[$property['Name']])
+					&& CBPHelper::isEmptyValue($result[$propertyId])
 				)
 				{
 					throw new CBPArgumentNullException(
-						$property["Name"],
+						$propertyId,
 						str_replace(
 							"#PARAM#",
 							htmlspecialcharsbx($title),

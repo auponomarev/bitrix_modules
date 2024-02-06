@@ -7,6 +7,7 @@ use Bitrix\Main\Type\DateTime;
 use Bitrix\Tasks\Access\Model\UserModel;
 use Bitrix\Tasks\Access\Permission\PermissionDictionary;
 use Bitrix\Tasks\Access\Role\RoleDictionary;
+use Bitrix\Tasks\Internals\Task\TimeUnitType;
 use Bitrix\Tasks\Internals\UserOption;
 use \CDBResult;
 use Bitrix\Tasks\Internals\Counter;
@@ -17,7 +18,7 @@ class TaskProvider
 {
 	use UserProviderTrait;
 
-	private const USE_ORM_KEY = 'tasks_use_orm_list';
+	private const USE_LEGACY_KEY = 'tasks_use_legacy_list';
 
 	private $db;
 	private $userFieldManager;
@@ -137,24 +138,12 @@ class TaskProvider
 	 */
 	private function useOrm(): bool
 	{
-		$request = \Bitrix\Main\Context::getCurrent()->getRequest()->toArray();
-		if (array_key_exists(self::USE_ORM_KEY, $request))
+		if (Option::get('tasks', self::USE_LEGACY_KEY, 'null', '-') !== 'null')
 		{
-			\CUserOptions::setOption('tasks', self::USE_ORM_KEY, (int) $request[self::USE_ORM_KEY], false, $this->userId);
-			return $request[self::USE_ORM_KEY] > 0 ? true : false;
+			return false;
 		}
 
-		if ((int) \CUserOptions::getOption('tasks', self::USE_ORM_KEY, 0, $this->userId) > 0)
-		{
-			return true;
-		}
-
-		if (Option::get('tasks', self::USE_ORM_KEY, 'null', '-') !== 'null')
-		{
-			return true;
-		}
-
-		return false;
+		return true;
 	}
 
 	/**
@@ -204,7 +193,13 @@ class TaskProvider
 			->setOrder($arOrder)
 			->setGroupBy($arGroup)
 			->setWhere($arFilter)
+			->setDistinct((bool)($arParams['DISTINCT'] ?? null))
 		;
+
+		if ($this->arParams['MAKE_ACCESS_FILTER'] ?? null)
+		{
+			$query->needMakeAccessFilter();
+		}
 
 		if (
 			(isset($arParams['CHECK_PERMISSIONS']) && $arParams['CHECK_PERMISSIONS'] === 'N')
@@ -231,6 +226,7 @@ class TaskProvider
 
 		$navNum = null;
 		$cnt = null;
+
 		// this is a query for subtasks on the task view page
 		if ($this->isLimitQuery())
 		{
@@ -239,10 +235,10 @@ class TaskProvider
 			$pageName = 'PAGEN_' . ($navNum + 1);
 			global ${$pageName};
 			$page = ${$pageName};
-			$page = $page > 0 ? (int)$page : (int)$this->arParams['NAV_PARAMS']['iNumPage'];
+			$page = $page > 0 ? (int)$page : (int)($this->arParams['NAV_PARAMS']['iNumPage'] ?? null);
 			$page = $page > 0 ? $page : 1;
 			$cnt = $this->getCountOrm($this->arFilter, $this->arParams, $this->arGroup)->Fetch()['CNT'];
-			$pageSize = $this->arParams['NAV_PARAMS']['nPageSize'] ?? 10;
+			$pageSize = $this->arParams['NAV_PARAMS']['nPageSize'] ?? 0;
 		}
 
 		// this is a query with limit which used in \Bitrix\Tasks\Integration\UI\EntitySelector\TaskProvider etc
@@ -257,21 +253,33 @@ class TaskProvider
 			$query->setOffset(($page - 1) * $pageSize);
 		}
 
-		try
+		if (
+			!is_null($cnt)
+			&& (int)$cnt === 0
+		)
 		{
-			$list = new TaskList();
-			$tasks = $list->getList($query);
-			$dbResult = $list->getLastDbResult();
+			$tasks = [];
+			$dbResult = null;
 		}
-		catch (\Exception $e)
+		else
 		{
-			throw new \TasksException($e->getMessage(), \TasksException::TE_SQL_ERROR);
+			try
+			{
+				$list = new TaskList();
+				$tasks = $list->getList($query);
+				$dbResult = $list->getLastDbResult();
+			}
+			catch (\Exception $e)
+			{
+				throw new \TasksException($e->getMessage(), \TasksException::TE_SQL_ERROR);
+			}
 		}
 
 		$tasks = $this->prepareOrmData($tasks);
 
 		$result = new CDBResult($dbResult);
 		$result->InitFromArray($tasks);
+		$result->InitNavStartVars($pageSize, false, $page);
 		$result->NavPageNomer = $page;
 		$result->PAGEN = $page;
 		$result->NavRecordCount = $cnt;
@@ -1144,11 +1152,11 @@ class TaskProvider
 			"DURATION_PLAN" => "
 				case
 					when
-						T.DURATION_TYPE = '".\CTasks::TIME_UNIT_TYPE_MINUTE."' or T.DURATION_TYPE = '".\CTasks::TIME_UNIT_TYPE_HOUR."'
+						T.DURATION_TYPE = '".TimeUnitType::MINUTE."' or T.DURATION_TYPE = '".TimeUnitType::HOUR."'
 					then
 						ROUND(T.DURATION_PLAN / 3600, 0)
 					when
-						T.DURATION_TYPE = '".\CTasks::TIME_UNIT_TYPE_DAY."' or T.DURATION_TYPE = '' or T.DURATION_TYPE is null
+						T.DURATION_TYPE = '".TimeUnitType::DAY."' or T.DURATION_TYPE = '' or T.DURATION_TYPE is null
 					then
 						ROUND(T.DURATION_PLAN / 86400, 0)
 					else
@@ -1158,14 +1166,15 @@ class TaskProvider
 			"DURATION_TYPE" => "
 				case
 					when
-						T.DURATION_TYPE = '".\CTasks::TIME_UNIT_TYPE_MINUTE."'
+						T.DURATION_TYPE = '".TimeUnitType::MINUTE."'
 					then
-						'".\CTasks::TIME_UNIT_TYPE_HOUR."'
+						'".TimeUnitType::HOUR."'
 					else
 						T.DURATION_TYPE
 				end
 			",
 			"SCENARIO_NAME" => "SCR.SCENARIO",
+			'IS_REGULAR' => 'IS_REGULAR',
 		];
 
 		if ($this->userId)
@@ -1386,6 +1395,14 @@ class TaskProvider
 			&& is_array($this->arParams['NAV_PARAMS'])
 		)
 		{
+			if (
+				array_key_exists('__calculateTotalCount', $this->arParams['NAV_PARAMS'])
+				&& $this->arParams['NAV_PARAMS']['__calculateTotalCount'] === false
+			)
+			{
+				return false;
+			}
+
 			if ((int)($this->arParams['NAV_PARAMS']['nTopCount'] ?? 0)> 0)
 			{
 				return false;

@@ -3,8 +3,8 @@
  */
 jn.define('crm/timeline/stream/scheduled', (require, exports, module) => {
 	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
 	const { TimelineStreamBase } = require('crm/timeline/stream/base');
-	const { TimelineItemModel } = require('crm/timeline/item');
 
 	/**
 	 * @class TimelineStreamScheduled
@@ -25,6 +25,7 @@ jn.define('crm/timeline/stream/scheduled', (require, exports, module) => {
 		{
 			const model = super.makeItemModel(props);
 			model.isScheduled = true;
+
 			return model;
 		}
 
@@ -68,7 +69,7 @@ jn.define('crm/timeline/stream/scheduled', (require, exports, module) => {
 				type: 'Divider',
 				key: 'Divider_scheduled',
 				props: {
-					color: '#9DCF00',
+					color: AppTheme.colors.accentMainSuccess,
 					text: Loc.getMessage('CRM_TIMELINE_SCHEDULED_TITLE2'),
 				},
 			});

@@ -1,6 +1,6 @@
 let result = null;
 
-const canAppendFileToForm = () => {
+const canAppendFileToForm = (): boolean => {
 	if (result === null)
 	{
 		try
@@ -15,7 +15,7 @@ const canAppendFileToForm = () => {
 
 			result = input.files.length === 1;
 		}
-		catch (err)
+		catch
 		{
 			result = false;
 		}

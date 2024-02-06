@@ -7,7 +7,7 @@ use Bitrix\Main\Web\Json;
 use Bitrix\Sender\Integration;
 use Bitrix\Sender\Internals\Model;
 
-/** @var CAllMain $APPLICATION */
+/** @var CMain $APPLICATION */
 /** @var array $arParams */
 /** @var array $arResult */
 /** @var \CBitrixComponentTemplate $this */
@@ -170,7 +170,7 @@ foreach ($arParams['LIST'] as $item):
 
 				\CJSCore::Init('sender_b24_feedback');
 			?>
-				<span id="SENDER_BUTTON_FEEDBACK" class="webform-small-button webform-small-button-transparent">
+				<span id="SENDER_BUTTON_FEEDBACK" class="ui-btn ui-btn-light-border">
 					<?=Loc::getMessage('SENDER_UI_BUTTON_PANEL_FEEDBACK')?>
 				</span>
 				<script>

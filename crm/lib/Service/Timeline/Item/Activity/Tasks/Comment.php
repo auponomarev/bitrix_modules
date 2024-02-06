@@ -74,6 +74,10 @@ class Comment extends Activity
 		$model = $this->getAssociatedEntityModel();
 		$data = $model->get('SETTINGS');
 		$task = TaskObject::getObject($data['TASK_ID'], true);
+		if (is_null($task))
+		{
+			return null;
+		}
 
 		return [
 			'Open' => $this->getOpenButton($model, $task)
@@ -189,7 +193,7 @@ class Comment extends Activity
 			->addActionParamInt('ownerTypeId', $this->getContext()->getEntityTypeId())
 			->addActionParamInt('ownerId', $this->getContext()->getEntityId())
 			->setAnalytics(new Layout\Action\Analytics(['scenario' => 'comm_close'], $this->analyticsHit))
-			->setAnimation(Layout\Action\Animation::showLoaderForItem()->setForever())
+			->setAnimation(Layout\Action\Animation::disableItem()->setForever())
 			;
 	}
 }

@@ -1,14 +1,14 @@
 <?php
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED!==true)die();
 
+use Bitrix\Catalog;
 use Bitrix\Catalog\Access\AccessController;
 use Bitrix\Catalog\Access\ActionDictionary;
 use Bitrix\Catalog\Access\Permission\PermissionDictionary;
-use Bitrix\Main;
-use Bitrix\Main\Localization\Loc;
 use Bitrix\Crm\Product\Url;
 use Bitrix\Iblock\Url\AdminPage\BuilderManager;
-use Bitrix\Catalog;
+use Bitrix\Main;
+use Bitrix\Main\Localization\Loc;
 
 Loc::loadMessages(__FILE__);
 
@@ -342,16 +342,21 @@ final class CCrmOrderShipmentProductListComponent extends \CBitrixComponent
 			}
 
 			$params['BASKET_CODE'] = $item->getBasketCode();
-			if (is_array($params['STORES']) && !empty($params['STORES']))
+			if (
+				isset($params['STORES'])
+				&& is_array($params['STORES'])
+				&& !empty($params['STORES'])
+			)
 			{
 				$params['STORES'] = $this->filterStores($params['STORES']);
 			}
+
 			if (!$basketItem->isService())
 			{
 				$this->setStoresBarcodesInfo($params);
 			}
 
-			if($this->arResult['SHOW_TOOL_PANEL'] != 'Y')
+			if ($this->arResult['SHOW_TOOL_PANEL'] != 'Y')
 			{
 				if(empty($params['BARCODE_INFO']) && is_array($params['STORES']) && !empty($params['STORES']))
 				{
@@ -366,7 +371,7 @@ final class CCrmOrderShipmentProductListComponent extends \CBitrixComponent
 
 		foreach ($items as $basketId => $item)
 		{
-			$parentBasketId = $item['PARENT_BASKET_ID'];
+			$parentBasketId = (int)($item['PARENT_BASKET_ID'] ?? 0);
 			if ($parentBasketId > 0)
 			{
 				$item['IS_SET_ITEM'] = 'Y';
@@ -682,7 +687,7 @@ final class CCrmOrderShipmentProductListComponent extends \CBitrixComponent
 		$this->arResult['PATH_TO_ORDER_SHIPMENT_PRODUCT_LIST'] = $this->arParams['PATH_TO_ORDER_SHIPMENT_PRODUCT_LIST'] = CrmCheckPath('PATH_TO_ORDER_SHIPMENT_PRODUCT_LIST', $this->arParams['PATH_TO_ORDER_SHIPMENT_PRODUCT_LIST'], $APPLICATION->GetCurPage());
 		$this->arResult['ORDER_SITE_ID'] = $this->order->getSiteId();
 		$this->arResult['ORDER_ID'] =$this->order->getId();
-		$this->arResult['LOADING_SET_ITEMS'] = ($_REQUEST['action'] === \Bitrix\Main\Grid\Actions::GRID_GET_CHILD_ROWS);
+		$this->arResult['LOADING_SET_ITEMS'] = isset($_REQUEST['action']) && $_REQUEST['action'] === \Bitrix\Main\Grid\Actions::GRID_GET_CHILD_ROWS;
 		$this->arResult['CAN_UPDATE_ORDER'] = \Bitrix\Crm\Order\Permissions\Order::checkUpdatePermission(intval($this->arResult['ORDER_ID']), $this->userPermissions);
 		if ($this->shipment->getField('DEDUCTED') === 'Y')
 		{

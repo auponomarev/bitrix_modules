@@ -179,23 +179,23 @@ class Deal extends Base implements IReportSingleData, IReportMultipleData, IRepo
 		{
 			case self::GROUPING_BY_DATE:
 
-				$dateFormat = "'%%Y-%%m-%%d'";
+				$dateFormat = "%%Y-%%m-%%d";
 				if ($this->isDatePeriodCompare())
 				{
 					switch ($this->getDivisionOfDate())
 					{
 						case self::MONTH_DIVISION:
 						case self::SHIFTED_MONTH_DIVISION:
-							$dateFormat = "'%%c'";
+							$dateFormat = "%%c";
 							break;
 						case self::WEEK_DAY_DIVISION:
-							$dateFormat = "'%%w'";
+							$dateFormat = "%%w";
 							break;
 						case self::DAY_DIVISION:
-							$dateFormat = "'%%Y-%%c-%%d'";
+							$dateFormat = "%%Y-%%c-%%d";
 							break;
 						case self::DAY_MONTH_DIVISION:
-							$dateFormat = "'%%Y-%%c-%%d'";
+							$dateFormat = "%%Y-%%c-%%d";
 					}
 				}
 				elseif ($this->getView() instanceof LinearGraph)
@@ -207,15 +207,17 @@ class Deal extends Base implements IReportSingleData, IReportMultipleData, IRepo
 							$dateFormat = "'%%c'";
 							break;
 						case self::WEEK_DAY_DIVISION:
-							$dateFormat = "'%%w'";
+							$dateFormat = "%%w";
 							break;
 						case self::DAY_DIVISION:
-							$dateFormat = "'%%Y-%%c-%%d'";
+							$dateFormat = "%%Y-%%c-%%d";
 							break;
 						case self::DAY_MONTH_DIVISION:
-							$dateFormat = "'%%Y-%%c-%%d'";
+							$dateFormat = "%%Y-%%c-%%d";
 					}
 				}
+
+				$helper = Application::getConnection()->getSqlHelper();
 
 				if (in_array(
 					$calculateValue,
@@ -227,14 +229,14 @@ class Deal extends Base implements IReportSingleData, IReportMultipleData, IRepo
 				{
 					$query->registerRuntimeField(
 						new ExpressionField(
-							'DATE_CREATE_DAY', "DATE_FORMAT(%s, {$dateFormat})", 'FULL_HISTORY.CLOSE_DATE'
+							'DATE_CREATE_DAY', $helper->formatDate($dateFormat, '%s'), 'FULL_HISTORY.CLOSE_DATE'
 						)
 					);
 				}
 				else
 				{
 					$query->registerRuntimeField(
-						new ExpressionField('DATE_CREATE_DAY', "DATE_FORMAT(%s, {$dateFormat})", 'DATE_CREATE')
+						new ExpressionField('DATE_CREATE_DAY', $helper->formatDate($dateFormat, '%s'), 'DATE_CREATE')
 					);
 				}
 
@@ -1508,7 +1510,7 @@ class Deal extends Base implements IReportSingleData, IReportMultipleData, IRepo
 						]
 					];
 
-					if ($calculatedData['amount']['successPassTime'])
+					if ($calculatedData['amount']['successPassTime'] ?? false)
 					{
 						$config['valuesAmount']['secondAdditionalAmount'] = [
 							'title' => Loc::getMessage('CRM_REPORT_DEAL_HANDLER_DEAL_PASS_AVG_TIME_SHORT_TITLE'),
@@ -1525,15 +1527,18 @@ class Deal extends Base implements IReportSingleData, IReportMultipleData, IRepo
 							$config['topAdditionalValue'] = !empty($items[0]['additionalValues']['forthAdditionalValue']['value'])
 								? $items[0]['additionalValues']['forthAdditionalValue']['value'] : 0;
 							$config['topAdditionalValueUnit'] = '%';
-							$config['valuesAmount']['firstAdditionalAmount']['value'] = $items[0]['additionalValues']['secondAdditionalValue']['value'];
-							//$config['valuesAmount']['secondAdditionalAmount']['value'] = $items[0]['additionalValues']['thirdAdditionalValue']['value'];
+							$config['valuesAmount']['firstAdditionalAmount']['value'] =
+								($items[0]['additionalValues']['secondAdditionalValue']['value'] ?? null)
+							;
+							//$config['valuesAmount']['secondAdditionalAmount']['value'] =
+							//    $items[0]['additionalValues']['thirdAdditionalValue']['value']
+							//;
 
 							if ($shortModeValue)
 							{
 								$config['mode'] = 'singleData';
 							}
 							unset($config['valuesAmount']['thirdAdditionalAmount']);
-							$config['additionalValues']['thirdAdditionalValue'];
 							break;
 					}
 			}

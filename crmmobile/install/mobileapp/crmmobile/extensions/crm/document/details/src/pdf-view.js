@@ -4,15 +4,16 @@
 jn.define('crm/document/details/pdf-view', (require, exports, module) => {
 	const { Loc } = require('loc');
 	const { Alert } = require('alert');
+	const AppTheme = require('apptheme');
 	const { CrmDocumentDetailsErrorPanel } = require('crm/document/details/error-panel');
 	const isAndroid = Application.getPlatform() === 'android';
 	const isPdfViewSupported = typeof PDFView !== 'undefined';
 
-	const CrmDocumentDetailsPdfView = ({ uri, onChangePage }) => View(
+	const CrmDocumentDetailsPdfView = ({ uri }) => View(
 		{
 			style: {
 				flex: 1,
-				backgroundColor: '#EEF2F4',
+				backgroundColor: AppTheme.colors.bgSecondary,
 				paddingHorizontal: isAndroid ? 12 : 0,
 				paddingTop: isAndroid ? 12 : 0,
 				paddingBottom: 3,
@@ -35,7 +36,6 @@ jn.define('crm/document/details/pdf-view', (require, exports, module) => {
 				Loc.getMessage('M_CRM_DOCUMENT_DETAILS_PDF_ERROR_TITLE'),
 				Loc.getMessage('M_CRM_DOCUMENT_DETAILS_PDF_ERROR_BODY'),
 			),
-			onChange: (args) => onChangePage(args),
 		}),
 	);
 

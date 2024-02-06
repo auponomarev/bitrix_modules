@@ -4,10 +4,16 @@
 jn.define('layout/ui/context-menu/banner', (require, exports, module) => {
 	const { Loc } = require('loc');
 	const { Type } = require('type');
+	const AppTheme = require('apptheme');
 
 	const BannerPositioning = {
 		Horizontal: 'horizontal',
 		Vertical: 'vertical',
+	};
+
+	const ButtonType = {
+		Transparent: 'transparent',
+		ActiveGreen: 'activeGreen',
 	};
 
 	/**
@@ -32,6 +38,11 @@ jn.define('layout/ui/context-menu/banner', (require, exports, module) => {
 			return BX.prop.getString(this.props.banner, 'imagePath', '');
 		}
 
+		get imageSvg()
+		{
+			return BX.prop.getString(this.props.banner, 'imageSvg', '');
+		}
+
 		get qrauthParameters()
 		{
 			return BX.prop.getObject(this.props.banner, 'qrauth', {});
@@ -50,6 +61,21 @@ jn.define('layout/ui/context-menu/banner', (require, exports, module) => {
 		get title()
 		{
 			return BX.prop.getString(this.props.banner, 'title', '');
+		}
+
+		get subtext()
+		{
+			return BX.prop.getString(this.props.banner, 'subtext', '');
+		}
+
+		get onButtonClick()
+		{
+			return BX.prop.getFunction(this.props.banner, 'onButtonClick', null);
+		}
+
+		get onCloseBanner()
+		{
+			return BX.prop.getFunction(this.props.banner, 'onCloseBanner', null);
 		}
 
 		isHorizontalPositioning()
@@ -72,6 +98,42 @@ jn.define('layout/ui/context-menu/banner', (require, exports, module) => {
 			return this.qrauthParameters && this.qrauthParameters.redirectUrl;
 		}
 
+		hasButtonAction()
+		{
+			return this.onButtonClick;
+		}
+
+		hasActionToCloseBanner()
+		{
+			return this.onCloseBanner;
+		}
+
+		renderImage()
+		{
+			const imageSvg = this.imageSvg;
+			const isHorizontalPositioning = this.isHorizontalPositioning();
+
+			if (imageSvg)
+			{
+				return Image({
+					svg: {
+						content: imageSvg,
+					},
+					style: {
+						marginTop: isHorizontalPositioning ? 0 : 20,
+						width: isHorizontalPositioning ? 116 : 120,
+						height: isHorizontalPositioning ? 116 : 120,
+					},
+				});
+			}
+
+			return View(
+				{
+					style: styles.icon(this.imagePath, isHorizontalPositioning),
+				},
+			);
+		}
+
 		render()
 		{
 			const isHorizontalPositioning = this.isHorizontalPositioning();
@@ -85,18 +147,19 @@ jn.define('layout/ui/context-menu/banner', (require, exports, module) => {
 					{
 						style: styles.listContainer(isHorizontalPositioning),
 					},
-					View(
-						{
-							style: styles.icon(this.imagePath, isHorizontalPositioning),
-						},
-					),
+					this.renderImage(),
 					this.renderTitle(),
 					View(
 						{
 							style: styles.featureList(isHorizontalPositioning),
 						},
-						...this.featureItems.map((text, index) => this.renderFeatureItem(text, index, isHorizontalPositioning)),
+						...this.featureItems.map((text, index) => this.renderFeatureItem(
+							text,
+							index,
+							isHorizontalPositioning,
+						)),
 					),
+					this.renderSubtext(),
 				),
 				this.renderBannerButton(),
 			);
@@ -162,29 +225,69 @@ jn.define('layout/ui/context-menu/banner', (require, exports, module) => {
 			);
 		}
 
+		renderSubtext()
+		{
+			if (!this.subtext)
+			{
+				return null;
+			}
+
+			return Text(
+				{
+					style: styles.subtext,
+					text: this.subtext,
+				},
+			);
+		}
+
 		renderBannerButton()
 		{
-			if (!this.hasRedirectUrl())
+			let action;
+			let buttonType = ButtonType.Transparent;
+
+			if (this.hasRedirectUrl())
+			{
+				action = () => {
+					if (this.props.menu)
+					{
+						this.props.menu.close(() => qrauth.open({
+							...this.qrauthParameters,
+							layout: this.parentWidget,
+						}));
+					}
+				};
+			}
+			else if (this.hasButtonAction())
+			{
+				buttonType = ButtonType.ActiveGreen;
+				action = () => {
+					this.onButtonClick(this.parentWidget);
+				};
+			}
+			else if (this.hasActionToCloseBanner())
+			{
+				buttonType = ButtonType.ActiveGreen;
+				action = () => {
+					if (this.props.menu)
+					{
+						this.props.menu.close(() => this.onCloseBanner(this.parentWidget));
+					}
+				};
+			}
+			else
 			{
 				return null;
 			}
 
 			return View(
 				{
-					style: styles.button,
-					onClick: () => {
-						if (this.props.menu)
-						{
-							this.props.menu.close(() => qrauth.open({
-								...this.qrauthParameters,
-								layout: this.parentWidget,
-							}));
-						}
-					},
+					testId: 'context-menu-action-banner-button',
+					style: styles.button[buttonType],
+					onClick: action,
 				},
 				Text(
 					{
-						style: styles.buttonText,
+						style: styles.buttonText[buttonType],
 						text: this.bannerButtonText,
 					},
 				),
@@ -193,20 +296,20 @@ jn.define('layout/ui/context-menu/banner', (require, exports, module) => {
 	}
 
 	const SvgImages = {
-		featureItemIcon: `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="9" fill="#D5F4FD"/><path fill-rule="evenodd" clip-rule="evenodd" d="M8.18543 10.1948L10.0091 12.0185L14.0893 7.93896L15.2825 9.13221L10.0094 14.4053L6.99219 11.3881L8.18543 10.1948Z" fill="#2FC6F6"/></svg>`,
+		featureItemIcon: `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="9" fill="${AppTheme.colors.accentSoftBlue1}"/><path fill-rule="evenodd" clip-rule="evenodd" d="M8.18543 10.1948L10.0091 12.0185L14.0893 7.93896L15.2825 9.13221L10.0094 14.4053L6.99219 11.3881L8.18543 10.1948Z" fill="${AppTheme.colors.accentMainPrimary}"/></svg>`,
 	};
 
 	const styles = {
-		container: (isHorizontalPositioning) => ({
+		container: () => ({
 			flexDirection: 'column',
 			marginBottom: 10,
 			paddingTop: 10,
 			paddingBottom: 28,
-			backgroundColor: isHorizontalPositioning ? '#f6fdff' : '#f8fafb',
+			backgroundColor: AppTheme.colors.bgContentPrimary,
 			borderRadius: 12,
 		}),
 		title: (isHorizontalPositioning) => ({
-			color: '#000000',
+			color: AppTheme.colors.base1,
 			fontSize: 17,
 			fontWeight: '500',
 			textAlign: 'center',
@@ -214,11 +317,17 @@ jn.define('layout/ui/context-menu/banner', (require, exports, module) => {
 			marginBottom: isHorizontalPositioning ? 11 : 17,
 		}),
 		subtitle: {
-			color: '#525c69',
+			color: AppTheme.colors.base3,
 			fontSize: 13,
 			marginLeft: 20,
 			marginRight: 20,
 			marginBottom: 20,
+		},
+		subtext: {
+			color: AppTheme.colors.base3,
+			fontSize: 13,
+			margin: 20,
+			marginBottom: 0,
 		},
 		listContainer: (isHorizontalPositioning) => ({
 			flexDirection: isHorizontalPositioning ? 'row' : 'column',
@@ -242,7 +351,7 @@ jn.define('layout/ui/context-menu/banner', (require, exports, module) => {
 		}),
 		itemContainer: (index, isHorizontalPositioning) => ({
 			flexDirection: 'row',
-			marginTop: index !== 0 ? (isHorizontalPositioning ? 8 : 12) : 0,
+			marginTop: index === 0 ? 0 : (isHorizontalPositioning ? 8 : 12),
 		}),
 		itemIconContainer: (isHorizontalPositioning) => ({
 			width: isHorizontalPositioning ? 22 : 24,
@@ -257,21 +366,42 @@ jn.define('layout/ui/context-menu/banner', (require, exports, module) => {
 		}),
 		itemText: (isHorizontalPositioning) => ({
 			fontSize: isHorizontalPositioning ? 14 : 15,
-			color: '#000000',
+			color: AppTheme.colors.base1,
 			flexShrink: 2,
 		}),
 		button: {
-			borderColor: '#828b95',
-			marginTop: 30,
-			paddingHorizontal: 32,
-			paddingVertical: 11,
-			alignSelf: 'center',
-			borderRadius: 6,
-			borderWidth: 1,
+			activeGreen:
+				{
+					backgroundColor: AppTheme.colors.accentMainSuccess,
+					marginTop: 30,
+					paddingHorizontal: 32,
+					paddingVertical: 11,
+					alignSelf: 'center',
+					borderRadius: 6,
+					borderWidth: 1,
+				},
+			transparent:
+				{
+					borderColor: AppTheme.colors.bgSeparatorPrimary,
+					marginTop: 30,
+					paddingHorizontal: 32,
+					paddingVertical: 11,
+					alignSelf: 'center',
+					borderRadius: 6,
+					borderWidth: 1,
+				},
 		},
 		buttonText: {
-			color: '#525c69',
-			fontSize: 15,
+			activeGreen:
+				{
+					color: AppTheme.colors.baseWhiteFixed,
+					fontSize: 15,
+				},
+			transparent:
+				{
+					color: AppTheme.colors.base2,
+					fontSize: 15,
+				},
 		},
 	};
 

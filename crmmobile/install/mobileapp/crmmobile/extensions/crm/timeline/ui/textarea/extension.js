@@ -2,9 +2,10 @@
  * @module crm/timeline/ui/textarea
  */
 jn.define('crm/timeline/ui/textarea', (require, exports, module) => {
+	const AppTheme = require('apptheme');
 	const isAndroid = Application.getPlatform() === 'android';
 
-	function Textarea({ ref, text, placeholder, onChange, style, testId })
+	function Textarea({ ref, text, placeholder, onChange, onLinkClick, style, testId })
 	{
 		return View(
 			{
@@ -17,7 +18,7 @@ jn.define('crm/timeline/ui/textarea', (require, exports, module) => {
 				ref,
 				testId,
 				placeholder,
-				placeholderTextColor: '#bdc1c6',
+				placeholderTextColor: AppTheme.colors.base5,
 				value: text,
 				multiline: true,
 				style: {
@@ -26,15 +27,14 @@ jn.define('crm/timeline/ui/textarea', (require, exports, module) => {
 					fontSize: 18,
 					flexGrow: 1,
 					height: '100%',
-					color: '#333333',
+					color: AppTheme.colors.base1,
 					...style,
 				},
 				onChangeText: onChange,
+				onLinkClick,
 			}),
 		);
 	}
 
-	module.exports = {
-		Textarea,
-	};
+	module.exports = { Textarea };
 });

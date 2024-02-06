@@ -26,9 +26,13 @@ use Bitrix\Tasks\Internals\Counter\CounterTable;
 use Bitrix\Tasks\Internals\Counter\Deadline;
 use Bitrix\Tasks\Internals\Task\ElapsedTimeTable;
 use Bitrix\Tasks\Internals\Task\FavoriteTable;
+use Bitrix\Tasks\Internals\Task\MetaStatus;
+use Bitrix\Tasks\Internals\Task\RegularParametersTable;
 use Bitrix\Tasks\Internals\Task\ScenarioTable;
 use Bitrix\Tasks\Internals\Task\SortingTable;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Internals\Task\TaskTagTable;
+use Bitrix\Tasks\Internals\Task\TimeUnitType;
 use Bitrix\Tasks\Internals\Task\UserOptionTable;
 use Bitrix\Tasks\Internals\Task\ViewedTable;
 use Bitrix\Tasks\Internals\TaskTable;
@@ -42,7 +46,7 @@ use Bitrix\Tasks\Scrum\Internal\EntityTable;
 use Bitrix\Tasks\Scrum\Internal\ItemTable;
 use CUserTypeEntity;
 
-class TaskQueryBuilder
+class TaskQueryBuilder implements QueryBuilderInterface
 {
 	public const ALIAS_TASK = 'T';
 	public const ALIAS_TASK_VIEW = 'TV';
@@ -75,42 +79,19 @@ class TaskQueryBuilder
 	public const ALIAS_SCRUM_ITEM_D = 'TSIE';
 	public const ALIAS_SCRUM_ENTITY_D = 'TSEE';
 	public const ALIAS_TASK_SCENARIO = 'SCR';
+	public const ALIAS_TASK_REGULAR = 'REG';
 
 	private const DEFAULT_LIMIT = 50;
+	private TaskQuery $taskQuery;
+	private ?UserModel $user;
+	private Query $query;
+	private TaskFilterBuilder $filterBuilder;
 
-	/**
-	 * @var UserModel $user
-	 */
-	private $user;
-	private $departmentMembers;
-
-	/**
-	 * @var Query $query
-	 */
-	private $query;
-
-	/**
-	 * @var TaskQuery $taskQuery
-	 */
-	private $taskQuery;
-
-	/**
-	 * @var TaskFilterBuilder $filterBuilder
-	 */
-	private $filterBuilder;
-
-	/**
-	 * @var array
-	 */
-	private $runtimeFields = [];
-
-	private $roles;
-	private $permissions;
-
-	/**
-	 * @var
-	 */
-	private static $lastBuildedSql;
+	private ?array $departmentMembers;
+	private array $runtimeFields = [];
+	private ?array $roles;
+	private ?array $permissions;
+	private static string $lastBuiltSql;
 
 	/**
 	 * @param string $alias
@@ -152,7 +133,7 @@ class TaskQueryBuilder
 	 * @throws ArgumentException
 	 * @throws SystemException
 	 */
-	public static function build(TaskQuery $taskQuery): Query
+	public static function build(TaskQueryInterface $taskQuery): Query
 	{
 		$query = (new self($taskQuery))
 			->buildOrder()
@@ -164,7 +145,7 @@ class TaskQueryBuilder
 			->addAccessCheck()
 			->getQuery();
 
-		self::$lastBuildedSql = $query->getQuery();
+		self::$lastBuiltSql = $query->getQuery();
 
 		return $query;
 	}
@@ -174,7 +155,7 @@ class TaskQueryBuilder
 	 */
 	public static function getLastQuery(): ?string
 	{
-		return self::$lastBuildedSql;
+		return self::$lastBuiltSql;
 	}
 
 	/**
@@ -412,9 +393,15 @@ class TaskQueryBuilder
 	 */
 	private function buildOrder(): self
 	{
-		foreach ($this->taskQuery->getOrder() as $column => $order)
+		foreach ($this->taskQuery->getOrderBy() as $column => $order)
 		{
 			$this->addOrder($column, $order);
+		}
+
+		$queryOrder = $this->query->getOrder();
+		if (!array_key_exists('ID', $queryOrder) && !empty($queryOrder))
+		{
+			$this->query->addOrder('ID', TaskQueryInterface::SORT_ASC);
 		}
 
 		return $this;
@@ -560,6 +547,13 @@ class TaskQueryBuilder
 				$this->query->addOrder('SORTING', $order);
 				$this->taskQuery->addSelect('SORTING');
 				$this->taskQuery->addSelect('NULL_SORTING');
+				break;
+
+			case 'SORTING_ORDER':
+				$this->query->addOrder('NULL_SORTING', $order);
+				$this->query->addOrder(self::ALIAS_TASK_SORT . '.SORT', $order);
+				$this->taskQuery->addSelect('NULL_SORTING');
+				$this->registerRuntimeField(self::ALIAS_TASK_SORT);
 				break;
 
 			case 'MESSAGE_ID':
@@ -723,13 +717,18 @@ class TaskQueryBuilder
 				break;
 
 			case self::ALIAS_TASK_SORT:
+				$filter = $this->taskQuery->getWhere();
+				$groupId = $filter['GROUP_ID'] ?? null;
+				$joinOn = $groupId
+					? Join::on('this.ID', 'ref.TASK_ID')->where('ref.GROUP_ID', $groupId)
+					: Join::on('this.ID', 'ref.TASK_ID')->where('ref.USER_ID', $this->taskQuery->getBehalfUser());
+
 				$this->query->registerRuntimeField(
 					$alias,
 					(new ReferenceField(
 						$alias,
 						SortingTable::getEntity(),
-						Join::on('this.ID', 'ref.TASK_ID')
-							->where('ref.USER_ID', $this->taskQuery->getBehalfUser())
+						$joinOn
 					))->configureJoinType('left')
 				);
 				break;
@@ -945,6 +944,17 @@ class TaskQueryBuilder
 				);
 				break;
 
+			case self::ALIAS_TASK_REGULAR:
+				$this->query->registerRuntimeField(
+					$alias,
+					(new ReferenceField(
+						$alias,
+						RegularParametersTable::getEntity(),
+						Join::on('this.ID', 'ref.TASK_ID')
+					))->configureJoinType('left')
+				);
+				break;
+
 			case self::ALIAS_CHAT_TASK:
 				if (!Loader::includeModule('im'))
 				{
@@ -1088,11 +1098,11 @@ class TaskQueryBuilder
 				"STATUS_COMPLETE",
 				"CASE
 					WHEN
-						%s = '".\CTasks::STATE_COMPLETED."'
+						%s = '".Status::COMPLETED."'
 					THEN
-						'".\CTasks::STATE_PENDING."'
+						'".Status::PENDING."'
 					ELSE
-						'".\CTasks::STATE_NEW."'
+						'".Status::NEW."'
 					END",
 				["STATUS"]
 			),
@@ -1102,6 +1112,7 @@ class TaskQueryBuilder
 			"REAL_STATUS" => "STATUS",
 			"MULTITASK" => "MULTITASK",
 			"STAGE_ID" => "STAGE_ID",
+			"STAGES_ID" => self::ALIAS_TASK_STAGES.".STAGE_ID",
 			"RESPONSIBLE_ID" => "RESPONSIBLE_ID",
 			"RESPONSIBLE_NAME" => self::ALIAS_USER_RESPONSIBLE.".NAME",
 			"RESPONSIBLE_LAST_NAME" => self::ALIAS_USER_RESPONSIBLE.".LAST_NAME",
@@ -1177,11 +1188,11 @@ class TaskQueryBuilder
 				'COMPUTE_DURATION_PLAN',
 				'case
 					when
-						%1$s = \''. \CTasks::TIME_UNIT_TYPE_MINUTE .'\' or %1$s = \''. \CTasks::TIME_UNIT_TYPE_HOUR .'\'
+						%1$s = \''. TimeUnitType::MINUTE .'\' or %1$s = \''. TimeUnitType::HOUR .'\'
 					then
 						ROUND(%2$s / 3600, 0)
 					when
-						%1$s = \''. \CTasks::TIME_UNIT_TYPE_DAY .'\' or %1$s = "" or %1$s is null
+						%1$s = \''. TimeUnitType::DAY .'\' or %1$s = \'\' or %1$s is null
 					then
 						ROUND(%2$s / 86400, 0)
 					else
@@ -1193,9 +1204,9 @@ class TaskQueryBuilder
 				"COMPUTE_DURATION_TYPE",
 				'case
 					when
-						%1$s = \''. \CTasks::TIME_UNIT_TYPE_MINUTE .'\'
+						%1$s = \''. TimeUnitType::MINUTE .'\'
 					then
-						\''. \CTasks::TIME_UNIT_TYPE_HOUR .'\'
+						\''. TimeUnitType::HOUR .'\'
 					else
 						%1$s
 				end',
@@ -1260,6 +1271,7 @@ class TaskQueryBuilder
 				["DEADLINE"]
 			),
 			"SCENARIO_NAME" => self::ALIAS_TASK_SCENARIO.".SCENARIO",
+			'IS_REGULAR' => 'IS_REGULAR',
 		];
 	}
 
@@ -1298,11 +1310,11 @@ class TaskQueryBuilder
 					AND
 					%2$s != '. $this->taskQuery->getBehalfUser() .'
 					AND
-					(%1$s = '. \CTasks::STATE_NEW .' OR %1$s = '. \CTasks::STATE_PENDING .')
+					(%1$s = '. Status::NEW .' OR %1$s = '. Status::PENDING .')
 				THEN
-					"Y"
+					\'Y\'
 				ELSE
-					"N"
+					\'N\'
 			END',
 			["STATUS", "CREATED_BY", self::ALIAS_TASK_VIEW.".USER_ID"]
 		);
@@ -1333,35 +1345,37 @@ class TaskQueryBuilder
 	 */
 	private function getStatusField(): ExpressionField
 	{
+		$connection = \Bitrix\Main\Application::getConnection();
+		$helper = $connection->getSqlHelper();
 		$this->joinByAlias(self::ALIAS_TASK_VIEW);
 
 		return new ExpressionField(
 			"COMPUTE_STATUS",
 			'CASE
 					WHEN
-						%1$s < DATE_ADD(NOW(), INTERVAL '. Deadline::getDeadlineTimeLimit() .' SECOND)
+						%1$s < ' . $helper->addSecondsToDateTime(Deadline::getDeadlineTimeLimit()) . '
 						AND %1$s >= NOW()
-						AND %2$s != '. \CTasks::STATE_SUPPOSEDLY_COMPLETED .'
-						AND %2$s != '. \CTasks::STATE_COMPLETED .'
+						AND %2$s != '. Status::SUPPOSEDLY_COMPLETED .'
+						AND %2$s != '. Status::COMPLETED .'
 						AND (
-							%2$s != '. \CTasks::STATE_DECLINED .'
+							%2$s != '. Status::DECLINED .'
 							OR %3$s != '. $this->taskQuery->getBehalfUser() .'
 						)
 					THEN
-						"'. \CTasks::METASTATE_EXPIRED_SOON .'"
+						'. MetaStatus::EXPIRED_SOON .'
 					WHEN
 						%1$s < NOW() 
-						AND %2$s != '. \CTasks::STATE_SUPPOSEDLY_COMPLETED .'
-						AND %2$s != '. \CTasks::STATE_COMPLETED .'
-						AND (%2$s != '. \CTasks::STATE_DECLINED .' OR %3$s != '. $this->taskQuery->getBehalfUser() .')
+						AND %2$s != '. Status::SUPPOSEDLY_COMPLETED .'
+						AND %2$s != '. Status::COMPLETED .'
+						AND (%2$s != '. Status::DECLINED .' OR %3$s != '. $this->taskQuery->getBehalfUser() .')
 					THEN
-						'. \CTasks::METASTATE_EXPIRED .'
+						'. MetaStatus::EXPIRED .'
 					WHEN
 						%5$s IS NULL
 						AND %4$s != '. $this->taskQuery->getBehalfUser() .'
-						AND (%2$s = '. \CTasks::STATE_NEW .' OR %2$s = '. \CTasks::STATE_PENDING .')
+						AND (%2$s = '. Status::NEW .' OR %2$s = '. Status::PENDING .')
 					THEN
-						'. \CTasks::METASTATE_VIRGIN_NEW .'
+						'. MetaStatus::UNSEEN .'
 					ELSE
 						%2$s
 				END',
@@ -1519,7 +1533,7 @@ class TaskQueryBuilder
 			  AND OPTION_CODE = {$option}
 		";
 
-		$sql = "IF(EXISTS({$sql}), 'Y', 'N')";
+		$sql = 'case when EXISTS(' . $sql . ') then \'Y\' else \'N\' end';
 
 		return new ExpressionField(
 			$field,

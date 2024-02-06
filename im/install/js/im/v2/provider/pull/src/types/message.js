@@ -3,7 +3,7 @@ import {reactionType as Reaction} from 'ui.reactions-select';
 import type {RawChat, RawFile, RawUser, RawMessage} from './common';
 
 export type MessageAddParams = {
-	chat: {[chatId: string]: RawChat} | [],
+	chat?: {[chatId: string]: RawChat} | [],
 	chatId: number,
 	counter: number,
 	dialogId: string,
@@ -13,7 +13,7 @@ export type MessageAddParams = {
 	notify: boolean,
 	userBlockChat: {[chatId: string]: {[userId: string]: boolean}} | [],
 	userInChat: {[chatId: string]: number[]} | [],
-	users: {[userId: string]: RawUser} | null
+	users: {[userId: string]: RawUser} | null,
 };
 
 export type MessageUpdateParams = {
@@ -41,6 +41,29 @@ export type MessageDeleteParams = {
 	type: string
 };
 
+export type MessageDeleteCompleteParams = {
+	chatId: number,
+	dialogId: string,
+	counter: number,
+	unread: boolean,
+	muted: boolean,
+	id: number,
+	lastMessageViews?: {
+		countOfViewers: number,
+		firstViewers: Array<{
+			id: number,
+			name: string,
+			avatar: string
+		}>,
+		messageId: number
+	},
+	newLastMessage?: RawMessage,
+	params: Object<string, any>,
+	senderId: number,
+	text: string,
+	type: string
+};
+
 export type ReadMessageParams = {
 	chatId: number,
 	counter: number,
@@ -50,6 +73,13 @@ export type ReadMessageParams = {
 	muted: boolean,
 	unread: boolean,
 	viewedMessages: number[]
+};
+
+export type UnreadMessageParams = {
+	chatId: number,
+	counter: number,
+	dialogId: string,
+	lines: boolean,
 };
 
 export type ReadMessageOpponentParams = {
@@ -65,14 +95,14 @@ export type ReadMessageOpponentParams = {
 
 export type PinAddParams = {
 	files: {[fileId: string]: RawFile} | [],
-	link: {
+	pin: {
 		authorId: number,
 		chatId: number,
 		dateCreate: string,
 		id: number,
-		message: RawMessage,
 		messageId: number
 	},
+	additionalMessages: RawMessage[],
 	reminders: Object | [],
 	users: RawUser[]
 };
@@ -85,16 +115,17 @@ export type PinDeleteParams = {
 
 export type AddReactionParams = {
 	actualReactions: {
-		reactions: RawReactions,
+		reaction: RawReaction,
 		usersShort: ReactionUser[]
 	},
 	reaction: ReactionType,
-	userId: number
+	userId: number,
+	dialogId: string
 };
 
 export type DeleteReactionParams = {
 	actualReactions: {
-		reactions: RawReactions,
+		reaction: RawReaction,
 		usersShort: ReactionUser[]
 	},
 	reaction: ReactionType,
@@ -103,7 +134,7 @@ export type DeleteReactionParams = {
 
 type ReactionType = $Values<typeof Reaction>;
 
-type RawReactions = {
+type RawReaction = {
 	messageId: number,
 	reactionCounters: {[reactionType: string]: number},
 	reactionUsers: {[reactionType: string]: number[]},

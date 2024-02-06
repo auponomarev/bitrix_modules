@@ -4,14 +4,15 @@
 jn.define('crm/crm-mode', (require, exports, module) => {
 	const { Loc } = require('loc');
 	const { Haptics } = require('haptics');
+	const AppTheme = require('apptheme');
 	const { Type, TypeId } = require('crm/type');
 	const { withPressed } = require('utils/color');
 	const { capitalize } = require('utils/string');
 	const { NotifyManager } = require('notify-manager');
-	const { CategoryStorage } = require('crm/storage/category');
+	const store = require('statemanager/redux/store');
+	const { fetchCrmKanbanList } = require('crm/statemanager/redux/slices/kanban-settings');
 	const { BackdropWizard } = require('layout/ui/wizard/backdrop');
-	const { EntityDetailOpener } = require('crm/entity-detail/opener');
-	const { prepareConversionFields, prepareConversionConfig } = require('crm/conversion/utils');
+	const { prepareConversionFields, createConversionConfig } = require('crm/conversion/utils');
 	const { wizardSteps, ModeStep, MODE, MODES, CONVERSION, FIELDS } = require('crm/crm-mode/wizard/steps');
 	const AJAX_ACTIONS = {
 		configCrmMode: 'crmmobile.Conversion.getConfigCrmMode',
@@ -117,6 +118,7 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 				...this.result[stepId],
 			};
 
+			// eslint-disable-next-line default-case
 			switch (stepId)
 			{
 				case MODE:
@@ -129,7 +131,7 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 					props.getCategory = this.getCategory.bind(this);
 					break;
 				case FIELDS:
-					props.getFieldsData = this.getFieldsData.bind(this);
+					props.getFieldsConfig = this.getFieldsConfig.bind(this);
 					props.onFinish = this.runConversionLeads.bind(this);
 					break;
 			}
@@ -137,15 +139,15 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 			return props;
 		}
 
-		getFieldsData()
+		getFieldsConfig()
 		{
 			const { DATA } = this.conversionData;
-			const fieldsData = prepareConversionFields(DATA);
+			const fieldsConfig = prepareConversionFields(DATA);
 
-			return fieldsData.map(({ id, type, data: fields }) => ({
+			return fieldsConfig.map(({ id, type, data }) => ({
 				id,
 				type,
-				fields,
+				data,
 				onChange: (result) => {
 					this.handleOnChange(FIELDS, result);
 				},
@@ -190,29 +192,29 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 					completeActivities: moveCase ? 'Y' : 'N',
 					...entityData,
 				},
-			})
-				.then(() => this.prepareConversionLeads(entities))
-				.then((conversionData) => {
-					this.conversionData = conversionData;
-					const { DATA, ERRORS } = conversionData;
-					if (Array.isArray(ERRORS) && ERRORS.length > 0)
-					{
-						NotifyManager.showErrors(ERRORS);
+			}).then(
+				() => this.prepareConversionLeads(entities),
+			).then((conversionData) => {
+				this.conversionData = conversionData;
+				const { DATA, ERRORS } = conversionData;
+				if (Array.isArray(ERRORS) && ERRORS.length > 0)
+				{
+					NotifyManager.showErrors(ERRORS);
 
-						return Promise.reject('error conversion leads');
-					}
+					return Promise.reject('error conversion leads');
+				}
 
-					return Promise.resolve({ finish: !DATA.REQUIRES_SYNCHRONIZATION });
-				});
+				return Promise.resolve({ finish: !DATA.REQUIRES_SYNCHRONIZATION });
+			}).catch(console.error);
 		}
 
-		prepareConversionLeads(entities)
+		prepareConversionLeads(entityTypeIds)
 		{
 			const { categoryId } = this.result[CONVERSION];
 
-			const config = prepareConversionConfig({
-				entities,
+			const config = createConversionConfig({
 				categoryId,
+				entityTypeIds,
 				additionalEntityConfig: {
 					[TypeId.Contact]: {
 						initData: { defaultName: Loc.getMessage('MCRM_CRM_MODE_CONTACT_DEFAULT_NAME') },
@@ -245,7 +247,7 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 			}
 
 			const { DATA } = this.conversionData;
-			const config = prepareConversionConfig({ entities: this.result[FIELDS], requiredConfig: DATA.CONFIG });
+			const config = createConversionConfig({ entityTypeIds: this.result[FIELDS], requiredConfig: DATA.CONFIG });
 
 			if (!this.isProgress)
 			{
@@ -261,34 +263,34 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 						CONFIG: config,
 					},
 				},
-			})
-				.then((result) => {
-					const { ERRORS, STATUS } = result;
-					if (Array.isArray(ERRORS) && ERRORS.length > 0)
-					{
+			}).then((result) => {
+				const { ERRORS, STATUS } = result;
+				if (Array.isArray(ERRORS) && ERRORS.length > 0)
+				{
+					this.onError();
+
+					return Promise.reject('error conversion leads');
+				}
+
+				// eslint-disable-next-line default-case
+				switch (STATUS)
+				{
+					case 'PROGRESS':
+						this.showProgress(result);
+
+						return this.runConversionLeads();
+					case 'COMPLETED':
+						this.showProgress(result);
+
+						return this.runChangeMode();
+					case 'ERROR':
 						this.onError();
 
 						return Promise.reject('error conversion leads');
-					}
+				}
 
-					switch (STATUS)
-					{
-						case 'PROGRESS':
-							this.showProgress(result);
-
-							return this.runConversionLeads();
-						case 'COMPLETED':
-							this.showProgress(result);
-
-							return this.runChangeMode();
-						case 'ERROR':
-							this.onError();
-
-							return Promise.reject('error conversion leads');
-					}
-
-					return Promise.reject();
-				});
+				return Promise.reject();
+			}).catch(console.error);
 		}
 
 		onError(errors)
@@ -309,34 +311,36 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 				TOTAL_ITEMS: maxValue,
 			} = result;
 
-			if (this.isProgress)
-			{
-				BX.postComponentEvent('Crm.LoadingProgress::updateProgress', [value]);
-			}
-			else
+			const progressParams = this.isProgress ? { value } : this.getProgressParams(value, maxValue);
+
+			BX.postComponentEvent('Crm.LoadingProgress::updateProgress', [progressParams]);
+
+			if (!this.isProgress)
 			{
 				this.isProgress = true;
-				BX.postComponentEvent('CrmTabs::onLoadingProgress', [{
-					isProgress: true,
-					progress: {
-						value,
-						maxValue,
-						title: Loc.getMessage('MCRM_CRM_MODE_PROGRESS_BAR_TITLE'),
-						description: Loc.getMessage('MCRM_CRM_MODE_PROGRESS_BAR_DESCRIPTION'),
-						button: {
-							text: Loc.getMessage('MCRM_CRM_MODE_PROGRESS_BAR_BUTTON'),
-							onClickEvent: BUTTON_CANCEL_EVENT,
-							style: {
-								marginTop: 30,
-								fontSize: 17,
-								paddingVertical: Application.getPlatform() === 'android' ? 2 : 8,
-								paddingHorizontal: 34,
-								backgroundColor: withPressed('#ffffff'),
-							},
-						},
-					},
-				}]);
 			}
+		}
+
+		getProgressParams(value, maxValue)
+		{
+			return {
+				value,
+				maxValue,
+				show: true,
+				title: Loc.getMessage('MCRM_CRM_MODE_PROGRESS_BAR_TITLE'),
+				description: Loc.getMessage('MCRM_CRM_MODE_PROGRESS_BAR_DESCRIPTION'),
+				button: {
+					text: Loc.getMessage('MCRM_CRM_MODE_PROGRESS_BAR_BUTTON'),
+					onClickEvent: BUTTON_CANCEL_EVENT,
+					style: {
+						marginTop: 30,
+						fontSize: 17,
+						paddingVertical: Application.getPlatform() === 'android' ? 2 : 8,
+						paddingHorizontal: 34,
+						backgroundColor: withPressed(AppTheme.colors.bgContentPrimary),
+					},
+				},
+			};
 		}
 
 		showNotify()
@@ -367,6 +371,11 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 			this.isProgress = false;
 			this.reloadTabs(success);
 			this.unBindEvents();
+			BX.postComponentEvent('Crm.LoadingProgress::updateProgress', [
+				{
+					show: false,
+				},
+			]);
 		}
 
 		ajaxPromise({ url, data })
@@ -378,13 +387,11 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 					method: 'POST',
 					dataType: 'json',
 					tokenSaveRequest: true,
-				})
-					.then(resolve)
-					.catch((error) => {
-						NotifyManager.showDefaultError();
-						console.error(error);
-						reject();
-					});
+				}).then(resolve).catch((error) => {
+					NotifyManager.showDefaultError();
+					console.error(error);
+					reject();
+				});
 			});
 		}
 
@@ -404,35 +411,37 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 				},
 			}).then((result) => {
 				this.finishChangeMode(result, crmType);
-			});
+			}).catch(console.error);
 		}
 
 		finishChangeMode({ success, error }, crmType)
 		{
-			success = success === 'Y';
+			const isSuccess = success === 'Y';
 
 			if (error)
 			{
 				this.onError([{ message: Loc.getMessage('MCRM_CRM_MODE_PROGRESS_ERROR') }]);
 			}
 
-			if (success)
+			if (isSuccess)
 			{
 				if (this.isProgress)
 				{
 					this.closeProgressBar(true);
 				}
 
-				this.reloadTabs(success);
-				this.hapticsNotify(success);
-				this.loadEntities();
+				this.reloadTabs(isSuccess);
+				this.hapticsNotify(isSuccess);
+				void this.loadEntities();
 
 				console.log(`change crm to to ${crmType} success`);
 			}
 		}
 
-		loadEntities()
+		async loadEntities()
 		{
+			const { EntityDetailOpener } = await requireLazy('crm:entity-detail/opener');
+
 			EntityDetailOpener.loadEntities();
 		}
 
@@ -454,21 +463,13 @@ jn.define('crm/crm-mode', (require, exports, module) => {
 
 		async getCategories()
 		{
-			const getCategoryStorage = () => CategoryStorage.getCategoryList(TypeId.Deal);
-
 			return new Promise((resolve) => {
-				const categoryStorage = getCategoryStorage();
-				if (categoryStorage)
-				{
-					resolve(categoryStorage);
-					return;
-				}
-
-				CategoryStorage.subscribeOnLoading(({ status }) => {
-					if (!status)
-					{
-						resolve(getCategoryStorage());
-					}
+				store.dispatch(fetchCrmKanbanList({
+					entityTypeId: TypeId.Deal,
+				})).then((response) => {
+					resolve(response.payload.data);
+				}).catch((error) => {
+					console.error(error);
 				});
 			});
 		}

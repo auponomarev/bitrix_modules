@@ -53,10 +53,12 @@ jn.define('crm/product-grid', (require, exports, module) => {
 				totalRows: count,
 			} = this.getSummary();
 
-			this.customEventEmitter.emit(CatalogStoreEvents.ProductList.TotalChanged, [{
-				count,
-				total: { amount, currency },
-			}]);
+			this.customEventEmitter.emit('StoreEvents.ProductList.TotalChanged', [
+				{
+					count,
+					total: { amount, currency },
+				},
+			]);
 		}
 
 		/**
@@ -183,9 +185,12 @@ jn.define('crm/product-grid', (require, exports, module) => {
 				editable: this.isEditable(),
 				vatRates: taxes.vatRates,
 				iblockId: catalog.id,
-				inventoryControlEnabled: inventoryControl.enabled,
+				isAllowedReservation: inventoryControl.isAllowedReservation,
+				isReservationRestrictedByPlan: inventoryControl.isReservationRestrictedByPlan,
+				defaultDateReserveEnd: inventoryControl.defaultDateReserveEnd,
 				showTax: this.showTaxInProductCard(),
 				entityDetailPageUrl: entity.detailPageUrl,
+				entityId: entity.id,
 				entityTypeId: entity.typeId,
 				onChange: (productRow) => {
 					this.unifyTaxIncludedByRow(productRow);
@@ -227,7 +232,7 @@ jn.define('crm/product-grid', (require, exports, module) => {
 		{
 			this.loadProductModel(productId).then(({ productRow }) => {
 				this.addItem(productRow);
-			});
+			}).catch(console.error);
 		}
 
 		/**
@@ -244,7 +249,7 @@ jn.define('crm/product-grid', (require, exports, module) => {
 					productRow.recalculate((calc) => calc.calculateBasePrice(basePrice));
 				}
 				this.addItem(productRow);
-			});
+			}).catch(console.error);
 		}
 
 		/**
@@ -308,13 +313,16 @@ jn.define('crm/product-grid', (require, exports, module) => {
 		{
 			if (this.getItems().length === 0)
 			{
-				this.customEventEmitter.emit(CatalogStoreEvents.ProductList.TotalChanged, [{
-					count: 0,
-					total: {
-						amount: 0,
-						currency: this.state.currencyId,
+				this.customEventEmitter.emit('StoreEvents.ProductList.TotalChanged', [
+					{
+						count: 0,
+						total: {
+							amount: 0,
+							currency: this.state.currencyId,
+						},
 					},
-				}]);
+				]);
+
 				return;
 			}
 
@@ -344,10 +352,12 @@ jn.define('crm/product-grid', (require, exports, module) => {
 							totalRows: count,
 						} = response.data;
 
-						this.customEventEmitter.emit(CatalogStoreEvents.ProductList.TotalChanged, [{
-							count,
-							total: { amount, currency },
-						}]);
+						this.customEventEmitter.emit('StoreEvents.ProductList.TotalChanged', [
+							{
+								count,
+								total: { amount, currency },
+							},
+						]);
 
 						resolve(response.data);
 					})
@@ -370,9 +380,7 @@ jn.define('crm/product-grid', (require, exports, module) => {
 
 		renderAddItemButton()
 		{
-			const { permissions } = this.getProps();
-
-			if (permissions.catalog_read)
+			if (this.canReadCatalog())
 			{
 				return super.renderAddItemButton();
 			}
@@ -434,6 +442,7 @@ jn.define('crm/product-grid', (require, exports, module) => {
 					needUpdate = true;
 					const taxIncluded = source.isTaxIncluded() ? 'Y' : 'N';
 					const calculator = new ProductCalculator(item.getRawValues());
+
 					return item.setFields(calculator.calculateTaxIncluded(taxIncluded));
 				});
 
@@ -458,7 +467,7 @@ jn.define('crm/product-grid', (require, exports, module) => {
 		{
 			const { tabId } = this.getProps();
 
-			this.customEventEmitter.emit(CatalogStoreEvents.Document.TabChange, [tabId]);
+			this.customEventEmitter.emit('DetailCard::onTabChange', [tabId]);
 		}
 
 		/**
@@ -468,13 +477,42 @@ jn.define('crm/product-grid', (require, exports, module) => {
 		{
 			if (this.state.currencyId !== currencyId)
 			{
+				const { entity = {} } = this.getProps();
+
 				this.currencyConverter
-					.convert(this.getItems(), currencyId)
+					.convert(
+						entity.id,
+						entity.typeId,
+						this.getItems(),
+						currencyId,
+					)
 					.then((products) => {
 						this.setStateWithNotification({ products, currencyId }, () => this.fetchTotals());
 					})
-				;
+					.catch(console.error);
 			}
+		}
+
+		recalculateStoresData()
+		{
+			const { entity = {} } = this.getProps();
+
+			BX.ajax.runAction(
+				'crmmobile.ProductGrid.completeStores',
+				{
+					json: {
+						products: this.getItems().map((product) => product.getRawValues()),
+						entityId: entity.id,
+						entityTypeId: entity.typeId,
+					},
+				},
+			)
+				.then((response) => {
+					this.setState({
+						products: response.data.map((props) => ProductRow.createRecalculated(props)),
+					});
+				})
+				.catch(console.error);
 		}
 
 		getEntityTypeId()
@@ -486,16 +524,38 @@ jn.define('crm/product-grid', (require, exports, module) => {
 
 		getEmptyScreenTitle()
 		{
-			return getEntityMessage('M_CRM_PRODUCT_GRID_EMPTY_TITLE2', this.getEntityTypeId());
+			if (this.canReadCatalog())
+			{
+				return getEntityMessage('M_CRM_PRODUCT_GRID_EMPTY_TITLE2', this.getEntityTypeId());
+			}
+
+			return Loc.getMessage('M_CRM_PRODUCT_GRID_EMPTY_TITLE2_NO_RIGHTS');
 		}
 
 		getEmptyScreenDescription()
 		{
-			return getEntityMessage('M_CRM_PRODUCT_GRID_EMPTY_DESCRIPTION2', this.getEntityTypeId());
+			if (this.canReadCatalog())
+			{
+				return getEntityMessage('M_CRM_PRODUCT_GRID_EMPTY_DESCRIPTION2', this.getEntityTypeId());
+			}
+
+			return Loc.getMessage('M_CRM_PRODUCT_GRID_EMPTY_DESCRIPTION2_NO_RIGHTS');
+		}
+
+		/**
+		 * @private
+		 * @returns {boolean}
+		 */
+		canReadCatalog()
+		{
+			const { permissions } = this.getProps();
+
+			return permissions.catalog_read;
 		}
 
 		handleFloatingMenuAction(actionId)
 		{
+			// eslint-disable-next-line default-case
 			switch (actionId)
 			{
 				case MenuItemId.SELECTOR:

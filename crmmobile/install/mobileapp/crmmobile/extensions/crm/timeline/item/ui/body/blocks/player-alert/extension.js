@@ -4,6 +4,7 @@
 jn.define('crm/timeline/item/ui/body/blocks/player-alert', (require, exports, module) => {
 	const { TimelineItemBodyBlock } = require('crm/timeline/item/ui/body/blocks/base');
 	const { stringify } = require('utils/string');
+	const AppTheme = require('apptheme');
 
 	/**
 	 * @class TimelineItemBodyPlayerAlertBlock
@@ -51,6 +52,7 @@ jn.define('crm/timeline/item/ui/body/blocks/player-alert', (require, exports, mo
 		renderInnerContent(color)
 		{
 			const blocks = BX.prop.getObject(this.props, 'blocks', {});
+
 			return Object.values(blocks).map(({ rendererName, properties }) => this.factory.make(
 				rendererName,
 				{
@@ -63,17 +65,18 @@ jn.define('crm/timeline/item/ui/body/blocks/player-alert', (require, exports, mo
 
 	const ThemeColors = {
 		'ui-alert-danger': {
-			backgroundColor: '#ffdcdb',
-			color: '#c21b16',
+			backgroundColor: AppTheme.colors.accentSoftRed2,
+			color: AppTheme.colors.accentSoftElementRed1,
 		},
 		'ui-alert-default': {
-			backgroundColor: '#A8ADB4',
-			color: '#6A737F',
+			backgroundColor: AppTheme.colors.base4,
+			color: AppTheme.colors.base3,
 		},
 
 		get(code)
 		{
 			code = stringify(code);
+
 			return this[code] || this['ui-alert-default'];
 		},
 	};

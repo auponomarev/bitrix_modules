@@ -7,10 +7,15 @@ use Bitrix\Crm\EntityAddressType;
 use Bitrix\Crm\EntityPreset;
 use Bitrix\Crm\EntityRequisite;
 use Bitrix\Crm\Integration\ClientResolver;
+use Bitrix\Crm\Integration\OpenLineManager;
+use Bitrix\Crm\Integrity\DuplicateControl;
 use Bitrix\Crm\Restriction\RestrictionManager;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\StatusTable;
 use Bitrix\Main;
+use Bitrix\Main\Localization\Loc;
+
+Loc::loadMessages(__FILE__);
 
 class CCrmComponentHelper
 {
@@ -644,6 +649,8 @@ class CCrmComponentHelper
 		}
 		$phoneCountryList = CCrmFieldMulti::GetPhoneCountryList($multiFieldIds);
 
+		$ownerTitles = self::getOwnerTitles($entityTypeId, $entityIds);
+
 		$dbResult = CCrmFieldMulti::GetListEx(['ID' => 'asc'], $filter);
 		while ($fields = $dbResult->fetch())
 		{
@@ -674,14 +681,14 @@ class CCrmComponentHelper
 			if (
 				$typeID === 'PHONE'
 				|| $typeID === 'EMAIL'
-				|| ($typeID === 'IM' && preg_match('/^imol\|/', $value) === 1)
+				|| ($typeID === 'IM' && OpenLineManager::isImOpenLinesValue($value))
 			)
 			{
 				$formattedValue = $typeID === 'PHONE'
 					? Main\PhoneNumber\Parser::getInstance()->parse($value)->format()
 					: $value;
 
-				$entityData['MULTIFIELD_DATA'][$typeID][$entityKey][] = array(
+				$entityData['MULTIFIELD_DATA'][$typeID][$entityKey][] = [
 					'ID' => $ID,
 					'VALUE' => $value,
 					'VALUE_TYPE' => $valueTypeID,
@@ -691,7 +698,13 @@ class CCrmComponentHelper
 					'VALUE_FORMATTED' => $formattedValue,
 					'COMPLEX_ID' => $complexID,
 					'COMPLEX_NAME' => \CCrmFieldMulti::GetEntityNameByComplex($complexID, false),
-				);
+					'TITLE' => OpenLineManager::isImOpenLinesValue($value) ? OpenLineManager::getOpenLineTitle($value) : '',
+					'OWNER' => [
+						'ID' => $elementID,
+						'TYPE_ID' => $entityTypeId,
+						'TITLE' => $ownerTitles[$elementID] ?? '',
+					],
+				];
 			}
 
 			if ($addToDataLevel)
@@ -729,6 +742,34 @@ class CCrmComponentHelper
 				];
 			}
 		}
+	}
+
+	/**
+	 * @param int $entityTypeId
+	 * @param int[] $entityIds
+	 * @return array
+	 */
+	private static function getOwnerTitles(int $entityTypeId, array $entityIds): array
+	{
+		$factory = Container::getInstance()->getFactory($entityTypeId);
+		if (!$factory || !\CcrmOwnerType::isUseFactoryBasedApproach($entityTypeId))
+		{
+			return [];
+		}
+
+		$items = $factory->getItemsFilteredByPermissions([
+			'filter' => [
+				'@ID' => $entityIds,
+			],
+		]);
+
+		$result = [];
+		foreach ($items as $item)
+		{
+			$result[$item->getId()] = $item->getHeading();
+		}
+
+		return $result;
 	}
 
 	/**
@@ -788,6 +829,58 @@ class CCrmComponentHelper
 						static::getRequisiteAddressFieldData($entityTypeId, $entityTypeCategoryMap[$entityTypeId])
 					;
 				}
+			}
+		}
+
+		return $result;
+	}
+
+	public static function prepareClientEditorDuplicateControlParams(array $params = []): array
+	{
+		$result = [];
+
+		$entityTypes =
+			(isset($params['entityTypes']) && is_array($params['entityTypes']))
+				? $params['entityTypes']
+				: []
+		;
+
+		foreach ($entityTypes as $entityTypeId)
+		{
+			$entityTypeId = (int)$entityTypeId;
+			if (
+				CCrmOwnerType::IsDefined($entityTypeId)
+				&& DuplicateControl::isControlEnabledFor($entityTypeId)
+			)
+			{
+				$entityTypeName = CCrmOwnerType::ResolveName($entityTypeId);
+				$entityTypeNameLower = mb_strtolower($entityTypeName);
+				$result[$entityTypeId] = [
+					'enabled' => true,
+					'serviceUrl' =>
+						'/bitrix/components/bitrix/crm.'
+						. $entityTypeNameLower
+						. '.edit/ajax.php?'
+						. bitrix_sessid_get(),
+					'entityTypeName' => $entityTypeName,
+					'groups' => [
+						'title' => [
+							'parameterName' => 'TITLE',
+							'groupType' => 'single',
+							'groupSummaryTitle' => Loc::getMessage('CRM_COMPONENT_HELPER_DUP_CTRL_TTL_SUMMARY_TITLE')
+						],
+						'email' => [
+							'groupType' => 'communication',
+							'communicationType' => 'EMAIL',
+							'groupSummaryTitle' => Loc::getMessage('CRM_COMPONENT_HELPER_DUP_CTRL_EMAIL_SUMMARY_TITLE')
+						],
+						'phone' => [
+							'groupType' => 'communication',
+							'communicationType' => 'PHONE',
+							'groupSummaryTitle' => Loc::getMessage('CRM_COMPONENT_HELPER_DUP_CTRL_PHONE_SUMMARY_TITLE')
+						],
+					],
+				];
 			}
 		}
 

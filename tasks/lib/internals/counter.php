@@ -9,6 +9,7 @@ use Bitrix\Tasks\Internals\Counter\CounterController;
 use Bitrix\Tasks\Internals\Counter\CounterService;
 use Bitrix\Tasks\Internals\Counter\CounterState;
 use Bitrix\Tasks\Internals\Counter\Event\EventDictionary;
+use Bitrix\Tasks\Internals\Counter\State\Factory;
 use Bitrix\Tasks\Internals\Registry\UserRegistry;
 use Bitrix\Tasks\Util\User;
 use CTasks;
@@ -91,7 +92,12 @@ class Counter
 	{
 		$this->userId = (int)$userId;
 
-		if ($this->userId && !$this->getState()->isCounted())
+		$state = $this->getState();
+
+		if (
+			$this->userId
+			&& !$state->isCounted()
+		)
 		{
 			(new CounterController($this->userId))->recountAll();
 		}
@@ -508,12 +514,17 @@ class Counter
 	 */
 	private function dropOldCounters(): void
 	{
-		if (Counter\Queue\Queue::isInQueue($this->userId))
+		$state = $this->getState();
+
+		if (!$state->isCounted())
 		{
 			return;
 		}
 
-		$state = $this->getState();
+		if (Counter\Queue\Queue::isInQueue($this->userId))
+		{
+			return;
+		}
 
 		if ($state->getClearedDate() >= (int) date('ymd'))
 		{
@@ -584,32 +595,6 @@ class Counter
 	}
 
 	/**
-	 * @param array $counters
-	 * @param string $type
-	 * @param array $groupIds
-	 * @return int
-	 */
-	private function partialSum(array $counters, string $type, array $groupIds): int
-	{
-		$sum = 0;
-
-		if (!array_key_exists($type, $counters))
-		{
-			return $sum;
-		}
-
-		foreach ($groupIds as $groupId)
-		{
-			if (isset($counters[$type][$groupId]))
-			{
-				$sum += $counters[$type][$groupId];
-			}
-		}
-
-		return $sum;
-	}
-
-	/**
 	 * @return bool
 	 */
 	private function isAccessToCounters(): bool
@@ -641,6 +626,6 @@ class Counter
 	 */
 	private function getState(): CounterState
 	{
-		return CounterState::getInstance($this->userId);
+		return Factory::getState($this->userId);
 	}
 }

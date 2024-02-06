@@ -2,21 +2,21 @@
 
 return [
 	'extensions' => [
-		'layout/ui/loading-screen',
-		'layout/ui/plan-restriction',
-		'rest',
+		'apptheme',
+		'utils/prop',
+		'require-lazy',
+		'utils/function',
 		'notify-manager',
 		'navigation-loader',
-		'helpers/component',
-		'utils/error-notifier',
-		'utils/function',
-		'utils/object',
+		'layout/pure-component',
+		'layout/ui/loading-screen',
+		'layout/ui/stage-list/actions',
+		'layout/ui/plan-restriction',
+
+		'crm:type/id',
 		'crm:category-list',
-		'crm:stage-list-view',
-		'crm:stage-list/actions',
-		'crm:storage/category',
-	],
-	'components' => [
-		'crm:crm.category.detail',
+
+		'crm:statemanager/redux/slices/kanban-settings',
+		'statemanager/redux/connect',
 	],
 ];

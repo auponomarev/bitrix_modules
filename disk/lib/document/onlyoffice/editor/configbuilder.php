@@ -11,6 +11,7 @@ use Bitrix\Main\ArgumentOutOfRangeException;
 use Bitrix\Main\Context;
 use Bitrix\Main\DI\ServiceLocator;
 use Bitrix\Main\Engine\UrlManager;
+use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Text\Encoding;
 use Bitrix\Main\Web\JWT;
@@ -25,6 +26,7 @@ final class ConfigBuilder
 	public const DOCUMENT_TYPE_SLIDE = 'slide';
 
 	public const REVIEW_DISPLAY_MARKUP = CustomizationBuilder::REVIEW_DISPLAY_MARKUP;
+	public const REVIEW_DISPLAY_SIMPLE = CustomizationBuilder::REVIEW_DISPLAY_SIMPLE;
 	public const REVIEW_DISPLAY_FINAL = CustomizationBuilder::REVIEW_DISPLAY_FINAL;
 	public const REVIEW_DISPLAY_ORIGINAL = CustomizationBuilder::REVIEW_DISPLAY_ORIGINAL;
 
@@ -256,9 +258,23 @@ final class ConfigBuilder
 		return true;
 	}
 
+	protected function getPortalZone(): string
+	{
+		if (Loader::includeModule('bitrix24'))
+		{
+			return \CBitrix24::getPortalZone();
+		}
+		if (Loader::includeModule('intranet'))
+		{
+			return \CIntranetUtils::getPortalZone() ?? 'unknown';
+		}
+
+		return 'unknown';
+	}
+
 	protected function getCustomizationSection(Uri $baseUrl): array
 	{
-		$customizationBuilder = new CustomizationBuilder($baseUrl, $this->customization);
+		$customizationBuilder = new CustomizationBuilder($baseUrl, $this->customization, $this->getPortalZone());
 		$customizationBuilder->setInfoText(Loc::getMessage('DISK_ONLYOFFICE_CONFIGBUILDER_CUSTOMER_INFO'));
 
 		if ($this->baseUrlToLogo)
@@ -284,6 +300,7 @@ final class ConfigBuilder
 				'owner' => '',
 				'uploaded' => '',
 				'permissions' => [
+					'chat' => false,
 					'print' => $this->supportPrint(),
 					'download' => $this->permissions['download'] ?? true,
 					'copy' => true,
@@ -301,6 +318,10 @@ final class ConfigBuilder
 				'lang' => $this->getLangCode(),
 				'region' => $this->getRegion(),
 				'mode' => $this->mode,
+				'coEditing' => [
+					'mode' => $this->isViewMode() ? 'strict' : 'fast',
+					'change' => false,
+				],
 				'callbackUrl' => (string)$this->callbackUrl,
 				'customization' => $this->getCustomizationSection($baseUrl),
 			],

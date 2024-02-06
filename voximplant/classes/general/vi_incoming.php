@@ -1,9 +1,11 @@
-<?
+<?php
 IncludeModuleLangFile(__FILE__);
 
 use Bitrix\Main\Type as FieldType;
 use Bitrix\Voximplant as VI;
 use Bitrix\Main\Web\Json;
+use Bitrix\Main\ORM\Fields\ExpressionField;
+use Bitrix\Main\DB\SqlExpression;
 
 class CVoxImplantIncoming
 {
@@ -221,7 +223,7 @@ class CVoxImplantIncoming
 		global $USER;
 
 		$answer['COMMAND'] = $params['COMMAND'];
-		$answer['OPERATOR_ID'] = $params['OPERATOR_ID']? $params['OPERATOR_ID']: $USER->GetId();
+		$answer['OPERATOR_ID'] = $params['OPERATOR_ID'] ?? $USER->GetId();
 		if ($params['COMMAND'] == CVoxImplantIncoming::COMMAND_INVITE)
 		{
 		}
@@ -397,6 +399,8 @@ class CVoxImplantIncoming
 				'EXTERNAL_LINE_ID' => $externalLineId,
 				'SESSION_ID' => $params['SESSION_ID'],
 				'SIP_HEADERS' => is_array($params['SIP_HEADERS']) ? $params['SIP_HEADERS'] : [],
+				'LAST_PING'=> null,
+				'QUEUE_ID' => null,
 			]);
 		}
 
@@ -561,7 +565,7 @@ class CVoxImplantIncoming
 	{
 		$query = \Bitrix\Voximplant\Model\UserTable::query();
 		$query
-			->addSelect(new Bitrix\Main\ORM\Fields\ExpressionField('ENTITY_TYPE', '"user"'))
+			->addSelect(new ExpressionField('ENTITY_TYPE', new SqlExpression('?s', 'user')))
 			->addSelect('ID', 'ENTITY_ID')
 			->addSelect('IS_ONLINE')
 			->addSelect('IS_BUSY')
@@ -572,11 +576,11 @@ class CVoxImplantIncoming
 
 		$query2 = VI\Model\QueueTable::query();
 		$query2
-			->addSelect(new Bitrix\Main\ORM\Fields\ExpressionField('ENTITY_TYPE', '"queue"'))
+			->addSelect(new ExpressionField('ENTITY_TYPE', new SqlExpression('?s', 'queue')))
 			->addSelect('ID', 'ENTITY_ID')
-			->addSelect(new Bitrix\Main\ORM\Fields\ExpressionField('IS_ONLINE', '"Y"'))
-			->addSelect(new Bitrix\Main\ORM\Fields\ExpressionField('IS_BUSY', '"N"'))
-			->addSelect(new Bitrix\Main\ORM\Fields\ExpressionField('UF_VI_PHONE', '"N"'))
+			->addSelect(new ExpressionField('IS_ONLINE', new SqlExpression('?s', 'Y')))
+			->addSelect(new ExpressionField('IS_BUSY', new SqlExpression('?s', 'N')))
+			->addSelect(new ExpressionField('UF_VI_PHONE', new SqlExpression('?s', 'N')))
 			->where('PHONE_NUMBER', $phoneNumber)
 		;
 		$query->unionAll($query2);

@@ -7,16 +7,16 @@
  */
 namespace Bitrix\Crm\WebForm;
 
+use Bitrix\Crm\SiteButton;
+use Bitrix\Crm\UI\Webpack;
+use Bitrix\Crm\WebForm\Internals;
 use Bitrix\Crm\WebForm\Internals\LandingTable;
 use Bitrix\Main;
+use Bitrix\Main\Config\Option;
 use Bitrix\Main\Context;
 use Bitrix\Main\Localization\Loc;
-use Bitrix\Main\Config\Option;
 use Bitrix\Main\Type\DateTime;
 use Bitrix\SalesCenter;
-use Bitrix\Crm\UI\Webpack;
-use Bitrix\Crm\SiteButton;
-use Bitrix\Crm\WebForm\Internals;
 
 Loc::loadMessages(__FILE__);
 
@@ -597,17 +597,17 @@ class Form
 		foreach($fields as $field)
 		{
 			$field['FORM_ID'] = $this->id;
-
+			$fieldWithoutId = $field;
+			unset($fieldWithoutId['ID']);
 			if($field['ID'] > 0)
 			{
 				$fieldId = $field['ID'];
-				unset($field['ID']);
-				$fieldResult = Internals\FieldTable::update($fieldId, $field);
+				$fieldResult = Internals\FieldTable::update($fieldId, $fieldWithoutId);
 				$newFieldList[] = $fieldId;
 			}
 			else
 			{
-				$fieldResult = Internals\FieldTable::add($field);
+				$fieldResult = Internals\FieldTable::add($fieldWithoutId);
 			}
 
 			$this->prepareResult('FIELDS', $fieldResult);
@@ -889,6 +889,28 @@ class Form
 		return is_array($this->params['FIELDS']) ? $this->params['FIELDS'] : [];
 	}
 
+	public function getFieldsByType(string $type): array
+	{
+		return array_filter(
+			$this->getFields(),
+			function ($value) use ($type) {
+				return $value['TYPE'] === $type;
+			}
+		);
+	}
+
+	public function hasField(string $code): bool
+	{
+		 return !empty(
+			 array_filter(
+				$this->getFields(),
+				function ($value) use ($code) {
+					return $value['CODE'] === $code;
+				}
+			 )
+		);
+	}
+
 	public function getAllowedEntitySchemes()
 	{
 		//TODO: fields checker
@@ -1091,7 +1113,9 @@ class Form
 
 	public function getCurrencyId()
 	{
-		return $this->params['CURRENCY_ID'] ? $this->params['CURRENCY_ID'] : \CCrmCurrency::GetBaseCurrencyID();
+		return empty($this->params['CURRENCY_ID'])
+			? \CCrmCurrency::GetBaseCurrencyID()
+			: $this->params['CURRENCY_ID'];
 	}
 
 	/**
@@ -1101,7 +1125,7 @@ class Form
 	 */
 	public function isPayable()
 	{
-		return $this->params['IS_PAY'] === 'Y';
+		return isset($this->params['IS_PAY']) && $this->params['IS_PAY'] === 'Y';
 	}
 
 	/**

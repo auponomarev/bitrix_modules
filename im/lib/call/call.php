@@ -8,6 +8,7 @@ use Bitrix\Im\Dialog;
 use Bitrix\Im\Model\AliasTable;
 use Bitrix\Im\Model\CallTable;
 use Bitrix\Im\Model\CallUserTable;
+use Bitrix\Im\V2\Call\CallFactory;
 use Bitrix\Main\ArgumentException;
 use Bitrix\Main\Config\Option;
 use Bitrix\Main\Loader;
@@ -31,6 +32,7 @@ class Call
 	const RECORD_TYPE_AUDIO = 'audio';
 
 	const PROVIDER_PLAIN = 'Plain';
+	const PROVIDER_BITRIX = 'Bitrix';
 	const PROVIDER_VOXIMPLANT = 'Voximplant';
 
 	protected $id;
@@ -47,6 +49,9 @@ class Call
 	protected $endDate;
 	protected $logUrl;
 	protected $chatId;
+	protected $uuid;
+	protected $secretKey;
+	protected $endpoint;
 
 	/** @var Integration\AbstractEntity */
 	protected $associatedEntity = null;
@@ -262,6 +267,21 @@ class Call
 		return $this->chatId;
 	}
 
+	public function getUuid()
+	{
+		return $this->uuid;
+	}
+
+	public function getSecretKey()
+	{
+		return $this->secretKey;
+	}
+
+	public function getEndpoint()
+	{
+		return $this->endpoint;
+	}
+
 	/**
 	 * Returns date of the call start.
 	 *
@@ -282,6 +302,16 @@ class Call
 		return $this->endDate;
 	}
 
+	public function inviteUsers(int $senderId, array $toUserIds, $isLegacyMobile, $video = false, $sendPush = true)
+	{
+		$this->getSignaling()->sendInvite(
+			$senderId,
+			$toUserIds,
+			$isLegacyMobile,
+			$video,
+			$sendPush
+		);
+	}
 
 	/**
 	 * @param string $state
@@ -312,6 +342,11 @@ class Call
 		$this->logUrl = $logUrl;
 	}
 
+	public function setEndpoint($endpoint)
+	{
+		$this->endpoint = $endpoint;
+	}
+
 	public function finish()
 	{
 		if($this->endDate instanceof DateTime)
@@ -336,9 +371,14 @@ class Call
 		}
 	}
 
-	public function toArray($currentUserId = 0)
+	public function getConnectionData(int $userId): ?array
 	{
-		return array(
+		return null;
+	}
+
+	public function toArray($currentUserId = 0, $withSecrets = false)
+	{
+		$result = [
 			'ID' => $this->id,
 			'TYPE' => $this->type,
 			'INITIATOR_ID' => $this->initiatorId,
@@ -354,12 +394,20 @@ class Call
 			'LOG_URL' => $this->logUrl,
 			'CHAT_ID' => $this->chatId,
 			'ASSOCIATED_ENTITY' => ($this->associatedEntity) ? $this->associatedEntity->toArray($currentUserId) : [],
-		);
+			'UUID' => $this->uuid,
+			'ENDPOINT' => $this->endpoint,
+		];
+		if ($withSecrets)
+		{
+			$result['SECRET_KEY'] = $this->secretKey;
+		}
+
+		return $result;
 	}
 
 	public function save()
 	{
-		$fields = $this->toArray();
+		$fields = $this->toArray(0, true);
 		unset($fields['ID']);
 
 		if(!$this->id)
@@ -375,16 +423,14 @@ class Call
 
 	public function makeClone($newProvider = null)
 	{
-		$instance = static::createWithArray($this->toArray());
-		$instance->id = null;
-		$instance->publicId = randString(10);
-		$instance->state = static::STATE_NEW;
-		if($newProvider)
-		{
-			$instance->provider = $newProvider;
-		}
-		$instance->parentId = $this->id;
+		$callFields = $this->toArray();
+		$callFields['ID'] = null;
+		$callFields['PUBLIC_ID'] = randString(10);
+		$callFields['STATE'] = static::STATE_NEW;
+		$callFields['PROVIDER'] = $newProvider ?? $callFields['PROVIDER'];
+		$callFields['PARENT_ID'] = $this->id;
 
+		$instance = CallFactory::createWithArray($callFields['PROVIDER'], $callFields);
 		$instance->save();
 
 		$instance->users = [];
@@ -556,6 +602,7 @@ class Call
 		{
 			return  '';
 		}
+
 		if (Loader::includeModule("bitrix24") && defined('BX24_HOST_NAME'))
 		{
 			$portalId = BX24_HOST_NAME;
@@ -568,11 +615,13 @@ class Call
 		{
 			return '';
 		}
+
 		$secret = Option::get('im', 'call_log_secret');
 		if ($secret == '')
 		{
 			return '';
 		}
+
 		return JWT::encode(
 			[
 				'prt' => $portalId,
@@ -597,7 +646,7 @@ class Call
 		}
 		else
 		{
-			return Option::get('im', 'turn_server_max_users');
+			return (int)Option::get('im', 'turn_server_max_users');
 		}
 	}
 
@@ -630,6 +679,9 @@ class Call
 
 		$instance->save();
 
+		// todo: remove when the calls are supported in the mobile
+		$instance->associatedEntity->onCallCreate();
+
 		$instance->users = [];
 		foreach ($instance->associatedEntity->getUsers() as $userId)
 		{
@@ -641,6 +693,8 @@ class Call
 			]);
 			$instance->users[$userId]->save();
 		}
+
+		$instance->initCall();
 
 		$event = new Event(
 			'im',
@@ -660,6 +714,11 @@ class Call
 		$event->send();
 
 		return $instance;
+	}
+
+	protected function initCall()
+	{
+		// to be overridden
 	}
 
 	/**
@@ -738,11 +797,16 @@ class Call
 		$instance->state = $fields['STATE'];
 		$instance->logUrl = $fields['LOG_URL'];
 		$instance->chatId = $fields['CHAT_ID'];
+		$instance->uuid = $fields['UUID'];
+		$instance->secretKey = $fields['SECRET_KEY'];
+		$instance->endpoint = $fields['ENDPOINT'];
 
 		if($instance->entityType && $instance->entityId)
 		{
 			$instance->associatedEntity = Integration\EntityFactory::createEntity($instance, $instance->entityType, $instance->entityId);
 		}
+
+		$instance->initCall();
 
 		return $instance;
 	}
@@ -800,6 +864,18 @@ class Call
 		}
 
 		return (bool)Option::get("im", "call_server_enabled");
+	}
+
+	public static function isBitrixCallServerEnabled()
+	{
+		$isBeta = Option::get('im', 'bitrix_call_enabled', 'N');
+
+		return $isBeta === 'Y';
+	}
+
+	public static function isVoximplantCallServerEnabled()
+	{
+		return self::isCallServerEnabled();
 	}
 
 	protected function getCurrentUserId() : int

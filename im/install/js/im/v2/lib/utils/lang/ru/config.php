@@ -1,15 +1,15 @@
 <?
 $MESS["IM_STATUS_ONLINE"] = "Онлайн";
 $MESS["IM_STATUS_BOT"] = "Чат-бот";
-$MESS["IM_STATUS_NETWORK"] = "Битрикс24.Network";
+$MESS["IM_STATUS_NETWORK_MSGVER_1"] = "Битрикс24 Network";
 $MESS["IM_STATUS_OFFLINE"] = "Не в сети";
 $MESS["IM_STATUS_BREAK"] = "Перерыв";
 $MESS["IM_STATUS_AWAY"] = "Отсутствую";
 $MESS["IM_STATUS_AWAY_TITLE"] = "Отсутствует #TIME#";
 $MESS["IM_STATUS_DND"] = "Не беспокоить";
 $MESS["IM_STATUS_MOBILE"] = "Онлайн, с телефона";
-$MESS["IM_STATUS_NA"] = "Не доступен";
-$MESS["IM_STATUS_GUEST"] = "Не доступен";
+$MESS["IM_STATUS_NA"] = "Недоступен";
+$MESS["IM_STATUS_GUEST"] = "Недоступен";
 $MESS["IM_STATUS_LINES-ONLINE"] = "Пользователь Открытых линий";
 $MESS["IM_STATUS_VACATION"] = "В отпуске";
 $MESS["IM_STATUS_VACATION_TITLE"] = "В отпуске до #DATE#";

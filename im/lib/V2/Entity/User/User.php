@@ -7,8 +7,11 @@ use Bitrix\Im\Model\RelationTable;
 use Bitrix\Im\Model\StatusTable;
 use Bitrix\Im\V2\Chat\FavoriteChat;
 use Bitrix\Im\V2\Chat\PrivateChat;
+use Bitrix\Im\V2\Common\ContextCustomer;
+use Bitrix\Im\V2\Entity\Department\Departments;
 use Bitrix\Im\V2\Rest\RestEntity;
 use Bitrix\Im\V2\Service\Locator;
+use Bitrix\Main\Engine\Response\Converter;
 use Bitrix\Main\Loader;
 use Bitrix\Main\ModuleManager;
 use Bitrix\Main\ORM\Fields\Relations\Reference;
@@ -19,10 +22,22 @@ use Bitrix\Main\UserTable;
 
 class User implements RestEntity
 {
-	public const PHONE_ANY = 'PHONE_ANY';
+	use ContextCustomer;
+
 	public const PHONE_MOBILE = 'PERSONAL_MOBILE';
-	public const PHONE_PERSONAL = 'PERSONAL_PHONE';
 	public const PHONE_WORK = 'WORK_PHONE';
+	public const  PHONE_INNER = 'INNER_PHONE';
+	public const ONLINE_DATA_SELECTED_FIELDS = [
+		'USER_ID' => 'ID',
+		'IDLE' => 'STATUS.IDLE',
+		'DESKTOP_LAST_DATE' => 'STATUS.DESKTOP_LAST_DATE',
+		'MOBILE_LAST_DATE' => 'STATUS.MOBILE_LAST_DATE',
+		'LAST_ACTIVITY_DATE'
+	];
+	public const ONLINE_DATA_SELECTED_FIELDS_WITHOUT_STATUS = [
+		'USER_ID' => 'ID',
+		'LAST_ACTIVITY_DATE'
+	];
 
 	/**
 	 * @var ModuleManager
@@ -42,9 +57,9 @@ class User implements RestEntity
 	protected array $userData = [];
 
 	protected bool $isOnlineDataFilled = false;
+	protected bool $isOnlineDataWithStatusFilled = false;
 	protected ?bool $isAdmin = null;
 
-	protected ?string $status = null;
 	protected ?DateTime $idle = null;
 	protected ?DateTime $lastActivityDate = null;
 	protected ?DateTime $mobileLastDate = null;
@@ -91,7 +106,7 @@ class User implements RestEntity
 	 * @param int $userId
 	 * @return PrivateChat|null
 	 */
-	public function getChatWith(int $userId): ?PrivateChat
+	public function getChatWith(int $userId, bool $createIfNotExist = true): ?PrivateChat
 	{
 		$chatId = false;
 		if ($userId === $this->getId())
@@ -135,6 +150,11 @@ class User implements RestEntity
 				return $chat;
 			}
 
+			return null;
+		}
+
+		if (!$createIfNotExist)
+		{
 			return null;
 		}
 
@@ -222,21 +242,33 @@ class User implements RestEntity
 		);
 	}
 
-	protected function fillOnlineData(): void
+	protected function fillOnlineData(bool $withStatus = false): void
 	{
-		if ($this->isOnlineDataFilled)
+		if ((!$withStatus && $this->isOnlineDataFilled)
+		|| $this->isOnlineDataWithStatusFilled)
 		{
 			return;
 		}
 
-		$select = ['USER_ID', 'STATUS', 'IDLE', 'MOBILE_LAST_DATE', 'DESKTOP_LAST_DATE', 'LAST_ACTIVITY_DATE' => 'USER.LAST_ACTIVITY_DATE'];
-		$statusData = StatusTable::query()
+		$select = $withStatus ? self::ONLINE_DATA_SELECTED_FIELDS : self::ONLINE_DATA_SELECTED_FIELDS_WITHOUT_STATUS;
+		$query = UserTable::query()
 			->setSelect($select)
-			->where('USER_ID', $this->getId())
-			->fetch() ?: []
+			->where('ID', $this->getId())
 		;
+		if ($withStatus)
+		{
+			$query->registerRuntimeField(
+				new Reference(
+					'STATUS',
+					StatusTable::class,
+					Join::on('this.ID', 'ref.USER_ID'),
+					['join_type' => Join::TYPE_LEFT]
+				)
+			);
+		}
 
-		$this->setOnlineData($statusData);
+		$statusData = $query->fetch() ?: [];
+		$this->setOnlineData($statusData, $withStatus);
 	}
 
 	public function getId(): ?int
@@ -260,6 +292,19 @@ class User implements RestEntity
 			];
 		}
 
+		$idle = false;
+		$lastActivityDate = false;
+		$mobileLastDate = false;
+		$desktopLastDate = false;
+
+		if (!isset($option['WITHOUT_ONLINE']) || $option['WITHOUT_ONLINE'] === false)
+		{
+			$idle = $this->getIdle() ? $this->getIdle()->format('c') : false;
+			$lastActivityDate = $this->getLastActivityDate() ? $this->getLastActivityDate()->format('c') : false;
+			$mobileLastDate = $this->getMobileLastDate() ? $this->getMobileLastDate()->format('c') : false;
+			$desktopLastDate = $this->getDesktopLastDate() ? $this->getDesktopLastDate()->format('c') : false;
+		}
+
 		return [
 			'id' => $this->getId(),
 			'active' => $this->isActive(),
@@ -278,14 +323,36 @@ class User implements RestEntity
 			'connector' => $this->isConnector(),
 			'externalAuthId' => $this->getExternalAuthId(),
 			'status' => $this->getStatus(),
-			'idle' => $this->getIdle() ? $this->getIdle()->format('c') : false,
-			'lastActivityDate' => $this->getLastActivityDate() ? $this->getLastActivityDate()->format('c') : false,
-			'mobileLastDate' => $this->getMobileLastDate() ? $this->getMobileLastDate()->format('c') : false,
-			'desktopLastDate' => $this->getDesktopLastDate() ? $this->getDesktopLastDate()->format('c') : false,
+			'idle' => $idle,
+			'lastActivityDate' => $lastActivityDate,
+			'mobileLastDate' => $mobileLastDate,
+			'desktopLastDate' => $desktopLastDate,
 			'absent' => $this->getAbsent() !== null ? $this->getAbsent()->format('c') : false,
-			'departments' => $this->getDepartments(),
+			'departments' => $this->getDepartmentIds(),
 			'phones' => empty($this->getPhones()) ? false : $this->getPhones(),
+			'botData' => null,
 		];
+	}
+
+	public function getArray(array $option = []): array
+	{
+		$userData = $this->toRestFormat($option);
+
+		$converter = new Converter(Converter::TO_SNAKE | Converter::TO_UPPER | Converter::KEYS);
+		$userData = $converter->process($userData);
+
+		if ($userData['PHONES'])
+		{
+			$converter = new Converter(Converter::TO_LOWER | Converter::KEYS);
+			$userData['PHONES'] = $converter->process($userData['PHONES']);
+		}
+		if (isset($userData['BOT_DATA']))
+		{
+			$converter = new Converter(Converter::TO_SNAKE | Converter::TO_LOWER | Converter::KEYS);
+			$userData['BOT_DATA'] = $converter->process($userData['BOT_DATA']);
+		}
+
+		return $userData;
 	}
 
 	//region Getters & setters
@@ -295,29 +362,35 @@ class User implements RestEntity
 		return $this->getId() !== null;
 	}
 
-	public function setOnlineData(array $onlineData): void
+	public function setOnlineData(array $onlineData, bool $withStatus): void
 	{
-		$this->status = $onlineData['STATUS'] ?? null;
 		$this->idle = $onlineData['IDLE'] ?? null;
 		$this->lastActivityDate = $onlineData['LAST_ACTIVITY_DATE'] ?? null;
 		$this->mobileLastDate = $onlineData['MOBILE_LAST_DATE'] ?? null;
 		$this->desktopLastDate = $onlineData['DESKTOP_LAST_DATE'] ?? null;
-		$this->isOnlineDataFilled = true;
+		if ($withStatus)
+		{
+			$this->isOnlineDataWithStatusFilled = true;
+		}
+		else
+		{
+			$this->isOnlineDataFilled = true;
+		}
 	}
 
-	public function getName(): string
+	public function getName(): ?string
 	{
-		return $this->userData['NAME'] ?? '';
+		return $this->userData['NAME'] ?? null;
 	}
 
-	public function getFirstName(): string
+	public function getFirstName(): ?string
 	{
-		return $this->userData['FIRST_NAME'] ?? '';
+		return $this->userData['FIRST_NAME'] ?? null;
 	}
 
-	public function getLastName(): string
+	public function getLastName(): ?string
 	{
-		return $this->userData['LAST_NAME'] ?? '';
+		return $this->userData['LAST_NAME'] ?? null;
 	}
 
 	public function getAvatar(bool $forRest = true): string
@@ -373,7 +446,7 @@ class User implements RestEntity
 	{
 		$result = [];
 
-		foreach ([self::PHONE_MOBILE, self::PHONE_PERSONAL, self::PHONE_WORK] as $phoneType)
+		foreach ([self::PHONE_MOBILE, self::PHONE_WORK, self::PHONE_INNER] as $phoneType)
 		{
 			if (isset($this->userData[$phoneType]) && $this->userData[$phoneType])
 			{
@@ -424,7 +497,7 @@ class User implements RestEntity
 		return $this->userData['IS_CONNECTOR'] ?? false;
 	}
 
-	public function getDepartments(): array
+	public function getDepartmentIds(): array
 	{
 		return
 			(isset($this->userData['UF_DEPARTMENT']) && is_array($this->userData['UF_DEPARTMENT']))
@@ -433,21 +506,32 @@ class User implements RestEntity
 			;
 	}
 
-	public function isOnlineDataFilled(): bool
+	public function getDepartments(): Departments
 	{
-		return $this->isOnlineDataFilled;
+		return new Departments(...$this->getDepartmentIds());
 	}
 
-	public function getStatus(): ?string
+	public function isOnlineDataFilled(bool $withStatus): bool
 	{
-		$this->fillOnlineData();
-
-		return $this->status;
+		return $withStatus ? $this->isOnlineDataWithStatusFilled : $this->isOnlineDataWithStatusFilled || $this->isOnlineDataFilled;
 	}
 
-	public function getIdle(): ?DateTime
+	public function getStatus(bool $real = false): ?string
 	{
-		$this->fillOnlineData();
+		if ($real)
+		{
+			return $this->userData['STATUS'] ?? 'online';
+		}
+
+		return 'online';
+	}
+
+	public function getIdle(bool $real = false): ?DateTime
+	{
+		if ($real)
+		{
+			$this->fillOnlineData(true);
+		}
 
 		return $this->idle;
 	}
@@ -459,16 +543,22 @@ class User implements RestEntity
 		return $this->lastActivityDate;
 	}
 
-	public function getMobileLastDate(): ?DateTime
+	public function getMobileLastDate(bool $real = false): ?DateTime
 	{
-		$this->fillOnlineData();
+		if ($real)
+		{
+			$this->fillOnlineData(true);
+		}
 
 		return $this->mobileLastDate;
 	}
 
-	public function getDesktopLastDate(): ?DateTime
+	public function getDesktopLastDate(bool $real = false): ?DateTime
 	{
-		$this->fillOnlineData();
+		if ($real)
+		{
+			$this->fillOnlineData(true);
+		}
 
 		return $this->desktopLastDate;
 	}
@@ -523,6 +613,17 @@ class User implements RestEntity
 		$this->isAdmin = $result;
 
 		return $this->isAdmin;
+	}
+
+	public function isSuperAdmin(): bool
+	{
+		global $USER;
+		if (!Loader::includeModule('socialnetwork') || (int)$USER->getId() !== $this->getId())
+		{
+			return false;
+		}
+
+		return $this->isAdmin() && \CSocNetUser::IsEnabledModuleAdmin();
 	}
 
 	//endregion

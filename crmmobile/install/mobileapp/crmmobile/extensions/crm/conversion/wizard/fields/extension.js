@@ -3,6 +3,7 @@
  */
 jn.define('crm/conversion/wizard/fields', (require, exports, module) => {
 	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
 	const { unique } = require('utils/array');
 	const { Type } = require('crm/type');
 	const { getEntityMessage } = require('crm/loc');
@@ -19,9 +20,11 @@ jn.define('crm/conversion/wizard/fields', (require, exports, module) => {
 		constructor(props)
 		{
 			super(props);
-			const { fields } = this.props;
 
-			this.selectedFields = fields.map(({ id }) => id);
+			const { fields } = this.props;
+			this.state = {
+				entityTypeIds: fields.map(({ id }) => id),
+			};
 
 			this.handleOnChange = this.handleOnChange.bind(this);
 		}
@@ -37,22 +40,24 @@ jn.define('crm/conversion/wizard/fields', (require, exports, module) => {
 		handleOnChange(selectedId, enable)
 		{
 			const { onChange } = this.props;
-			const selectedFields = enable
-				? [...this.selectedFields, selectedId]
-				: this.selectedFields.filter((id) => selectedId !== id);
+			const { entityTypeIds } = this.state;
 
-			this.selectedFields = unique(selectedFields);
+			const selectedIds = enable
+				? [...entityTypeIds, selectedId]
+				: entityTypeIds.filter((id) => selectedId !== id);
 
-			if (onChange)
-			{
-				onChange(this.selectedFields);
-			}
+			this.setState({ entityTypeIds: unique(selectedIds) }, () => {
+				if (onChange)
+				{
+					onChange(selectedIds);
+				}
+			});
 		}
 
 		renderField({ text, enable })
 		{
 			const size = 24;
-			const color = enable ? '#333333' : '#bdc1c6';
+			const color = enable ? AppTheme.colors.base1 : AppTheme.colors.base5;
 
 			return View(
 				{
@@ -101,6 +106,7 @@ jn.define('crm/conversion/wizard/fields', (require, exports, module) => {
 		renderFields()
 		{
 			const { fields, type } = this.props;
+			const { entityTypeIds } = this.state;
 
 			if (type === BooleanType)
 			{
@@ -110,9 +116,9 @@ jn.define('crm/conversion/wizard/fields', (require, exports, module) => {
 
 					return EntityBoolean({
 						...field,
-						simple: true,
-						enable: true,
 						entityTypeId,
+						simple: true,
+						enable: entityTypeIds.includes(entityTypeId),
 						onChange: this.handleOnChange,
 						text: fieldText,
 						disabledText: fieldText,

@@ -3,13 +3,14 @@
  */
 jn.define('crm/receive-payment/steps/send-message', (require, exports, module) => {
 	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
 	const { SmsServiceSelector } = require('crm/receive-payment/steps/send-message/sms-service-selector');
 	const { EditButton } = require('crm/receive-payment/steps/send-message/edit-button');
 	const { MessageField } = require('crm/receive-payment/steps/send-message/message-field');
 	const { Instruction } = require('crm/receive-payment/steps/send-message/instruction');
 	const { FocusManager } = require('layout/ui/fields/focus-manager');
 	const { WizardStep } = require('layout/ui/wizard/step');
-	const { ProgressBarNumber } = require('crm/receive-payment/progress-bar-number');
+	const { ProgressBarNumber } = require('crm/salescenter/progress-bar-number');
 	const { SenderCodes } = require('crm/receive-payment/steps/send-message/sender-codes');
 	const { AnalyticsLabel } = require('analytics-label');
 
@@ -51,22 +52,25 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 
 		getProgressBarSettings()
 		{
+			if (this.props.root.dataForSending.selectedContact)
+			{
+				this.contactPhone = this.props.root.dataForSending.selectedContact.phone[0]?.value;
+			}
+
 			return {
 				...super.getProgressBarSettings(),
 				isEnabled: true,
 				title: {
 					text: Loc.getMessage('M_RP_SM_PROGRESS_BAR_TITLE', { '#CONTACT_PHONE#': this.contactPhone }),
 				},
-				number: 3,
-				count: 3,
 			};
 		}
 
 		renderNumberBlock()
 		{
 			return new ProgressBarNumber({
-				number: '3',
-				isCompleted: !!this.currentSenderCode,
+				number: this.getProgressBarSettings().number.toString(),
+				isCompleted: Boolean(this.currentSenderCode),
 			});
 		}
 
@@ -79,7 +83,7 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 		{
 			return View(
 				{
-					backgroundColor: '#eef2f4',
+					backgroundColor: AppTheme.colors.bgPrimary,
 				},
 				this.renderMainBlock(),
 				// this.renderInstructionText(),
@@ -91,7 +95,7 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 			return View(
 				{
 					style: {
-						backgroundColor: '#ffffff',
+						backgroundColor: AppTheme.colors.bgContentPrimary,
 						borderRadius: 12,
 						marginTop: 12,
 					},
@@ -138,7 +142,7 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 					},
 					Text({
 						style: {
-							color: '#a8adb4',
+							color: AppTheme.colors.base4,
 							fontSize: 12,
 						},
 						text: `${sendingMethodText} `,
@@ -151,10 +155,10 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 						},
 						Text({
 							style: {
-								color: '#828B95',
+								color: AppTheme.colors.base3,
 								fontSize: 12,
 								borderBottomWidth: 1,
-								borderBottomColor: '#cdd1d5',
+								borderBottomColor: AppTheme.colors.base5,
 								borderStyle: 'dash',
 								borderDashSegmentLength: 3,
 								borderDashGapLength: 3,
@@ -164,6 +168,7 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 					),
 				);
 			}
+
 			if (this.currentSenderCode === SenderCodes.SMS_PROVIDER)
 			{
 				const smsProviderData = this.senders.find((sender) => sender.code === SenderCodes.SMS_PROVIDER);
@@ -211,7 +216,7 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 						marginTop: 23,
 						marginBottom: 4,
 						alignSelf: 'center',
-						backgroundColor: '#7b8691',
+						backgroundColor: AppTheme.colors.base3,
 					},
 				}),
 				Text({
@@ -219,7 +224,7 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 					style: {
 						fontSize: 11,
 						textAlign: 'center',
-						color: '#828b95',
+						color: AppTheme.colors.base3,
 					},
 				}),
 			);
@@ -256,7 +261,9 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 						: this.sendingMethodDesc.text,
 					orderPublicUrl: this.orderPublicUrl,
 					currentSenderCode: this.currentSenderCode,
-					ref: (ref) => this.messageFieldRef = ref,
+					ref: (ref) => {
+						this.messageFieldRef = ref;
+					},
 				}),
 			);
 		}
@@ -267,6 +274,7 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 			{
 				return null;
 			}
+
 			if (this.currentSenderCode === SenderCodes.SMS_PROVIDER)
 			{
 				return new EditButton({
@@ -341,12 +349,13 @@ jn.define('crm/receive-payment/steps/send-message', (require, exports, module) =
 
 		onMoveToNextStep()
 		{
-			if (this.props.parent)
+			const onMoveToNextStep = BX.prop.getFunction(this.props, 'onMoveToNextStep', null);
+			if (onMoveToNextStep)
 			{
-				this.props.parent.saveSendingMethodForSending({
+				onMoveToNextStep({
 					sendingMethod: this.sendingMethod,
 					sendingMethodDesc: this.sendingMethodDesc,
-				});
+				})
 			}
 
 			return Promise.resolve();

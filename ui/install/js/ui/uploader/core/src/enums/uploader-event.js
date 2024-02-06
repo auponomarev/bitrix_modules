@@ -1,3 +1,6 @@
+/**
+ * @namespace BX.UI.Uploader
+ */
 export const UploaderEvent = {
 	UPLOAD_START: 'onUploadStart',
 	UPLOAD_COMPLETE: 'onUploadComplete',
@@ -7,6 +10,7 @@ export const UploaderEvent = {
 	BEFORE_BROWSE: 'onBeforeBrowse',
 	BEFORE_DROP: 'onBeforeDrop',
 	BEFORE_PASTE: 'onBeforePaste',
+	BEFORE_FILES_ADD: 'onBeforeFilesAdd',
 	FILE_BEFORE_ADD: 'File:onBeforeAdd',
 	FILE_ADD_START: 'File:onAddStart',
 	FILE_LOAD_START: 'File:onLoadStart',

@@ -2,21 +2,18 @@
 
 return [
 	'extensions' => [
-		'layout/polyfill',
+		'loc',
 		'layout/ui/kanban/toolbar',
-		'layout/ui/money',
-		'haptics',
-		'navigation-loader',
-		'crm:type',
-		'crm:storage/category',
-		'crm:stage-toolbar',
-		'crm:state-storage',
+		'layout/pure-component',
+
+		'statemanager/redux/connect',
+		'crm:statemanager/redux/slices/stage-settings',
+		'crm:statemanager/redux/slices/stage-counters',
+		'crm:statemanager/redux/slices/kanban-settings',
 	],
 	'bundle' => [
-		'./entities/base',
-		'./entities/deal',
-		'./entities/lead',
-		'./entities/smart-invoice',
-		'./entities/quote',
+		'./entity-toolbar',
+		'./stage-dropdown',
+		'./stage-summary',
 	],
 ];

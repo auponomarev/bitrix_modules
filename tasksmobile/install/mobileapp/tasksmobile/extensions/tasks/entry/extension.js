@@ -1,50 +1,105 @@
+/**
+ * @module tasks/entry
+ */
 jn.define('tasks/entry', (require, exports, module) => {
-	const {Loc} = require('loc');
-
-	const apiVersion = Application.getApiVersion();
+	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
+	const { Feature } = require('feature');
+	const { checkDisabledToolById } = require('settings/disabled-tools');
+	const { InfoHelper } = require('layout/ui/info-helper');
 
 	class Entry
 	{
-		openEfficiency(data)
+		static getGuid()
 		{
-			const {userId, groupId} = data;
+			function s4()
+			{
+				return Math.floor((1 + Math.random()) * 0x10000).toString(16).slice(1);
+			}
+
+			return `${s4() + s4()}-${s4()}-${s4()}-${s4()}-${s4() + s4() + s4()}`;
+		}
+
+		static async openEfficiency(data)
+		{
+			const effectiveDisabled = await checkDisabledToolById('effective');
+
+			if (effectiveDisabled)
+			{
+				const sliderUrl = await InfoHelper.getUrlByCode('limit_tasks_off');
+				helpdesk.openHelp(sliderUrl);
+
+				return;
+			}
+
+			const { userId, groupId } = data;
 
 			PageManager.openPage({
 				url: `/mobile/tasks/snmrouter/?routePage=efficiency&USER_ID=${userId}&GROUP_ID=${groupId}`,
 				titleParams: {
 					text: Loc.getMessage('TASKSMOBILE_ENTRY_EFFICIENCY_TITLE'),
 				},
+				backgroundColor: AppTheme.colors.bgSecondary,
 				backdrop: {
 					mediumPositionHeight: 600,
+					navigationBarColor: AppTheme.colors.bgSecondary,
 				},
 				cache: false,
 			});
 		}
 
-		openTask(data, params)
+		static async openTask(data, params = {})
 		{
-			if (apiVersion >= 45)
-			{
-				this.openTaskTabsComponent(data, params);
-			}
-			else if (apiVersion >= 31)
-			{
-				this.openTaskComponent(data, params);
-			}
-			else
-			{
-				PageManager.openPage({url: `/mobile/tasks/snmrouter/?routePage=view&TASK_ID=${data.taskId}`});
-			}
-		}
+			const tasksDisabled = await checkDisabledToolById('tasks');
 
-		openTaskTabsComponent(data, params)
-		{
-			const {taskId} = data;
-			const {taskObject, userId, parentWidget} = params;
+			if (tasksDisabled)
+			{
+				const sliderUrl = await InfoHelper.getUrlByCode('limit_tasks_off');
+				helpdesk.openHelp(sliderUrl);
+
+				return;
+			}
+
+			const { taskObject, userId, parentWidget } = params;
+			const taskId = data.id || data.taskId;
 			const defaultTitle = Loc.getMessage('TASKSMOBILE_ENTRY_TASK_DEFAULT_TITLE');
-			const guid = this.getGuid();
+			const guid = Entry.getGuid();
 
-			PageManager.openComponent('JSStackComponent', {
+			if (Feature.isPreventBottomSheetDismissSupported())
+			{
+				return PageManager.openComponent('JSStackComponent', {
+					name: 'JSStackComponent',
+					componentCode: 'tasks.task.view',
+					scriptPath: availableComponents['tasks:tasks.task.view'].publicUrl,
+					canOpenInDefault: true,
+					rootWidget: {
+						name: 'layout',
+						settings: {
+							objectName: 'layout',
+							modal: true,
+							backdrop: {
+								mediumPositionPercent: 89,
+								onlyMediumPosition: true,
+								forceDismissOnSwipeDown: true,
+								swipeAllowed: true,
+								swipeContentAllowed: true,
+								horizontalSwipeAllowed: false,
+								hideNavigationBar: true,
+								navigationBarColor: AppTheme.colors.bgSecondary,
+							},
+						},
+					},
+					params: {
+						COMPONENT_CODE: 'tasks.task.view',
+						TASK_ID: taskId,
+						USER_ID: (userId || env.userId),
+						TASK_OBJECT: taskObject,
+						GUID: guid,
+					},
+				}, (parentWidget || null));
+			}
+
+			return PageManager.openComponent('JSStackComponent', {
 				name: 'JSStackComponent',
 				componentCode: 'tasks.task.tabs',
 				scriptPath: availableComponents['tasks:tasks.task.tabs'].publicUrl,
@@ -54,17 +109,19 @@ jn.define('tasks/entry', (require, exports, module) => {
 					settings: {
 						objectName: 'tabs',
 						modal: true,
-						title: (taskObject ? taskObject.title : (data.taskInfo ? data.taskInfo.title : defaultTitle)),
+						title: (taskObject?.title || data.title || data.taskInfo?.title || defaultTitle),
 						grabTitle: false,
 						grabButtons: true,
 						grabSearch: false,
-						tabs: this.getTaskTabs(taskId, guid, taskObject),
-						leftButtons: [{
-							svg: {
-								content: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M14.722 6.79175L10.9495 10.5643L9.99907 11.5L9.06666 10.5643L5.29411 6.79175L3.96289 8.12297L10.008 14.1681L16.0532 8.12297L14.722 6.79175Z" fill="#A8ADB4"/></svg>',
+						tabs: Entry.getTaskTabs(taskId, guid, taskObject),
+						leftButtons: [
+							{
+								svg: {
+									content: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M14.722 6.79175L10.9495 10.5643L9.99907 11.5L9.06666 10.5643L5.29411 6.79175L3.96289 8.12297L10.008 14.1681L16.0532 8.12297L14.722 6.79175Z" fill="#A8ADB4"/></svg>',
+								},
+								isCloseButton: true,
 							},
-							isCloseButton: true,
-						}],
+						],
 					},
 				},
 				params: {
@@ -77,9 +134,9 @@ jn.define('tasks/entry', (require, exports, module) => {
 			}, (parentWidget || null));
 		}
 
-		getTaskTabs(taskId, guid, taskObject)
+		static getTaskTabs(taskId, guid, taskObject)
 		{
-			const tabCounterData = this.getTabCounterData(taskObject);
+			const tabCounterData = Entry.getTabCounterData(taskObject);
 
 			return {
 				items: [
@@ -127,7 +184,7 @@ jn.define('tasks/entry', (require, exports, module) => {
 			};
 		}
 
-		getTabCounterData(task)
+		static getTabCounterData(task)
 		{
 			let expiredCounter = 0;
 			let newCommentsCounter = 0;
@@ -158,146 +215,116 @@ jn.define('tasks/entry', (require, exports, module) => {
 			};
 		}
 
-		openTaskComponent(data, params)
+		static async openTaskList(data)
 		{
-			const {taskId, taskInfo} = data;
-			const {userId, taskObject, getTaskInfo} = params;
-			const defaultTitle = Loc.getMessage('TASKSMOBILE_ENTRY_TASK_DEFAULT_TITLE');
-			const guid = this.getGuid();
+			const tasksDisabled = await checkDisabledToolById('tasks');
 
-			PageManager.openComponent('JSStackComponent', {
-				name: 'JSStackComponent',
-				componentCode: 'tasks.view',
-				scriptPath: availableComponents['tasks:tasks.view'].publicUrl,
-				canOpenInDefault: true,
-				rootWidget: {
-					name: 'taskcard',
-					settings: {
-						objectName: 'taskcard',
-						title: defaultTitle,
-						taskInfo,
-						page: {
-							url: `${env.siteDir}mobile/tasks/snmrouter/?routePage=view&TASK_ID=${taskId}&NEW_CARD=Y&GUID=${guid}`,
-							titleParams: {
-								text: defaultTitle,
-							},
-							autoHideLoading: false,
-						},
-					},
-				},
-				params: {
-					COMPONENT_CODE: 'tasks.view',
-					MODE: 'view',
-					TASK_ID: taskId,
-					USER_ID: (userId || env.userId),
-					FORM_ID: 'MOBILE_TASK_VIEW',
-					LANGUAGE_ID: env.languageId,
-					GUID: guid,
-					GET_TASK_INFO: (getTaskInfo || false),
-					TASK_OBJECT: taskObject,
-				},
-			});
-		}
-
-		openTaskList(data)
-		{
-			if (apiVersion < 31)
+			if (tasksDisabled)
 			{
+				const sliderUrl = await InfoHelper.getUrlByCode('limit_tasks_off');
+				helpdesk.openHelp(sliderUrl);
+
 				return;
 			}
 
-			const {siteId, siteDir, languageId, userId} = env;
+			const { siteId, siteDir, languageId, userId } = env;
+			const extendedData = {
+				...data,
+				groupId: data.groupId || 0,
+				ownerId: data.ownerId || userId,
+				getProjectData: data.getProjectData || true,
+			};
 
-			data.groupId = (data.groupId || 0);
-			data.ownerId = (data.ownerId || userId);
-			data.getProjectData = (data.getProjectData || true);
-
-			PageManager.openComponent('JSStackComponent', {
-				componentCode: 'tasks.list',
-				scriptPath: availableComponents['tasks:tasks.list'].publicUrl,
-				canOpenInDefault: true,
-				title: (data.groupName || ''),
-				rootWidget: {
-					name: 'tasks.list',
-					settings: {
-						...{
-							objectName: 'list',
-							useSearch: true,
-							useLargeTitleMode: true,
-							emptyListMode: true,
-						},
-						...this.getInputPanelParams(data.ownerId),
+			return Entry.getIsNewDashboardActive().then((isNewDashboardActive) => {
+				PageManager.openComponent('JSStackComponent', {
+					componentCode: Entry.getTaskListComponentCode(isNewDashboardActive),
+					canOpenInDefault: true,
+					title: (extendedData.groupName || Loc.getMessage('TASKSMOBILE_ENTRY_TASK_LIST_TITLE')),
+					scriptPath: Entry.getTaskListScriptPath(isNewDashboardActive),
+					rootWidget: Entry.getTaskListRootWidget(isNewDashboardActive),
+					params: {
+						COMPONENT_CODE: Entry.getTaskListComponentCode(isNewDashboardActive),
+						GROUP_ID: extendedData.groupId,
+						USER_ID: extendedData.ownerId,
+						DATA: extendedData,
+						SITE_ID: siteId,
+						SITE_DIR: siteDir,
+						LANGUAGE_ID: languageId,
+						PATH_TO_TASK_ADD: `${siteDir}mobile/tasks/snmrouter/?routePage=#action#&TASK_ID=#taskId#`,
 					},
-				},
-				params: {
-					COMPONENT_CODE: 'tasks.list',
-					GROUP_ID: data.groupId,
-					USER_ID: data.ownerId,
-					DATA: data,
-					SITE_ID: siteId,
-					SITE_DIR: siteDir,
-					LANGUAGE_ID: languageId,
-					PATH_TO_TASK_ADD: `${siteDir}mobile/tasks/snmrouter/?routePage=#action#&TASK_ID=#taskId#`,
-				},
+				});
 			});
 		}
 
-		getInputPanelParams(userId)
+		static getIsNewDashboardActive()
 		{
-			if (apiVersion >= 40)
+			return new Promise((resolve) => {
+				const has = Object.prototype.hasOwnProperty;
+				const storage = Application.storageById('tasksmobile');
+				const cacheSettings = storage.getObject('settings');
+
+				if (has.call(cacheSettings, 'isNewDashboardActive'))
+				{
+					resolve(cacheSettings.isNewDashboardActive);
+				}
+				else
+				{
+					BX.ajax.runAction('tasksmobile.Settings.isNewDashboardActive')
+						.then((result) => {
+							cacheSettings.isNewDashboardActive = result.data;
+							storage.setObject('settings', cacheSettings);
+							resolve(result.data);
+						})
+						.catch(() => resolve(false))
+					;
+				}
+			});
+		}
+
+		static getTaskListComponentCode(isNewDashboardActive)
+		{
+			return (isNewDashboardActive ? 'tasks.dashboard' : 'tasks.list');
+		}
+
+		static getTaskListScriptPath(isNewDashboardActive)
+		{
+			const componentName = (isNewDashboardActive ? 'tasks:tasks.dashboard' : 'tasks:tasks.list.legacy');
+
+			return availableComponents[componentName].publicUrl;
+		}
+
+		static getTaskListRootWidget(isNewDashboardActive)
+		{
+			if (isNewDashboardActive)
 			{
 				return {
-					inputPanel: {
-						action: 0,
-						callback: 0,
-						useImageButton: true,
-						useAudioMessages: true,
-						smileButton: [],
-						message: {
-							placeholder: Loc.getMessage('TASKSMOBILE_ENTRY_TASK_LIST_INPUT_PANEL_PLACEHOLDER'),
-						},
-						attachButton: {
-							items: [
-								{
-									id: 'disk',
-									name: Loc.getMessage('TASKSMOBILE_ENTRY_TASK_LIST_INPUT_PANEL_B24_DISK'),
-									dataSource: {
-										multiple: true,
-										url: `/mobile/?mobile_action=disk_folder_list&type=user&path=%2F&entityId=${userId}`,
-									},
-								},
-							],
-						},
-						attachFileSettings: {
-							resize: {
-								targetWidth: -1,
-								targetHeight: -1,
-								sourceType: 1,
-								encodingType: 0,
-								mediaType: 2,
-								allowsEdit: false,
-								saveToPhotoAlbum: true,
-								cameraDirection: 0,
-							},
-							maxAttachedFilesCount: 100,
-						},
+					name: 'layout',
+					settings: {
+						objectName: 'layout',
+						useSearch: true,
+						useLargeTitleMode: true,
 					},
 				};
 			}
 
-			return {};
-		}
-
-		getGuid()
-		{
-			function s4()
-			{
-				return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
-			}
-
-			return `${s4() + s4()}-${s4()}-${s4()}-${s4()}-${s4() + s4() + s4()}`;
+			return {
+				name: 'tasks.list',
+				settings: {
+					objectName: 'list',
+					useSearch: true,
+					useLargeTitleMode: true,
+					emptyListMode: true,
+				},
+			};
 		}
 	}
 
-	module.exports = {Entry};
+	if (typeof jnComponent?.preload === 'function')
+	{
+		const { publicUrl } = availableComponents['tasks:tasks.task.view'] || {};
+
+		setTimeout(() => jnComponent.preload(publicUrl), 1000);
+	}
+
+	module.exports = { Entry };
 });

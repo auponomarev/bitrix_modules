@@ -265,7 +265,6 @@
 	var ClientTracker = {
 		getData: function ()
 		{
-			debugger;
 			var data = {
 				gaId: this.getGaId(),
 				yaId: this.getYaId(),
@@ -343,7 +342,7 @@
 				!id
 				&& window.ym
 				&& typeof window.ym === 'function'
-				&& window.ym?.a[0] !== undefined
+				&& (window.ym.a && window.ym.a[0] !== undefined)
 			)
 			{
 				id = window.ym.a[0][0];

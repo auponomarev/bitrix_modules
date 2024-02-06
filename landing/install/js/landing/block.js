@@ -126,9 +126,11 @@
 
 			type.attrKey = prop;
 
-			if (prop === "background")
+			if (prop === 'background')
 			{
-				type.items = type.items.concat(lp.options.style[namespace]["style"]["background-overlay"].items);
+				const backgroundOverlayItems = lp.options.style[namespace]['style']['background-overlay']
+					.items.filter((obj) => obj.name !== 'g-bg--after');
+				type.items = [...type.items, ...backgroundOverlayItems];
 			}
 
 			return type;
@@ -274,7 +276,7 @@
 	 *
 	 * @property {BX.Landing.UI.Collection.PanelCollection.<BX.Landing.UI.Panel.BasePanel>} panels - Panels collection
 	 * @property {BX.Landing.Collection.CardCollection.<BX.Landing.Block.Card>} cards - Cards collection
-	 * @property {BX.Landing.Collection.NodeCollection.<BX.Landing.Block.Node>} nodes - Nodes collection
+	 * @property {BX.Landing.Collection.NodeCollection.<BX.Landing.Node>} nodes - Nodes collection
 	 * @property {blockManifest} manifest
 	 *
 	 * @constructor
@@ -295,6 +297,11 @@
 		this.manifest.nodes = isPlainObject(options.manifest.nodes) ? options.manifest.nodes : {};
 		this.manifest.cards = isPlainObject(options.manifest.cards) ? options.manifest.cards : {};
 		this.manifest.attrs = isPlainObject(options.manifest.attrs) ? options.manifest.attrs : {};
+		this.manifest.style = isPlainObject(options.manifest.style) ? options.manifest.style : {};
+		if (isPlainObject(options.manifest.style))
+		{
+			this.styleNodes = isPlainObject(options.manifest.style.nodes) ? options.manifest.style.nodes : {};
+		}
 		this.onStyleInputWithDebounce = debounce(this.onStyleInput, 300, this);
 		this.changeTimeout = null;
 		this.php = options.php;
@@ -345,24 +352,39 @@
 		this.adjustContextSensitivityStyles();
 
 		var envOptions = BX.Landing.Env.getInstance().getOptions();
-		var specialType = envOptions.specialType;
-		if (this.isDefaultCrmFormBlock())
+		if (this.isDefaultCrmFormBlock() || this.isCrmFormBlock())
 		{
-			var showOptions = {
-				formId: envOptions.formEditorData.formOptions.id,
-				formOptions: this.getCrmFormOptions(),
-				block: this,
-				showWithOptions: true,
-			};
-			var uri = new BX.Uri(window.top.location.toString());
-			if (BX.Text.toBoolean(uri.getQueryParam('formCreated')))
+			const uri = new BX.Uri(window.top.location.toString());
+			if (BX.Text.toBoolean(uri.getQueryParam('replacedLanding')))
 			{
-				showOptions.state = 'presets';
-			}
+				uri.removeQueryParam('replacedLanding');
+				top.window.history.replaceState({}, document.title, uri.toString());
 
-			void BX.Landing.UI.Panel.FormSettingsPanel
-				.getInstance()
-				.show(showOptions);
+				this.onStyleShow();
+				setTimeout(() => {
+					const y = this.node.offsetTop;
+					BX.Landing.PageObject.getEditorWindow().scrollTo(0, y);
+				}, 300);
+			}
+			else
+			{
+				const showOptions = {
+					formId: envOptions.formEditorData.formOptions.id,
+					formOptions: this.getCrmFormOptions(),
+					block: this,
+					showWithOptions: true,
+				};
+
+				if (BX.Text.toBoolean(uri.getQueryParam('formCreated')))
+				{
+					showOptions.state = 'presets';
+				}
+
+				void BX.Landing.UI.Panel.FormSettingsPanel
+					.getInstance()
+					.show(showOptions)
+				;
+			}
 		}
 
 		BX.Landing.PageObject.getBlocks().push(this);
@@ -2145,7 +2167,7 @@
 				{
 					var currentLabel;
 
-					if (labelNode instanceof BX.Landing.Block.Node.Text)
+					if (labelNode instanceof BX.Landing.Node.Text)
 					{
 						currentLabel = create("span", {
 							props: {className: "landing-card-title-text"},
@@ -2160,7 +2182,7 @@
 						return;
 					}
 
-					if (labelNode instanceof BX.Landing.Block.Node.Link)
+					if (labelNode instanceof BX.Landing.Node.Link)
 					{
 						currentLabel = create("span", {
 							props: {className: "landing-card-title-link"},
@@ -2175,7 +2197,7 @@
 						return;
 					}
 
-					if (labelNode instanceof BX.Landing.Block.Node.Icon)
+					if (labelNode instanceof BX.Landing.Node.Icon)
 					{
 						currentLabel = create("span", {
 							props: {className: "landing-card-title-icon"},
@@ -2190,7 +2212,7 @@
 						return;
 					}
 
-					if (labelNode instanceof BX.Landing.Block.Node.Img)
+					if (labelNode instanceof BX.Landing.Node.Img)
 					{
 						currentLabel = create("span", {
 							props: {className: "landing-card-title-img"},
@@ -2661,7 +2683,7 @@
 						onChange: this.onNodeChange.bind(this),
 						onChangeOptions: this.onNodeOptionsChange.bind(this),
 						onAttributeChange: this.onAttributeChange.bind(this),
-						onDesignShow: this.showStylePanel.bind(this),
+						onDesignShow: this.onStyleShow.bind(this),
 						uploadParams: {
 							action: "Block::uploadFile",
 							block: this.id
@@ -2844,10 +2866,16 @@
 
 			this.tmpContent.innerHTML = "";
 			contentPanel.show();
+			BX.Event.bind(contentPanel.layout, 'click', this.onContentPanelClick.bind(this));
 
 			setTimeout(function() {
 				this.lastBlockState = this.fetchRequestData(contentPanel, true);
 			}.bind(this), 300);
+		},
+
+		onContentPanelClick: function()
+		{
+			BX.Event.EventEmitter.emit('BX.Landing.UI.Panel.ContentEdit:onClick');
 		},
 
 		createHistoryEntry: function(newState)
@@ -2978,34 +3006,98 @@
 		/**
 		 * Handles event on style panel show
 		 */
-		onStyleShow: function()
+		onStyleShow: function(selector = null)
 		{
 			BX.Landing.UI.Panel.EditorPanel.getInstance().hide();
-
-			if (this.isCrmFormPage() && this.isCrmFormBlock())
-			{
-				var formSelector = Object.entries(this.manifest.style.nodes).reduce(function(acc, item) {
-					if (item[1].type === 'crm-form')
+			BX.Landing.PageObject.getInstance().design()
+				.then((stylePanel) => {
+					if (isPlainObject(this.styleNodes))
 					{
-						return item[0];
+						if (stylePanel.isShown() && this.id === stylePanel.blockId)
+						{
+							stylePanel.forms.forEach((form) => {
+								if (form.selector === this.selector)
+								{
+									stylePanel.scrollElement = form;
+									form.collapsed = false;
+									BX.Dom.removeClass(form.layout, 'landing-ui-form-style--collapsed');
+									setTimeout(() => {
+										stylePanel.scrollElement.layout.scrollIntoView({
+											behavior: 'smooth',
+											block: 'start',
+											inline: 'nearest',
+										});
+									}, 100);
+								}
+								else
+								{
+									form.collapsed = true;
+									BX.Dom.addClass(form.layout, 'landing-ui-form-style--collapsed');
+								}
+							});
+						}
+						else
+						{
+							stylePanel.clear();
+							const sortedStyleNodes = this.getSortedStyleNodes(this.styleNodes);
+							stylePanel.prepareFooter(this.isExistMultiSelectionNode(sortedStyleNodes));
+							if (selector === null || typeof selector !== 'string')
+							{
+								this.showStylePanel(this.selector, stylePanel.blockId);
+								sortedStyleNodes.forEach((key) => {
+									let currentTarget = null;
+									this.styles.forEach((styles) => {
+										if (styles.selector === key)
+										{
+											currentTarget = styles.currentTarget;
+										}
+									});
+									this.showStylePanel(key, stylePanel.blockId, currentTarget, true);
+								});
+							}
+							else
+							{
+								this.showStylePanel(this.selector, stylePanel.blockId, null, true);
+								sortedStyleNodes.forEach((key) => {
+									let currentTarget = null;
+									this.styles.forEach((styles) => {
+										if (styles.selector === key)
+										{
+											currentTarget = styles.currentTarget;
+										}
+									});
+									this.showStylePanel(key, stylePanel.blockId, currentTarget, true);
+								});
+								setTimeout(() => {
+									stylePanel.forms.forEach((form) => {
+										if (form.selector === selector)
+										{
+											stylePanel.scrollElement = form;
+											form.collapsed = false;
+											BX.Dom.removeClass(form.layout, 'landing-ui-form-style--collapsed');
+											setTimeout(() => {
+												stylePanel.scrollElement.layout.scrollIntoView({
+													behavior: 'smooth',
+													block: 'start',
+													inline: 'nearest',
+												});
+											}, 500);
+										}
+										else
+										{
+											form.collapsed = true;
+											BX.Dom.addClass(form.layout, 'landing-ui-form-style--collapsed');
+										}
+									});
+								}, 1000);
+							}
+						}
 					}
-
-					return acc;
-				}, null);
-
-				if (formSelector)
-				{
-					this.showStylePanel(formSelector);
-				}
-				else
-				{
-					this.showStylePanel(this.selector);
-				}
-			}
-			else
-			{
-				this.showStylePanel(this.selector);
-			}
+					else
+					{
+						this.showStylePanel(this.selector, stylePanel.blockId);
+					}
+				});
 		},
 
 
@@ -3059,9 +3151,11 @@
 		 * 		[title]
 		 * 	}} settings
 		 * @param {boolean} [isBlock = false]
+		 * @param {HTMLElement} currentTarget
+		 * @param {boolean} collapsed
 		 * @returns {?BX.Landing.UI.Form.StyleForm}
 		 */
-		createStyleForm: function(selector, settings, isBlock)
+		createStyleForm: function(selector, settings, isBlock, currentTarget, collapsed = false)
 		{
 			var form = this.forms.get(selector);
 
@@ -3080,8 +3174,10 @@
 				form = new StyleForm({
 					id: selector,
 					title: name,
-					selector: selector,
-					iframe: window
+					selector,
+					iframe: window,
+					collapsed: collapsed,
+					currentTarget: currentTarget,
 				});
 
 				type = this.expandTypeGroups(type).reduce(function(acc, item) {
@@ -3305,15 +3401,143 @@
 
 		onStyleClick: function(selector)
 		{
-			this.showStylePanel(selector);
-			var form = this.forms.get(selector);
-
-			if (form)
-			{
-				BX.Landing.PageObject.getInstance().design().then(function(panel) {
-					BX.Landing.UI.Panel.Content.scrollTo(panel.content, null);
+			BX.Landing.PageObject.getInstance().design()
+				.then((stylePanel) => {
+					const options = this.getStyleOptions(selector);
+					this.styles.forEach((styles) => {
+						if (styles.selector.split('@')[0] === selector)
+						{
+							stylePanel.forms.forEach((form) => {
+								if (
+									form.selector === selector
+									&& form.currentTarget !== styles.currentTarget
+								)
+								{
+									const isBlock = this.isBlockSelector(selector);
+									const newForm = this.createStyleForm(selector, options, isBlock, styles.currentTarget, true);
+									this.replaceStyleForm(newForm, stylePanel);
+								}
+							});
+						}
+					});
+					if (this.id === stylePanel.blockId)
+					{
+						let currentForm = null;
+						stylePanel.forms.forEach((form) => {
+							if (
+								form.selector === selector
+								|| (options.type === 'crm-form' && form.specialType === 'crm_forms')
+							)
+							{
+								currentForm = form;
+							}
+						});
+						if (currentForm !== null)
+						{
+							stylePanel.scrollElement = currentForm;
+							currentForm.collapsed = false;
+							BX.Dom.removeClass(currentForm.layout, 'landing-ui-form-style--collapsed');
+							setTimeout(() => {
+								stylePanel.scrollElement.layout.scrollIntoView({
+									behavior: 'smooth',
+									block: 'start',
+									inline: 'nearest',
+								});
+							}, 100);
+						}
+					}
+					else
+					{
+						stylePanel.clear();
+						if (selector === this.selector)
+						{
+							this.showStylePanel(this.selector, stylePanel.blockId);
+						}
+						else
+						{
+							this.showStylePanel(this.selector, stylePanel.blockId, null, true);
+						}
+						const sortedStyleNodes = this.getSortedStyleNodes(this.styleNodes);
+						stylePanel.prepareFooter(this.isExistMultiSelectionNode(sortedStyleNodes));
+						sortedStyleNodes.forEach((key) => {
+							let currentTarget = null;
+							this.styles.forEach((styles) => {
+								if (styles.selector === key)
+								{
+									currentTarget = styles.currentTarget;
+								}
+							});
+							const collapsed = key !== selector;
+							this.showStylePanel(key, stylePanel.blockId, currentTarget, collapsed);
+						});
+						if (this.id !== stylePanel.blockId)
+						{
+							const intervalId = setInterval(() => {
+								if (!this.stylePanel.content.hidden && this.scrollElement)
+								{
+									this.scrollElement.layout.scrollIntoView({
+										behavior: 'smooth',
+										block: 'start',
+										inline: 'nearest',
+									});
+									clearInterval(intervalId);
+								}
+							}, 100);
+						}
+					}
 				});
+		},
+
+		replaceStyleForm: function(newForm, stylePanel)
+		{
+			let oldForm = null;
+			stylePanel.forms.forEach((form) => {
+				if (newForm.selector === form.id)
+				{
+					oldForm = form;
+				}
+			});
+			if (oldForm)
+			{
+				stylePanel.replaceForm(newForm, oldForm);
 			}
+		},
+
+		/**
+		 * Sorting nodes as they are found in the DOM
+		 * @param nodes
+		 * @return {object}
+		 */
+		getSortedStyleNodes: function(nodes) {
+			const contentHtml = this.content.innerHTML;
+			const indexMap = {};
+			const negativeIndexMap = {};
+			Object.keys(nodes).forEach(key => {
+				const index = contentHtml.indexOf(key.substring(1));
+				if (index !== -1)
+				{
+					indexMap[key] = index;
+				}
+				else
+				{
+					negativeIndexMap[key] = index;
+				}
+			});
+			let sortedNodes = Object.keys(indexMap).sort((a, b) => indexMap[a] - indexMap[b]);
+			const negativeNodes = Object.values(Object.keys(negativeIndexMap));
+			for (let i = 0; i < negativeNodes.length; i++) {
+				sortedNodes.push(negativeNodes[i]);
+			}
+			return sortedNodes;
+		},
+
+		/**
+		 * Check if exist multi selection node
+		 * @param nodes
+		 * @return {boolean}
+		 */
+		isExistMultiSelectionNode: function(nodes) {
+			return nodes.some(node => this.content.querySelectorAll(node).length > 1);
 		},
 
 
@@ -3389,7 +3613,7 @@
 		/**
 		 * Shows style editor panel
 		 */
-		showStylePanel: function(selector)
+		showStylePanel: function(selector, blockId, currentTarget = null, collapsed = false)
 		{
 			var FormSettingsPanel = BX.Reflection.getClass('BX.Landing.UI.Panel.FormSettingsPanel');
 			var formMode = (
@@ -3399,11 +3623,11 @@
 			);
 			var isBlock = this.isBlockSelector(selector);
 			var options = this.getStyleOptions(selector);
-			this.isMultiselection = this.content.querySelectorAll(selector).length > 1;
 
 			BX.Landing.PageObject.getInstance().design()
 				.then(function(stylePanel) {
 					stylePanel.clearContent();
+					stylePanel.blockId = this.id;
 
 					if (options.type === 'crm-form')
 					{
@@ -3428,7 +3652,7 @@
 								]);
 							}.bind(this))
 							.catch(function(error) {
-								console.log(error);
+								console.error(error);
 							});
 					}
 
@@ -3439,14 +3663,22 @@
 						});
 				}.bind(this))
 				.then(function(result) {
+					if (!result)
+					{
+						return;
+					}
 					var stylePanel = result[0];
+					this.stylePanel = stylePanel;
 					var formStyleAdapter = result[1];
-
-					stylePanel.prepareFooter(this.isMultiselection);
 
 					if (formStyleAdapter)
 					{
-						stylePanel.appendForm(formStyleAdapter.getStyleForm());
+						const form = formStyleAdapter.getStyleForm(collapsed);
+						stylePanel.appendForm(form);
+						if (collapsed === false)
+						{
+							this.scrollElement = form;
+						}
 						return;
 					}
 
@@ -3454,9 +3686,12 @@
 					{
 						if (options.type.length)
 						{
-							stylePanel.appendForm(
-								this.createStyleForm(selector, options, isBlock)
-							);
+							const form = this.createStyleForm(selector, options, isBlock, currentTarget, collapsed);
+							stylePanel.appendForm(form);
+							if (collapsed === false)
+							{
+								this.scrollElement = form;
+							}
 						}
 					}
 
@@ -3469,7 +3704,8 @@
 								selector: selector,
 								group: options.additional,
 								attrsType: options.additional.attrsType,
-								onChange: this.onAttributeChange.bind(this)
+								onChange: this.onAttributeChange.bind(this),
+								name: options.additional.name,
 							})
 						);
 						return;
@@ -3483,7 +3719,8 @@
 									form: StyleForm,
 									selector: selector,
 									group: group,
-									onChange: this.onAttributeChange.bind(this)
+									onChange: this.onAttributeChange.bind(this),
+									name: options.additional[0].name,
 								})
 							);
 						}, this);
@@ -3552,7 +3789,7 @@
 		 */
 		createAdditionalForm: function(options)
 		{
-			var form = new options.form({title: options.group.name, type: "attrs"});
+			var form = new options.form({ title: options.name, type: 'attrs', collapsed: true });
 
 			var attrsSet = [];
 			if (!BX.Type.isUndefined(options.group.attrs))
@@ -3604,6 +3841,7 @@
 				var eventData = event.data;
 				this.prepareAttributeValue(eventData, form);
 			});
+
 			return form;
 		},
 
@@ -4048,20 +4286,23 @@
 				return acc;
 			}, null);
 
-			if (formSelector)
-			{
-				this.showStylePanel(formSelector);
-			}
-			else
-			{
-				this.showStylePanel(this.selector);
-			}
+			BX.Landing.PageObject.getInstance().design()
+				.then((stylePanel) => {
+					if (formSelector)
+					{
+						this.showStylePanel(formSelector, stylePanel.blockId);
+					}
+					else
+					{
+						this.showStylePanel(this.selector, stylePanel.blockId);
+					}
+				});
 		},
 
 
 		/**
 		 * Handles node content change event
-		 * @param {BX.Landing.Block.Node} node
+		 * @param {BX.Landing.Node} node
 		 * @param {?boolean} [preventHistory = false]
 		 */
 		onNodeChange: function(node, preventHistory)
@@ -5077,7 +5318,7 @@
 									form: BaseForm,
 									selector: selector,
 									group: options,
-									onChange: (function() {})
+									onChange: (function() {}),
 								})
 							);
 						}

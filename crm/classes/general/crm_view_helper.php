@@ -1,6 +1,8 @@
 <?php
+
 IncludeModuleLangFile(__FILE__);
 
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
 use Bitrix\Crm\Category\DealCategory;
 use Bitrix\Crm\Color\PhaseColorScheme;
 use Bitrix\Crm\Conversion\LeadConversionType;
@@ -270,7 +272,7 @@ class CCrmViewHelper
 		}
 		elseif($entityTypeID === CCrmOwnerType::Quote)
 		{
-			return GetMessage('CRM_CLIENT_SUMMARY_HIDDEN_QUOTE');
+			return GetMessage('CRM_CLIENT_SUMMARY_HIDDEN_QUOTE_MSGVER_1');
 		}
 		return GetMessage('CRM_CLIENT_SUMMARY_HIDDEN');
 	}
@@ -562,7 +564,8 @@ class CCrmViewHelper
 
 		$entityTypeName = isset($arParams['ENTITY_TYPE_NAME'])? mb_strtolower($arParams['ENTITY_TYPE_NAME']) : '';
 		$entityTypeId = CCrmOwnerType::ResolveID($arParams['ENTITY_TYPE_NAME']);
-		$entityID = isset($arParams['ENTITY_ID']) ? $arParams['ENTITY_ID'] : '';
+		$entityID = $arParams['ENTITY_ID'] ?? '';
+		$categoryId = $arParams['CATEGORY_ID'] ?? 0;
 
 		$allowEdit = isset($arParams['ALLOW_EDIT']) ? $arParams['ALLOW_EDIT'] : false;
 		$menuItems = isset($arParams['MENU_ITEMS']) ? $arParams['MENU_ITEMS'] : array();
@@ -626,7 +629,13 @@ class CCrmViewHelper
 					if (\Bitrix\Crm\Settings\Crm::isUniversalActivityScenarioEnabled())
 					{
 						$currentUser = CUtil::PhpToJSObject(static::getUserInfo(true, false));
-						$jsOnClick = "BX.CrmUIGridExtension.showActivityAddingPopup(this, '".$preparedGridId."', " . (int)$entityTypeId . ", " . (int)$entityID . ", " . $currentUser . ");";
+						$pingSettings = CUtil::PhpToJSObject(
+							(new TodoPingSettingsProvider(
+								$entityTypeId,
+								$categoryId
+							))->fetchForJsComponent()
+						);
+						$jsOnClick = "BX.CrmUIGridExtension.showActivityAddingPopup(this, '".$preparedGridId."', " . (int)$entityTypeId . ", " . (int)$entityID . ", " . $currentUser . ", " . $pingSettings . ");";
 					}
 					else
 					{
@@ -694,7 +703,13 @@ class CCrmViewHelper
 				if (\Bitrix\Crm\Settings\Crm::isUniversalActivityScenarioEnabled())
 				{
 					$currentUser = CUtil::PhpToJSObject(static::getUserInfo(true, false));
-					$jsOnClick = "BX.CrmUIGridExtension.showActivityAddingPopup(this, '".$preparedGridId."', " . (int)$entityTypeId . ", " . (int)$entityID . ", " . $currentUser . ");";
+					$pingSettings = CUtil::PhpToJSObject(
+						(new TodoPingSettingsProvider(
+							$entityTypeId,
+							$categoryId
+						))->fetchForJsComponent()
+					);
+					$jsOnClick = "BX.CrmUIGridExtension.showActivityAddingPopup(this, '".$preparedGridId."', " . (int)$entityTypeId . ", " . (int)$entityID . ", " . $currentUser . ", " . $pingSettings . ");";
 				}
 				else
 				{
@@ -2100,7 +2115,7 @@ class CCrmViewHelper
 			//'apologyTitle' => Get?Message('CRM_LEAD_STATUS_MANAGER_APOLOGY_TTL'),
 			'failureTitle' => GetMessage('CRM_LEAD_STATUS_MANAGER_FAILURE_TTL'),
 			'selectorTitle' => GetMessage('CRM_LEAD_STATUS_MANAGER_SELECTOR_TTL'),
-			'checkErrorTitle' => GetMessage('CRM_LEAD_STAGE_MANAGER_CHECK_ERROR_TTL'),
+			'checkErrorTitle' => GetMessage('CRM_LEAD_STAGE_MANAGER_CHECK_ERROR_TTL_MSGVER_1'),
 			'checkErrorHelp' => GetMessage('CRM_STAGE_MANAGER_CHECK_ERROR_HELP'),
 			'checkErrorHelpArticleCode' => '8233923',
 			'conversionCancellationTitle' => GetMessage('CRM_CONFIRMATION_DLG_TTL_MSGVER_1'),
@@ -2803,12 +2818,18 @@ class CCrmViewHelper
 	public static function GetGridOptionalColumns($gridID)
 	{
 		$aOptions = CUserOptions::GetOption('main.interface.grid', $gridID, array());
-		if(!is_array($aOptions['views']))
-			$aOptions['views'] = array();
+		if(!(isset($aOptions['views']) && is_array($aOptions['views'])))
+		{
+			$aOptions['views'] = [];
+		}
 		if(!array_key_exists('default', $aOptions['views']))
-			$aOptions['views']['default'] = array('columns'=>'');
-		if($aOptions['current_view'] == '' || !array_key_exists($aOptions['current_view'], $aOptions['views']))
+		{
+			$aOptions['views']['default'] = ['columns'=>''];
+		}
+		if(($aOptions['current_view'] ?? '') == '' || !array_key_exists($aOptions['current_view'], $aOptions['views']))
+		{
 			$aOptions['current_view'] = 'default';
+		}
 		$aCurView = $aOptions['views'][$aOptions['current_view']];
 		$aColsTmp = explode(',', $aCurView['columns']);
 		$aCols = array();
@@ -3040,7 +3061,7 @@ class CCrmViewHelper
 			{
 				$isTresholdPassed = true;
 				$info['semantics'] = 'success';
-				$info['hint'] = GetMessage('CRM_QUOTE_STATUS_MANAGER_APPROVED_STEP_HINT');
+				$info['hint'] = GetMessage('CRM_QUOTE_STATUS_MANAGER_APPROVED_STEP_HINT_MSGVER_1');
 			}
 			elseif($status['STATUS_ID'] === 'DECLAINED')
 			{
@@ -3058,10 +3079,10 @@ class CCrmViewHelper
 		}
 
 		$messages = array(
-			'dialogTitle' => GetMessage('CRM_QUOTE_STATUS_MANAGER_DLG_TTL'),
+			'dialogTitle' => GetMessage('CRM_QUOTE_STATUS_MANAGER_DLG_TTL_MSGVER_1'),
 			'failureTitle' => GetMessage('CRM_QUOTE_STATUS_MANAGER_FAILURE_TTL'),
-			'selectorTitle' => GetMessage('CRM_QUOTE_STATUS_MANAGER_SELECTOR_TTL'),
-			'checkErrorTitle' => GetMessage('CRM_QUOTE_STATUS_MANAGER_CHECK_ERROR_TTL'),
+			'selectorTitle' => GetMessage('CRM_QUOTE_STATUS_MANAGER_SELECTOR_TTL_MSGVER_1'),
+			'checkErrorTitle' => GetMessage('CRM_QUOTE_STATUS_MANAGER_CHECK_ERROR_TTL_MSGVER_2'),
 			'checkErrorHelp' => GetMessage('CRM_STAGE_MANAGER_CHECK_ERROR_HELP'),
 			'checkErrorHelpArticleCode' => '8233923'
 		);
@@ -3330,12 +3351,19 @@ class CCrmViewHelper
 			. 'BX.ready(' . PHP_EOL
 			. '    function ()' . PHP_EOL
 			. '    {' . PHP_EOL
+			. '       const detectCrmSliderWidth = function () {' . PHP_EOL
+			. '           if (window.innerWidth < 1500) {'. PHP_EOL
+			. '               return null;' . PHP_EOL
+			. '           }' . PHP_EOL
+			. '           return 1500 + Math.floor((window.innerWidth - 1500) / 3);' . PHP_EOL
+			. '        };' . PHP_EOL
 			. '        BX.Crm.Page.initialize();' . PHP_EOL
 			. '        BX.SidePanel.Instance.open(' . PHP_EOL
 			. "            \"$url\"," . PHP_EOL
 			. '            {' . PHP_EOL
 			. '                cacheable: false,' . PHP_EOL
 			. '                loader: "crm-entity-details-loader",' . PHP_EOL
+			. '                width: detectCrmSliderWidth(),' . PHP_EOL
 			. '                events: {' . PHP_EOL
 			. '                    onCloseComplete: function () {' . PHP_EOL
 			. '                        let themePicker = '. PHP_EOL
@@ -3372,5 +3400,28 @@ class CCrmViewHelper
 		}
 
 		return $userInfo;
+	}
+
+	public static function renderObservers(int $entityTypeId, int $entityId, ?array $input): string
+	{
+		if (empty($input))
+		{
+			return '';
+		}
+
+		$entityName = CCrmOwnerType::ResolveName($entityTypeId);
+
+		$result = [];
+		foreach ($input as $index => $row)
+		{
+			$result[] = static::PrepareUserBaloonHtml([
+				'PREFIX' => "{$entityName}_{$entityId}_OBSERVER_{$index}",
+				'USER_ID' => $row['OBSERVER_USER_ID'],
+				'USER_NAME'=> $row['OBSERVER_USER_FORMATTED_NAME'] ?? '',
+				'USER_PROFILE_URL' => $row['OBSERVER_USER_SHOW_URL'] ?? '',
+			]);
+		}
+
+		return implode("\n", $result);
 	}
 }

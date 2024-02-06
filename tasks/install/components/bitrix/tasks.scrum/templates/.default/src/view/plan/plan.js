@@ -126,7 +126,8 @@ export class Plan extends View
 			displayPriority: params.displayPriority,
 			isShortView: params.isShortView,
 			mandatoryExists: params.mandatoryExists,
-			isExactSearchApplied: params.isExactSearchApplied
+			isExactSearchApplied: params.isExactSearchApplied,
+			pageSize: this.pageSize
 		});
 		this.planBuilder.subscribe('beforeCreateSprint', (baseEvent: BaseEvent) => {
 			const requestData = baseEvent.getData();
@@ -266,6 +267,54 @@ export class Plan extends View
 		;
 	}
 
+	changeShortView(isShortView: 'Y' | 'N')
+	{
+		super.changeShortView(isShortView);
+
+		this.planBuilder.setShortView(isShortView);
+
+		this.destroyActionPanel();
+
+		const entities = this.entityStorage.getAllEntities();
+
+		entities
+			.forEach((entity: Entity) => {
+				if (!entity.isCompleted())
+				{
+					entity.deactivateGroupMode();
+					entity.fadeOut();
+				}
+			})
+		;
+
+		this.requestSender.saveShortView({
+			isShortView: isShortView,
+		})
+			.then((response) => {
+				entities
+					.forEach((entity: Entity) => {
+						if (!entity.isCompleted())
+						{
+							entity.setShortView(isShortView);
+							entity.adjustListItemsWidth();
+							entity.fadeIn();
+						}
+					})
+				;
+			})
+			.catch((response) => {
+				entities
+					.forEach((entity: Entity) => {
+						if (!entity.isCompleted())
+						{
+							entity.fadeIn();
+						}
+					})
+				;
+				this.requestSender.showErrorAlert(response);
+			});
+	}
+
 	subscribeToPull()
 	{
 		Pull.subscribe(this.pullSprint);
@@ -292,11 +341,7 @@ export class Plan extends View
 		this.entityStorage.getBacklog().subscribe('filterByTag', this.onFilterByTag.bind(this));
 		this.entityStorage.getBacklog().subscribe('loadItems', (baseEvent: BaseEvent) => {
 			const entity: Entity = baseEvent.getTarget();
-			if (!this.loadItemsRepeatCounter.has(entity.getId()))
-			{
-				this.loadItemsRepeatCounter.set(entity.getId(), 0);
-			}
-			this.loadItems(entity);
+			this.planBuilder.loadItems(entity);
 		});
 		this.entityStorage.getBacklog().subscribe('toggleActionPanel', this.onToggleActionPanel.bind(this));
 		this.entityStorage.getBacklog().subscribe('showLinked', this.onShowLinked.bind(this));
@@ -346,11 +391,7 @@ export class Plan extends View
 		sprint.subscribe('showSprintCreateMenu', this.onOpenSprintAddMenu.bind(this));
 		sprint.subscribe('loadItems', (baseEvent: BaseEvent) => {
 			const entity: Entity = baseEvent.getTarget();
-			if (!this.loadItemsRepeatCounter.has(entity.getId()))
-			{
-				this.loadItemsRepeatCounter.set(entity.getId(), 0);
-			}
-			this.loadItems(entity);
+			this.planBuilder.loadItems(entity);
 		});
 		sprint.subscribe('toggleActionPanel', this.onToggleActionPanel.bind(this));
 		sprint.subscribe('showLinked', this.onShowLinked.bind(this));
@@ -1032,48 +1073,7 @@ export class Plan extends View
 	{
 		const isShortView = baseEvent.getData();
 
-		this.planBuilder.setShortView(isShortView);
-
-		this.destroyActionPanel();
-
-		const entities = this.entityStorage.getAllEntities();
-
-		entities
-			.forEach((entity: Entity) => {
-				if (!entity.isCompleted())
-				{
-					entity.deactivateGroupMode();
-					entity.fadeOut();
-				}
-			})
-		;
-
-		this.requestSender.saveShortView({
-			isShortView: isShortView
-		})
-		.then((response) => {
-			entities
-				.forEach((entity: Entity) => {
-					if (!entity.isCompleted())
-					{
-						entity.setShortView(isShortView);
-						entity.adjustListItemsWidth();
-						entity.fadeIn();
-					}
-				})
-			;
-		})
-		.catch((response) => {
-			entities
-				.forEach((entity: Entity) => {
-					if (!entity.isCompleted())
-					{
-						entity.fadeIn();
-					}
-				})
-			;
-			this.requestSender.showErrorAlert(response);
-		});
+		this.changeShortView(isShortView);
 	}
 
 	onToggleActionPanel(baseEvent: BaseEvent)
@@ -1278,78 +1278,6 @@ export class Plan extends View
 		}
 	}
 
-	loadItems(entity: Entity)
-	{
-		if (this.loadItemsRepeatCounter.get(entity.getId()) > 1)
-		{
-			entity.unbindItemsLoader();
-
-			return;
-		}
-
-		entity.setActiveLoadItems(true);
-
-		if (entity.getNumberItems() >= this.pageSize)
-		{
-			entity.getListItems().addScrollbar();
-		}
-
-		const requestData = {
-			entityId: entity.getId(),
-			pageNumber: entity.getPageNumberItems() + 1,
-			pageSize: this.pageSize
-		};
-
-		this.requestSender.getItems(requestData)
-			.then((response) => {
-				const items = response.data;
-
-				entity.setActiveLoadItems(false);
-
-				if (entity.isHideContent())
-				{
-					return;
-				}
-
-				if (Type.isArray(items) && items.length)
-				{
-					entity.incrementPageNumberItems();
-
-					this.createItemsInEntity(entity, items);
-
-					if (entity.isGroupMode())
-					{
-						entity.activateGroupMode();
-					}
-
-					entity.bindItemsLoader();
-				}
-				else
-				{
-					if (entity.getNumberTasks() !== entity.getNumberItems())
-					{
-						this.loadItemsRepeatCounter.set(
-							entity.getId(),
-							this.loadItemsRepeatCounter.get(entity.getId()) + 1
-						);
-
-						entity.decrementPageNumberItems();
-
-						this.loadItems(entity);
-					}
-					else
-					{
-						entity.unbindItemsLoader();
-					}
-				}
-			})
-			.catch((response) => {
-				entity.setActiveLoadItems(false);
-				this.requestSender.showErrorAlert(response);
-			})
-		;
-	}
-
 	showInput(entity: Entity, bindNode: ?HTMLElement): Promise
 	{
 		return new Promise((resolve) => {
@@ -1438,20 +1366,6 @@ export class Plan extends View
 				behavior: 'smooth'
 			});
 		}
-	}
-
-	createItemsInEntity(entity: Entity, items: Array)
-	{
-		items.forEach((itemData: ItemParams) => {
-			const item = Item.buildItem(itemData);
-			item.setEntityType(entity.getEntityType());
-			if (!this.entityStorage.findItemByItemId(item.getId()))
-			{
-				item.setShortView(entity.getShortView());
-				entity.appendItemToList(item);
-				entity.setItem(item);
-			}
-		});
 	}
 
 	showActionPanel(entity: Entity, item: Item)

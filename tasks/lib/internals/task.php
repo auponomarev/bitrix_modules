@@ -17,12 +17,16 @@ use Bitrix\Main\ORM\Fields\Relations\ManyToMany;
 use Bitrix\Main\ORM\Fields\Relations\OneToMany;
 use Bitrix\Main\ORM\Fields\Relations\Reference;
 use Bitrix\Main\ORM\Query\Join;
-use Bitrix\Tasks\Integration\CRM\TimeLineManager;
 use Bitrix\Tasks\Internals\Task\CheckListTable;
+use Bitrix\Tasks\Internals\Task\Mark;
 use Bitrix\Tasks\Internals\Task\MemberTable;
+use Bitrix\Tasks\Internals\Task\Priority;
+use Bitrix\Tasks\Internals\Task\RegularParametersTable;
 use Bitrix\Tasks\Internals\Task\Result\ResultTable;
 use Bitrix\Tasks\Internals\Task\LabelTable;
 use Bitrix\Tasks\Internals\Task\ScenarioTable;
+use Bitrix\Tasks\Internals\Task\Status;
+use Bitrix\Tasks\Internals\Task\TimeUnitType;
 use Bitrix\Tasks\Internals\Task\UtsTasksTaskTable;
 use Bitrix\Tasks\Util\Entity\DateTimeField;
 use Bitrix\Tasks\Util\Type\DateTime;
@@ -42,17 +46,12 @@ Loc::loadMessages(__FILE__);
  * @method static EO_Task_Result getList(array $parameters = [])
  * @method static EO_Task_Entity getEntity()
  * @method static \Bitrix\Tasks\Internals\TaskObject createObject($setDefaultValues = true)
- * @method static \Bitrix\Tasks\Internals\EO_Task_Collection createCollection()
+ * @method static \Bitrix\Tasks\Internals\TaskCollection createCollection()
  * @method static \Bitrix\Tasks\Internals\TaskObject wakeUpObject($row)
- * @method static \Bitrix\Tasks\Internals\EO_Task_Collection wakeUpCollection($rows)
+ * @method static \Bitrix\Tasks\Internals\TaskCollection wakeUpCollection($rows)
  */
 class TaskTable extends TaskDataManager
 {
-	public static function getObjectClass()
-	{
-		return TaskObject::class;
-	}
-
 	/**
 	 * Returns userfield entity code, to make userfields work with orm
 	 *
@@ -113,18 +112,19 @@ class TaskTable extends TaskDataManager
 				'values' => array('N', 'Y'),
 				'default_value' => 'Y',
 			),
-			new EnumField('PRIORITY', array(
-				'values' => array('0', '1', '2', 0, 1, 2), // see constants at CTasks
-				'default_value' => '1', // CTasks::PRIORITY_AVERAGE
-			)),
-			new EnumField('STATUS', array(
-				'values' => array(
-					1, 2, 3, 4, 5, 6, 7,
-					'1', '2', '3', '4', '5', '6', '7',
-				), // see constants at CTasks
-				'default_value' => '2', // CTasks::STATE_PENDING
-				'title' => Loc::getMessage('TASKS_TASK_ENTITY_STATUS_FIELD'),
-			)),
+			(new EnumField('PRIORITY'))
+				->configureDefaultValue(Priority::AVERAGE)
+				->configureValues(
+					array_merge(array_values(Priority::getAll()), array_values(Priority::getAll(true)))
+				)
+			,
+			(new EnumField('STATUS'))
+				->configureDefaultValue(Status::PENDING)
+				->configureValues(
+					array_merge(array_values(Status::getAll()), array_values(Status::getAll(true)))
+				)
+				->configureTitle(Loc::getMessage('TASKS_TASK_ENTITY_STATUS_FIELD'))
+			,
 			'STAGE_ID' => array(
 				'data_type' => 'integer',
 				'required' => false,
@@ -145,10 +145,10 @@ class TaskTable extends TaskDataManager
 			'DURATION_FACT' => array(
 				'data_type' => 'integer',
 			),
-			new EnumField('DURATION_TYPE', array(
-				'values' => array('secs', 'mins', 'hours', 'days', 'weeks', 'monts', 'years'), // see constants at CTasks
-				'default_value' => 'days', // CTasks::TIME_UNIT_TYPE_DAY
-			)),
+			(new EnumField('DURATION_TYPE'))
+				->configureDefaultValue(TimeUnitType::DAY)
+				->configureValues(array_values(TimeUnitType::getAll()))
+			,
 			'TIME_ESTIMATE' => array( // in seconds
 				'data_type' => 'integer',
 				'default_value' => '0',
@@ -191,9 +191,9 @@ class TaskTable extends TaskDataManager
 				'validation' => array(__CLASS__, 'validateXmlId'),
 				'title' => Loc::getMessage('TASKS_ENTITY_XML_ID_FIELD'),
 			),
-			new EnumField('MARK', array(
-				'values' => array('P', 'N'), // see constants at CTasks
-			)),
+			(new EnumField('MARK'))
+				->configureValues(Mark::getMarks())
+			,
 			'ALLOW_CHANGE_DEADLINE' => array(
 				'data_type' => 'boolean',
 				'values' => array('N', 'Y'),
@@ -240,6 +240,9 @@ class TaskTable extends TaskDataManager
 				'data_type' => 'boolean',
 				'values' => array('N', 'Y'),
 			),
+			(new Entity\BooleanField('IS_REGULAR'))
+				->configureValues('N', 'Y')
+				->configureDefaultValue(null),
 
 			// references
 			'CREATOR' => array(
@@ -276,7 +279,14 @@ class TaskTable extends TaskDataManager
 					ScenarioTable::class,
 					Join::on('this.ID', 'ref.TASK_ID')
 				)
-			)->configureJoinType('left'),
+			)->configureJoinType(Join::TYPE_LEFT),
+			(
+				new Reference(
+					'REGULAR',
+				RegularParametersTable::class,
+					Join::on('this.ID', 'ref.TASK_ID')
+				)
+			)->configureJoinType(Join::TYPE_LEFT),
 
 			// socialnetwork module should be present
 			'GROUP' => array(
@@ -473,5 +483,15 @@ class TaskTable extends TaskDataManager
 		{
 
 		}
+	}
+
+	public static function getObjectClass(): string
+	{
+		return TaskObject::class;
+	}
+
+	public static function getCollectionClass(): string
+	{
+		return TaskCollection::class;
 	}
 }

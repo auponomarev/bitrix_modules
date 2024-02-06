@@ -1,3 +1,7 @@
+.bx-im-messenger__scope * {
+	box-sizing: border-box;
+}
+
 .bx-im-messenger__slider {
 	height: 100%;
 }
@@ -5,6 +9,8 @@
 .bx-im-messenger__container {
 	width: 100%;
 	height: 100%;
+	/*min-width: var(--im-messenger__min-width);*/
+	/*min-height: var(--im-messenger__min-heigth);*/
 	display: flex;
 	box-sizing: border-box;
 	overflow: hidden;
@@ -26,8 +32,12 @@
 	border-radius: 32px;
 }
 
+.bx-im-messenger__container.--desktop {
+	height: 100vh;
+	overflow: hidden;
+}
+
 .bx-im-messenger__navigation_container {
-	/*flex: 0 0 var(--im-messenger__navigation_width);*/
 	width: var(--im-messenger__navigation_width);
 	max-width: var(--im-messenger__navigation_width);
 	margin-right: var(--im-space-inline-xs-neg);
@@ -54,13 +64,26 @@
 	max-width: var(--im-messenger__list_width);
 	height: 100%;
 	position: relative;
-	border-right: 1px solid rgba(0,0,0,0.01);
+	border-right: 1px solid var(--im-messenger__list_border-color);
 }
 
 .bx-im-messenger__content_container {
 	flex: 1;
 	min-width: 0;
 	background-color: #fff;
+	position: relative;
+}
+
+.bx-im-messenger__openlines_container {
+	position: absolute;
+	left: 0;
+	right: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.bx-im-messenger__openlines_container.--hidden {
+	visibility: hidden;
 }
 
 .bx-im-messenger__out-of-view {

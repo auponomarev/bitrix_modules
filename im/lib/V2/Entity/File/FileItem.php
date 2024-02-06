@@ -9,40 +9,24 @@ use Bitrix\Disk\Folder;
 use Bitrix\Disk\Storage;
 use Bitrix\Disk\TypeFile;
 use Bitrix\Disk\Ui\FileAttributes;
-use Bitrix\Im\Model\FileTemporaryTable;
+use Bitrix\Im\V2\Chat;
 use Bitrix\Im\V2\Common\ContextCustomer;
 use Bitrix\Im\V2\Entity\User\UserPopupItem;
 use Bitrix\Im\V2\Rest\PopupData;
 use Bitrix\Im\V2\Rest\PopupDataAggregatable;
 use Bitrix\Im\V2\Rest\RestEntity;
-use Bitrix\Im\V2\Result;
 use Bitrix\Main\Engine\UrlManager;
+use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 
 class FileItem implements RestEntity, PopupDataAggregatable
 {
 	use ContextCustomer;
 
-	public const MEDIA_SUBTYPE = 'MEDIA';
-	public const AUDIO_SUBTYPE = 'AUDIO';
-	public const BRIEF_SUBTYPE = 'BRIEF';
-	public const OTHER_SUBTYPE = 'OTHER';
-	public const DOCUMENT_SUBTYPE = 'DOCUMENT';
-
-	public const ALLOWED_SUBTYPE = [
-		self::MEDIA_SUBTYPE,
-		self::AUDIO_SUBTYPE,
-		self::BRIEF_SUBTYPE,
-		self::OTHER_SUBTYPE,
-		self::DOCUMENT_SUBTYPE,
-	];
-
-	public const BRIEF_CODE = 'resume';
-
-	protected string $subtype = self::OTHER_SUBTYPE;
 	protected ?int $chatId = null;
 	protected ?int $diskFileId = null;
 	protected ?File $diskFile = null;
+	protected ?string $contentType = null;
 
 	/**
 	 * @param int|File $diskFile
@@ -86,12 +70,10 @@ class FileItem implements RestEntity, PopupDataAggregatable
 		$this->diskFile = $diskFile;
 		$this->diskFileId = $diskFile->getId();
 
-		$this->setSubtype(static::getFileSubtype($this->diskFile));
-
 		return $this;
 	}
 
-	public function getDiskFile(): File
+	public function getDiskFile(): ?File
 	{
 		if (!$this->diskFile instanceof File)
 		{
@@ -111,16 +93,6 @@ class FileItem implements RestEntity, PopupDataAggregatable
 		return $this->getDiskFile()->getId();
 	}
 
-	public static function isSubtypeValid(string $subtype): bool
-	{
-		return in_array($subtype, static::ALLOWED_SUBTYPE, true);
-	}
-
-	public static function getSubtypeFromJsonFormat(string $subtypeInJsonFormat): string
-	{
-		return mb_strtoupper($subtypeInJsonFormat);
-	}
-
 	public function getChatId(): ?int
 	{
 		return $this->chatId;
@@ -130,17 +102,6 @@ class FileItem implements RestEntity, PopupDataAggregatable
 	{
 		$this->chatId = $chatId;
 		return $this;
-	}
-
-	public function setSubtype(string $subtype): self
-	{
-		$this->subtype = $subtype;
-		return $this;
-	}
-
-	public function getSubtype(): string
-	{
-		return $this->subtype;
 	}
 
 	public function getCopy(?Storage $storage = null): ?self
@@ -160,79 +121,53 @@ class FileItem implements RestEntity, PopupDataAggregatable
 			return null;
 		}
 
-		return new static($this->getDiskFile()->copyTo($folder, $userId, true), $this->getChatId());
-	}
+		$diskFile = $this->getDiskFile();
 
-	public function getSymLink(): ?self
-	{
-		$folderModel = \CIMDisk::GetFolderModel($this->chatId);
-		if (!($folderModel instanceof Folder))
+		if ($diskFile === null)
 		{
 			return null;
 		}
 
-		$newFileLink = $folderModel->addFileLink(
-			$this->getDiskFile(),
-			[
-				'CREATED_BY' => $this->getContext()->getUserId(),
-				'GLOBAL_CONTENT_VERSION' => 1
-			],
-			[],
-			true
-		);
+		$copy = $diskFile->copyTo($folder, $userId, true);
 
-		if (!isset($newFileLink))
+		if (!$copy instanceof File)
 		{
 			return null;
 		}
 
-		return new static($newFileLink, $this->chatId);
+		return new static($copy, $this->getChatId());
 	}
 
-	public function addToTmp(string $source): Result
+	public function getCopyToChat(Chat $chat): ?self
 	{
-		$addResult = FileTemporaryTable::add(['DISK_FILE_ID' => $this->getId(), 'SOURCE' => $source]);
-
-		if (!$addResult->isSuccess())
+		if (!Loader::includeModule('disk'))
 		{
-			return (new Result())->addErrors($addResult->getErrors());
+			return null;
 		}
 
-		return new Result();
-	}
+		$folder = $chat->getOrCreateDiskFolder();
+		$diskFile = $this->getDiskFile();
 
-	public static function getFileSubtype(File $diskFile): string
-	{
-		$realFile = $diskFile->getRealObject() ?? $diskFile;
-
-		if ($realFile->getCode() === static::BRIEF_CODE)
+		if (!($folder instanceof Folder) || $diskFile === null)
 		{
-			return static::BRIEF_SUBTYPE;
+			return null;
 		}
 
-		$diskFileType = $diskFile->getTypeFile();
+		$newFileModel = $diskFile->copyTo($folder, $chat->getContext()->getUserId(), true);
 
-		return static::getFileSubtypeByDiskFileType($diskFileType);
-	}
-
-	protected static function getFileSubtypeByDiskFileType(string $diskFileType): string
-	{
-		switch ($diskFileType)
+		if (!($newFileModel instanceof File))
 		{
-			case TypeFile::IMAGE:
-			case TypeFile::VIDEO:
-				return static::MEDIA_SUBTYPE;
-
-			case TypeFile::DOCUMENT:
-			case TypeFile::PDF:
-				return static::DOCUMENT_SUBTYPE;
-
-			case TypeFile::AUDIO:
-				return static::AUDIO_SUBTYPE;
-
-			default:
-				return static::OTHER_SUBTYPE;
+			return null;
 		}
+
+		if ($diskFile->getCode() === \Bitrix\Im\V2\Link\File\FileItem::MEDIA_ORIGINAL_CODE)
+		{
+			$newFileModel->changeCode(\Bitrix\Im\V2\Link\File\FileItem::MEDIA_ORIGINAL_CODE);
+		}
+
+		$newFileModel->increaseGlobalContentVersion();
+
+		return new static($newFileModel, $chat->getId());
 	}
 
 	public function getPopupData(array $excludedList = []): PopupData
@@ -270,6 +205,16 @@ class FileItem implements RestEntity, PopupDataAggregatable
 	 */
 	public function getContentType(): string
 	{
+		if (isset($this->contentType))
+		{
+			return $this->contentType;
+		}
+
+		if ($this->getDiskFile()->getCode() === \Bitrix\Im\V2\Link\File\FileItem::MEDIA_ORIGINAL_CODE)
+		{
+			return 'file';
+		}
+
 		$diskTypeFile = $this->getDiskFile()->getTypeFile();
 
 		switch ($diskTypeFile)
@@ -285,12 +230,19 @@ class FileItem implements RestEntity, PopupDataAggregatable
 		}
 	}
 
+	public function setContentType(string $contentType): self
+	{
+		$this->contentType = $contentType;
+
+		return $this;
+	}
+
 	private function getPreviewSizes(): ?array
 	{
 		$previewParameters = [];
 		$diskFile = $this->getDiskFile();
 
-		if (TypeFile::isImage($diskFile->getName()))
+		if (TypeFile::isImage($diskFile))
 		{
 			$previewParameters = $diskFile->getFile();
 		}
@@ -320,7 +272,7 @@ class FileItem implements RestEntity, PopupDataAggregatable
 			$linkType = 'disk.api.file.showPreview';
 			$fileName = 'preview.jpg';
 		}
-		elseif (TypeFile::isImage($diskFile->getName()))
+		elseif (TypeFile::isImage($diskFile))
 		{
 			$linkType = 'disk.api.file.showImage';
 			$fileName = $diskFile->getName();
@@ -345,7 +297,7 @@ class FileItem implements RestEntity, PopupDataAggregatable
 		$urlManager = UrlManager::getInstance();
 		$diskFile = $this->getDiskFile();
 
-		if (TypeFile::isImage($diskFile->getName()))
+		if (TypeFile::isImage($diskFile))
 		{
 			$linkType = 'disk.api.file.showImage';
 		}
@@ -378,7 +330,7 @@ class FileItem implements RestEntity, PopupDataAggregatable
 		$diskFile = $this->getDiskFile();
 		try
 		{
-			$viewerType = FileAttributes::buildByFileId($diskFile->getFileId(), $this->getDownloadLink())
+			$viewerType = FileAttributes::buildByFileData($diskFile->getFile() ?? [], $this->getDownloadLink())
 				->setObjectId($diskFile->getId())
 				->setGroupBy($this->getChatId() ?? $diskFile->getParentId())
 				->setAttribute('data-im-chat-id', $this->getChatId())
@@ -388,7 +340,7 @@ class FileItem implements RestEntity, PopupDataAggregatable
 				])
 				->addAction([
 					'type' => 'copyToMe',
-					'text' => Loc::getMessage('IM_DISK_ACTION_SAVE_TO_OWN_FILES'),
+					'text' => Loc::getMessage('IM_FILE_ITEM_ACTION_SAVE_TO_OWN_FILES'),
 					'action' => 'BXIM.disk.saveToDiskAction',
 					'params' => [
 						'fileId' => $diskFile->getId(),

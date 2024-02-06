@@ -10,6 +10,7 @@ use Bitrix\Main\Update\Stepper;
 use Bitrix\Tasks\Access;
 use Bitrix\Tasks\Integration\Bizproc\Automation\Factory;
 use Bitrix\Tasks\UI\ScopeDictionary;
+use Bitrix\Tasks\Update\SortConverter;
 
 $bodyClass = $APPLICATION->GetPageProperty('BodyClass');
 $APPLICATION->SetPageProperty('BodyClass', ($bodyClass? $bodyClass.' ' : '').'pagetitle-toolbar-field-view tasks-pagetitle-view');
@@ -165,6 +166,7 @@ if ($isBitrix24Template)
 				'Bitrix\Tasks\Update\TasksFilterConverter',
 			]
 		]);
+		echo SortConverter::getHtml();
 	?><?php if (\Bitrix\Tasks\Internals\Counter\Queue\Queue::isInQueue((int) $arParams['USER_ID'])): ?>
 		<?php \CJSCore::Init(array('update_stepper')); ?>
 		<div class="main-stepper-block">
@@ -243,6 +245,36 @@ if ($arResult['SPOTLIGHT_SIMPLE_COUNTERS'])
 			{
 				toolbarCountersRobots.classList.add('task-interface-toolbar--item--' + toolbarCountersItems.length);
 			}
+		}
+
+
+		if (document.location.hash === '#robots')
+		{
+			BX.Runtime.loadExtension('ui.tour').then(
+				(exports) =>
+				{
+					const {Guide} = exports;
+
+					const robotsBtn = document.querySelector('.--robots');
+					if (robotsBtn)
+					{
+						const guide = new Guide({
+							steps: [
+								{
+									target: robotsBtn,
+									title: '<?= GetMessageJs('TASKS_TOOLBAR_COMPONENT_ROBOTS_GUIDE_TEXT') ?>',
+									text: '',
+								}
+							],
+							onEvents: true,
+						});
+
+						guide.start();
+						guide.getPopup().setAutoHide(true);
+						guide.getPopup().setClosingByEsc(true);
+					}
+				}
+			);
 		}
 	});
 </script>

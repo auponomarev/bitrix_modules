@@ -68,6 +68,11 @@ ChatUtils.objectMerge = function(currentProperties, newProperties)
 	return currentProperties;
 };
 
+/**
+ * @template T
+ * @param {T} properties
+ * @return {T}
+ */
 ChatUtils.objectClone = function(properties)
 {
 	let newProperties = {};
@@ -228,7 +233,16 @@ ChatUtils.objectKeysToLowerCase = function(originalObject)
 			.map(([key, value]) => {
 				if (BX.type.isPlainObject(originalObject[key]))
 				{
+					if (key.indexOf('_') === -1)
+					{
+						return [key, ChatUtils.objectKeysToLowerCase(originalObject[key])];
+					}
+
 					return [key.toLowerCase(), ChatUtils.objectKeysToLowerCase(originalObject[key])];
+				}
+				if (key.indexOf('_') === -1)
+				{
+					return [key, value];
 				}
 
 				return [key.toLowerCase(), value];

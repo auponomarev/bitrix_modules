@@ -15,9 +15,8 @@ use Bitrix\Im\V2\Message;
 use Bitrix\Im\V2\Result;
 
 /**
- * @method MessageParameter next()
- * @method MessageParameter current()
- * @method MessageParameter offsetGet($offset)
+ * @implements \IteratorAggregate<int,MessageParameter>
+ * @method MessageParameter offsetGet($key)
  */
 class Params extends Registry
 {
@@ -47,6 +46,7 @@ class Params extends Registry
 		CODE = 'CODE',
 		TYPE = 'TYPE',
 		COMPONENT_ID = 'COMPONENT_ID',
+		COMPONENT_PARAMS = 'COMPONENT_PARAMS',
 		STYLE_CLASS = 'CLASS',
 		CALL_ID = 'CALL_ID',
 		CHAT_ID = 'CHAT_ID',
@@ -63,8 +63,7 @@ class Params extends Registry
 		DATE_TEXT = 'DATE_TEXT',
 		IS_ROBOT_MESSAGE = 'IS_ROBOT_MESSAGE',
 		FORWARD_ID = 'FORWARD_ID',
-		FORWARD_CHAT_ID = 'FORWARD_CHAT_ID',
-		FORWARD_TITLE = 'FORWARD_TITLE',
+		FORWARD_CONTEXT_ID = 'FORWARD_CONTEXT_ID',
 		FORWARD_USER_ID = 'FORWARD_USER_ID',
 		REPLY_ID = 'REPLY_ID',
 		BETA = 'BETA'
@@ -173,6 +172,10 @@ class Params extends Registry
 			'type' => Param::TYPE_STRING,
 			'default' => '',
 		],
+		self::COMPONENT_PARAMS => [
+			'className' => Message\Param\ComponentParams::class,
+			'type' => Param::TYPE_JSON,
+		],
 		self::STYLE_CLASS => [
 			'type' => Param::TYPE_STRING,
 			'default' => '',
@@ -225,15 +228,15 @@ class Params extends Registry
 		],
 		self::FORWARD_ID => [
 			'type' => Param::TYPE_INT,
-		],
-		self::FORWARD_CHAT_ID => [
-			'type' => Param::TYPE_INT,
-		],
-		self::FORWARD_TITLE => [
-			'type' => Param::TYPE_STRING,
+			'isHidden' => true,
 		],
 		self::FORWARD_USER_ID => [
 			'type' => Param::TYPE_INT,
+			'isHidden' => true,
+		],
+		self::FORWARD_CONTEXT_ID => [
+			'type' => Param::TYPE_STRING,
+			'isHidden' => true,
 		],
 		self::REPLY_ID => [
 			'type' => Param::TYPE_INT,
@@ -301,6 +304,8 @@ class Params extends Registry
 				'type' => Param::TYPE_STRING,
 			];
 		}
+
+		$type['isHidden'] ??= false;
 
 		return $type;
 	}
@@ -493,7 +498,7 @@ class Params extends Registry
 	{
 		foreach ($items as $entityId => $entity)
 		{
-			if (isset($entity['PARAM_NAME']))
+			if (is_array($entity) && isset($entity['PARAM_NAME']))
 			{
 				$paramName = $entity['PARAM_NAME'];
 				if (!parent::offsetExists($paramName))
@@ -586,11 +591,12 @@ class Params extends Registry
 
 		$dropIds = [];
 
+		$itemKeyToUnset = [];
 		foreach ($this as $item)
 		{
 			if ($item->isDeleted())
 			{
-				unset($this[$item->getName()]);
+				$itemKeyToUnset[] = $item->getName();
 				continue;
 			}
 			if (!$item->hasValue())
@@ -616,13 +622,15 @@ class Params extends Registry
 			}
 			elseif ($item instanceof ParamArray)
 			{
-				foreach ($item as $subItem)
+				$subItemKeyToUnset = [];
+				foreach ($item as $key => $subItem)
 				{
 					if ($subItem->isDeleted())
 					{
 						if ($subItem->getPrimaryId())
 						{
 							$dropIds[] = $subItem->getPrimaryId();
+							$subItemKeyToUnset[] = $key;
 						}
 					}
 					else
@@ -642,8 +650,10 @@ class Params extends Registry
 						}
 					}
 				}
+				$item->unsetByKeys($subItemKeyToUnset);
 			}
 		}
+		$this->unsetByKeys($itemKeyToUnset);
 
 		foreach ($this->droppedItems as $item)
 		{
@@ -694,10 +704,12 @@ class Params extends Registry
 	{
 		$result = new Result;
 
-		foreach ($this as $item)
+		$keysToUnset = [];
+		foreach ($this as $key => $item)
 		{
-			unset($this[$item->getName()]);
+			$keysToUnset[$key] = $key;
 		}
+		$this->unsetByKeys($keysToUnset);
 
 		if ($this->getMessageId())
 		{
@@ -752,7 +764,10 @@ class Params extends Registry
 	 */
 	public function isSet(string $paramName): bool
 	{
-		return isset($this[$paramName]);
+		return isset($this[$paramName])
+			&& $this[$paramName]->hasValue()
+			&& !$this[$paramName]->isDeleted()
+		;
 	}
 
 	/**
@@ -813,6 +828,23 @@ class Params extends Registry
 		return $this;
 	}
 
+	public function isValid(): Result
+	{
+		$result = new Result();
+
+		/** @var MessageParameter $param */
+		foreach ($this as $param)
+		{
+			$validParamResult = $param->isValid();
+			if (!$validParamResult->isSuccess())
+			{
+				$result->addErrors($validParamResult->getErrors());
+			}
+		}
+
+		return $result;
+	}
+
 	/**
 	 * @param mixed $parameter
 	 * @return self
@@ -861,10 +893,12 @@ class Params extends Registry
 	{
 		if (empty($paramName))
 		{
+			$keysToUnset = [];
 			foreach ($this as $paramName => $param)
 			{
-				unset($this[$paramName]);
+				$keysToUnset[$paramName] = $paramName;
 			}
+			$this->unsetByKeys($keysToUnset);
 			$this->isLoaded = true;
 		}
 		else
@@ -920,7 +954,7 @@ class Params extends Registry
 		$result = [];
 		foreach ($this as $paramName => $param)
 		{
-			if ($param->hasValue())
+			if ($param->hasValue() && !$param->isHidden())
 			{
 				$result[$paramName] = $param->toRestFormat();
 			}
@@ -932,14 +966,27 @@ class Params extends Registry
 	/**
 	 * @return array
 	 */
-	public function toPullFormat(): array
+	public function toPullFormat(?array $extraParams = null): array
 	{
 		$result = [];
 		foreach ($this as $paramName => $param)
 		{
-			if ($param->hasValue())
+			if ($param->hasValue() && !$param->isHidden())
 			{
 				$result[$paramName] = $param->toPullFormat();
+			}
+		}
+
+		if (!isset($extraParams))
+		{
+			return $result;
+		}
+
+		foreach ($extraParams as $extraParam)
+		{
+			if (!isset($result[$extraParam]))
+			{
+				$result[$extraParam] = Params::create($extraParam)->toPullFormat();
 			}
 		}
 
@@ -957,5 +1004,13 @@ class Params extends Registry
 		}
 
 		return $this;
+	}
+
+	public function __clone()
+	{
+		foreach ($this as $key => $param)
+		{
+			$this[$key] = clone $param;
+		}
 	}
 }

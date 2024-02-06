@@ -1606,20 +1606,21 @@ return [
 		// ),
 
 		'hamburger-size' => [
-			'name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMBURGER_SIZE_MSGVER_1'),
+			'name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMB_SIZE'),
 			'type' => 'list',
 			'items' => [
-				['name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMBURGER_SIZE_MD'), 'value' => 'hamburger--md'],
-				['name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMBURGER_SIZE_SM'), 'value' => 'hamburger--sm'],
-				['name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMBURGER_SIZE_LG'), 'value' => 'hamburger--lg'],
+				['name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMB_SIZE_MD'), 'value' => 'hamburger--md'],
+				['name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMB_SIZE_SM'), 'value' => 'hamburger--sm'],
+				['name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMB_SIZE_LG'), 'value' => 'hamburger--lg'],
 			],
 		],
 		'hamburger-animation' => [
-			'name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMBURGER_ANIMATION'),
+			'name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMB_ICON'),
 			'type' => 'list',
 			'items' => [
-				['name' => '1 - boring', 'value' => 'hamburger--boring'],
-				['name' => '2 - slider', 'value' => 'hamburger--slider'],
+				['name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMB_ICON_SLIDER'), 'value' => 'hamburger--slider'],
+				['name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMB_ICON_MINUS'), 'value' => 'hamburger--minus'],
+				['name' => Loc::getMessage('LANDING_BLOCK_STYLE_HAMB_ICON_ARROW'), 'value' => 'hamburger--arrow'],
 			],
 		],
 
@@ -2984,9 +2985,6 @@ return [
 			'display', 'background-attachment', 'background-size',
 			'padding-top', 'padding-bottom', 'padding-left', 'padding-right', 'margin-top', 'background-overlay',
 		],
-		'block-default-background-overlay-paddings-x' => [
-			'display', 'background-attachment', 'background-size', 'padding-left', 'padding-right', 'margin-top', 'background-overlay',
-		],
 		'block-default-background-overlay-height-vh' => [
 			'display', 'background-attachment', 'background-size', 'height-vh',
 			'padding-top', 'padding-bottom', 'padding-left', 'padding-right', 'margin-top', 'background-overlay',
@@ -3016,9 +3014,6 @@ return [
 		],
 		'block-default-wo-background' => [
 			'display', 'padding-top', 'padding-bottom', 'padding-left', 'padding-right', 'margin-top',
-		],
-		'block-default-wo-background-height-vh' => [
-			'display', 'height-vh', 'padding-top', 'padding-bottom', 'padding-left', 'padding-right', 'margin-top',
 		],
 		'block-default-wo-paddings' => ['display', 'background-color'],
 		'block-default-wo-background-vh-animation' => [

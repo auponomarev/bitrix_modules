@@ -11,12 +11,12 @@ class CrmQuotes extends CrmBase
 	public const PREFIX_SHORT = 'Q_';
 	public const PREFIX_FULL = 'CRMQUOTE';
 
-	protected static function getOwnerType()
+	protected static function getOwnerType(): int
 	{
 		return CCrmOwnerType::Quote;
 	}
 
-	protected static function getHandlerType()
+	protected static function getHandlerType(): string
 	{
 		return Handler::ENTITY_TYPE_CRMQUOTES;
 	}
@@ -53,7 +53,7 @@ class CrmQuotes extends CrmBase
 		return $result;
 	}
 
-	public function getData($params = [])
+	public function getData($params = []): array
 	{
 		$entityType = static::getHandlerType();
 
@@ -64,7 +64,7 @@ class CrmQuotes extends CrmBase
 			'ADDITIONAL_INFO' => [
 				'GROUPS_LIST' => [
 					'crmquotes' => [
-						'TITLE' => Loc::getMessage('MAIN_UI_SELECTOR_TITLE_CRMQUOTES'),
+						'TITLE' => Loc::getMessage('MAIN_UI_SELECTOR_TITLE_CRMQUOTES_MSGVER_1'),
 						'TYPE_LIST' => [ $entityType ],
 						'DESC_LESS_MODE' => 'N',
 						'SORT' => 80,
@@ -148,7 +148,7 @@ class CrmQuotes extends CrmBase
 		return $result;
 	}
 
-	public function getTabList($params = [])
+	public function getTabList($params = []): array
 	{
 		$result = [];
 
@@ -162,7 +162,7 @@ class CrmQuotes extends CrmBase
 			$result = [
 				[
 					'id' => 'quotes',
-					'name' => Loc::getMessage('MAIN_UI_SELECTOR_TAB_CRMQUOTES'),
+					'name' => Loc::getMessage('MAIN_UI_SELECTOR_TAB_CRMQUOTES_MSGVER_1'),
 					'sort' => 80,
 				],
 			];
@@ -171,7 +171,7 @@ class CrmQuotes extends CrmBase
 		return $result;
 	}
 
-	public function search($params = [])
+	public function search($params = []): array
 	{
 		$result = [
 			'ITEMS' => [],
@@ -239,7 +239,7 @@ class CrmQuotes extends CrmBase
 		];
 	}
 
-	protected function getSearchFilter(string $search, array $options)
+	protected function getSearchFilter(string $search, array $options): array
 	{
 		$filter = [];
 

@@ -9,13 +9,13 @@ if(!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 /** @var array $arParams */
 
 use Bitrix\Crm\Service\Container;
+use Bitrix\Crm\UserField\DataModifiers;
 use Bitrix\Crm\UserField\Types\ElementType;
 use Bitrix\Main\Engine\UrlManager;
-use Bitrix\Main\Localization\Loc;
-use Bitrix\Main\Text\HtmlFilter;
-use Bitrix\Main\Page\Asset;
 use Bitrix\Main\Loader;
-use Bitrix\Crm\UserField\DataModifiers;
+use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\Page\Asset;
+use Bitrix\Main\Text\HtmlFilter;
 
 if(!Loader::includeModule('crm'))
 {
@@ -76,6 +76,7 @@ if(is_array($arResult['value']) && count($arResult['value']))
 			$arResult['value']['LEAD']['items'][$lead['ID']] = [
 				'ENTITY_TITLE' => $lead['TITLE'],
 				'ENTITY_TYPE_ID_WITH_ENTITY_ID' => 'LEAD_'.$lead['ID'],
+				'SHORT_ENTITY_TYPE_ID_WITH_ENTITY_ID' => 'L_' . $lead['ID'],
 				'ENTITY_LINK' => CCrmOwnerType::GetEntityShowPath(
 					CCrmOwnerType::Lead,
 					$lead['ID']
@@ -123,6 +124,7 @@ if(is_array($arResult['value']) && count($arResult['value']))
 			$arResult['value']['CONTACT']['items'][$contact['ID']] = [
 				'ENTITY_TITLE' => $title,
 				'ENTITY_TYPE_ID_WITH_ENTITY_ID' => 'CONTACT_'.$contact['ID'],
+				'SHORT_ENTITY_TYPE_ID_WITH_ENTITY_ID' => 'C_' . $contact['ID'],
 				'ENTITY_LINK' => CCrmOwnerType::GetEntityShowPath(
 					CCrmOwnerType::Contact,
 					$contact['ID']
@@ -153,6 +155,7 @@ if(is_array($arResult['value']) && count($arResult['value']))
 			$arResult['value']['COMPANY']['items'][$company['ID']] = [
 				'ENTITY_TITLE' => $company['TITLE'],
 				'ENTITY_TYPE_ID_WITH_ENTITY_ID' => 'COMPANY_'.$company['ID'],
+				'SHORT_ENTITY_TYPE_ID_WITH_ENTITY_ID' => 'CO_' . $company['ID'],
 				'ENTITY_LINK' => CCrmOwnerType::GetEntityShowPath(
 					CCrmOwnerType::Company,
 					$company['ID']
@@ -162,10 +165,10 @@ if(is_array($arResult['value']) && count($arResult['value']))
 	}
 
 	$arResult['value']['DEAL']['title'] = Loc::getMessage('CRM_ENTITY_TYPE_DEAL');
-	if(
-		$arParams['userField']['SETTINGS']['DEAL'] === 'Y'
-		&&
-		!empty($values['DEAL'])
+	if (
+		isset($arParams['userField']['SETTINGS']['DEAL'])
+		&& $arParams['userField']['SETTINGS']['DEAL'] === 'Y'
+		&& !empty($values['DEAL'])
 	)
 	{
 		$deals = CCrmDeal::GetListEx(
@@ -179,14 +182,16 @@ if(is_array($arResult['value']) && count($arResult['value']))
 			$arResult['value']['DEAL']['items'][$deal['ID']] = [
 				'ENTITY_TITLE' => $deal['TITLE'],
 				'ENTITY_TYPE_ID_WITH_ENTITY_ID' => 'DEAL_'.$deal['ID'],
+				'SHORT_ENTITY_TYPE_ID_WITH_ENTITY_ID' => 'D_' . $deal['ID'],
 				'ENTITY_LINK' => CCrmOwnerType::GetEntityShowPath(CCrmOwnerType::Deal, $deal['ID']),
 			];
 		}
 	}
 
 	$arResult['value']['ORDER']['title'] = Loc::getMessage('CRM_ENTITY_TYPE_ORDER');
-	if(
-		$arParams['userField']['SETTINGS']['ORDER'] === 'Y'
+	if (
+		isset($arParams['userField']['SETTINGS']['ORDER'])
+		&& $arParams['userField']['SETTINGS']['ORDER'] === 'Y'
 		&& !empty($values['ORDER'])
 	)
 	{
@@ -203,6 +208,7 @@ if(is_array($arResult['value']) && count($arResult['value']))
 			$arResult['value']['ORDER']['items'][$order['ID']] = [
 				'ENTITY_TITLE' => $order['ACCOUNT_NUMBER'],
 				'ENTITY_TYPE_ID_WITH_ENTITY_ID' => 'ORDER_'.$order['ID'],
+				'SHORT_ENTITY_TYPE_ID_WITH_ENTITY_ID' => 'O_' . $order['ID'],
 				'ENTITY_LINK' => CCrmOwnerType::GetEntityShowPath(
 					CCrmOwnerType::Order,
 					$order['ID']
@@ -251,6 +257,7 @@ if(is_array($arResult['value']) && count($arResult['value']))
 				$arResult['value'][$entityTypeName]['items'][$itemId] = [
 					'ENTITY_TYPE_ID' => $entityTypeId,
 					'ENTITY_TYPE_ID_WITH_ENTITY_ID' => $entityTypeId.'-'.$itemId,
+					'SHORT_ENTITY_TYPE_ID_WITH_ENTITY_ID' => $entityTypeId . '-' . $itemId,
 					'ENTITY_TITLE' => $item->getHeading(),
 					'ENTITY_LINK' => Container::getInstance()->getRouter()->getItemDetailUrl($entityTypeId, $itemId),
 				];

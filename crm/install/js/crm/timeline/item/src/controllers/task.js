@@ -20,6 +20,10 @@ export class Task extends Base
 	onItemAction(item: ConfigurableItem, actionParams: ActionParams): void
 	{
 		const { action, actionType, actionData, animationCallbacks } = actionParams;
+		if (!actionData)
+		{
+			return;
+		}
 
 		const taskId = actionData.taskId ?? null;
 		if (!taskId)
@@ -39,7 +43,7 @@ export class Task extends Base
 				break;
 
 			case 'Task:ChangeDeadline':
-				this.changeDeadline(actionData);
+				this.changeDeadline(item, actionData);
 				break;
 
 			case 'Task:View':
@@ -83,7 +87,7 @@ export class Task extends Base
 		});
 	}
 
-	changeDeadline(actionData): void
+	changeDeadline(item: ConfigurableItem, actionData): void
 	{
 		if (!actionData.taskId || !actionData.value)
 		{
@@ -94,14 +98,24 @@ export class Task extends Base
 				data: {
 					taskId: actionData.taskId,
 					fields: {
-						DEADLINE: actionData.value,
+						DEADLINE: (new Date(actionData.valueTs * 1000)).toISOString(),
 					},
 					params: {
 						skipTimeZoneOffset: 'DEADLINE',
 					}
 				},
 			},
-		);
+		).catch(response => {
+			const errors = response.errors ??  null;
+			if (errors.length > 0)
+			{
+				UI.Notification.Center.notify({
+					content: errors[0].message,
+					autoHideDelay: 3000,
+				});
+				item.forceRefreshLayout();
+			}
+		});
 	}
 
 	view(actionData): void

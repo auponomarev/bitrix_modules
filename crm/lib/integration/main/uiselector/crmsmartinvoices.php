@@ -15,12 +15,12 @@ class CrmSmartInvoices extends CrmDynamics
 	public const PREFIX_SHORT = 'SI_';
 	public const PREFIX_FULL = 'CRMSMART_INVOICE';
 
-	protected static function getOwnerType()
+	protected static function getOwnerType(): int
 	{
 		return CCrmOwnerType::SmartInvoice;
 	}
 
-	protected static function getHandlerType()
+	protected static function getHandlerType(): string
 	{
 		return Handler::ENTITY_TYPE_CRMDYNAMICS;
 	}
@@ -58,7 +58,7 @@ class CrmSmartInvoices extends CrmDynamics
 		return $result;
 	}
 
-	public function getData($params = [])
+	public function getData($params = []): array
 	{
 		$entityType = Handler::ENTITY_TYPE_CRMSMART_INVOICES;
 
@@ -112,6 +112,12 @@ class CrmSmartInvoices extends CrmDynamics
 		$list = Container::getInstance()->getFactory(static::getOwnerType())->getItemsFilteredByPermissions([
 			'order' => ['ID' => 'DESC'],
 			'limit' => 10,
+			'select' => [
+				Item::FIELD_NAME_ID,
+				Item::FIELD_NAME_TITLE,
+				Item::FIELD_NAME_BEGIN_DATE,
+				Item::FIELD_NAME_CREATED_TIME,
+			],
 		]);
 
 		foreach ($list as $item)
@@ -129,7 +135,7 @@ class CrmSmartInvoices extends CrmDynamics
 		return $result;
 	}
 
-	public function getTabList($params = [])
+	public function getTabList($params = []): array
 	{
 		$result = [];
 

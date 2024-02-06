@@ -2,14 +2,16 @@
 IncludeModuleLangFile(__FILE__);
 
 use Bitrix\Im as IM;
+use Bitrix\Im\V2\Chat;
 use Bitrix\Main\DB\SqlExpression;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Im\V2\Sync;
 
 class CIMChat
 {
 	const CHAT_ALL = 'all';
-	const GENERAL_MESSAGE_TYPE_JOIN = 'join';
-	const GENERAL_MESSAGE_TYPE_LEAVE = 'leave';
+	const GENERAL_MESSAGE_TYPE_JOIN = IM\V2\Chat\GeneralChat::GENERAL_MESSAGE_TYPE_JOIN;
+	const GENERAL_MESSAGE_TYPE_LEAVE = IM\V2\Chat\GeneralChat::GENERAL_MESSAGE_TYPE_LEAVE;
 
 	private $user_id = 0;
 	private $bHideLink = false;
@@ -152,13 +154,19 @@ class CIMChat
 		if (!$bTimeZone)
 			CTimeZone::Disable();
 
+		$lineId = 0;
 		$crmEntityType = null;
 		$crmEntityId = null;
-		if ($chatData['TYPE'] == IM_MESSAGE_OPEN_LINE && \Bitrix\Main\Loader::includeModule('imopenlines'))
+		if (
+			$chatData['TYPE'] == IM_MESSAGE_OPEN_LINE
+			&& \Bitrix\Main\Loader::includeModule('imopenlines')
+		)
 		{
 			$explodeData = explode('|', $chatData['ENTITY_DATA_1']);
 			$crmEntityType = ($explodeData[0] == 'Y') ? $explodeData[1] : null;
 			$crmEntityId = ($explodeData[0] == 'Y') ? intval($explodeData[2]) : null;
+
+			$lineId = \Bitrix\ImOpenLines\Chat::parseLinesChatEntityId($chatData['ENTITY_ID'])['lineId'];
 		}
 
 		$strSql = "";
@@ -187,7 +195,7 @@ class CIMChat
 		else if (
 			$chatData['TYPE'] == IM_MESSAGE_OPEN_LINE
 			&& \Bitrix\Main\Loader::includeModule('imopenlines')
-			&& \Bitrix\ImOpenLines\Config::canJoin($toChatId, $crmEntityType, $crmEntityId)
+			&& \Bitrix\ImOpenLines\Config::canJoin($lineId, $crmEntityType, $crmEntityId)
 		)
 		{
 			$strSql = "
@@ -232,6 +240,37 @@ class CIMChat
 					#LIMIT#
 				ORDER BY M.DATE_CREATE DESC
 			";
+		}
+		else
+		{
+			if (
+				$chatData['TYPE'] == IM_MESSAGE_OPEN_LINE
+				&& \Bitrix\Main\Loader::includeModule('imopenlines')
+				&& \Bitrix\ImOpenLines\Model\RecentTable::getCount([
+					'=CHAT_ID' => $toChatId,
+					'=USER_ID' => $fromUserId,
+				])
+			)
+			{
+				$strSql = "
+					SELECT
+						M.ID,
+						M.CHAT_ID,
+						M.MESSAGE,
+						".$DB->DatetimeToTimestampFunction('M.DATE_CREATE')." DATE_CREATE,
+						M.AUTHOR_ID,
+						C.TYPE CHAT_TYPE,
+						C.ENTITY_TYPE CHAT_ENTITY_TYPE,
+						'".$fromUserId."' RID
+					FROM b_im_message M
+					INNER JOIN b_im_chat C ON C.ID = M.CHAT_ID
+					WHERE
+						M.CHAT_ID = ".$toChatId."
+						".$limitById."
+						#LIMIT#
+					ORDER BY M.DATE_CREATE DESC
+				";
+			}
 		}
 
 		if (!$bTimeZone)
@@ -728,18 +767,18 @@ class CIMChat
 			{
 				$arResult['COUNTER'] = $readService->getCounterService()->getByChat($ID);
 				$lastRead =  $readService->getViewedService()->getDateViewedByMessageId($arResult['LAST_ID']);
-				$arResult['LAST_READ'] = isset($lastRead) ? $lastRead->getTimestamp() : null;
+				$arResult['LAST_READ'] = isset($lastRead) ? $lastRead->format('Y-m-d H:i:s') : null;
 			}
 			else
 			{
 				$userIds = array_keys($arResult);
 				$counters = $readService->getCounterService()->getByChatForEachUsers($ID, $userIds);
-				$lastIdInChat = $readService->getViewedService()->getLastMessageIdInChat($ID) ?? 0;
+				$lastIdInChat = $readService->getLastMessageIdInChat($ID);
 				$lastReads = $readService->getViewedService()->getDateViewedByMessageIdForEachUser($lastIdInChat, $userIds);
 				foreach ($arResult as $id => $user)
 				{
 					$arResult[$id]['COUNTER'] = $counters[$id] ?? 0;
-					$arResult[$id]['LAST_READ'] = isset($lastReads[$id]) ? $lastReads[$id]->getTimestamp() : null;
+					$arResult[$id]['LAST_READ'] = isset($lastReads[$id]) ? $lastReads[$id]->format('Y-m-d H:i:s') : null;
 				}
 			}
 		}
@@ -765,10 +804,11 @@ class CIMChat
 				'USERS' => [$userId],
 				'MESSAGE' => GetMessage('IM_PERSONAL_DESCRIPTION')
 			]);
+
+			return $favoriteChatResult->getResult()['CHAT_ID'];
 		}
 
-		$result = $favoriteChatResult->getResult();
-		return $result['ID'];
+		return $favoriteChatResult->getResult()['ID'];
 	}
 
 	/**
@@ -804,164 +844,55 @@ class CIMChat
 		return $arResult;
 	}
 
+	// region General Chat
+	/**
+	 * @deprecated Use \Bitrix\Im\V2\Chat\GeneralChat::getGeneralChatId()
+	 */
 	public static function GetGeneralChatId()
 	{
-		return COption::GetOptionString("im", "general_chat_id");
+		return IM\V2\Chat\GeneralChat::getGeneralChatId() ?? 0;
 	}
 
+	/**
+	 * @deprecated Use \Bitrix\Im\V2\Chat\GeneralChat::add()
+	 */
 	public static function InstallGeneralChat($agentMode = false)
 	{
-		global $DB;
-
-		$chatId = self::GetGeneralChatId();
-		if ($chatId > 0)
-		{
-			if ($DB->query('SELECT ID FROM b_im_chat WHERE ID = '.$chatId)->fetch())
-			{
-				return $agentMode? '': true;
-			}
-
-			COption::RemoveOption("im", "general_chat_id");
-		}
-
-		if (!IsModuleInstalled('intranet'))
-		{
-			return $agentMode? '': false;
-		}
-
-		$userCount = 0;
-
-		$types = \Bitrix\Main\UserTable::getExternalUserTypes();
-		$silentInstall = false;
-
-		$sqlCounter = "
-			SELECT COUNT(ID) as CNT
-			FROM b_user
-			WHERE ACTIVE = 'Y' AND (EXTERNAL_AUTH_ID NOT IN ('".implode("','", $types)."') OR EXTERNAL_AUTH_ID IS NULL OR b_user.EXTERNAL_AUTH_ID = '')";
-		$dbRes = $DB->Query($sqlCounter, false, "File: ".__FILE__."<br>Line: ".__LINE__);
-		if ($row = $dbRes->Fetch())
-		{
-			$userCount = $row['CNT'];
-			if ($userCount > 50)
-			{
-				if (\Bitrix\Main\Loader::includeModule('bitrix24'))
-				{
-					$perms = Array();
-					$admins = \CBitrix24::getAllAdminId();
-					foreach ($admins as $userId)
-					{
-						$perms[] = 'U'.$userId;
-					}
-					CIMChat::SetAccessToGeneralChat(false, $perms);
-					$silentInstall = true;
-				}
-				else if ($userCount > 500)
-				{
-					return $agentMode? '': false;
-				}
-			}
-		}
-
-		$res = $DB->Query("select ID from b_user_field where entity_id='USER' AND field_name='UF_DEPARTMENT'");
-		if ($result = $res->Fetch())
-		{
-			$fieldId = intval($result['ID']);
-		}
-		else
-		{
-			return $agentMode? '': false;
-		}
-
-		$CIMChat = new self(0);
-		$chatId = $CIMChat->Add(Array(
-			'TYPE' => IM_MESSAGE_OPEN,
-			'COLOR' => "AZURE",
-			'USERS' => false,
-			'TITLE' => GetMessage('IM_GENERAL_TITLE'),
-			'DESCTIPTION' => GetMessage('IM_GENERAL_DESCRIPTION')
-		));
-		if (!$chatId)
-		{
-			return $agentMode? '': false;
-		}
-
-		$messageId = $CIMChat->AddMessage(Array(
-			"TO_CHAT_ID" => $chatId,
-			"MESSAGE" => GetMessage('IM_GENERAL_DESCRIPTION'),
-			"FROM_USER_ID" => 0,
-			"SYSTEM" => 'Y',
-			"PUSH" => 'N',
-		));
-
-		$sql = "
-			insert into b_im_relation (USER_ID, MESSAGE_TYPE, CHAT_ID, STATUS)
-			select distinct b_user.ID, '".IM_MESSAGE_OPEN."', ".intval($chatId).", ".IM_STATUS_READ."
-			from b_user
-			inner join b_utm_user on b_utm_user.VALUE_ID = b_user.ID and b_utm_user.FIELD_ID = ".$fieldId." and b_utm_user.VALUE_INT > 0
-			WHERE b_user.ACTIVE = 'Y' AND (b_user.EXTERNAL_AUTH_ID NOT IN ('".implode("','", $types)."') OR b_user.EXTERNAL_AUTH_ID IS NULL OR b_user.EXTERNAL_AUTH_ID = '')
-		";
-		$result = $DB->Query($sql);
-		if (!$result)
-		{
-			return $agentMode? '': false;
-		}
-
-		self::linkGeneralChatId($chatId);
-
-		return $agentMode? '': true;
+		(new IM\V2\Chat\GeneralChat())->add([]);
 	}
 
+	/**
+	 * @deprecated Use \Bitrix\Im\V2\Chat\GeneralChat::getAutoMessageStatus()
+	 */
 	public static function GetGeneralChatAutoMessageStatus($type)
 	{
-		$status = false;
-		if ($type == self::GENERAL_MESSAGE_TYPE_JOIN)
-		{
-			$status = COption::GetOptionString("im", "general_chat_message_join");
-		}
-		else if ($type == self::GENERAL_MESSAGE_TYPE_LEAVE)
-		{
-			$status = COption::GetOptionString("im", "general_chat_message_leave");
-		}
-
-		return $status;
+		return \Bitrix\Im\V2\Chat\GeneralChat::getAutoMessageStatus((string)$type);
 	}
 
+	/**
+	 * @deprecated Use \Bitrix\Im\V2\Chat\GeneralChat::hasPostAccess()
+	 */
 	public static function CanSendMessageToGeneralChat($userId = null)
 	{
-		global $USER;
-
-		$userId = \Bitrix\Im\Common::getUserId($userId);
-		if ($userId <= 0)
+		$generalChat = IM\V2\Chat\ChatFactory::getInstance()->getGeneralChat();
+		if ($generalChat)
 		{
-			return false;
+			return $generalChat->hasPostAccess($userId);
 		}
 
-		if (COption::GetOptionString("im", "allow_send_to_general_chat_all", "Y") == "Y")
+		$generalChatId = \COption::GetOptionString('im', 'general_chat_id');
+		$generalChat = IM\V2\Chat::getInstance((int)$generalChatId);
+		if ($generalChat instanceof IM\V2\Chat\GeneralChat)
 		{
-			return true;
-		}
-
-		$chatRights = COption::GetOptionString("im", "allow_send_to_general_chat_rights");
-
-		if (!empty($chatRights))
-		{
-			$arUserGroupCode = $USER->GetAccessCodes();
-			$chatRights = explode(",", $chatRights);
-
-			foreach($chatRights as $right)
-			{
-				if (in_array($right, $arUserGroupCode))
-				{
-					return true;
-				}
-			}
-
-			return false;
+			return $generalChat->hasPostAccess($userId);
 		}
 
 		return false;
 	}
 
+	/**
+	 * @deprecated Use \Bitrix\Im\V2\Chat::setCanPost()
+	 */
 	public static function SetAccessToGeneralChat($allowAll = true, $allowCodes = Array())
 	{
 		$prevAllow = COption::GetOptionString("im", "allow_send_to_general_chat_all");
@@ -1006,83 +937,45 @@ class CIMChat
 		return true;
 	}
 
+	/**
+	 * @deprecated Use \Bitrix\Im\V2\Chat\GeneralChat::canJoinGeneralChat()
+	 */
 	public static function CanJoinGeneralChatId($userId)
 	{
-		$userId = intval($userId);
-		if ($userId <= 0)
-			return false;
+		$generalChat = IM\V2\Chat\ChatFactory::getInstance()->getGeneralChat();
 
-		$chatId = self::GetGeneralChatId();
-		if ($chatId <= 0)
-			return false;
-
-		if (!IsModuleInstalled('intranet'))
-			return false;
-
-		global $DB;
-
-		$res = $DB->Query("select ID from b_user_field where entity_id='USER' AND field_name='UF_DEPARTMENT'");
-		if ($result = $res->Fetch())
+		if ($generalChat)
 		{
-			$fieldId = intval($result['ID']);
-		}
-		else
-		{
-			return false;
+			return $generalChat->canJoinGeneralChat((int)$userId);
 		}
 
-		$result = false;
-
-		$sql = "
-			SELECT UU.ID, U.ACTIVE, U.EXTERNAL_AUTH_ID
-			FROM b_utm_user UU LEFT JOIN b_user U ON U.ID = UU.VALUE_ID
-			WHERE UU.VALUE_ID = ".$userId." and UU.FIELD_ID = ".$fieldId." and UU.VALUE_INT > 0";
-		$res = $DB->Query($sql);
-		if ($row = $res->Fetch())
-		{
-			$result = $row['ACTIVE'] == 'Y';
-		}
-
-		return $result;
+		return false;
 	}
 
+	/**
+	 * @deprecated Use \Bitrix\Im\V2\Chat\GeneralChat::linkGeneralChat()
+	 */
 	public static function linkGeneralChatId($chatId)
 	{
-		COption::SetOptionInt("im", "general_chat_id", $chatId);
-
-		if (CModule::IncludeModule('pull'))
-		{
-			CPullStack::AddShared(Array(
-				'module_id' => 'im',
-				'command' => 'generalChatId',
-				'params' => Array(
-					"id" => $chatId
-				),
-				'extra' => \Bitrix\Im\Common::getPullExtra()
-			));
-		}
-
-		return true;
+		return IM\V2\Chat\GeneralChat::linkGeneralChat((int) $chatId);
 	}
 
+	/**
+	 * @deprecated Use \Bitrix\Im\V2\Chat\GeneralChat::unlinkGeneralChat()
+	 */
 	public static function UnlinkGeneralChatId()
 	{
-		COption::RemoveOption("im", "general_chat_id");
-
-		if (CModule::IncludeModule('pull'))
-		{
-			CPullStack::AddShared(Array(
-				'module_id' => 'im',
-				'command' => 'generalChatId',
-				'params' => Array(
-					"id" => 0
-				),
-				'extra' => \Bitrix\Im\Common::getPullExtra()
-			));
-		}
-
-		return true;
+		return IM\V2\Chat\GeneralChat::unlinkGeneralChat();
 	}
+
+	public static function AddGeneralMessage($arFields)
+	{
+		$arFields['MESSAGE_TYPE'] = IM_MESSAGE_OPEN;
+		$arFields['TO_CHAT_ID'] = self::GetGeneralChatId();
+
+		return CIMMessenger::Add($arFields);
+	}
+	// endregion
 
 	public static function GetChatData($arParams = Array())
 	{
@@ -1097,7 +990,7 @@ class CIMChat
 
 		if (isset($arParams['SKIP_PRIVATE']) && $arParams['SKIP_PRIVATE'] == 'Y')
 		{
-			$from .= " AND C.TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."')";
+			$from .= " AND C.TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."','".\Bitrix\Im\V2\Chat::IM_TYPE_COPILOT."')";
 		}
 
 		$innerJoin = $whereUser = "";
@@ -1134,6 +1027,8 @@ class CIMChat
 			$whereGeneral = "WHERE R1.CHAT_ID IN (".implode(',', $arFilter['ID']).") ";
 		}
 
+		$connection = \Bitrix\Main\Application::getConnection();
+		$helper = $connection->getSqlHelper();
 		$strSql = "
 			SELECT
 				C.ID CHAT_ID,
@@ -1149,6 +1044,11 @@ class CIMChat
 				C.ENTITY_DATA_1 ENTITY_DATA_1,
 				C.ENTITY_DATA_2 ENTITY_DATA_2,
 				C.ENTITY_DATA_3 ENTITY_DATA_3,
+				C.MANAGE_USERS_ADD,
+				C.MANAGE_USERS_DELETE,
+				C.MANAGE_UI,
+				C.MANAGE_SETTINGS,
+				C.CAN_POST,
 				A.ALIAS ALIAS_NAME,
 				".$DB->DatetimeToTimestampFunction('C.DATE_CREATE')." CHAT_DATE_CREATE,
 				C.ENTITY_ID,
@@ -1159,12 +1059,13 @@ class CIMChat
 				".(isset($arParams['USER_ID'])? ", R2.ID RID": "")."
 			".$from."
 			".$innerJoin."
-			LEFT JOIN b_im_alias A ON A.ENTITY_ID = C.ID AND A.ENTITY_TYPE = C.ENTITY_TYPE
+			LEFT JOIN b_im_alias A ON A.ENTITY_ID = " . $helper->castToChar("C.ID") . " AND A.ENTITY_TYPE = C.ENTITY_TYPE
 			".$whereGeneral."
 		";
 
 		$arChat = Array();
 		$arLines = Array();
+		$linesChatIds = [];
 		$arUserInChat = Array();
 		$arUserCallStatus = Array();
 		$arUserChatBlockStatus = Array();
@@ -1211,7 +1112,14 @@ class CIMChat
 				if ($arRes["ENTITY_TYPE"] == 'LINES')
 				{
 					$fieldData = explode("|", $arRes['ENTITY_DATA_1']);
-					$arLines[$arRes["CHAT_ID"]] = $fieldData[5];
+					if ($fieldData[5] > 0)
+					{
+						$arLines[$arRes["CHAT_ID"]] = $fieldData[5];
+					}
+					else
+					{
+						$linesChatIds[] = (int)$arRes['CHAT_ID'];
+					}
 				}
 				else if ($generalChatId == $arRes['CHAT_ID'])
 				{
@@ -1246,6 +1154,14 @@ class CIMChat
 					'manager_list' => array(),
 					'date_create' => $arRes["CHAT_DATE_CREATE"]? \Bitrix\Main\Type\DateTime::createFromTimestamp($arRes["CHAT_DATE_CREATE"]): false,
 					'type' => $chatType,
+					'entity_link' => IM\V2\Chat\EntityLink::getInstance($arRes["ENTITY_TYPE"] ?? '', $arRes["ENTITY_ID"] ?? '', (int)$arRes['CHAT_ID'])->toRestFormat(),
+					'permissions' => [
+						'manage_users_add' => mb_strtolower($arRes['MANAGE_USERS_ADD']),
+						'manage_users_delete' => mb_strtolower($arRes['MANAGE_USERS_DELETE']),
+						'manage_ui' => mb_strtolower($arRes['MANAGE_UI']),
+						'manage_settings' => mb_strtolower($arRes['MANAGE_SETTINGS']),
+						'can_post' => mb_strtolower($arRes['CAN_POST']),
+					],
 					'message_type' => $arRes["CHAT_TYPE"],
 				);
 			}
@@ -1266,21 +1182,42 @@ class CIMChat
 		}
 
 		$lines = Array();
-		if (!empty($arLines) && CModule::IncludeModule('imopenlines'))
+		if (CModule::IncludeModule('imopenlines'))
 		{
-			$orm = \Bitrix\Imopenlines\Model\SessionTable::getList(Array(
-				'select' => Array('CHAT_ID', 'ID', 'STATUS', 'DATE_CREATE'),
-				'filter' => Array(
-					'=ID' => array_values($arLines)
-				)
-			));
-			while($row = $orm->fetch())
+			if (!empty($arLines))
 			{
-				$lines[$row['CHAT_ID']] = Array(
-					'id' => (int)$row['ID'],
-					'status' => (int)$row['STATUS'],
-					'date_create' => $row['DATE_CREATE'],
-				);
+				$orm = \Bitrix\Imopenlines\Model\SessionTable::getList(Array(
+					'select' => Array('CHAT_ID', 'ID', 'STATUS', 'DATE_CREATE'),
+					'filter' => Array(
+						'=ID' => array_values($arLines)
+					)
+				));
+				while($row = $orm->fetch())
+				{
+					$lines[$row['CHAT_ID']] = Array(
+						'id' => (int)$row['ID'],
+						'status' => (int)$row['STATUS'],
+						'date_create' => $row['DATE_CREATE'],
+					);
+				}
+			}
+
+			if (!empty($linesChatIds))
+			{
+				$orm = \Bitrix\Imopenlines\Model\SessionTable::getList(Array(
+					'select' => Array('CHAT_ID', 'ID', 'STATUS', 'DATE_CREATE'),
+					'filter' => Array(
+						'=CHAT_ID' => array_values($linesChatIds)
+					)
+				));
+				while($row = $orm->fetch())
+				{
+					$lines[$row['CHAT_ID']] = Array(
+						'id' => (int)$row['ID'],
+						'status' => (int)$row['STATUS'],
+						'date_create' => $row['DATE_CREATE'],
+					);
+				}
 			}
 		}
 
@@ -1435,12 +1372,15 @@ class CIMChat
 
 		$startId = $readService->getLastIdByChatId($chatId);
 		$counter = 0;
+		$viewedMessages = [];
 
 		if (isset($lastId))
 		{
 			$message = new \Bitrix\Im\V2\Message();
 			$message->setMessageId((int)$lastId)->setChatId($chatId);
-			$counter = $readService->readTo($message)->getResult()['COUNTER'];
+			$readResult = $readService->readTo($message);
+			$counter = $readResult->getResult()['COUNTER'];
+			$viewedMessages = $readResult->getResult()['VIEWED_MESSAGES'];
 		}
 		else
 		{
@@ -1481,7 +1421,7 @@ class CIMChat
 						'muted' => $relation['NOTIFY_BLOCK'] === 'Y',
 						'unread' => Im\Recent::isUnread($this->user_id, $relation['MESSAGE_TYPE'], 'chat'.$chatId),
 						'lines' => $relation['MESSAGE_TYPE'] === IM_MESSAGE_OPEN_LINE,
-						'viewedMessages' => [(int)$lastId],
+						'viewedMessages' => $viewedMessages,
 					),
 					'extra' => \Bitrix\Im\Common::getPullExtra()
 				));
@@ -1501,7 +1441,7 @@ class CIMChat
 					'userName' => \Bitrix\Im\User::getInstance($this->user_id)->getFullName(false),
 					'lastId' => $endId,
 					'date' => date('c', time()),
-					'viewedMessages' => [(int)$lastId],
+					'viewedMessages' => $viewedMessages,
 					'chatMessageStatus' => $relation['CHAT_MESSAGE_STATUS'],
 				),
 				'extra' => \Bitrix\Im\Common::getPullExtra()
@@ -1626,20 +1566,28 @@ class CIMChat
 					}
 				}
 				$viewsByGroups = $chat->getLastMessageViewsByGroups();
-
-				foreach ($viewsByGroups as $view)
-				{
-					$pushMessage['params']['lastMessageViews'] = Im\Common::toJson($view['VIEW_INFO']);
-					$usersForPush = array_keys($arRelation);
-					$recipient = array_intersect($usersForPush, $view['USERS']);
-					\Bitrix\Pull\Event::add($recipient, $pushMessage);
-				}
+				$usersForPush = array_keys($arRelation);
+				$viewers = array_intersect($usersForPush, $viewsByGroups['USERS'] ?? []);
+				$notViewers = array_diff($usersForPush, $viewers);
+				$pushMessage['params']['lastMessageViews'] = Im\Common::toJson($viewsByGroups['FOR_VIEWERS'] ?? []);
+				\Bitrix\Pull\Event::add($viewers, $pushMessage);
+				$pushMessage['params']['lastMessageViews'] = Im\Common::toJson($viewsByGroups['FOR_NOT_VIEWERS'] ?? []);
+				\Bitrix\Pull\Event::add($notViewers, $pushMessage);
 				/*\Bitrix\Pull\Event::add(array_keys($arRelation), $pushMessage);
 				if ($chat->getType() == IM_MESSAGE_OPEN || $chat->getType() == IM_MESSAGE_OPEN_LINE)
 				{
 					CPullWatch::AddToStack('IM_PUBLIC_'.$chatId, $pushMessage);
 				}*/
 			}
+
+			if (!$chat instanceof IM\V2\Chat\OpenLineChat)
+			{
+				Sync\Logger::getInstance()->add(
+					new Sync\Event(Sync\Event::ADD_EVENT, Sync\Event::CHAT_ENTITY, $chat->getChatId()),
+					$this->user_id
+				);
+			}
+
 
 			return true;
 		}
@@ -1665,7 +1613,7 @@ class CIMChat
 		$bUserLoad = isset($arParams['USER_LOAD']) && $arParams['USER_LOAD'] == 'N'? false: true;
 		$bFileLoad = isset($arParams['FILE_LOAD']) && $arParams['FILE_LOAD'] == 'N'? false: true;
 		$arExistUserData = isset($arParams['EXIST_USER_DATA']) && is_array($arParams['EXIST_USER_DATA'])? $arParams['EXIST_USER_DATA']: Array();
-		$messageType = isset($arParams['MESSAGE_TYPE']) && in_array($arParams['MESSAGE_TYPE'], Array(IM_MESSAGE_OPEN, IM_MESSAGE_CHAT, IM_MESSAGE_OPEN_LINE))? $arParams['MESSAGE_TYPE']: 'ALL';
+		$messageType = isset($arParams['MESSAGE_TYPE']) && in_array($arParams['MESSAGE_TYPE'], Array(IM_MESSAGE_OPEN, IM_MESSAGE_CHAT, IM_MESSAGE_OPEN_LINE, \Bitrix\Im\V2\Chat::IM_TYPE_COPILOT))? $arParams['MESSAGE_TYPE']: 'ALL';
 
 		$arMessages = Array();
 		$arUnreadMessage = Array();
@@ -1743,7 +1691,7 @@ class CIMChat
 					INNER JOIN b_im_message_unread MU ON M.ID = MU.MESSAGE_ID AND MU.USER_ID = " . $this->user_id . "
 					WHERE
 						R1.USER_ID = ".$this->user_id."
-						".($messageType == 'ALL'? "AND R1.MESSAGE_TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."')": "AND R1.MESSAGE_TYPE = '".$messageType."'")."
+						".($messageType == 'ALL'? "AND R1.MESSAGE_TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."','".\Bitrix\Im\V2\Chat::IM_TYPE_COPILOT."')": "AND R1.MESSAGE_TYPE = '".$messageType."'")."
 				";
 			if (!$bTimeZone)
 				CTimeZone::Enable();
@@ -1940,17 +1888,30 @@ class CIMChat
 
 		$chat = IM\Model\ChatTable::getById($chatId)->fetch();
 		if (!$chat)
+		{
 			return false;
+		}
 
 		if ($checkPermission && $chat['AUTHOR_ID'] != $this->user_id)
+		{
 			return false;
+		}
 
 		if ($userId == $chat['AUTHOR_ID'])
+		{
 			return true;
+		}
 
 		$arRelation = self::GetRelationById($chatId, false, true, false);
 		if (!isset($arRelation[$userId]))
+		{
 			return false;
+		}
+
+		if ($this->user_id !== 0 && !self::canDo($chat, $arRelation, Chat\Permission::ACTION_CHANGE_OWNER))
+		{
+			return false;
+		}
 
 		IM\Model\ChatTable::update($chatId, Array('AUTHOR_ID' => $userId));
 		IM\Model\RelationTable::update($arRelation[$userId]['ID'], Array('MANAGER' => 'Y'));
@@ -1978,13 +1939,27 @@ class CIMChat
 
 	public function SetDescription($chatId, $description)
 	{
+		$chatId = intval($chatId);
+
+		$chat = IM\Model\ChatTable::getById($chatId)->fetch();
+		if (!$chat)
+		{
+			return false;
+		}
+
+		$arRelation = self::GetRelationById($chatId, false, true, false);
+
+		if ($this->user_id !== 0 && !self::canDo($chat, $arRelation, Chat\Permission::ACTION_CHANGE_DESCRIPTION))
+		{
+			return false;
+		}
+
 		\Bitrix\Im\Model\ChatTable::update($chatId, Array(
 			'DESCRIPTION' => $description
 		));
 
 		if (CModule::IncludeModule('pull'))
 		{
-			$arRelation = self::GetRelationById($chatId, false, true, false);
 			\Bitrix\Pull\Event::add(array_keys($arRelation), Array(
 				'module_id' => 'im',
 				'command' => 'chatDescription',
@@ -2052,12 +2027,22 @@ class CIMChat
 		$chatId = intval($chatId);
 		$chat = IM\Model\ChatTable::getById($chatId)->fetch();
 		if (!$chat)
+		{
 			return false;
+		}
 
 		if ($checkPermission && $chat['AUTHOR_ID'] != $this->user_id)
+		{
 			return false;
+		}
 
 		$relations = self::GetRelationById($chatId, false, true, false);
+
+		if ($this->user_id !== 0 && !self::canDo($chat, $relations, Chat\Permission::ACTION_CHANGE_MANAGERS))
+		{
+			return false;
+		}
+
 		foreach ($users as $userId => $status)
 		{
 			$userId = intval($userId);
@@ -2069,6 +2054,11 @@ class CIMChat
 
 			$relations[$userId]['MANAGER'] = $status? 'Y': 'N';
 			IM\Model\RelationTable::update($relations[$userId]['ID'], Array('MANAGER' => $status));
+		}
+
+		if ($chat['TYPE'] === IM\V2\Chat::IM_TYPE_OPEN || $chat['ENTITY_TYPE'] === IM\V2\Chat::ENTITY_TYPE_GENERAL)
+		{
+			IM\V2\Chat\GeneralChat::cleanGeneralChatCache(IM\V2\Chat\GeneralChat::MANAGERS_CACHE_ID);
 		}
 
 		$managers = [];
@@ -2104,18 +2094,29 @@ class CIMChat
 		$color = ToUpper($color);
 
 		if ($chatId <= 0 || !IM\Color::isSafeColor($color))
+		{
 			return false;
+		}
 
 		$strSql = "
-			SELECT R.CHAT_ID, C.COLOR CHAT_COLOR, C.AUTHOR_ID CHAT_AUTHOR_ID, C.TYPE CHAT_TYPE, C.ENTITY_TYPE CHAT_ENTITY_TYPE, C.ENTITY_ID CHAT_ENTITY_ID
+			SELECT R.CHAT_ID, C.COLOR CHAT_COLOR, C.AUTHOR_ID CHAT_AUTHOR_ID, C.TYPE CHAT_TYPE,
+				C.ENTITY_TYPE CHAT_ENTITY_TYPE, C.ENTITY_ID CHAT_ENTITY_ID,
+				C.MANAGE_UI, C.MANAGE_USERS_ADD, C.MANAGE_USERS_DELETE, C.MANAGE_SETTINGS 
 			FROM b_im_relation R LEFT JOIN b_im_chat C ON R.CHAT_ID = C.ID
-			WHERE R.USER_ID = ".$this->user_id." AND R.MESSAGE_TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."') AND R.CHAT_ID = ".$chatId;
+			WHERE R.USER_ID = ".$this->user_id." AND R.MESSAGE_TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."','".\Bitrix\Im\V2\Chat::IM_TYPE_COPILOT."') AND R.CHAT_ID = ".$chatId;
 		$dbRes = $DB->Query($strSql, false, "File: ".__FILE__."<br>Line: ".__LINE__);
 		if ($arRes = $dbRes->Fetch())
 		{
 			$arRes['CHAT_TYPE'] = trim($arRes['CHAT_TYPE']);
 			if ($arRes['CHAT_COLOR'] == $color)
 				return false;
+
+			$ar = CIMChat::GetRelationById($chatId, false, true, false);
+
+			if ($this->user_id !== 0 && !self::canDo($arRes, $ar, Chat\Permission::ACTION_CHANGE_COLOR))
+			{
+				return false;
+			}
 
 			IM\Model\ChatTable::update($chatId, array('COLOR' => $color));
 
@@ -2126,7 +2127,6 @@ class CIMChat
 				'MESSAGE_REPLACE' => Array('#CHAT_COLOR#' => IM\Color::getName($color))
 			));
 
-			$ar = CIMChat::GetRelationById($chatId, false, true, false);
 			if ($arRes['CHAT_ENTITY_TYPE'] == 'LINES')
 			{
 				foreach ($ar as $rel)
@@ -2176,12 +2176,23 @@ class CIMChat
 	public function SetAvatarId($chatId, $fileId)
 	{
 		if ($chatId <= 0)
+		{
 			return false;
+		}
 
 		$orm = \Bitrix\Im\Model\ChatTable::getById($chatId);
 		$chat = $orm->fetch();
 		if (!$chat)
+		{
 			return false;
+		}
+
+		$relation = self::GetRelationById($chatId, false, true, false);
+
+		if ($this->user_id !== 0 && !self::canDo($chat, $relation, Chat\Permission::ACTION_CHANGE_AVATAR))
+		{
+			return false;
+		}
 
 		if ($fileId > 0)
 		{
@@ -2198,7 +2209,6 @@ class CIMChat
 
 		if (CModule::IncludeModule('pull'))
 		{
-			$relation = self::GetRelationById($chatId, false, true, false);
 			$users = [];
 			foreach ($relation as $rel)
 			{
@@ -2228,25 +2238,38 @@ class CIMChat
 		$title = mb_substr(trim($title), 0, 255);
 
 		if ($chatId <= 0 || $title == '')
+		{
 			return false;
+		}
 
 		if ($checkPermission)
 		{
 			$strSql = "
-				SELECT R.CHAT_ID, C.TITLE CHAT_TITLE, C.AUTHOR_ID CHAT_AUTHOR_ID, C.TYPE CHAT_TYPE, C.ENTITY_TYPE CHAT_ENTITY_TYPE, C.ENTITY_ID CHAT_ENTITY_ID, R.MANAGER IS_MANAGER
+				SELECT R.CHAT_ID, C.TITLE CHAT_TITLE, C.AUTHOR_ID CHAT_AUTHOR_ID, C.TYPE CHAT_TYPE, 
+					C.ENTITY_TYPE CHAT_ENTITY_TYPE, C.ENTITY_ID CHAT_ENTITY_ID, R.MANAGER IS_MANAGER, 
+					C.MANAGE_UI, C.MANAGE_USERS_ADD, C.MANAGE_USERS_DELETE, C.MANAGE_SETTINGS 
 				FROM b_im_relation R LEFT JOIN b_im_chat C ON R.CHAT_ID = C.ID
-				WHERE R.USER_ID = ".$this->user_id." AND R.MESSAGE_TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."') AND R.CHAT_ID = ".$chatId;
+				WHERE R.USER_ID = ".$this->user_id." AND R.MESSAGE_TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."','".\Bitrix\Im\V2\Chat::IM_TYPE_COPILOT."') AND R.CHAT_ID = ".$chatId;
 		}
 		else
 		{
 			$strSql = "
-				SELECT C.ID CHAT_ID, C.TITLE CHAT_TITLE, C.AUTHOR_ID CHAT_AUTHOR_ID, C.TYPE CHAT_TYPE, C.ENTITY_TYPE CHAT_ENTITY_TYPE, C.ENTITY_ID CHAT_ENTITY_ID, 'Y' IS_MANAGER
+				SELECT C.ID CHAT_ID, C.TITLE CHAT_TITLE, C.AUTHOR_ID CHAT_AUTHOR_ID, C.TYPE CHAT_TYPE, 
+					C.ENTITY_TYPE CHAT_ENTITY_TYPE, C.ENTITY_ID CHAT_ENTITY_ID, 'Y' IS_MANAGER, 
+					C.MANAGE_UI, C.MANAGE_USERS_ADD, C.MANAGE_USERS_DELETE, C.MANAGE_SETTINGS 
 				FROM b_im_chat C
-				WHERE C.ID = ".$chatId." AND C.TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."')";
+				WHERE C.ID = ".$chatId." AND C.TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."','".\Bitrix\Im\V2\Chat::IM_TYPE_COPILOT."')";
 		}
 		$dbRes = $DB->Query($strSql, false, "File: ".__FILE__."<br>Line: ".__LINE__);
 		if ($arRes = $dbRes->Fetch())
 		{
+			$ar = CIMChat::GetRelationById($chatId, false, true, false);
+
+			if ($this->user_id !== 0 && !self::canDo($arRes, $ar, Chat\Permission::ACTION_RENAME))
+			{
+				return false;
+			}
+
 			$arRes['CHAT_TITLE'] = \Bitrix\Im\Text::decodeEmoji($arRes['CHAT_TITLE']);
 
 			if ($arRes['CHAT_TITLE'] == $title)
@@ -2278,11 +2301,11 @@ class CIMChat
 						"TO_CHAT_ID" => $chatId,
 						"MESSAGE" => GetMessage("IM_CHAT_CHANGE_TITLE", Array('#CHAT_TITLE#' => $title)),
 						"SYSTEM" => 'Y',
+						"SKIP_USER_CHECK" => 'Y',
 					));
 				}
 			}
 
-			$ar = CIMChat::GetRelationById($chatId, false, true, false);
 			if ($arRes['CHAT_ENTITY_TYPE'] == 'LINES')
 			{
 				foreach ($ar as $rel)
@@ -2902,14 +2925,6 @@ class CIMChat
 		return CIMMessenger::Add($arFields);
 	}
 
-	public static function AddGeneralMessage($arFields)
-	{
-		$arFields['MESSAGE_TYPE'] = IM_MESSAGE_OPEN;
-		$arFields['TO_CHAT_ID'] = self::GetGeneralChatId();
-
-		return CIMMessenger::Add($arFields);
-	}
-
 	public function Join($chatId)
 	{
 		$chatId = intval($chatId);
@@ -2978,7 +2993,7 @@ class CIMChat
 		return true;
 	}
 
-	public function AddUser($chatId, $userId, $hideHistory = null, $skipMessage = false, $skipRecent = false)
+	public function AddUser($chatId, $userId, $hideHistory = null, $skipMessage = false, $skipRecent = false, $skipRelation = false)
 	{
 		global $DB;
 
@@ -3050,6 +3065,10 @@ class CIMChat
 					C.ENTITY_DATA_2 CHAT_ENTITY_DATA_2,
 					C.ENTITY_DATA_3 CHAT_ENTITY_DATA_3,
 					C.MESSAGE_COUNT CHAT_MESSAGE_COUNT,
+					C.MANAGE_UI,
+					C.MANAGE_USERS_ADD,
+					C.MANAGE_USERS_DELETE,
+					C.MANAGE_SETTINGS,
 					".$DB->DatetimeToTimestampFunction('C.DATE_CREATE')." CHAT_DATE_CREATE
 				FROM b_im_chat C
 				WHERE C.TYPE = '".IM_MESSAGE_OPEN."' AND C.ID = ".$chatId."
@@ -3081,12 +3100,16 @@ class CIMChat
 						C.ENTITY_DATA_2 CHAT_ENTITY_DATA_2,
 						C.ENTITY_DATA_3 CHAT_ENTITY_DATA_3,
 						C.MESSAGE_COUNT CHAT_MESSAGE_COUNT,
+						C.MANAGE_UI,
+						C.MANAGE_USERS_ADD,
+						C.MANAGE_USERS_DELETE,
+						C.MANAGE_SETTINGS,
 						".$DB->DatetimeToTimestampFunction('C.DATE_CREATE')." CHAT_DATE_CREATE
 					FROM b_im_relation R
 					LEFT JOIN b_im_chat C ON R.CHAT_ID = C.ID
 					WHERE
 						".($this->user_id > 0? "R.USER_ID = ".$this->user_id." AND ": "")."
-						R.MESSAGE_TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."')
+						R.MESSAGE_TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."','".\Bitrix\Im\V2\Chat::IM_TYPE_COPILOT."')
 						AND R.CHAT_ID = ".$chatId."
 				";
 				$dbRes = $DB->Query($strSql, false, "File: ".__FILE__."<br>Line: ".__LINE__);
@@ -3110,9 +3133,13 @@ class CIMChat
 					C.ENTITY_DATA_2 CHAT_ENTITY_DATA_2,
 					C.ENTITY_DATA_3 CHAT_ENTITY_DATA_3,
 					C.MESSAGE_COUNT CHAT_MESSAGE_COUNT,
+					C.MANAGE_UI,
+					C.MANAGE_USERS_ADD,
+					C.MANAGE_USERS_DELETE,
+					C.MANAGE_SETTINGS,
 					".$DB->DatetimeToTimestampFunction('C.DATE_CREATE')." CHAT_DATE_CREATE
 				FROM b_im_chat C
-				WHERE C.TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."') AND C.ID = ".$chatId."
+				WHERE C.TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."','".\Bitrix\Im\V2\Chat::IM_TYPE_COPILOT."') AND C.ID = ".$chatId."
 			";
 			$dbRes = $DB->Query($strSql, false, "File: ".__FILE__."<br>Line: ".__LINE__);
 			$arRes = $dbRes->Fetch();
@@ -3120,6 +3147,14 @@ class CIMChat
 		if (!$arRes)
 		{
 			$GLOBALS["APPLICATION"]->ThrowException(GetMessage("IM_ERROR_AUTHORIZE_ERROR"), "AUTHORIZE_ERROR");
+			return false;
+		}
+
+		$arRelation = self::GetRelationById($chatId, false, true, false);
+
+		if ($this->user_id !== 0 && !self::canDo($arRes, $arRelation, Chat\Permission::ACTION_EXTEND))
+		{
+			$GLOBALS["APPLICATION"]->ThrowException(GetMessage("IM_CHAT_ACCESS_DENIED_EXTEND_USERS"), "ACCESS_DENIED_EXTEND");
 			return false;
 		}
 
@@ -3150,7 +3185,6 @@ class CIMChat
 		$chatAuthorId = intval($arRes['CHAT_AUTHOR_ID']);
 		$chatType = $arRes['CHAT_TYPE'];
 
-		$arRelation = self::GetRelationById($chatId, false, true, false);
 		$arExistUser = Array();
 		foreach ($arRelation as $relation)
 			$arExistUser[] = $relation['USER_ID'];
@@ -3330,17 +3364,19 @@ class CIMChat
 				$startCounter = (int)$arRes['CHAT_MESSAGE_COUNT'];
 			}
 
-			$orm = IM\Model\RelationTable::add(array(
-				"CHAT_ID" => $chatId,
-				"MESSAGE_TYPE" => $arRes['CHAT_TYPE'],
-				"USER_ID" => $uid,
-				"START_ID" => $hideHistoryFlag? $startId: 0,
-				"LAST_ID" => $maxId,
-				//"LAST_SEND_ID" => $maxId,
-				"LAST_FILE_ID" => $hideHistoryFlag? $fileMaxId: 0,
-				"START_COUNTER" => $startCounter
-			));
-			$relationId = $orm->getId();
+			if (!$skipRelation)
+			{
+				$orm = IM\Model\RelationTable::add(array(
+					"CHAT_ID" => $chatId,
+					"MESSAGE_TYPE" => $arRes['CHAT_TYPE'],
+					"USER_ID" => $uid,
+					"START_ID" => $hideHistoryFlag? $startId: 0,
+					"LAST_ID" => $maxId,
+					"LAST_FILE_ID" => $hideHistoryFlag? $fileMaxId: 0,
+					"START_COUNTER" => $startCounter
+				));
+				$relationId = $orm->getId();
+			}
 
 			if ($arRes['CHAT_TYPE'] != IM_MESSAGE_OPEN)
 			{
@@ -3391,25 +3427,36 @@ class CIMChat
 
 		if ($message)
 		{
-			$lastId = self::AddMessage(Array(
+			$messageParams = [
 				"TO_CHAT_ID" => $chatId,
 				"MESSAGE" => $message,
 				"FROM_USER_ID" => $this->user_id,
 				"SYSTEM" => 'Y',
 				"RECENT_ADD" => $skipRecent? 'N': 'Y',
-				"PARAMS" => Array(
+				"PARAMS" => [
 					"CODE" => 'CHAT_JOIN',
 					"NOTIFY" => $chatEntityType == 'LINES'? 'Y': 'N',
-				),
-				"PUSH" => 'N'
-			));
+				],
+				"PUSH" => 'N',
+				"SKIP_USER_CHECK" => 'Y',
+			];
+
+			if ($skipRelation)
+			{
+				$messageParams['FAKE_RELATION'] = (int)array_shift($arUserId);
+			}
+
+			$lastId = self::AddMessage($messageParams);
 		}
 		else
 		{
 			$lastId = 0;
 		}
 
-		CIMDisk::ChangeFolderMembers($chatId, $arUserId);
+		if (!$skipRelation)
+		{
+			CIMDisk::ChangeFolderMembers($chatId, $arUserId);
+		}
 
 		foreach ($arUserId as $uid)
 		{
@@ -3485,7 +3532,14 @@ class CIMChat
 		return \Bitrix\Im\Chat::mute($chatId, $mute, $this->user_id);
 	}
 
-	public function DeleteUser($chatId, $userId, $checkPermission = true, $skipMessage = false, $skipRecent = false)
+	public function DeleteUser(
+		$chatId,
+		$userId,
+		$checkPermission = true,
+		$skipMessage = false,
+		$skipRecent = false,
+		$withoutRead = false
+	)
 	{
 		global $DB;
 		$chatId = intval($chatId);
@@ -3516,15 +3570,31 @@ class CIMChat
 				C.EXTRANET CHAT_EXTRANET,
 				C.ENTITY_TYPE CHAT_ENTITY_TYPE,
 				C.ENTITY_ID CHAT_ENTITY_ID,
-				C.TYPE CHAT_TYPE
+				C.TYPE CHAT_TYPE,
+				C.MANAGE_UI,
+				C.MANAGE_USERS_ADD,
+				C.MANAGE_USERS_DELETE,
+				C.MANAGE_SETTINGS 
 			FROM b_im_relation R LEFT JOIN b_im_chat C ON R.CHAT_ID = C.ID
-			WHERE R.USER_ID = ".$userId." AND R.MESSAGE_TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."') AND R.CHAT_ID = ".$chatId;
+			WHERE R.USER_ID = ".$userId." AND R.MESSAGE_TYPE IN ('".IM_MESSAGE_OPEN."','".IM_MESSAGE_CHAT."','".IM_MESSAGE_OPEN_LINE."','".\Bitrix\Im\V2\Chat::IM_TYPE_COPILOT."') AND R.CHAT_ID = ".$chatId;
 		$dbRes = $DB->Query($strSql, false, "File: ".__FILE__."<br>Line: ".__LINE__);
 		$arRes = $dbRes->Fetch();
 		if (!$arRes)
 		{
 			$GLOBALS["APPLICATION"]->ThrowException(GetMessage("IM_ERROR_USER_NOT_FOUND"), "USER_NOT_FOUND");
 			return false;
+		}
+
+		$arOldRelation = CIMChat::GetRelationById($chatId, false, true, false);
+
+		$currentUser = IM\User::getInstance()->getId();
+		if ($userId !== $currentUser)
+		{
+			if ($this->user_id !== 0 && !self::canDo($arRes, $arOldRelation, Chat\Permission::ACTION_KICK))
+			{
+				$GLOBALS["APPLICATION"]->ThrowException(GetMessage("IM_CHAT_ACCESS_DENIED_KICK_USERS"), "ACCESS_DENIED_KICK");
+				return false;
+			}
 		}
 
 		$chatParentMessageId = $arRes['CHAT_PARENT_MID'];
@@ -3575,8 +3645,6 @@ class CIMChat
 			$bSelf = false;
 			$arUsers[] = $this->user_id;
 		}
-
-		$arOldRelation = CIMChat::GetRelationById($chatId, false, true, false);
 
 		$arUsers = CIMContactList::GetUserData(array(
 			'ID' => array_keys($arOldRelation),
@@ -3630,7 +3698,7 @@ class CIMChat
 			$message = GetMessage("IM_CHAT_KICK_".$arUsers[$this->user_id]['gender'], Array('#USER_1_NAME#' => htmlspecialcharsback($arUsers[$this->user_id]['name']), '#USER_2_NAME#' => htmlspecialcharsback($arUsers[$userId]['name'])));
 		}
 
-		CIMContactList::DeleteRecent($chatId, true, $userId);
+		CIMContactList::DeleteRecent($chatId, true, $userId, $withoutRead);
 
 		\Bitrix\Im\LastSearch::delete('chat'.$chatId, $userId);
 
@@ -3857,6 +3925,7 @@ class CIMChat
 			"FROM_USER_ID" => $userId,
 			"MESSAGE" => $message,
 			"SYSTEM" => 'Y',
+			"SKIP_USER_CHECK" => 'Y',
 		));
 	}
 
@@ -3943,6 +4012,9 @@ class CIMChat
 				'LEAVE_OWNER' => false,
 				'USER_LIST' => false,
 			];
+			self::$entityOption[\Bitrix\ImBot\Bot\Network::CHAT_ENTITY_TYPE] =
+				self::$entityOption[\Bitrix\ImBot\Bot\Support24::CHAT_ENTITY_TYPE]
+			;
 		}
 
 		if (\Bitrix\Main\ModuleManager::isModuleInstalled('socialnetwork'))
@@ -4003,6 +4075,21 @@ class CIMChat
 				'LEAVE_OWNER' => false,
 				'PATH' => '',
 				'PATH_TITLE' => ''
+			);
+		}
+
+		if (\Bitrix\Main\Loader::includeModule('voximplant'))
+		{
+			self::$entityOption['CALL'] = Array(
+				'AVATAR' => true,
+				'RENAME' => true,
+				'EXTEND' => false,
+				'CALL' => false,
+				'MUTE' => false,
+				'LEAVE' => false,
+				'LEAVE_OWNER' => false,
+				'SEND' => true,
+				'USER_LIST' => true,
 			);
 		}
 
@@ -4158,9 +4245,14 @@ class CIMChat
 	public static function hide($chatId)
 	{
 		$pushList = [];
+		$lines = false;
 		$relations = \CIMChat::GetRelationById($chatId, false, true, false);
 		foreach($relations as $userId => $relation)
 		{
+			if ($relation['MESSAGE_TYPE'] === Chat::IM_TYPE_OPEN_LINE)
+			{
+				$lines = true;
+			}
 			\CIMContactList::DeleteRecent($chatId, true, $userId);
 
 			if (!\Bitrix\Im\User::getInstance($userId)->isConnector())
@@ -4180,6 +4272,8 @@ class CIMChat
 				'expiry' => 3600,
 				'params' => Array(
 					'dialogId' => 'chat'.$chatId,
+					'chatId' => $chatId,
+					'lines' => $lines
 				),
 				'extra' => \Bitrix\Im\Common::getPullExtra()
 			));
@@ -4253,5 +4347,22 @@ class CIMChat
 		return GetMessage('IM_VIDEOCONF_NAME_FORMAT_NEW', [
 			'#NUMBER#' => $counter
 		]);
+	}
+
+	public static function canDo(array $chatData, array $relations, string $action): bool
+	{
+		if (isset($chatData['CHAT_TYPE']))
+		{
+			$chatData['TYPE'] = $chatData['CHAT_TYPE'];
+		}
+
+		if (isset($chatData['CHAT_ENTITY_TYPE']))
+		{
+			$chatData['ENTITY_TYPE'] = $chatData['CHAT_ENTITY_TYPE'];
+		}
+
+		$chatData['RELATIONS'] = new IM\V2\RelationCollection($relations);
+
+		return Chat\ChatFactory::getInstance()->initChat($chatData)->canDo($action);
 	}
 }

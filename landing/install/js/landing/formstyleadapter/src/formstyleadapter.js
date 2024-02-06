@@ -458,7 +458,7 @@ export class FormStyleAdapter extends EventEmitter
 		});
 	}
 
-	getStyleForm(): Array<any>
+	getStyleForm(collapsed = true): Array<any>
 	{
 		return this.cache.remember('styleForm', () => {
 			return new StyleForm({
@@ -538,6 +538,8 @@ export class FormStyleAdapter extends EventEmitter
 
 					return value;
 				},
+				collapsed: collapsed,
+				specialType: 'crm_forms',
 			});
 		});
 	}
@@ -651,7 +653,8 @@ export class FormStyleAdapter extends EventEmitter
 					siteId: currentBlock.siteId,
 				},
 				{code: currentBlock.manifest.code},
-			);
+			)
+			.then(BX.Landing.History.getInstance().push());
 	}
 
 	onDebouncedFormChange()

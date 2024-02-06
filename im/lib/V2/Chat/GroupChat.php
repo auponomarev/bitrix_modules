@@ -7,6 +7,7 @@ use Bitrix\Im\Notify;
 use Bitrix\Im\Color;
 use Bitrix\Im\Model\RelationTable;
 use Bitrix\Im\V2\Chat;
+use Bitrix\Im\V2\Entity\User\UserPopupItem;
 use Bitrix\Im\V2\Link\Url\UrlService;
 use Bitrix\Im\V2\Message;
 use Bitrix\Im\V2\Message\MessageError;
@@ -18,12 +19,15 @@ use Bitrix\Im\V2\Message\Send\MentionService;
 use Bitrix\Im\V2\MessageCollection;
 use Bitrix\Im\V2\Message\ReadService;
 use Bitrix\Im\V2\Bot\BotService;
+use Bitrix\Im\V2\Rest\PopupData;
+use Bitrix\Im\V2\Rest\PopupDataAggregatable;
 use Bitrix\Im\V2\Result;
 use Bitrix\Im\V2\Service\Context;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Pull\Event;
 use CPullWatch;
 
-class GroupChat extends Chat
+class GroupChat extends Chat implements PopupDataAggregatable
 {
 	protected function getDefaultType(): string
 	{
@@ -71,8 +75,8 @@ class GroupChat extends Chat
 			return $result->addErrors($paramsResult->getErrors());
 		}
 
-		$chat = new GroupChat($params);
-		$chat->setExtranet($chat->checkIsExtranet());
+		$chat = new static($params);
+		$chat->setExtranet($chat->checkIsExtranet())->setContext($context);
 		$chat->save();
 
 		if (!$chat->getChatId())
@@ -80,62 +84,26 @@ class GroupChat extends Chat
 			return $result->addError(new ChatError(ChatError::CREATION_ERROR));
 		}
 
+		$chat->addUsersToRelation([$chat->getAuthorId()], $params['MANAGERS'] ?? [], false);
 		$chat->sendGreetingMessage($this->getContext()->getUserId());
+		$chat->sendBanner($this->getContext()->getUserId());
 
-		if ($chat->getUserIds())
-		{
-			$chat->sendBanner($this->getContext()->getUserId());
-		}
+		$usersToInvite = $chat->filterUsersToAdd($chat->getUserIds());
+		$addedUsers = $usersToInvite;
+		$addedUsers[$chat->getAuthorId()] = $chat->getAuthorId();
 
-		if (!$chat->getUserIds())
-		{
-			$chat->sendBanner($this->getContext()->getUserId());
-		}
-
-		foreach ($chat->getUserIds() as $userId)
-		{
-			if ($chat->getAuthorId() == $userId)
-			{
-				$isManager = 'Y';
-			}
-			else
-			{
-				$isManager = in_array($userId, $params['MANAGERS']) ? 'Y' : 'N';
-			}
-
-			RelationTable::add([
-				'CHAT_ID' => $chat->getChatId(),
-				'MESSAGE_TYPE' => \IM_MESSAGE_CHAT,
-				'USER_ID' => $userId,
-				'STATUS' => \IM_STATUS_READ,
-				'MANAGER' => $isManager,
-			]);
-
-			if (\Bitrix\Im\V2\Entity\User\User::getInstance($userId)->isBot())
-			{
-				\Bitrix\Im\Bot::changeChatMembers($chat->getChatId(), $userId);
-				\Bitrix\Im\Bot::onJoinChat('chat' . $chat->getChatId(), [
-					'CHAT_TYPE' => $chat->getType(),
-					'MESSAGE_TYPE' => \IM_MESSAGE_CHAT,
-					'BOT_ID' => $userId,
-					'USER_ID' => $params['USER_ID'],
-					'CHAT_AUTHOR_ID' => $chat->getAuthorId(),
-					'CHAT_ENTITY_TYPE' => $chat->getEntityType(),
-					'CHAT_ENTITY_ID' => $chat->getEntityId(),
-					'ACCESS_HISTORY' => true,
-				]);
-			}
-		}
-
-		$chat->sendInviteMessage($this->getContext()->getUserId());
+		$chat->addUsersToRelation($usersToInvite, $params['MANAGERS'] ?? [], false);
+		$chat->sendMessageUsersAdd($usersToInvite);
+		$chat->sendEventUsersAdd($addedUsers);
 		$chat->sendDescriptionMessage();
-
-		$chat->updateIndex();
+		$chat->addIndex();
 
 		$result->setResult([
 			'CHAT_ID' => $chat->getChatId(),
 			'CHAT' => $chat,
 		]);
+
+		self::cleanCache($chat->getChatId());
 
 		return $result;
 	}
@@ -155,8 +123,7 @@ class GroupChat extends Chat
 		{
 			$params['AUTHOR_ID'] = (int)$params['AUTHOR_ID'];
 		}
-
-		if (isset($params['OWNER_ID']))
+		elseif (isset($params['OWNER_ID']))
 		{
 			$params['AUTHOR_ID'] = (int)$params['OWNER_ID'];
 		}
@@ -208,7 +175,10 @@ class GroupChat extends Chat
 			$params['OWNER_ID'] = $this->getContext()->getUserId();
 		}
 
-		$params['USERS'] = array_unique(array_merge($params['USERS'], [$params['AUTHOR_ID']]));
+		$params['MANAGERS'] ??= [];
+		$params['MANAGERS'] = array_unique(array_merge($params['MANAGERS'], [$params['AUTHOR_ID']]));
+
+		$params['USERS'] = array_unique(array_merge($params['USERS'], $params['MANAGERS']));
 		$params['USER_COUNT'] = count($params['USERS']);
 
 		if (
@@ -241,6 +211,11 @@ class GroupChat extends Chat
 		}
 
 		return $result->setResult($params);
+	}
+
+	protected function addUsersToRelation(array $usersToAdd, array $managerIds = [], ?bool $hideHistory = null)
+	{
+		parent::addUsersToRelation($usersToAdd, $managerIds, $hideHistory ?? \CIMSettings::GetStartChatMessage() == \CIMSettings::START_MESSAGE_LAST);
 	}
 
 	public function checkTitle(): Result
@@ -299,6 +274,14 @@ class GroupChat extends Chat
 		return mb_substr($chatTitle, 0, 255);
 	}
 
+	public function sendPushUpdateMessage(Message $message): void
+	{
+		$pushFormat = new Message\PushFormat();
+		$push = $pushFormat->formatMessageUpdate($message);
+		$push['params']['dialogId'] = $this->getDialogId();
+		Event::add($this->getUsersForPush(true, false), $push);
+	}
+
 	protected function sendPushReadOpponent(MessageCollection $messages, int $lastId): array
 	{
 		$pushMessage = parent::sendPushReadOpponent($messages, $lastId);
@@ -330,7 +313,7 @@ class GroupChat extends Chat
 		);
 
 		\CIMMessage::Add([
-			'MESSAGE_TYPE' => self::IM_TYPE_CHAT,
+			'MESSAGE_TYPE' => $this->getType(),
 			'TO_CHAT_ID' => $this->getChatId(),
 			'FROM_USER_ID' => $author->getId(),
 			'MESSAGE' => $messageText,
@@ -349,7 +332,7 @@ class GroupChat extends Chat
 			);
 
 			\CIMMessage::Add([
-				'MESSAGE_TYPE' => self::IM_TYPE_CHAT,
+				'MESSAGE_TYPE' => $this->getType(),
 				'TO_CHAT_ID' => $this->getChatId(),
 				'FROM_USER_ID' => $author->getId(),
 				'MESSAGE' => $messageText,
@@ -368,12 +351,12 @@ class GroupChat extends Chat
 		$author = \Bitrix\Im\V2\Entity\User\User::getInstance($authorId);
 
 		if (
-			in_array($this->getType(), [self::IM_TYPE_CHAT, self::IM_TYPE_OPEN], true)
+			in_array($this->getType(), [self::IM_TYPE_CHAT, self::IM_TYPE_OPEN, self::IM_TYPE_COPILOT], true)
 			&& empty($this->getEntityType())
 		)
 		{
 			\CIMMessage::Add([
-				'MESSAGE_TYPE' => self::IM_TYPE_CHAT,
+				'MESSAGE_TYPE' => $this->getType(),
 				'TO_CHAT_ID' => $this->getChatId(),
 				'FROM_USER_ID' => $author->getId(),
 				'MESSAGE' => Loc::getMessage('IM_CHAT_CREATE_WELCOME'),
@@ -436,7 +419,7 @@ class GroupChat extends Chat
 		);
 
 		\CIMMessage::Add([
-			'MESSAGE_TYPE' => self::IM_TYPE_CHAT,
+			'MESSAGE_TYPE' => $this->getType(),
 			'TO_CHAT_ID' => $this->getChatId(),
 			'FROM_USER_ID' => $author->getId(),
 			'MESSAGE' => $messageText,
@@ -460,7 +443,11 @@ class GroupChat extends Chat
 			return $result->addError(new ChatError(ChatError::WRONG_TARGET_CHAT));
 		}
 
-		if (!$message instanceof Message)
+		if (is_string($message))
+		{
+			$message = (new Message)->setMessage($message);
+		}
+		elseif (!$message instanceof Message)
 		{
 			$message = new Message($message);
 		}
@@ -682,10 +669,17 @@ class GroupChat extends Chat
 		$author = \Bitrix\Im\V2\Entity\User\User::getInstance($authorId);
 
 		\CIMMessage::Add([
-			'MESSAGE_TYPE' => self::IM_TYPE_CHAT,
+			'MESSAGE_TYPE' => $this->getType(),
 			'TO_CHAT_ID' => $this->getChatId(),
 			'FROM_USER_ID' => $author->getId(),
 			'MESSAGE' => htmlspecialcharsback($this->getDescription()),
 		]);
+	}
+
+	public function getPopupData(array $excludedList = []): PopupData
+	{
+		$userIds = [$this->getContext()->getUserId()];
+
+		return new PopupData([new UserPopupItem($userIds)], $excludedList);
 	}
 }

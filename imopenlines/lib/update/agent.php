@@ -83,9 +83,8 @@ final class Agent
 			&& Loader::IncludeModule('imopenlines')
 		)
 		{
-			$connection = \Bitrix\Main\Application::getInstance()->getConnection();
 			$configs = [];
-			$confList = $connection->query("SELECT ID FROM b_imopenlines_config");
+			$confList = \Bitrix\ImOpenLines\Model\ConfigTable::getList(['select' => ['ID']]);
 			while ($row = $confList->fetch())
 			{
 				$configs[] = (int)$row['ID'];
@@ -94,6 +93,7 @@ final class Agent
 			$type = \Bitrix\Im\Chat::TYPE_OPEN_LINE;
 			$chatType = \Bitrix\ImOpenLines\Chat::CHAT_TYPE_OPERATOR;
 
+			$connection = \Bitrix\Main\Application::getInstance()->getConnection();
 			$res = $connection->query("
 				SELECT 
 					c.ID, c.ENTITY_ID 
@@ -106,7 +106,7 @@ final class Agent
 					left join b_imopenlines_session s
 						on c.id = s.CHAT_ID
 					left join b_imopenlines_config g
-						on g.ID = cast(substring_index(substring_index(c.ENTITY_ID, '|', 2), '|', -1) as unsigned)
+						on g.ID = cast(substring_index(substring_index(c.ENTITY_ID, '|', 2), '|', -1) as decimal)
 				WHERE 
 					s.ID is null
 					AND g.ID is null
@@ -123,6 +123,46 @@ final class Agent
 			if (Loader::includeModule('pull'))
 			{
 				\Bitrix\Pull\Event::send();
+			}
+		}
+
+		return '';
+	}
+
+	public static function updateRightsQuickAnswersAgent(): string
+	{
+		if (!Loader::includeModule('iblock'))
+		{
+			return '';
+		}
+
+		$iblocks = \CIBlock::getList(
+			[],
+			[
+				'ACTIVE' => 'Y',
+				'TYPE' => \Bitrix\ImOpenlines\QuickAnswers\ListsDataManager::TYPE,
+				'CODE' => \Bitrix\ImOpenlines\QuickAnswers\ListsDataManager::IBLOCK_CODE,
+				'CHECK_PERMISSIONS' => 'N'
+			]
+		);
+
+		while ($iblock = $iblocks->Fetch())
+		{
+			$configsCount = \Bitrix\ImOpenLines\Model\ConfigTable::getCount([
+				'=QUICK_ANSWERS_IBLOCK_ID' => (int)$iblock['ID']
+			]);
+
+			if ($configsCount)
+			{
+				\Bitrix\ImOpenlines\QuickAnswers\ListsDataManager::updateIblockRights($iblock['ID']);
+			}
+			else
+			{
+				$sectionCount = \CIBlockElement::GetList([], ['IBLOCK_ID' => $iblock['ID']]);
+				if (!$sectionCount->SelectedRowsCount())
+				{
+					\CIBlock::Delete($iblock['ID']);
+				}
 			}
 		}
 

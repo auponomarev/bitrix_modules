@@ -1,4 +1,8 @@
-<?if(!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true)die();
+<?
+use Bitrix\Meeting\Integration\Intranet\Settings;
+use Bitrix\Main\Loader;
+
+if(!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true)die();
 
 if (!CModule::IncludeModule("meeting"))
 {
@@ -35,7 +39,7 @@ $arVariables = array();
 if($arParams["SEF_MODE"] == "Y")
 {
 	$arUrlTemplates = CComponentEngine::MakeComponentUrlTemplates($arDefaultUrlTemplates404, $arParams["SEF_URL_TEMPLATES"]);
-	$arVariableAliases = CComponentEngine::MakeComponentVariableAliases($arDefaultVariableAliases404, $arParams["VARIABLE_ALIASES"]);
+	$arVariableAliases = CComponentEngine::MakeComponentVariableAliases($arDefaultVariableAliases404, ($arParams["VARIABLE_ALIASES"] ?? null));
 
 	$componentPage = CComponentEngine::ParseComponentPath(
 		$arParams["SEF_FOLDER"],
@@ -87,10 +91,15 @@ $arParams["MEETING_COPY_URL"] = CComponentEngine::MakePathFromTemplate($arParams
 
 $arParams["ITEM_URL"] = CComponentEngine::MakePathFromTemplate($arParams["SEF_FOLDER"].$arParams["SEF_URL_TEMPLATES"]["item"], $arVariables);
 
-if ($componentPage != 'list' && $arParams['SET_NAVCHAIN'] !== 'N')
+if ($componentPage != 'list' && ($arParams['SET_NAVCHAIN'] ?? null) !== 'N')
 {
 	\Bitrix\Main\Localization\Loc::loadLanguageFile(__DIR__."/.description.php");
 	$APPLICATION->AddChainItem(GetMessage('MEETINGS_NAME'), $arParams['LIST_URL']);
+}
+
+if (!(new Settings())->isMeetingsAvailable())
+{
+	$componentPage = 'tool_disabled';
 }
 
 $this->IncludeComponentTemplate($componentPage);

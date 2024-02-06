@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { Action } from "../../action";
 import { Browser, Runtime } from "main.core";
 import { Button } from '../layout/button';
@@ -112,21 +113,25 @@ export const EditableDescription = {
 		saveTextButtonState()
 		{
 			const trimValue = this.value.trim();
-			if (trimValue.length === 0) {
+
+			if (trimValue.length === 0)
+			{
 				return ButtonState.DISABLED;
-			} else if (this.isSaving) {
-				return ButtonState.LOADING;
-			} else {
-				return ButtonState.DEFAULT;
 			}
 
+			if (this.isSaving)
+			{
+				return ButtonState.DISABLED;
+			}
+
+			return ButtonState.DEFAULT;
 		},
 
 		expandButtonText()
 		{
 			return this.isCollapsed
-				? this.$Bitrix.Loc.getMessage('CRM_TIMELINE_ITEM_EDITABLE_DESCRIPTION_HIDE')
-				: this.$Bitrix.Loc.getMessage('CRM_TIMELINE_ITEM_EDITABLE_DESCRIPTION_SHOW');
+				? this.$Bitrix.Loc.getMessage('CRM_TIMELINE_ITEM_EDITABLE_DESCRIPTION_HIDE_MSGVER_1')
+				: this.$Bitrix.Loc.getMessage('CRM_TIMELINE_ITEM_EDITABLE_DESCRIPTION_SHOW_MSGVER_1');
 		},
 
 		isEditButtonVisible(): Boolean
@@ -255,6 +260,17 @@ export const EditableDescription = {
 
 			return parentHeight > textBlockMaxHeight;
 		},
+
+		isInViewport(): boolean {
+			const rect = this.$el.getBoundingClientRect();
+
+			return (
+				rect.top >= 0
+				&& rect.left >= 0
+				&& rect.bottom <= (window.innerHeight || document.documentElement.clientHeight)
+				&& rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+			);
+		},
 	},
 
 	watch: {
@@ -272,6 +288,18 @@ export const EditableDescription = {
 			this.$nextTick(() => {
 				this.adjustHeight(this.$refs.textarea);
 			});
+		},
+
+		isCollapsed(isCollapsed) {
+			if (isCollapsed === false && this.isInViewport() === false)
+			{
+				requestAnimationFrame(() => {
+					this.$el.scrollIntoView({
+						behavior: 'smooth',
+						block: 'center',
+					});
+				});
+			}
 		},
 	},
 

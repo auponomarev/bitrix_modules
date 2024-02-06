@@ -5,7 +5,7 @@ jn.define('crm/storage/category', (require, exports, module) => {
 	const { merge, mergeImmutable } = require('utils/object');
 	const { Type } = require('crm/type');
 	const { CategoryAjax } = require('crm/ajax');
-	const { BaseStorage } = require('crm/storage/base');
+	const { BaseStorage } = require('storage/base');
 
 	const CATEGORIES_FOLDER = 'categories';
 	const ACTION_GET_CATEGORY = 'get';
@@ -116,6 +116,23 @@ jn.define('crm/storage/category', (require, exports, module) => {
 			// return this.findMostRecentCategory(entityTypeId, categoryId);
 		}
 
+		getData()
+		{
+			const { entityTypeId, categoryId } = this.getParams();
+
+			return this.getCategory(entityTypeId, categoryId);
+		}
+
+		setParams(params)
+		{
+			this.params = params;
+		}
+
+		getParams()
+		{
+			return this.params;
+		}
+
 		setCategory(entityTypeId, category)
 		{
 			const pathToCategory = this.getPathToCategory(entityTypeId, category.id);
@@ -136,6 +153,7 @@ jn.define('crm/storage/category', (require, exports, module) => {
 						if (response.errors && response.errors.length > 0)
 						{
 							reject(response);
+
 							return;
 						}
 
@@ -168,6 +186,7 @@ jn.define('crm/storage/category', (require, exports, module) => {
 						if (response.errors && response.errors.length > 0)
 						{
 							reject(response);
+
 							return;
 						}
 
@@ -226,6 +245,7 @@ jn.define('crm/storage/category', (require, exports, module) => {
 						if (response.errors && response.errors.length > 0)
 						{
 							reject(response);
+
 							return;
 						}
 

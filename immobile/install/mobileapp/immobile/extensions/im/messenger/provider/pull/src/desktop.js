@@ -1,13 +1,12 @@
 /* eslint-disable flowtype/require-return-type */
-/* eslint-disable bitrix-rules/no-bx */
 
 /**
  * @module im/messenger/provider/pull/desktop
  */
 jn.define('im/messenger/provider/pull/desktop', (require, exports, module) => {
-
 	const { PullHandler } = require('im/messenger/provider/pull/base');
-	const { Logger } = require('im/messenger/lib/logger');
+	const { LoggerManager } = require('im/messenger/lib/logger');
+	const logger = LoggerManager.getInstance().getLogger('pull-handler--desktop');
 
 	/**
 	 * @class DesktopPullHandler
@@ -16,7 +15,12 @@ jn.define('im/messenger/provider/pull/desktop', (require, exports, module) => {
 	{
 		handleDesktopOnline(params, extra, command)
 		{
-			Logger.info('DesktopPullHandler.handleDesktopOnline', params);
+			if (this.interceptEvent(params, extra, command))
+			{
+				return;
+			}
+
+			logger.info('DesktopPullHandler.handleDesktopOnline', params);
 
 			BX.postComponentEvent('setDesktopStatus', [{
 				isOnline: true,
@@ -26,7 +30,12 @@ jn.define('im/messenger/provider/pull/desktop', (require, exports, module) => {
 
 		handleDesktopOffline(params, extra, command)
 		{
-			Logger.info('DesktopPullHandler.handleDesktopOffline', params);
+			if (this.interceptEvent(params, extra, command))
+			{
+				return;
+			}
+
+			logger.info('DesktopPullHandler.handleDesktopOffline', params);
 
 			BX.postComponentEvent('setDesktopStatus', [{
 				isOnline: false,

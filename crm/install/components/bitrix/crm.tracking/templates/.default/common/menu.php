@@ -1,7 +1,7 @@
 <?
 if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true)die();
 
-/** @var \CAllMain $APPLICATION*/
+/** @var CMain $APPLICATION*/
 /** @var array $arResult*/
 /** @var array $arParams*/
 
@@ -32,13 +32,16 @@ if ($shouldDisplayMenu)
 		"IS_ACTIVE" => $currentMenuItem === 'list',
 		'IS_DISABLED'=> false
 	];
-	$menuItems[] = [
-		"TEXT" => Loc::getMessage('CRM_TRACKING_COMMON_MENU_REPORTS'),
-		"URL" => "/report/analytics/?analyticBoardKey=crm-ad-payback",
-		"ID" => "crm-tracking-menu-reports",
-		"IS_ACTIVE" => false,
-		'IS_DISABLED'=> false
-	];
+	if (\Bitrix\Main\Loader::includeModule('report'))
+	{
+		$menuItems[] = [
+			"TEXT" => Loc::getMessage('CRM_TRACKING_COMMON_MENU_REPORTS'),
+			"URL" => "/report/analytics/?analyticBoardKey=crm-ad-payback",
+			"ID" => "crm-tracking-menu-reports",
+			"IS_ACTIVE" => false,
+			'IS_DISABLED' => false
+		];
+	}
 	$menuItems[] = [
 		"TEXT" => Loc::getMessage('CRM_TRACKING_COMMON_MENU_ARCHIVE'),
 		"URL" => "/crm/tracking/source/archive/",

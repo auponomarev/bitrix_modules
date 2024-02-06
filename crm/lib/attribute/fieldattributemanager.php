@@ -648,7 +648,7 @@ class FieldAttributeManager
 			}
 			else
 			{
-				$categoryID = (int)$entityData['CATEGORY_ID'];
+				$categoryID = (int)($entityData['CATEGORY_ID'] ?? 0);
 				$options['CATEGORY_ID'] = $categoryID;
 			}
 
@@ -847,9 +847,9 @@ class FieldAttributeManager
 				{
 					$captions = [
 						'REQUIRED_SHORT' => Loc::getMessage('CRM_FIELD_ATTRIBUTE_MANAGER_STATUS_CAPTION_REQUIRED_SHORT'),
-						'REQUIRED_FULL' => Loc::getMessage('CRM_FIELD_ATTRIBUTE_MANAGER_STATUS_CAPTION_REQUIRED_FULL'),
+						'REQUIRED_FULL' => Loc::getMessage('CRM_FIELD_ATTRIBUTE_MANAGER_STAGE_CAPTION_REQUIRED_FULL_1'),
 						'GROUP_TYPE_GENERAL' => Loc::getMessage(
-							'CRM_FIELD_ATTRIBUTE_MANAGER_STATUS_CAPTION_GROUP_TYPE_GENERAL'
+							'CRM_FIELD_ATTRIBUTE_MANAGER_STATUS_CAPTION_GROUP_TYPE_GENERAL_MSGVER_1'
 						),
 						'GROUP_TYPE_PIPELINE' => Loc::getMessage(
 							'CRM_FIELD_ATTRIBUTE_MANAGER_STATUS_CAPTION_GROUP_TYPE_PIPELINE'

@@ -5,11 +5,12 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 }
 
 use \Bitrix\Landing\Hook;
-use Bitrix\Landing\Hook\Page\Theme;
+use \Bitrix\Landing\Hook\Page\Theme;
 use \Bitrix\Landing\Landing;
 use \Bitrix\Landing\Folder;
 use \Bitrix\Landing\Manager;
 use \Bitrix\Landing\Rights;
+use \Bitrix\Landing\Connector;
 use \Bitrix\Landing\TemplateRef;
 use \Bitrix\Main\Localization\Loc;
 use \Bitrix\Landing\Restriction;
@@ -273,6 +274,12 @@ class LandingEditComponent extends LandingBaseFormComponent
 			$this->arResult['SPECIAL_TYPE'] = $this->getSpecialTypeSiteByLanding(
 				\Bitrix\Landing\Landing::createInstance($this->id, ['skip_blocks' => true])
 			);
+			$this->arResult['AI_TEXT_AVAILABLE'] = Connector\Ai::isTextAvailable();
+			$this->arResult['AI_TEXT_ACTIVE'] = Connector\Ai::isTextActive();
+			$this->arResult['AI_IMAGE_AVAILABLE'] = Connector\Ai::isImageAvailable();
+			$this->arResult['AI_IMAGE_ACTIVE'] = Connector\Ai::isImageActive();
+			$this->arResult['AI_UNACTIVE_INFO_CODE'] = self::getAiUnactiveInfoCode();
+
 			$this->arResult['LANDINGS'] = $this->arParams['SITE_ID'] > 0
 				? $this->getLandings(array(
 						'filter' => array(
@@ -372,6 +379,7 @@ class LandingEditComponent extends LandingBaseFormComponent
 				$this->arResult['CURRENT_THEME'] = self::DEFAULT_SITE_COLOR;
 			}
 			$this->arResult['CURRENT_THEME'] = self::checkCurrentTheme($this->arResult['CURRENT_THEME']);
+			$this->arResult['IS_AREA'] = TemplateRef::landingIsArea($this->id);
 		}
 
 		// callback for update landing
@@ -448,7 +456,7 @@ class LandingEditComponent extends LandingBaseFormComponent
 		{
 			$value = $colors[$params['theme']]['color'] ?? '';
 		}
-		if ($value && $params['value'][0] !== '#')
+		if ($value && $params['value'] && $params['value'][0] !== '#')
 		{
 			$value = '#'.$params['value'];
 		}

@@ -25,11 +25,6 @@ class sender extends CModule
 			$this->MODULE_VERSION = $arModuleVersion["VERSION"];
 			$this->MODULE_VERSION_DATE = $arModuleVersion["VERSION_DATE"];
 		}
-		else
-		{
-			$this->MODULE_VERSION = SENDER_VERSION;
-			$this->MODULE_VERSION_DATE = SENDER_VERSION_DATE;
-		}
 
 		$this->MODULE_NAME = GetMessage("SENDER_MODULE_NAME");
 		$this->MODULE_DESCRIPTION = GetMessage("SENDER_MODULE_DESC");
@@ -39,12 +34,13 @@ class sender extends CModule
 	function InstallDB($arParams = array())
 	{
 		global $DB, $APPLICATION;
+		$connection = \Bitrix\Main\Application::getConnection();
 		$this->errors = false;
 
 		// Database tables creation
-		if(!$DB->Query("SELECT 'x' FROM b_sender_contact WHERE 1=0", true))
+		if (!$DB->TableExists('b_sender_contact'))
 		{
-			$this->errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/sender/install/db/mysql/install.sql");
+			$this->errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/sender/install/db/' . $connection->getType() . '/install.sql');
 		}
 
 		if($this->errors !== false)
@@ -57,7 +53,7 @@ class sender extends CModule
 			RegisterModule("sender");
 			CModule::IncludeModule("sender");
 
-			$errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/sender/install/db/mysql/install_ft.sql");
+			$errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/sender/install/db/' . $connection->getType() . '/install_ft.sql');
 			if ($errors === false)
 			{
 				$entity = \Bitrix\Sender\Internals\Model\LetterTable::getEntity();
@@ -123,6 +119,7 @@ class sender extends CModule
 	function UnInstallDB($arParams = array())
 	{
 		global $DB, $APPLICATION;
+		$connection = \Bitrix\Main\Application::getConnection();
 		$this->errors = false;
 
 		CModule::IncludeModule("sender");
@@ -130,7 +127,7 @@ class sender extends CModule
 
 		if(!array_key_exists("save_tables", $arParams) || ($arParams["save_tables"] != "Y"))
 		{
-			$this->errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/sender/install/db/mysql/uninstall.sql");
+			$this->errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/sender/install/db/".$connection->getType()."/uninstall.sql");
 		}
 
 		CAgent::RemoveModuleAgents('sender');

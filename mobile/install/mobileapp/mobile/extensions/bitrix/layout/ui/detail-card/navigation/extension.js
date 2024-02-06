@@ -1,7 +1,10 @@
 (() => {
+	const require = (ext) => jn.require(ext);
+	const AppTheme = require('apptheme');
+
 	const defaultParams = {
 		useLargeTitleMode: false,
-		detailTextColor: '#a8adb4',
+		detailTextColor: AppTheme.colors.base4,
 	};
 
 	class DetailCardNavigation
@@ -41,7 +44,7 @@
 				if (typeData.hasOwnProperty('svg'))
 				{
 					let { svg } = typeData;
-					if (svg.indexOf('http') === -1)
+					if (!svg.includes('http'))
 					{
 						svg = currentDomain + svg;
 					}

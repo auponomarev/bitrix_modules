@@ -1,8 +1,10 @@
 ;(function() {
 	var BX = window.BX;
-	if (BX && BX["Mobile"] && BX["Mobile"]["Tasks"] && BX["Mobile"]["Tasks"]["detail"])
+	if (BX && BX.Mobile && BX.Mobile.Tasks && BX.Mobile.Tasks.detail)
+	{
 		return;
-	BX.namespace("BX.Mobile.Tasks.detail");
+	}
+	BX.namespace('BX.Mobile.Tasks.detail');
 
 	BX.Mobile.Tasks.detail = function(opts, nf)
 	{
@@ -320,16 +322,13 @@
 					objectId = taskId[1];
 					taskId = taskId[0];
 				}
-				if (this.task['ID'] == taskId && objectId !== this.taskEditObj.vars["id"])
+				if (
+					this.task['ID'] == taskId
+					&& objectId !== this.taskEditObj.vars["id"]
+					&& !restricted
+				)
 				{
-					if (!restricted)
-					{
-						if (Application.getApiVersion() < 31)
-						{
-							window.app.showPopupLoader();
-						}
-						window.app.reload();
-					}
+					window.app.reload();
 				}
 			}, this));
 
@@ -862,11 +861,6 @@
 			else if (specify === true)
 			{
 				this.act('get', data);
-			}
-
-			if (Application.getApiVersion() < 31 && reset)
-			{
-				this.resetMenu(this.getDefaultMenu());
 			}
 		},
 		actFailure : function() {

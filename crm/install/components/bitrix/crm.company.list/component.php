@@ -109,7 +109,11 @@ $arResult['STEXPORT_TOTAL_ITEMS'] = isset($arParams['STEXPORT_TOTAL_ITEMS']) ?
 
 $fieldRestrictionManager = new FieldRestrictionManager(
 	FieldRestrictionManager::MODE_GRID,
-	[FieldRestrictionManagerTypes::ACTIVITY]
+	[
+		FieldRestrictionManagerTypes::ACTIVITY,
+		FieldRestrictionManagerTypes::OBSERVERS,
+	],
+	\CCrmOwnerType::Company,
 );
 
 $CCrmCompany = new CCrmCompany();
@@ -254,24 +258,7 @@ $arResult['SESSION_ID'] = bitrix_sessid();
 $arResult['NAVIGATION_CONTEXT_ID'] = isset($arParams['NAVIGATION_CONTEXT_ID']) ? $arParams['NAVIGATION_CONTEXT_ID'] : '';
 $arResult['ENABLE_SLIDER'] = \Bitrix\Crm\Settings\LayoutSettings::getCurrent()->isSliderEnabled();
 $arResult['CRM_CUSTOM_PAGE_TITLE'] = $arParams['CRM_CUSTOM_PAGE_TITLE'] ?? null;
-
-if(LayoutSettings::getCurrent()->isSimpleTimeFormatEnabled())
-{
-	$arResult['TIME_FORMAT'] = array(
-		'tommorow' => 'tommorow',
-		's' => 'sago',
-		'i' => 'iago',
-		'H3' => 'Hago',
-		'today' => 'today',
-		'yesterday' => 'yesterday',
-		//'d7' => 'dago',
-		'-' => Main\Type\DateTime::convertFormatToPhp(FORMAT_DATE)
-	);
-}
-else
-{
-	$arResult['TIME_FORMAT'] = preg_replace('/:s$/', '', Main\Type\DateTime::convertFormatToPhp(FORMAT_DATETIME));
-}
+$arResult['TIME_FORMAT'] = CCrmDateTimeHelper::getDefaultDateTimeFormat();
 
 CUtil::InitJSCore(['ajax', 'tooltip']);
 
@@ -465,6 +452,7 @@ if (!$bInternal)
 			'ID' => $arResult['GRID_ID'],
 			'categoryID' => $arResult['CATEGORY_ID'],
 			'flags' => $filterFlags,
+			'UNSUPPORTED_FIELDS' => []
 		],)
 	);
 	$arResult['FILTER_PRESETS'] = (new Bitrix\Crm\Filter\Preset\Company())
@@ -481,7 +469,7 @@ $gridOptions = new \Bitrix\Main\Grid\Options($arResult['GRID_ID'], $arResult['FI
 $filterOptions = new \Bitrix\Crm\Filter\UiFilterOptions($arResult['GRID_ID'], $arResult['FILTER_PRESETS']);
 
 //region Navigation Params
-if ($arParams['COMPANY_COUNT'] <= 0)
+if (($arParams['COMPANY_COUNT'] ?? 0) <= 0)
 {
 	$arParams['COMPANY_COUNT'] = 20;
 }
@@ -517,6 +505,16 @@ if (!$bInternal)
 	if(!in_array('ACTIVITY_COUNTER', $effectiveFilterFieldIDs, true))
 	{
 		$effectiveFilterFieldIDs[] = 'ACTIVITY_COUNTER';
+	}
+
+	if(!in_array('ACTIVITY_RESPONSIBLE_IDS', $effectiveFilterFieldIDs, true))
+	{
+		$effectiveFilterFieldIDs[] = 'ACTIVITY_RESPONSIBLE_IDS';
+	}
+
+	if(!in_array('ACTIVITY_FASTSEARCH_CREATED', $effectiveFilterFieldIDs, true))
+	{
+		$effectiveFilterFieldIDs[] = 'ACTIVITY_FASTSEARCH_CREATED';
 	}
 
 	if(!in_array('WEBFORM_ID', $effectiveFilterFieldIDs, true))
@@ -650,7 +648,13 @@ if (
 $arResult['HEADERS'] = array_merge(
 	$arResult['HEADERS'],
 	array(
-		array('id' => 'ASSIGNED_BY', 'name' => GetMessage('CRM_COLUMN_ASSIGNED_BY'), 'sort' => 'assigned_by', 'default' => true, 'editable' => false, 'class' => 'username')
+		array('id' => 'ASSIGNED_BY', 'name' => GetMessage('CRM_COLUMN_ASSIGNED_BY'), 'sort' => 'assigned_by', 'default' => true, 'editable' => false, 'class' => 'username'),
+		[
+			'id' => Crm\Item::FIELD_NAME_OBSERVERS,
+			'name' => Loc::getMessage('CRM_TYPE_ITEM_FIELD_OBSERVERS'),
+			'sort' => false,
+			'editable' => false,
+		],
 	)
 );
 
@@ -743,16 +747,10 @@ if ($factory && $category)
 	}
 }
 
-$CCrmUserType->ListAddHeaders($arResult['HEADERS']);
+$CCrmUserType->appendGridHeaders($arResult['HEADERS']);
 
-$arResult['HEADERS_SECTIONS'] = [
-	[
-		'id' => 'COMPANY',
-		'name' => Loc::getMessage('CRM_COLUMN_COMPANY'),
-		'default' => true,
-		'selected' => true,
-	],
-];
+$arResult['HEADERS_SECTIONS'] = \Bitrix\Crm\Filter\HeaderSections::getInstance()
+	->sections($factory);
 
 $arBPData = [];
 if ($isBizProcInstalled)
@@ -787,13 +785,14 @@ if ($isBizProcInstalled)
 	}
 }
 
+$observersDataProvider = new \Bitrix\Crm\Component\EntityList\UserDataProvider\Observers(CCrmOwnerType::Company);
+
 //region Check and fill fields restriction
-$restrictedFields = $fieldRestrictionManager->fetchRestrictedFields(
+$arResult['RESTRICTED_FIELDS_ENGINE'] = $fieldRestrictionManager->fetchRestrictedFieldsEngine(
 	$arResult['GRID_ID'] ?? '',
 	$arResult['HEADERS'] ?? [],
 	$entityFilter ?? null
 );
-$arResult = array_merge($arResult, $restrictedFields);
 //endregion
 
 // list all filds for export
@@ -972,8 +971,10 @@ else
 }
 //endregion
 
+Crm\Filter\FieldsTransform\UserBasedField::applyTransformWrapper($arFilter);
+
 //region Activity Counter Filter
-CCrmEntityHelper::applyCounterFilterWrapper(
+CCrmEntityHelper::applySubQueryBasedFiltersWrapper(
 	\CCrmOwnerType::Company,
 	$arResult['GRID_ID'],
 	Bitrix\Crm\Counter\EntityCounter::internalizeExtras($_REQUEST),
@@ -992,7 +993,7 @@ $arImmutableFilters = array(
 	'HAS_PHONE', 'HAS_EMAIL', 'IS_MY_COMPANY', '!IS_MY_COMPANY', 'RQ',
 	'SEARCH_CONTENT', 'TRACKING_SOURCE_ID', 'TRACKING_CHANNEL_CODE',
 	'FILTER_ID', 'FILTER_APPLIED', 'PRESET_ID',
-	'@CATEGORY_ID',
+	'@CATEGORY_ID', 'OBSERVER_IDS',
 );
 
 foreach ($arFilter as $k => $v)
@@ -1185,13 +1186,13 @@ if($actionData['ACTIVE'])
 							if (!$isMyCompanyMode)
 							{
 								$arErrors = [];
-							CCrmBizProcHelper::AutoStartWorkflows(
-								CCrmOwnerType::Company,
-								$ID,
-								CCrmBizProcEventType::Edit,
-								$arErrors
-							);
-						}
+								CCrmBizProcHelper::AutoStartWorkflows(
+									CCrmOwnerType::Company,
+									$ID,
+									CCrmBizProcEventType::Edit,
+									$arErrors
+								);
+							}
 						}
 						else
 						{
@@ -1277,20 +1278,31 @@ if($actionData['ACTIVE'])
 						'ASSIGNED_BY_ID' => $actionData['ASSIGNED_BY_ID']
 					);
 
-					if($CCrmCompany->Update($ID, $arUpdateData, true, true, array('DISABLE_USER_FIELD_CHECK' => true)))
+					if (
+						$CCrmCompany->Update(
+							$ID,
+							$arUpdateData,
+							true,
+							true,
+							[
+								'REGISTER_SONET_EVENT' => true,
+								'DISABLE_USER_FIELD_CHECK' => true,
+							]
+						)
+					)
 					{
 						$DB->Commit();
 
 						if (!$isMyCompanyMode)
 						{
 							$arErrors = [];
-						CCrmBizProcHelper::AutoStartWorkflows(
-							CCrmOwnerType::Company,
-							$ID,
-							CCrmBizProcEventType::Edit,
-							$arErrors
-						);
-					}
+							CCrmBizProcHelper::AutoStartWorkflows(
+								CCrmOwnerType::Company,
+								$ID,
+								CCrmBizProcEventType::Edit,
+								$arErrors
+							);
+						}
 					}
 					else
 					{
@@ -1369,13 +1381,13 @@ if($actionData['ACTIVE'])
 						if (!$isMyCompanyMode)
 						{
 							$arErrors = [];
-						CCrmBizProcHelper::AutoStartWorkflows(
-							CCrmOwnerType::Company,
-							$ID,
-							CCrmBizProcEventType::Edit,
-							$arErrors
-						);
-					}
+							CCrmBizProcHelper::AutoStartWorkflows(
+								CCrmOwnerType::Company,
+								$ID,
+								CCrmBizProcEventType::Edit,
+								$arErrors
+							);
+						}
 					}
 					else
 					{
@@ -1479,7 +1491,7 @@ if (empty($arSelectMap))
 {
 	foreach ($arResult['HEADERS'] as $arHeader)
 	{
-		if ($arHeader['default'])
+		if ($arHeader['default'] ?? false)
 		{
 			$arSelectMap[$arHeader['id']] = true;
 		}
@@ -1586,6 +1598,8 @@ else
 		$arSelectMap['ID'] = true;
 	}
 }
+
+$observersDataProvider->prepareSelect($arSelect);
 
 if ($isInExportMode)
 {
@@ -2001,20 +2015,6 @@ else
 	}
 	else
 	{
-		if ($isInGadgetMode && isset($arNavParams['nTopCount']))
-		{
-			$navListOptions = array_merge($arOptions, array('QUERY_OPTIONS' => array('LIMIT' => $arNavParams['nTopCount'])));
-		}
-		else
-		{
-			$navListOptions = ($isInExportMode && !$isStExport)
-				? []
-				: array_merge(
-					$arOptions,
-					array('QUERY_OPTIONS' => array('LIMIT' => $limit, 'OFFSET' => $pageSize * ($pageNum - 1)))
-				);
-		}
-
 		if ($isInExportMode && $isStExport)
 		{
 			if (!is_array($arSort))
@@ -2035,14 +2035,34 @@ else
 			}
 		}
 
-		$dbResult = CCrmCompany::GetListEx(
-			$arSort,
-			$arFilter,
-			false,
-			false,
-			$arSelect,
-			$navListOptions
-		);
+		$parameters = [
+			'select' => $arSelect,
+			'filter' => $arFilter,
+			'order' => $arSort,
+			'options' => [
+				'FIELD_OPTIONS' => $arOptions['FIELD_OPTIONS'] ?? [],
+				'IS_EXTERNAL_CONTEXT' => $arOptions['IS_EXTERNAL_CONTEXT'] ?? false,
+			],
+		];
+
+		if ($isInGadgetMode && isset($arNavParams['nTopCount']))
+		{
+			$parameters['limit'] = $arNavParams['nTopCount'];
+			$parameters['offset'] = null;
+		}
+		elseif ($isInExportMode && !$isStExport)
+		{
+			$parameters['limit'] = null;
+			$parameters['offset'] = null;
+		}
+		else
+		{
+			$parameters['limit'] = $limit;
+			$parameters['offset'] = $pageSize * ($pageNum - 1);
+		}
+
+		$listEntity = \Bitrix\Crm\ListEntity\Entity::getInstance(\CCrmOwnerType::CompanyName);
+		$dbResult = $listEntity->getItems($parameters);
 
 		$qty = 0;
 		while($arCompany = $dbResult->GetNext())
@@ -2093,6 +2113,8 @@ $enableExportEvent = $isInExportMode && HistorySettings::getCurrent()->isExportE
 $bizProcTabId = $isMyCompanyMode ? 'CRM_MYCOMPANY_SHOW_V12_active_tab' : 'CRM_COMPANY_SHOW_V12_active_tab';
 
 $now = time() + CTimeZone::GetOffset();
+
+$observersDataProvider->appendResult($arResult['COMPANY']);
 
 $parentFieldValues = Crm\Service\Container::getInstance()->getParentFieldManager()->loadParentElementsByChildren(
 	\CCrmOwnerType::Company,
@@ -2246,6 +2268,15 @@ foreach($arResult['COMPANY'] as &$arCompany)
 		true,
 		false
 	);
+
+	if (!empty($arCompany['OBSERVERS']))
+	{
+		$arCompany['~OBSERVERS'] = $arCompany['OBSERVERS'];
+		$arCompany['OBSERVERS'] = implode(
+			"\n",
+			array_column($arCompany['~OBSERVERS'], 'OBSERVER_USER_FORMATTED_NAME')
+		);
+	}
 
 	if ($arResult['ENABLE_TASK'])
 	{

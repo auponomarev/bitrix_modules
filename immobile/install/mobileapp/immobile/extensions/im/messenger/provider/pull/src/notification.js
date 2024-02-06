@@ -1,19 +1,16 @@
-/* eslint-disable flowtype/require-return-type */
-/* eslint-disable bitrix-rules/no-bx */
-
 /**
  * @module im/messenger/provider/pull/notification
  */
 jn.define('im/messenger/provider/pull/notification', (require, exports, module) => {
-
 	const { Type } = require('type');
 	const { Loc } = require('loc');
 	const { PullHandler } = require('im/messenger/provider/pull/base');
 	const { Counters } = require('im/messenger/lib/counters');
-	const { Logger } = require('im/messenger/lib/logger');
 	const { EventType } = require('im/messenger/const');
 	const { Notifier } = require('im/messenger/lib/notifier');
 	const { MessengerEmitter } = require('im/messenger/lib/emitter');
+	const { LoggerManager } = require('im/messenger/lib/logger');
+	const logger = LoggerManager.getInstance().getLogger('pull-handler--notification');
 
 	/**
 	 * @class NotificationPullHandler
@@ -22,7 +19,12 @@ jn.define('im/messenger/provider/pull/notification', (require, exports, module) 
 	{
 		handleNotifyAdd(params, extra, command)
 		{
-			Logger.info('NotificationPullHandler.handleNotifyAdd', params);
+			if (this.interceptEvent(params, extra, command))
+			{
+				return;
+			}
+
+			logger.info('NotificationPullHandler.handleNotifyAdd', params);
 
 			// auto read for notification, if it is "I like the message" notification for the opened dialog.
 			const dialog = PageManager.getNavigator().getVisible();
@@ -34,14 +36,14 @@ jn.define('im/messenger/provider/pull/notification', (require, exports, module) 
 				const message = params.originalTag.split('|');
 				const dialogType = message[2];
 				const chatId = message[3];
-				const dialogId = dialogType === 'P' ? chatId : 'chat' + chatId;
+				const dialogId = dialogType === 'P' ? chatId : `chat${chatId}`;
 
 				const isSameDialog = dialogId === dialog.data.DIALOG_ID.toString();
 				if (isSameDialog)
 				{
 					BX.postComponentEvent('chatbackground::task::action', [
 						'readNotification',
-						'readNotification|' + params.id,
+						`readNotification|${params.id}`,
 						{
 							action: 'Y',
 							id: params.id,
@@ -64,7 +66,7 @@ jn.define('im/messenger/provider/pull/notification', (require, exports, module) 
 				Notifier.notify({
 					dialogId: 'notify',
 					title: Loc.getMessage('IMMOBILE_PULL_HANDLER_NOTIFICATION_TITLE'),
-					text: (userName ? userName + ': ' : '') + purifiedNotificationText,
+					text: (userName ? `${userName}: ` : '') + purifiedNotificationText,
 					avatar: params.userAvatar ? params.userAvatar : '',
 				});
 			}
@@ -72,7 +74,12 @@ jn.define('im/messenger/provider/pull/notification', (require, exports, module) 
 
 		handleNotifyRead(params, extra, command)
 		{
-			Logger.info('NotificationPullHandler.handleNotifyRead', params);
+			if (this.interceptEvent(params, extra, command))
+			{
+				return;
+			}
+
+			logger.info('NotificationPullHandler.handleNotifyRead', params);
 
 			Counters.notificationCounter.value = params.counter;
 			Counters.update();
@@ -80,7 +87,12 @@ jn.define('im/messenger/provider/pull/notification', (require, exports, module) 
 
 		handleNotifyUnread(params, extra, command)
 		{
-			Logger.info('NotificationPullHandler.handleNotifyUnread', params);
+			if (this.interceptEvent(params, extra, command))
+			{
+				return;
+			}
+
+			logger.info('NotificationPullHandler.handleNotifyUnread', params);
 
 			Counters.notificationCounter.value = params.counter;
 			Counters.update();
@@ -90,7 +102,12 @@ jn.define('im/messenger/provider/pull/notification', (require, exports, module) 
 
 		handleNotifyConfirm(params, extra, command)
 		{
-			Logger.info('NotificationPullHandler.handleNotifyConfirm', params);
+			if (this.interceptEvent(params, extra, command))
+			{
+				return;
+			}
+
+			logger.info('NotificationPullHandler.handleNotifyConfirm', params);
 
 			Counters.notificationCounter.value = params.counter;
 			Counters.update();

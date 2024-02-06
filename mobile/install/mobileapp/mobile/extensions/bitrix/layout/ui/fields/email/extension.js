@@ -8,6 +8,7 @@ jn.define('layout/ui/fields/email', (require, exports, module) => {
 	const { domains } = require('layout/ui/fields/email/domains');
 	const { isValidEmail } = require('utils/url');
 	const { stringify } = require('utils/string');
+	const { Loc } = require('loc');
 
 	const DEFAULT = 'default';
 
@@ -20,22 +21,18 @@ jn.define('layout/ui/fields/email', (require, exports, module) => {
 		{
 			super(props);
 
-			this.prevService = null;
 			this.service = this.getEmailService(props.value);
-		}
-
-		componentWillReceiveProps(newProps)
-		{
-			super.componentWillReceiveProps(newProps);
-
-			this.prevService = this.service;
-			this.service = this.getEmailService(newProps.value);
 		}
 
 		shouldComponentUpdate(nextProps, nextState)
 		{
-			if (this.prevService !== this.service)
+			const { value } = this.props;
+			const service = this.getEmailService(nextProps.value);
+
+			if (service !== this.getEmailService(value))
 			{
+				this.service = service;
+
 				return true;
 			}
 
@@ -44,10 +41,10 @@ jn.define('layout/ui/fields/email', (require, exports, module) => {
 
 		renderLeftIcons()
 		{
-			this.styles = this.getStyles();
+			const style = this.getStyles();
 
 			return Image({
-				style: this.styles.leftIcon,
+				style: style.leftIcon,
 				uri: this.getImageUri(),
 				resizeMode: 'contain',
 			});
@@ -121,6 +118,15 @@ jn.define('layout/ui/fields/email', (require, exports, module) => {
 			};
 		}
 
+		canCopyValue()
+		{
+			return this.isReadOnly();
+		}
+
+		copyMessage()
+		{
+			return Loc.getMessage('FIELD_EMAIL_VALUE_COPIED');
+		}
 	}
 
 	module.exports = {

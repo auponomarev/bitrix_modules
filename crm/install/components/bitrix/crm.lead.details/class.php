@@ -12,12 +12,12 @@ use Bitrix\Crm\Component\EntityDetails\Traits;
 use Bitrix\Crm\Controller\Action\Entity\SearchAction;
 use Bitrix\Crm\Conversion\LeadConversionDispatcher;
 use Bitrix\Crm\Conversion\LeadConversionScheme;
-use Bitrix\Crm\Integrity\DuplicateControl;
-use Bitrix\Crm\Settings\LayoutSettings;
 use Bitrix\Crm\CustomerType;
+use Bitrix\Crm\Integrity\DuplicateControl;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Service\EditorAdapter;
 use Bitrix\Crm\Service\ParentFieldManager;
+use Bitrix\Crm\Settings\LayoutSettings;
 use Bitrix\Crm\Tracking;
 use Bitrix\Currency;
 use Bitrix\Location\Entity\Address\AddressLinkCollection;
@@ -43,6 +43,7 @@ class CCrmLeadDetailsComponent
 	use Traits\InitializeGuid;
 	use Traits\InitializeMode;
 	use Traits\InitializeUFConfig;
+	use Traits\InitializeAdditionalFieldsData;
 	use Crm\Entity\Traits\VisibilityConfig;
 
 	/** @var int */
@@ -335,29 +336,45 @@ class CCrmLeadDetailsComponent
 
 		if($this->entityID > 0)
 		{
-			$this->arResult['TABS'][] = array(
+			$tabQuote = [
 				'id' => 'tab_quote',
-				'name' => Loc::getMessage('CRM_LEAD_TAB_QUOTE'),
-				'loader' => array(
-					'serviceUrl' => '/bitrix/components/bitrix/crm.quote.list/lazyload.ajax.php?&site='.SITE_ID.'&'.bitrix_sessid_get(),
-					'componentData' => array(
+				'name' => Loc::getMessage('CRM_LEAD_TAB_QUOTE_MSGVER_1'),
+				'loader' => [
+					'serviceUrl' => '/bitrix/components/bitrix/crm.quote.list/lazyload.ajax.php?&site='
+						.SITE_ID
+						.'&'
+						.bitrix_sessid_get()
+					,
+					'componentData' => [
 						'template' => '',
 						'signedParameters' => \CCrmInstantEditorHelper::signComponentParams([
 							'QUOTE_COUNT' => '20',
 							'PATH_TO_QUOTE_SHOW' => $this->arResult['PATH_TO_QUOTE_SHOW'] ?? '',
 							'PATH_TO_QUOTE_EDIT' => $this->arResult['PATH_TO_QUOTE_EDIT'] ?? '',
-							'INTERNAL_FILTER' => array('LEAD_ID' => $this->entityID),
-							'INTERNAL_CONTEXT' => array('LEAD_ID' => $this->entityID),
+							'INTERNAL_FILTER' => ['LEAD_ID' => $this->entityID],
+							'INTERNAL_CONTEXT' => ['LEAD_ID' => $this->entityID],
 							'GRID_ID_SUFFIX' => 'LEAD_DETAILS',
 							'TAB_ID' => 'tab_quote',
 							'NAME_TEMPLATE' => $this->arResult['NAME_TEMPLATE'] ?? '',
 							'ENABLE_TOOLBAR' => true,
 							'PRESERVE_HISTORY' => true,
-							'ADD_EVENT_NAME' => 'CrmCreateQuoteFromLead'
-						], 'crm.quote.list')
-					)
-				)
-			);
+							'ADD_EVENT_NAME' => 'CrmCreateQuoteFromLead',
+						], 'crm.quote.list'),
+					],
+				],
+			];
+
+			$toolsManager = \Bitrix\Crm\Service\Container::getInstance()->getIntranetToolsManager();
+			if (!$toolsManager->checkEntityTypeAvailability(\CCrmOwnerType::Quote))
+			{
+				$availabilityLock = \Bitrix\Crm\Restriction\AvailabilityManager::getInstance()
+					->getEntityTypeAvailabilityLock(\CCrmOwnerType::Quote)
+				;
+				$tabQuote['availabilityLock'] = $availabilityLock;
+			}
+
+			$this->arResult['TABS'][] = $tabQuote;
+
 			if (\Bitrix\Crm\Automation\Factory::isAutomationAvailable(CCrmOwnerType::Lead))
 			{
 				$this->arResult['TABS'][] = array(
@@ -456,7 +473,7 @@ class CCrmLeadDetailsComponent
 		{
 			$this->arResult['TABS'][] = array(
 				'id' => 'tab_quote',
-				'name' => Loc::getMessage('CRM_LEAD_TAB_QUOTE'),
+				'name' => Loc::getMessage('CRM_LEAD_TAB_QUOTE_MSGVER_1'),
 				'enabled' => false
 			);
 			if (\Bitrix\Crm\Automation\Factory::isAutomationAvailable(CCrmOwnerType::Lead))
@@ -752,7 +769,7 @@ class CCrmLeadDetailsComponent
 			),
 			array(
 				'name' => 'STATUS_ID',
-				'title' => Loc::getMessage('CRM_LEAD_FIELD_STATUS_ID'),
+				'title' => Loc::getMessage('CRM_LEAD_FIELD_STATUS_ID_MSGVER_1'),
 				'type' => 'list',
 				'editable' => true,
 				'enableAttributes' => false,
@@ -766,7 +783,7 @@ class CCrmLeadDetailsComponent
 			),
 			array(
 				'name' => 'STATUS_DESCRIPTION',
-				'title' => Loc::getMessage('CRM_LEAD_FIELD_STATUS_DESCRIPTION'),
+				'title' => Loc::getMessage('CRM_LEAD_FIELD_STATUS_DESCRIPTION_MSGVER_1'),
 				'type' => 'text',
 				'data' => array('lineCount' => 6),
 				'editable' => true,
@@ -853,7 +870,7 @@ class CCrmLeadDetailsComponent
 				'type' => 'boolean',
 				'editable' => true
 			),
-			Crm\Entity\FieldContentType::compileFieldDescriptionForDetails(\CCrmOwnerType::Lead, $this->entityID, 'COMMENTS'),
+			Crm\Entity\CommentsHelper::compileFieldDescriptionForDetails(\CCrmOwnerType::Lead, 'COMMENTS'),
 			EditorAdapter::getProductRowSummaryField(
 				Loc::getMessage('CRM_LEAD_FIELD_PRODUCTS'),
 				'PRODUCT_ROW_SUMMARY'
@@ -1011,6 +1028,7 @@ class CCrmLeadDetailsComponent
 			'type' => 'client_light',
 			'editable' => true,
 			'data' => [
+				'affectedFields' => ['CLIENT_INFO'],
 				'compound' => [
 					[
 						'name' => 'COMPANY_ID',
@@ -1053,6 +1071,9 @@ class CCrmLeadDetailsComponent
 						['categoryParams' => $categoryParams]
 					)
 				,
+				'duplicateControl' => CCrmComponentHelper::prepareClientEditorDuplicateControlParams(
+					['entityTypes' => [CCrmOwnerType::Company, CCrmOwnerType::Contact]]
+				),
 			]
 		];
 		//endregion
@@ -1718,7 +1739,7 @@ class CCrmLeadDetailsComponent
 			);
 			//endregion
 
-			$this->entityData = Crm\Entity\FieldContentType::prepareFieldsFromDetailsToView(
+			$this->entityData = Crm\Entity\CommentsHelper::prepareFieldsFromDetailsToView(
 				\CCrmOwnerType::Lead,
 				$this->entityID,
 				$this->entityData,
@@ -1767,56 +1788,20 @@ class CCrmLeadDetailsComponent
 		//region Observers
 		if(isset($this->entityData['OBSERVER_IDS']) && !empty($this->entityData['OBSERVER_IDS']))
 		{
+			$userBroker = Container::getInstance()->getUserBroker();
+
+			$users = $userBroker->getBunchByIds($this->entityData['OBSERVER_IDS']);
+
 			$this->entityData['OBSERVER_INFOS'] = [];
-
-			$userDbResult = \CUser::GetList(
-				'ID',
-				'ASC',
-				array('ID' => implode('||', $this->entityData['OBSERVER_IDS'])),
-				array('FIELDS' => array('ID', 'PERSONAL_PHOTO', 'WORK_POSITION', 'NAME', 'SECOND_NAME', 'LAST_NAME'))
-			);
-
-			$observerMap = [];
-			while($userData = $userDbResult->Fetch())
+			foreach ($users as $singleUser)
 			{
-				$userInfo = array(
-					'ID' => intval($userData['ID']),
-					'FORMATTED_NAME' => \CUser::FormatName(
-						$this->arResult['NAME_TEMPLATE'],
-						$userData,
-						false,
-						false
-					),
-					'WORK_POSITION' => isset($userData['WORK_POSITION']) ? $userData['WORK_POSITION'] : '',
-					'SHOW_URL' => CComponentEngine::MakePathFromTemplate(
-						$this->arResult['PATH_TO_USER_PROFILE'],
-						array('user_id' => $userData['ID'])
-					)
-				);
-
-				$userPhotoID = isset($userData['PERSONAL_PHOTO']) ? (int)$userData['PERSONAL_PHOTO'] : 0;
-				if($userPhotoID > 0)
-				{
-					$file = new \CFile();
-					$fileInfo = $file->ResizeImageGet(
-						$userPhotoID,
-						array('width' => 60, 'height'=> 60),
-						BX_RESIZE_IMAGE_EXACT
-					);
-					if(is_array($fileInfo) && isset($fileInfo['src']))
-					{
-						$userInfo['PHOTO_URL'] = $fileInfo['src'];
-					}
-				}
-
-				$observerMap[$userData['ID']] = $userInfo;
-			}
-			foreach($this->entityData['OBSERVER_IDS'] as $userID)
-			{
-				if(isset($observerMap[$userID]))
-				{
-					$this->entityData['OBSERVER_INFOS'][] = $observerMap[$userID];
-				}
+				$this->entityData['OBSERVER_INFOS'][] = [
+					'ID' => $singleUser['ID'],
+					'FORMATTED_NAME' => $singleUser['FORMATTED_NAME'],
+					'WORK_POSITION' => $singleUser['WORK_POSITION'] ?? '',
+					'SHOW_URL' => (string)$singleUser['SHOW_URL'],
+					'PHOTO_URL' => $singleUser['PHOTO_URL'],
+				];
 			}
 		}
 		//endregion
@@ -2353,10 +2338,11 @@ class CCrmLeadDetailsComponent
 
 	private function initializeDuplicateControl(): void
 	{
-		$this->enableDupControl = !$this->isEditMode && DuplicateControl::isControlEnabledFor(CCrmOwnerType::Lead);
+		$this->enableDupControl = DuplicateControl::isControlEnabledFor(CCrmOwnerType::Lead);
 
 		$this->arResult['DUPLICATE_CONTROL'] = [
 			'enabled' => $this->enableDupControl,
+			'isSingleMode' => $this->isEditMode,
 		];
 
 		if ($this->enableDupControl)
@@ -2385,6 +2371,14 @@ class CCrmLeadDetailsComponent
 					'groupSummaryTitle' => Loc::getMessage('CRM_LEAD_DUP_CTRL_COMPANY_TTL_SUMMARY_TITLE'),
 				],
 			];
+
+			if ($this->entityID)
+			{
+				$this->arResult['DUPLICATE_CONTROL']['ignoredItems'][] = [
+					'ENTITY_TYPE_ID' => CCrmOwnerType::Lead,
+					'ENTITY_ID' => $this->entityID,
+				];
+			}
 		}
 	}
 
@@ -2393,27 +2387,27 @@ class CCrmLeadDetailsComponent
 		global $APPLICATION;
 
 		$this->arResult['PATH_TO_USER_PROFILE'] = $this->arParams['PATH_TO_USER_PROFILE'] =
-			CrmCheckPath('PATH_TO_USER_PROFILE', $this->arParams['PATH_TO_USER_PROFILE'],
+			CrmCheckPath('PATH_TO_USER_PROFILE', $this->arParams['PATH_TO_USER_PROFILE'] ?? null,
 				'/company/personal/user/#user_id#/');
 
-		$this->arResult['NAME_TEMPLATE'] = empty($this->arParams['NAME_TEMPLATE'])
+		$this->arResult['NAME_TEMPLATE'] = empty($this->arParams['NAME_TEMPLATE'] ?? null)
 			? CSite::GetNameFormat(false)
-			: str_replace(["#NOBR#", "#/NOBR#"], ["", ""], $this->arParams['NAME_TEMPLATE']);
+			: str_replace(["#NOBR#", "#/NOBR#"], ["", ""], $this->arParams['NAME_TEMPLATE'] ?? '');
 
 		$this->arResult['PATH_TO_LEAD_SHOW'] = CrmCheckPath(
 			'PATH_TO_LEAD_SHOW',
-			$this->arParams['PATH_TO_LEAD_SHOW'],
+			$this->arParams['PATH_TO_LEAD_SHOW'] ?? null,
 			$APPLICATION->GetCurPage() . '?lead_id=#lead_id#&show'
 		);
 		$this->arResult['PATH_TO_LEAD_EDIT'] = CrmCheckPath(
 			'PATH_TO_LEAD_EDIT',
-			$this->arParams['PATH_TO_LEAD_EDIT'],
+			$this->arParams['PATH_TO_LEAD_EDIT'] ?? null,
 			$APPLICATION->GetCurPage() . '?lead_id=#lead_id#&edit'
 		);
 
 		$this->arResult['PATH_TO_PRODUCT_EDIT'] = CrmCheckPath(
 			'PATH_TO_PRODUCT_EDIT',
-			$this->arParams['PATH_TO_PRODUCT_EDIT'],
+			$this->arParams['PATH_TO_PRODUCT_EDIT'] ?? null,
 			$APPLICATION->GetCurPage() . '?product_id=#product_id#&edit'
 		);
 
@@ -2426,7 +2420,7 @@ class CCrmLeadDetailsComponent
 		{
 			$this->arResult['PATH_TO_PRODUCT_SHOW'] = CrmCheckPath(
 				'PATH_TO_PRODUCT_SHOW',
-				$this->arParams['PATH_TO_PRODUCT_SHOW'],
+				$this->arParams['PATH_TO_PRODUCT_SHOW'] ?? null,
 				$APPLICATION->GetCurPage() . '?product_id=#product_id#&show'
 			);
 		}
@@ -2474,7 +2468,8 @@ class CCrmLeadDetailsComponent
 	{
 		return [
 			'ENTITY_ID' => $this->getEntityID(),
-			'ENTITY_DATA' => $this->prepareEntityData()
+			'ENTITY_DATA' => $this->prepareEntityData(),
+			'ADDITIONAL_FIELDS_DATA' => $this->getAdditionalFieldsData(),
 		];
 	}
 

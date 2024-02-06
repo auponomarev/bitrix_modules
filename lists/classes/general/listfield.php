@@ -1,4 +1,5 @@
-<?
+<?php
+
 IncludeModuleLangFile(__FILE__);
 
 use Bitrix\Main\ArgumentException;
@@ -233,12 +234,12 @@ class CListElementField extends CListField
 		else
 			$arIBlockFields = CIBlock::GetFieldsDefaults();
 
-		$this->_iblock_field = $arIBlockFields[$field_id];
+		$this->_iblock_field = $arIBlockFields[$field_id] ?? null;
 	}
 
 	public function IsRequired()
 	{
-		return $this->_iblock_field["IS_REQUIRED"] == "Y";
+		return isset($this->_iblock_field["IS_REQUIRED"]) && $this->_iblock_field["IS_REQUIRED"] == "Y";
 	}
 
 	public function IsMultiple()
@@ -263,7 +264,7 @@ class CListElementField extends CListField
 			"FIELD_ID" => $this->_field_id,
 			"SORT" => $this->_sort,
 			"NAME" => $this->_label,
-			"IS_REQUIRED" => $this->_iblock_field["IS_REQUIRED"],
+			"IS_REQUIRED" => $this->_iblock_field["IS_REQUIRED"] ?? 'N',
 			"MULTIPLE" => "N",
 			"DEFAULT_VALUE" => $this->_iblock_field["DEFAULT_VALUE"] ?? null,
 			"TYPE" => $this->GetTypeID(),
@@ -277,7 +278,7 @@ class CListElementField extends CListField
 	{
 		/** @global CStackCacheManager $stackCacheManager */
 		global $stackCacheManager;
-		if($this->_iblock_field["IS_REQUIRED"] == "Y")
+		if (isset($this->_iblock_field['IS_REQUIRED']) && $this->_iblock_field['IS_REQUIRED'] == 'Y')
 		{
 			if($this->_iblock_id > 0)
 			{
@@ -514,7 +515,7 @@ class CListPropertyField extends CListField
 			{
 				self::resetPropertyArrayCache();
 
-				if($this->_property["PROPERTY_TYPE"] == "L" && is_array($arFields["LIST"]))
+				if($this->_property["PROPERTY_TYPE"] == "L" && is_array($arFields["LIST"] ?? null))
 					CList::UpdatePropertyList($this->_property["ID"], $arFields["LIST"]);
 
 				return new CListPropertyField($this->_property["IBLOCK_ID"], "PROPERTY_".$this->_property["ID"], $arFields["NAME"], $arFields["SORT"]);
@@ -536,7 +537,7 @@ class CListPropertyField extends CListField
 			{
 				throw new NotSupportedException(GetMessage("LIST_PROPERTY_FIELD_DUPLICATE_CODE"));
 			}
-			$property_id = intval($arFields["ID"]);
+			$property_id = intval($arFields["ID"] ?? 0);
 			if($property_id > 0)
 			{
 				return new CListPropertyField($iblock_id, "PROPERTY_".$property_id, $arFields["NAME"], $arFields["SORT"]);
@@ -561,13 +562,16 @@ class CListPropertyField extends CListField
 				{
 					self::resetPropertyArrayCache();
 
-					if($arFields["PROPERTY_TYPE"] == "L" && is_array($arFields["LIST"]))
+					if($arFields["PROPERTY_TYPE"] == "L" && is_array($arFields["LIST"] ?? null))
+					{
 						CList::UpdatePropertyList($res, $arFields["LIST"]);
+					}
 
 					return new CListPropertyField($iblock_id, "PROPERTY_".$res, $arFields["NAME"], $arFields["SORT"]);
 				}
 			}
 		}
+
 		return null;
 	}
 

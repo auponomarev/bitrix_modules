@@ -466,7 +466,7 @@ foreach ($ufIndexableFields as $ixNameSuffix => $ufIndexableField)
 		// IX_UTS_INVOICE_CONTACT_ID
 		// IX_UTS_INVOICE_COMPANY_ID
 		$inName = 'IX_UTS_INVOICE_' . $ixNameSuffix;
-		$DB->Query("ALTER TABLE b_uts_crm_invoice ADD INDEX {$inName} ({$ufIndexableField})");
+		$DB->Query("CREATE INDEX {$inName} ON b_uts_crm_invoice({$ufIndexableField})");
 	}
 }
 
@@ -2249,10 +2249,14 @@ if (!empty($arCatalogId) && !$bError)
 					// update iblock element xml_id
 					$local_err = 0;
 
-					$strSql = PHP_EOL.
-						'UPDATE b_iblock_element IB'.PHP_EOL.
-						"\t".'INNER JOIN b_crm_product CP ON IB.ID = CP.ID'.PHP_EOL.
-						'SET IB.XML_ID = CONCAT(IFNULL(CP.ORIGINATOR_ID, \'\'), \'#\', IFNULL(CP.ORIGIN_ID, \'\'))'.PHP_EOL;
+					$strSql = $DB->PrepareUpdateJoin('b_iblock_element', [
+							'XML_ID' => $DB->Concat("COALESCE(CP.ORIGINATOR_ID, '')", "'#'", "COALESCE(CP.ORIGIN_ID, '')"),
+						],
+						[
+							['b_crm_product CP', 'b_iblock_element.ID = CP.ID'],
+						],
+						""
+					);
 
 					if (!$DB->Query($strSql, true))
 						$local_err = 1;
@@ -2318,7 +2322,7 @@ if(!$bError)
 	{
 		$arPerms = $CCrmRole->GetRolePerms($arRole['ID']);
 
-		if(!isset($arPerms['INVOICE']) && is_array($arPerms['DEAL']))
+		if(!isset($arPerms['INVOICE']) && is_array($arPerms['DEAL'] ?? null))
 		{
 			foreach ($arPerms['DEAL'] as $key => $value)
 			{

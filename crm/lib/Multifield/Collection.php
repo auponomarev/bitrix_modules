@@ -4,13 +4,28 @@ namespace Bitrix\Crm\Multifield;
 
 use Bitrix\Main\Type\Contract\Arrayable;
 
-final class Collection implements Arrayable, \Iterator
+final class Collection implements Arrayable, \Iterator, \Countable
 {
 	/** @var Value[] */
 	private $values = [];
 
+	/**
+	 * Add a new value to the collection.
+	 * If an equal value is already in this collection, duplicating value won't be added.
+	 *
+	 * @param Value $value
+	 * @return $this
+	 */
 	public function add(Value $value): self
 	{
+		foreach ($this->values as $existingValue)
+		{
+			if ($existingValue->isEqualTo($value))
+			{
+				return $this;
+			}
+		}
+
 		$this->values[] = $value;
 
 		return $this;
@@ -23,8 +38,6 @@ final class Collection implements Arrayable, \Iterator
 			if ($value->isEqualTo($existingValue))
 			{
 				unset($this->values[$index]);
-
-				return $this;
 			}
 		}
 
@@ -59,6 +72,19 @@ final class Collection implements Arrayable, \Iterator
 		return null;
 	}
 
+	public function has(Value $value): bool
+	{
+		foreach ($this->values as $existingValue)
+		{
+			if ($existingValue->isEqualTo($value))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	/**
 	 * Get a flat array with all values contained in this collection
 	 *
@@ -67,6 +93,29 @@ final class Collection implements Arrayable, \Iterator
 	public function getAll(): array
 	{
 		return array_values($this->values);
+	}
+
+	/**
+	 * Returns **new** collection with values that belong to type with the provided $typeId.
+	 *
+	 * This collection is **not mutated**. References to values are **not shared**.
+	 *
+	 * @param string $typeId
+	 * @return self
+	 */
+	public function filterByType(string $typeId): self
+	{
+		$result = new self();
+
+		foreach ($this as $value)
+		{
+			if ($value->getTypeId() === $typeId)
+			{
+				$result->add(clone $value);
+			}
+		}
+
+		return $result;
 	}
 
 	public function isEqualTo(self $anotherCollection): bool
@@ -94,6 +143,11 @@ final class Collection implements Arrayable, \Iterator
 		sort($anotherHashes);
 
 		return ($thisHashes === $anotherHashes);
+	}
+
+	public function isEmpty(): bool
+	{
+		return count($this->values) <= 0;
 	}
 
 	public function toArray(): array
@@ -127,6 +181,11 @@ final class Collection implements Arrayable, \Iterator
 	public function rewind(): void
 	{
 		reset($this->values);
+	}
+
+	public function count(): int
+	{
+		return count($this->values);
 	}
 
 	public function __clone()

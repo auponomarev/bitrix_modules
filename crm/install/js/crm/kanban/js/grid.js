@@ -90,6 +90,7 @@ BX.CRM.Kanban.Grid.prototype = {
 	animationDuration: 800,
 	hintForNotVisibleItems: null,
 	handleHideHintForNotVisibleItems: null,
+	canUpdateItemAtItsPosition: false,
 
 	/**
 	 * Get current checkeds items.
@@ -263,8 +264,9 @@ BX.CRM.Kanban.Grid.prototype = {
 				this.isItKanban(el.target) ? this.currentNode = el.target : this.currentNode = null;
 
 				if(
-					!BX.findParent(el.target, {"className": "main-kanban-item"}) &&
-					!BX.findParent(el.target, {"className": "ui-action-panel"})
+					!BX.findParent(el.target, {'className': 'main-kanban-item'})
+					&& !BX.findParent(el.target, {'className': 'ui-action-panel'})
+					&& !BX.findParent(el.target, {'className': 'ui-action-panel-item-popup-menu'})
 				)
 				{
 					this.unSetKanbanDragMode();
@@ -794,6 +796,21 @@ BX.CRM.Kanban.Grid.prototype = {
 	/**
 	 *
 	 * @param {BX.CRM.Kanban.Item} item
+	 */
+	updateItemAtItsPosition(item)
+	{
+		this.canUpdateItemAtItsPosition = true;
+
+		this
+			.moveItem(item, item.getColumn(), item, true)
+			.finally(() => {
+				this.canUpdateItemAtItsPosition = true;
+			});
+	},
+
+	/**
+	 *
+	 * @param {BX.CRM.Kanban.Item} item
 	 * @param {BX.CRM.Kanban.Column} targetColumn
 	 * @param {BX.CRM.Kanban.Item} beforeItem
 	 * @param {bool} usePromise
@@ -831,7 +848,11 @@ BX.CRM.Kanban.Grid.prototype = {
 
 		targetColumn = this.getColumn(targetColumn);
 
-		if (!item || !targetColumn || item === beforeItem)
+		if (
+			!item
+			|| !targetColumn
+			|| (item === beforeItem && !this.canUpdateItemAtItsPosition)
+		)
 		{
 			if (usePromise)
 			{
@@ -1589,7 +1610,7 @@ BX.CRM.Kanban.Grid.prototype = {
 									BX.Crm.Activity.TodoEditorMode.UPDATE,
 									true
 								);
-							}, 500);
+							}, 1500);
 						}
 
 						if (data.items && data.items.length > 0)
@@ -1626,10 +1647,14 @@ BX.CRM.Kanban.Grid.prototype = {
 
 	showNotCompletedPopup: function(gridData)
 	{
-		var message = BX.message("CRM_KANBAN_SET_STATUS_NOT_COMPLETED_TEXT_" + gridData.entityType);
+		var message;
 		if(gridData.isDynamicEntity)
 		{
-			message = BX.message("CRM_KANBAN_SET_STATUS_NOT_COMPLETED_TEXT_DYNAMIC")
+			message = BX.message("CRM_KANBAN_SET_STATUS_NOT_COMPLETED_TEXT_DYNAMIC_MSGVER_1")
+		}
+		else
+		{
+			message = BX.message("CRM_KANBAN_SET_STATUS_NOT_COMPLETED_TEXT_" + gridData.entityType + '_MSGVER_1');
 		}
 
 		this.getPopupCancel(message).show();
@@ -1887,9 +1912,11 @@ BX.CRM.Kanban.Grid.prototype = {
 		const entityType = this.getData().entityType;
 
 		const hintTitle = BX.Loc.getMessage(`CRM_GRID_HINT_FOR_NOT_VISIBLE_${entityType}_TITLE`)
-			|| BX.Loc.getMessage(`CRM_GRID_HINT_FOR_NOT_VISIBLE_ELEMENT_TITLE`);
+			|| BX.Loc.getMessage(`CRM_GRID_HINT_FOR_NOT_VISIBLE_${entityType}_TITLE_MSGVER_1`)
+			|| BX.Loc.getMessage('CRM_GRID_HINT_FOR_NOT_VISIBLE_ELEMENT_TITLE');
 		const hintText = BX.Loc.getMessage(`CRM_GRID_HINT_FOR_NOT_VISIBLE_${entityType}_TEXT`)
-			|| BX.Loc.getMessage(`CRM_GRID_HINT_FOR_NOT_VISIBLE_ELEMENT_TEXT`);
+			|| BX.Loc.getMessage(`CRM_GRID_HINT_FOR_NOT_VISIBLE_${entityType}_TEXT_MSGVER_1`)
+			|| BX.Loc.getMessage('CRM_GRID_HINT_FOR_NOT_VISIBLE_ELEMENT_TEXT');
 
 		this.hintForNotVisibleItems = new BX.UI.Tour.Guide({
 			onEvents: true,
@@ -2851,9 +2878,7 @@ BX.CRM.Kanban.Grid.prototype = {
 		}
 		this.actionPanel.appendItem({
 			id: "kanban_column",
-			text: (gridData.entityType === "DEAL" || gridData.isDynamicEntity)
-				? BX.message("CRM_KANBAN_PANEL_STAGE")
-				: BX.message("CRM_KANBAN_PANEL_STATUS"),
+			text: BX.message("CRM_KANBAN_PANEL_STAGE"),
 			items: items,
 			icon: (gridData.entityType === "DEAL" || gridData.isDynamicEntity)
 				? "/bitrix/js/crm/kanban/images/crm-kanban-actionpanel-stage.svg"
@@ -3270,7 +3295,14 @@ BX.CRM.Kanban.Grid.prototype = {
 				});
 			}
 
-			this.moveItem(item, newColumn.getId(), beforeItem);
+			if (item.columnId === newColumn.getId() && beforeItem === null)
+			{
+				this.updateItemAtItsPosition(item);
+			}
+			else
+			{
+				this.moveItem(item, newColumn.getId(), beforeItem);
+			}
 		}
 		else
 		{
@@ -3314,9 +3346,7 @@ BX.CRM.Kanban.Grid.prototype = {
 		}
 		else
 		{
-			settings.title = BX.message(
-				"CRM_KANBAN_REQUIRED_FIELDS_TITLE_" + gridData.entityType
-			)
+			settings.title = BX.message('CRM_TYPE_ITEM_PARTIAL_EDITOR_TITLE');
 		}
 
 		this.progressBarEditor = BX.Crm.PartialEditorDialog.create(

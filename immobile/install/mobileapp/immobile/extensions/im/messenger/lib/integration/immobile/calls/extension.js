@@ -2,7 +2,6 @@
  * @module im/messenger/lib/integration/immobile/calls
  */
 jn.define('im/messenger/lib/integration/immobile/calls', (require, exports, module) => {
-
 	const { core } = require('im/messenger/core');
 	const { Logger } = require('im/messenger/lib/logger');
 	const { DialogHelper } = require('im/messenger/lib/helper');
@@ -25,12 +24,12 @@ jn.define('im/messenger/lib/integration/immobile/calls', (require, exports, modu
 					chatData: core.getStore().getters['dialoguesModel/getById'](dialogId),
 				};
 
-				BX.postComponentEvent('onCallInvite', [ eventData ], 'calls');
+				BX.postComponentEvent('onCallInvite', [eventData], 'calls');
 
 				return;
 			}
 
-			const userData = core.getStore().getters['usersModel/getUserById'](dialogId);
+			const userData = core.getStore().getters['usersModel/getById'](dialogId);
 			const eventData = {
 				userId: dialogId,
 				video: false,
@@ -39,7 +38,7 @@ jn.define('im/messenger/lib/integration/immobile/calls', (require, exports, modu
 				},
 			};
 
-			BX.postComponentEvent('onCallInvite', [ eventData ], 'calls');
+			BX.postComponentEvent('onCallInvite', [eventData], 'calls');
 		}
 
 		static createVideoCall(dialogId)
@@ -54,12 +53,12 @@ jn.define('im/messenger/lib/integration/immobile/calls', (require, exports, modu
 					chatData: core.getStore().getters['dialoguesModel/getById'](dialogId),
 				};
 
-				BX.postComponentEvent('onCallInvite', [ eventData ], 'calls');
+				BX.postComponentEvent('onCallInvite', [eventData], 'calls');
 
 				return;
 			}
 
-			const userData = core.getStore().getters['usersModel/getUserById'](dialogId);
+			const userData = core.getStore().getters['usersModel/getById'](dialogId);
 			const eventData = {
 				userId: dialogId,
 				video: true,
@@ -68,7 +67,7 @@ jn.define('im/messenger/lib/integration/immobile/calls', (require, exports, modu
 				},
 			};
 
-			BX.postComponentEvent('onCallInvite', [ eventData ], 'calls');
+			BX.postComponentEvent('onCallInvite', [eventData], 'calls');
 		}
 
 		static joinCall(callId)

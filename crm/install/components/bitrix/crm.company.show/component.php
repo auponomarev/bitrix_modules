@@ -863,7 +863,7 @@ if (!$isMyCompanyMode && CCrmQuote::CheckReadPermission(0, $userPermissions))
 {
 	$arResult['FIELDS']['tab_quote'][] = array(
 		'id' => 'DEAL_QUOTE',
-		'name' => GetMessage('CRM_FIELD_COMPANY_QUOTE'),
+		'name' => GetMessage('CRM_FIELD_COMPANY_QUOTE_MSGVER_1'),
 		'colspan' => true,
 		'type' => 'crm_quote_list',
 		'componentData' => array(
@@ -988,7 +988,7 @@ if (!$isMyCompanyMode)
 }
 
 // LIVE FEED SECTION -->
-if (!$isMyCompanyMode)
+if (!$isMyCompanyMode && \Bitrix\Crm\Integration\Socialnetwork\Livefeed\AvailabilityHelper::isAvailable())
 {
 	$arResult['FIELDS']['tab_live_feed'][] = array(
 		'id' => 'section_live_feed',

@@ -2,9 +2,11 @@
  * @module layout/ui/detail-card
  */
 jn.define('layout/ui/detail-card', (require, exports, module) => {
+	const AppTheme = require('apptheme');
 	const { Alert } = require('alert');
 	const { AnalyticsLabel } = require('analytics-label');
 	const { EventEmitter } = require('event-emitter');
+	const { Feature } = require('feature');
 	const { Haptics } = require('haptics');
 	const { NotifyManager } = require('notify-manager');
 	const { ActionsPanel } = require('layout/ui/detail-card/toolbar/actions-panel');
@@ -68,9 +70,6 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 			this.floatingButtonProvider = null;
 			/** @type {FloatingButton} */
 			this.floatingButtonRef = null;
-			this.ahaMomentRef = null;
-
-			this.ahaMomentsManager = null;
 
 			this.readOnly = true;
 			this.entityModel = null;
@@ -97,6 +96,8 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 			{
 				this.state.tabsInfo = props.tabs;
 			}
+			this.state.ahaMoment = null;
+			this.ahaMomentsManager = null;
 
 			/** @type {(string, function(DetailCardComponent, ...*): void)[][]} */
 			this.globalEvents = [];
@@ -230,6 +231,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 		createUid()
 		{
 			const { uid } = this.getComponentParams();
+
 			return uid || Random.getString();
 		}
 
@@ -256,7 +258,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 				this.layout.setRightButtons(this.rightButtons);
 			}
 
-			if (!this.readOnly && this.isActionsPanelVisible())
+			if (this.isActionsPanelVisible())
 			{
 				this.showActionsPanel();
 			}
@@ -292,7 +294,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 						name: this.getSaveButtonTitle(),
 						type: 'text',
 						badgeCode: 'save_entity',
-						color: this.isLoading ? '#8ebad4' : '#2066b0',
+						color: this.isLoading ? AppTheme.colors.accentSoftBlue1 : AppTheme.colors.accentMainLinks,
 						callback: this.handleSave,
 					});
 				}
@@ -368,7 +370,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 
 		getTabCacheId()
 		{
-			return this.props.endpoint + '-' + Object.toMD5(this.getTabParams());
+			return `${this.props.endpoint}-${Object.toMD5(this.getTabParams())}`;
 		}
 
 		getTabParams()
@@ -383,6 +385,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 
 			return options.reduce((obj, option) => {
 				obj[option] = params[option] || null;
+
 				return obj;
 			}, {});
 		}
@@ -569,18 +572,20 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 			return TabView({
 				style: {
 					height: TAB_HEADER_HEIGHT,
-					backgroundColor: '#f5f7f8',
+					backgroundColor: AppTheme.colors.bgNavigation,
 				},
 				params: {
 					styles: {
 						tabTitle: {
-							underlineColor: '#207ede',
+							underlineColor: AppTheme.colors.accentExtraDarkblue,
 						},
 					},
 					items: this.availableTabs.map((tab) => this.prepareTabViewItem(tab)),
 				},
 				onTabSelected: (tab, changed) => this.handleTabClick(tab, changed),
-				ref: (ref) => this.tabViewRef = ref,
+				ref: (ref) => {
+					this.tabViewRef = ref;
+				},
 			});
 		}
 
@@ -727,13 +732,16 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 					},
 					{
 						...this.getComponentParams(),
-						ref: (ref) => this.topToolbarRef = ref,
+						ref: (ref) => {
+							this.topToolbarRef = ref;
+						},
 						detailCard: this,
 						animation: {
 							duration,
 						},
 						height: TOP_TOOLBAR_HEIGHT,
-					});
+					},
+				);
 			}
 
 			return null;
@@ -768,7 +776,9 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 						flex: 1,
 					},
 					initPage: Math.max(0, initPage),
-					ref: (ref) => this.sliderRef = ref,
+					ref: (ref) => {
+						this.sliderRef = ref;
+					},
 					onPageWillChange: this.handleSliderPageWillChange.bind(this),
 					onPageChange: this.handleSliderPageChange.bind(this),
 					onLayout: (coords) => this.sliderViewCoords = coords,
@@ -780,7 +790,9 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 		renderTopPadding()
 		{
 			return new ToolbarPadding({
-				ref: (ref) => this.topPaddingRef = ref,
+				ref: (ref) => {
+					this.topPaddingRef = ref;
+				},
 				height: TOP_TOOLBAR_HEIGHT - 1,
 				animation: {
 					duration: DURATION,
@@ -799,7 +811,9 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 			if (this.isFloatingButtonEnabled)
 			{
 				return new FloatingButton({
-					ref: (ref) => this.floatingButtonRef = ref,
+					ref: (ref) => {
+						this.floatingButtonRef = ref;
+					},
 					detailCard: this,
 					provider: this.floatingButtonProvider,
 				});
@@ -810,14 +824,9 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 
 		renderAhaMoments()
 		{
-			if (this.ahaMomentsManager)
+			if (this.ahaMomentsManager && this.state.ahaMoment)
 			{
-				const goToChat = this.ahaMomentsManager('goToChat');
-
-				return new goToChat({
-					detailCard: this,
-					ref: (ref) => this.ahaMomentRef = ref,
-				});
+				return this.state.ahaMoment;
 			}
 
 			return null;
@@ -883,7 +892,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 					{
 						AnalyticsLabel.send({
 							...this.getEntityAnalyticsData(),
-							event: action.id + '-success',
+							event: `${action.id}-success`,
 						});
 					}
 				})
@@ -919,7 +928,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 				this.hasEntityModel()
 				&& !this.isNewEntity()
 				&& !this.isToolPanelVisible()
-				&& this.itemActions.filter((action) => action.onActiveCallback(this.entityModel)).length > 0
+				&& this.itemActions.some((action) => action.onActiveCallback(this.entityModel))
 			);
 		}
 
@@ -935,11 +944,14 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 
 		reloadWithData(tabsData)
 		{
-			this.entityModel = null;
-
 			if (!Array.isArray(tabsData))
 			{
 				return Promise.resolve();
+			}
+
+			if (this.props.reloadWithDataHandler)
+			{
+				this.props.reloadWithDataHandler(tabsData);
 			}
 
 			const newTabs = this.getAvailableTabs();
@@ -1006,6 +1018,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 						},
 						result: hasTabsData ? tabData && tabData.result : undefined,
 						externalData: tabsExternalData && tabsExternalData[tabId],
+						onFetchHandler: tab.onFetchHandler ?? null,
 						onErrorHandler: this.ajaxErrorHandler,
 						onContentLoaded: this.handleTabContentLoaded.bind(this, tabId),
 						onScroll: (scrollParams) => this.handleTabScroll(scrollParams, tabId),
@@ -1061,11 +1074,28 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 					this.floatingButtonRef.actualize();
 				}
 
-				if (this.ahaMomentRef)
+				if (this.state.ahaMoment && !this.state.ahaMoment.state.isVisible)
 				{
-					this.ahaMomentRef.actualize();
+					this.state.ahaMoment.actualize();
 				}
 			}
+		}
+
+		setActualAhaMoment()
+		{
+			const ahaMoment = this.ahaMomentsManager.chooseAhaMoment(this);
+			if (ahaMoment)
+			{
+				this.setState({ ahaMoment });
+			}
+		}
+
+		getAvailableAhaMoments()
+		{
+			return [
+				'goToChat',
+				'yoochecks',
+			];
 		}
 
 		setActiveTab(tabId)
@@ -1257,7 +1287,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 						// validation returns false
 						if (Array.isArray(errors))
 						{
-							if (errors.length)
+							if (errors.length > 0)
 							{
 								NotifyManager.showErrors(errors);
 							}
@@ -1320,9 +1350,14 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 				this.floatingButtonRef.actualize();
 			}
 
-			if (this.ahaMomentRef)
+			if (this.ahaMomentsManager && !this.state.ahaMoment)
 			{
-				this.ahaMomentRef.actualize();
+				this.setActualAhaMoment();
+			}
+
+			if (this.state.ahaMoment && !this.state.ahaMoment.state.isVisible)
+			{
+				this.state.ahaMoment.actualize();
 			}
 
 			if (this.activeTab !== MAIN_TAB)
@@ -1333,14 +1368,14 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 
 		reloadTabs()
 		{
-			return Promise.all([
-				...[...this.tabRefMap.values()].map((tabRef) => {
+			return Promise.all(
+				[...this.tabRefMap.values()].map((tabRef) => {
 					if (!tabRef.isInitialStatus())
 					{
 						tabRef.fetch();
 					}
 				}),
-			]);
+			);
 		}
 
 		setLoading(isLoading)
@@ -1372,17 +1407,17 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 		handleCancelNewEntity()
 		{
 			return new Promise((resolve) => {
-				if (!this.isChanged)
-				{
-					this.close();
-					resolve();
-				}
-				else
+				if (this.isChanged)
 				{
 					this.showConfirmDiscardChanges(() => {
 						this.close();
 						resolve();
 					});
+				}
+				else
+				{
+					this.close();
+					resolve();
 				}
 			});
 		}
@@ -1390,19 +1425,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 		handleCancelExistingEntity()
 		{
 			return new Promise((resolve) => {
-				if (!this.isChanged)
-				{
-					this
-						.dismissKeyboard()
-						.then(() => {
-							this.isEditing = false;
-							this.checkToolbarPanel();
-							this.customEventEmitter.emit('UI.EntityEditor::switchToViewMode');
-							resolve();
-						})
-					;
-				}
-				else
+				if (this.isChanged)
 				{
 					this.showConfirmDiscardChanges(
 						() => {
@@ -1420,6 +1443,19 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 						},
 						resolve,
 					);
+				}
+				else
+				{
+					this
+						.dismissKeyboard()
+						.then(() => {
+							this.isEditing = false;
+							this.checkToolbarPanel();
+							this.customEventEmitter.emit('UI.EntityEditor::switchToViewMode');
+							resolve();
+						})
+						.catch(console.error)
+					;
 				}
 			});
 		}
@@ -1553,7 +1589,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 							Haptics.notifyWarning();
 							this.showTab(this.availableTabs[showTabWithErrors].id);
 
-							if (errors.length)
+							if (errors.length > 0)
 							{
 								NotifyManager.showErrors(errors);
 							}
@@ -1690,7 +1726,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 
 			return new Promise((resolve, reject) => {
 				const { errors } = response;
-				if (errors && errors.length)
+				if (errors && errors.length > 0)
 				{
 					if (this.areSaveErrorsCritical(errors))
 					{
@@ -1810,7 +1846,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 				{
 					resizableByKeyboard: true,
 					style: {
-						backgroundColor: '#eef2f4',
+						backgroundColor: AppTheme.colors.bgPrimary,
 					},
 				},
 				this.renderTabHeader(),
@@ -2011,7 +2047,7 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 					)
 					|| (
 						error.customData.hasOwnProperty('NON_CRITICAL')
-						&& error.customData['NON_CRITICAL'] !== true
+						&& error.customData.NON_CRITICAL !== true
 					)
 				)
 				{
@@ -2071,15 +2107,14 @@ jn.define('layout/ui/detail-card', (require, exports, module) => {
 
 			BX.ajax
 				.runAction(this.getActionEndpoint('loadTabCounters'), queryConfig)
-				.then(response => {
+				.then((response) => {
 					response.data.forEach(({ id, counter }) => {
 						this.setTabCounter(id, counter);
 					});
 				})
-				.catch(response => {
+				.catch((response) => {
 					console.warn('Unable to load tab counters', response);
-				})
-			;
+				});
 		}
 
 		emitReloadEntityDocumentList()

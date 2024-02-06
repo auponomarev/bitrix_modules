@@ -14,7 +14,7 @@ $MESS["CONFIG_ALLOW_NEW_USER_LF"] = "Notify about new hires in Activity Stream";
 $MESS["CONFIG_ALLOW_SEARCH_NETWORK"] = "Allow searching for Open Channels on Bitrix24.Network";
 $MESS["CONFIG_ALLOW_SELF_REGISTER"] = "Allow quick registration";
 $MESS["CONFIG_ALLOW_TOALL"] = "Allow \"All users\" as option in Activity Stream";
-$MESS["CONFIG_BUY_TARIFF_BY_ALL"] = "Enable all users to upgrade current Bitrix24 plan";
+$MESS["CONFIG_BUY_TARIFF_BY_ALL_MSGVER_1"] = "Enable all users to purchase upgrades and extensions for current Bitrix24 plan";
 $MESS["CONFIG_CLIENT_LOGO"] = "Company logo";
 $MESS["CONFIG_CLIENT_LOGO_DESCR"] = "Your logo must be a <b>PNG</b> file.<br/>Maximum dimensions are 222px x 55px.";
 $MESS["CONFIG_CLIENT_LOGO_DESC_RETINA"] = "Your logo must be a <b>PNG</b> file.<br/>Maximum dimensions are 444px x 110px.";
@@ -84,10 +84,10 @@ $MESS["CONFIG_GDRP_TITLE3"] = "Personal data processing apps:";
 $MESS["CONFIG_HEADER_GDRP"] = "GDPR Compliance";
 $MESS["CONFIG_HEADER_SECUTIRY"] = "Security settings";
 $MESS["CONFIG_HEADER_SETTINGS"] = "Settings";
-$MESS["CONFIG_IM_CHAT_RIGHTS"] = "Allow users to send messages to General chat";
-$MESS["CONFIG_IM_GENERSL_CHAT_MESSAGE_ADMIN_RIGHTS"] = "Post administrator assigned and administrator changed notifications to General chat";
-$MESS["CONFIG_IM_GENERSL_CHAT_MESSAGE_JOIN"] = "Notify about new hires in General chat";
-$MESS["CONFIG_IM_GENERSL_CHAT_MESSAGE_LEAVE"] = "Notify about employee/user dismissal in General chat";
+$MESS["CONFIG_IM_CHAT_RIGHTS"] = "Allow users to send messages to the General chat";
+$MESS["CONFIG_IM_GENERSL_CHAT_MESSAGE_ADMIN_RIGHTS"] = "Post administrator assigned and administrator changed notifications to the General chat";
+$MESS["CONFIG_IM_GENERSL_CHAT_MESSAGE_JOIN"] = "Notify about new hires in the General chat";
+$MESS["CONFIG_IM_GENERSL_CHAT_MESSAGE_LEAVE"] = "Notify about employee/user dismissal in the General chat";
 $MESS["CONFIG_IP_HELP_TEXT2"] = "Users without admin permissions won't be able to access this Bitrix24 from any IP address that doesn't match the specified range.
 Once logged in, the user will see an error page informing them that access from their IP was denied.
 You can watch attempts to log on to Bitrix24 from any IP address in the Event log.";

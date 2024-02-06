@@ -3,10 +3,12 @@
 namespace Bitrix\Crm\Activity\Provider\Tasks;
 
 use Bitrix\Crm\Activity\Provider\Base;
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
 use Bitrix\Crm\ActivityTable;
 use Bitrix\Crm\Automation\Trigger\TaskStatusTrigger;
 use Bitrix\Crm\Badge;
 use Bitrix\Crm\EO_Activity;
+use Bitrix\Crm\Integration\Tasks\Task2ActivityPriority;
 use Bitrix\Crm\Integration\Tasks\Task2ActivityStatus;
 use Bitrix\Crm\Integration\Tasks\TaskAccessController;
 use Bitrix\Crm\Integration\Tasks\TaskHandler;
@@ -24,9 +26,11 @@ use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Result;
 use Bitrix\Main\SystemException;
-use Bitrix\Tasks\Integration\CRM\Timeline\Bindings;
 use Bitrix\Main\Type\DateTime;
+use Bitrix\Main\Web\Uri;
+use Bitrix\Tasks\Integration\CRM\Timeline\Bindings;
 use CCrmActivity;
+use CCrmDateTimeHelper;
 use CCrmLiveFeed;
 use CCrmLiveFeedEvent;
 use CCrmOwnerType;
@@ -41,6 +45,7 @@ final class Task extends Base
 	private const PROVIDER_TYPE_ID = 'TASKS_TASK';
 	private const SUBJECT = 'TASK';
 	private const TASK_CRM_FIELD = 'UF_CRM_TASK';
+	private const UPDATE_OPTIONS = ['SKIP_ASSOCIATED_ENTITY' => true, 'REGISTER_SONET_EVENT' => true];
 
 	public static array $cache = [];
 
@@ -75,9 +80,9 @@ final class Task extends Base
 		];
 	}
 
-	public static function getDefaultPingOffsets(): array
+	public static function getDefaultPingOffsets(array $params = []): array
 	{
-		return [0, 15];
+		return TodoPingSettingsProvider::DEFAULT_OFFSETS;
 	}
 
 	public function delete(int $activityId): void
@@ -110,7 +115,7 @@ final class Task extends Base
 
 		$desiredDeadline = (isset($timelineParams['DEADLINE']) && $timelineParams['DEADLINE'] instanceof DateTime)
 			? $timelineParams['DEADLINE']->toString()
-			: \CCrmDateTimeHelper::GetMaxDatabaseDate(false);
+			: CCrmDateTimeHelper::GetMaxDatabaseDate(false);
 
 		$this->update(
 			$activity->getId(),
@@ -135,7 +140,9 @@ final class Task extends Base
 			'DESCRIPTION' => $task->getDescription(),
 			'START_TIME' => is_null($task->getStartDatePlan()) ? '' : $task->getStartDatePlan()->toString(),
 			'END_TIME' => is_null($task->getEndDatePlan()) ? '' : $task->getEndDatePlan()->toString(),
+			'PRIORITY' => Task2ActivityPriority::getPriority((int)$task->getPriority()),
 			'COMPLETED' => $status === TaskActivityStatus::TASKS_STATE_COMPLETED || $status === TaskActivityStatus::TASKS_STATE_SUPPOSEDLY_COMPLETED,
+			'AUTHOR_ID' => $timelineParams['AUTHOR_ID'],
 		];
 
 		if (!empty($timelineParams['TASK_FILE_IDS']))
@@ -218,18 +225,11 @@ final class Task extends Base
 
 		$updateData = [];
 		$activityStartTime = is_null($activity->getStartTime()) ? '' : $activity->getStartTime()->toString();
-		$activityEndTime = is_null($activity->getEndTime()) ? '' : $activity->getEndTime()->toString();
 		$taskStartDatePlan = is_null($task->getStartDatePlan()) ? '' : $task->getStartDatePlan()->toString();
-		$taskEndDatePlan = is_null($task->getEndDatePlan()) ? '' : $task->getEndDatePlan()->toString();
 
 		if ($activityStartTime !== $taskStartDatePlan)
 		{
 			$updateData['START_TIME'] = $taskStartDatePlan;
-		}
-
-		if ($activityEndTime !== $taskEndDatePlan)
-		{
-			$updateData['END_TIME'] = $taskEndDatePlan;
 		}
 
 		if ($activity->getResponsibleId() !== $task->getResponsibleMemberId())
@@ -240,6 +240,11 @@ final class Task extends Base
 		if ($activity->getSubject() !== $task->getTitle())
 		{
 			$updateData['SUBJECT'] = $task->getTitle();
+		}
+
+		if ($activity->getPriority() !== (int)$task->getPriority())
+		{
+			$updateData['PRIORITY'] = Task2ActivityPriority::getPriority((int)$task->getPriority());
 		}
 
 		if (!empty($updateData))
@@ -330,7 +335,7 @@ final class Task extends Base
 		}
 		else
 		{
-			$fields['DEADLINE'] = '';
+			$fields['DEADLINE'] = CCrmDateTimeHelper::GetMaxDatabaseDate(false);
 		}
 
 		return $result;
@@ -401,7 +406,14 @@ final class Task extends Base
 			&& $task->getTaskControl()
 		)
 		{
-			$updateData['STATUS'] = TaskActivityStatus::TASKS_STATE_SUPPOSEDLY_COMPLETED;
+			if ($task->getResponsibleMemberId() === $task->getCreatedByMemberId())
+			{
+				$updateData['STATUS'] = TaskActivityStatus::TASKS_STATE_COMPLETED;
+			}
+			else
+			{
+				$updateData['STATUS'] = TaskActivityStatus::TASKS_STATE_SUPPOSEDLY_COMPLETED;
+			}
 		}
 		elseif (
 			$status !== TaskActivityStatus::TASKS_STATE_COMPLETED
@@ -464,7 +476,10 @@ final class Task extends Base
 
 		if (!empty($updateData))
 		{
-			$handler = TaskHandler::getHandler($responsibleId);
+			$executorId = (int)($options['EXECUTOR_ID'] ?? null);
+			$executorId = $executorId > 0 ? $executorId : $responsibleId;
+
+			$handler = TaskHandler::getHandler($executorId);
 			try
 			{
 				$handler->update($taskId, $updateData);
@@ -497,15 +512,7 @@ final class Task extends Base
 
 	public function complete(EO_Activity $activity): void
 	{
-		CCrmActivity::Complete(
-			$activity->getId(),
-			true,
-			[
-				'SKIP_ASSOCIATED_ENTITY' => true,
-				'REGISTER_SONET_EVENT' => true
-			]
-		);
-
+		CCrmActivity::Complete($activity->getId(), true, self::UPDATE_OPTIONS);
 		self::invalidateAll();
 	}
 
@@ -724,18 +731,7 @@ final class Task extends Base
 
 	public function update(int $activityId, array $fields): void
 	{
-		CCrmActivity::Update(
-			$activityId,
-			$fields,
-			false,
-			true,
-			[
-				'SKIP_ASSOCIATED_ENTITY' => true,
-				'REGISTER_SONET_EVENT' => true
-			]
-		);
-
-		self::invalidateAll();
+		CCrmActivity::Update($activityId, $fields, false, true, self::UPDATE_OPTIONS);
 	}
 
 	public function getIdsToDelete(Bindings $toRemove, int $taskId): array
@@ -776,8 +772,9 @@ final class Task extends Base
 
 		TimelineEntry::deleteByAssociatedEntity(CCrmOwnerType::Activity, $activity['ID']);
 
+		$bindings = $activity['BINDINGS'] ?? [];
 		$commentProvider = new Comment();
-		foreach ($activity['BINDINGS'] as $item)
+		foreach ($bindings as $item)
 		{
 			$slaveActivity = $commentProvider->find(
 				$taskId,
@@ -878,7 +875,12 @@ final class Task extends Base
 			]);
 
 			$activity = self::prepareQuery($taskId)->exec()->fetchObject();
-			$result->setData(['entityId' => is_null($activity) ? 0 : $activity->getId()]);
+
+			$provider = new self();
+			$provider->deleteLogEntry((int)$activity?->getId(), $taskId);
+			$provider->update((int)$activity?->getId(), ['STORAGE_ELEMENT_IDS' => $activityFields['STORAGE_ELEMENT_IDS']]);
+
+			$result->setData(['entityId' => (int)$activity?->getId()]);
 		}
 		catch (\Exception $exception)
 		{
@@ -1004,7 +1006,7 @@ final class Task extends Base
 		return TaskAccessController::canEdit($taskId, $userId);
 	}
 
-	public static function onTriggered(int $taskId, array &$currentTaskFields, array &$previousTaskFields): bool
+	public static function onTriggered(int $taskId, ?array $currentTaskFields, ?array $previousTaskFields): bool
 	{
 		if ($taskId <= 0 || !Loader::includeModule('tasks'))
 		{
@@ -1041,8 +1043,7 @@ final class Task extends Base
 			self::legacySetBindings($task, $activity);
 			if (isset($activity['BINDINGS']) && count($activity['BINDINGS']) > 0)
 			{
-				\CCrmActivity::update($activity['ID'], $activity, false, true,
-					['SKIP_ASSOCIATED_ENTITY' => true, 'REGISTER_SONET_EVENT' => true]);
+				\CCrmActivity::update($activity['ID'], $activity, false, true, self::UPDATE_OPTIONS);
 				\CCrmLiveFeed::syncTaskEvent($activity, $task);
 				$taskBindings = $activity['BINDINGS'];
 			}
@@ -1082,10 +1083,6 @@ final class Task extends Base
 					'OWNER_TYPE_ID' => $ownerTypeId,
 					'OWNER_ID' => $ownerId,
 				];
-				$bindingMap = array_merge(
-					$bindingMap,
-					\CCrmActivity::getSubsidiaryEntityBindingMap($ownerTypeId, $ownerId)
-				);
 			}
 			$bindings = array_values($bindingMap);
 			if (count($bindings) > 1)
@@ -1157,10 +1154,14 @@ final class Task extends Base
 
 		if (!TaskAccessController::canCompleteResult($taskId, $userId))
 		{
+			$uri = new Uri(TaskPathMaker::getPathMaker($taskId, $userId)->makeEntityPath());
+			$uri->addParams(['RID' => 0]);
+
 			$message = Loc::getMessage('TASKS_TASK_ERROR_REQUIRE_RESULT', [
-				'#TASK_URL#' => TaskPathMaker::getPathMaker($taskId, $userId)->makeEntityPath(),
+				'#TASK_URL#' => $uri->getUri(),
 			]);
 			self::setCompletionDeniedError($message);
+
 			return false;
 		}
 
@@ -1182,5 +1183,66 @@ final class Task extends Base
 		}
 
 		return 0;
+	}
+
+	public static function onAfterUpdate(
+		int $id,
+		array $changedFields,
+		array $oldFields,
+		array $newFields,
+		array $params = null
+	)
+	{
+		$taskId = $newFields['ASSOCIATED_ENTITY_ID'] ?? 0;
+		if ($taskId <= 0)
+		{
+			return;
+		}
+
+		$task = TaskObject::getObject($taskId);
+		if (is_null($task))
+		{
+			return;
+		}
+
+		$bindings = $newFields['BINDINGS'] ?? [];
+		if (empty($bindings))
+		{
+			return;
+		}
+		$taskCrmFields = $task->getCrmFields();
+		$crmFields = array_unique(array_merge($taskCrmFields, self::prepareBindingsToTask($bindings)));
+		if (
+			empty(array_diff($crmFields, $taskCrmFields))
+			&& empty(array_diff($taskCrmFields, $crmFields))
+		)
+		{
+			return;
+		}
+
+		TaskHandler::getHandler()->update($taskId,[
+			self::TASK_CRM_FIELD => $crmFields
+		]);
+	}
+
+	/**
+	 * There are two kind of task. Old with type = 3 and new with provider_id = CRM_TASKS_TASK
+	 * We have to query both when selected 'Task' in the filter.
+	 */
+	public static function transformTaskInFilter(
+		array &$filter,
+		string $typeFieldName = 'TYPE_ID',
+		bool $allTaskBased = false
+	): void
+	{
+		if (
+			is_array($filter[$typeFieldName] ?? null)
+			&& in_array(\CCrmActivityType::Task, $filter[$typeFieldName])
+		)
+		{
+			$filter[$typeFieldName][] = $allTaskBased
+				? self::getId() . '.*.*'
+				: Task::getKey();
+		}
 	}
 }

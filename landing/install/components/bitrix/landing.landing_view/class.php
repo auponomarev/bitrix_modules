@@ -12,7 +12,8 @@ use \Bitrix\Landing\Site\Type;
 use \Bitrix\Landing\Syspage;
 use \Bitrix\Landing\Hook;
 use \Bitrix\Landing\Rights;
-use Bitrix\Main\Event;
+use \Bitrix\Landing\TemplateRef;
+use \Bitrix\Main\Event;
 use \Bitrix\Main\EventManager;
 use \Bitrix\Main\ModuleManager;
 use \Bitrix\Landing\Source\Selector;
@@ -63,7 +64,7 @@ class LandingViewComponent extends LandingBaseComponent
 				Manager::forceB24disable(true);
 			}
 
-			$url = $landing->getPublicUrl(false, true, true);
+			$url = $landing->getPublicUrl(false, true, $this->arParams['DRAFT_MODE'] !== 'Y');
 		}
 
 		\Bitrix\Landing\Landing::setPreviewMode(false);
@@ -170,7 +171,7 @@ class LandingViewComponent extends LandingBaseComponent
 		return [
 			'type' => $this->arParams['TYPE'],
 			'id' => $landing->getId(),
-			'url' => $this->arResult['~LANDING_FULL_URL'] ?? $landing->getPublicUrl(),
+			'url' => str_replace(' ', '%20', $this->arResult['~LANDING_FULL_URL'] ?? $landing->getPublicUrl()),
 			'siteId' => $landing->getSiteId(),
 			'siteTitle' => $site['TITLE'],
 			'active' => $landing->isActive(),
@@ -650,8 +651,13 @@ class LandingViewComponent extends LandingBaseComponent
 				$meta = $landing->getMeta();
 				$options['url'] = $arResult['~LANDING_FULL_URL'] ?? $landing->getPublicUrl();
 				$options['allow_svg'] = Manager::getOption('allow_svg_content') === 'Y';
-				$options['allow_ai_text'] = $arResult['ALLOW_AI_TEXT'];
-				$options['allow_ai_image'] = $arResult['ALLOW_AI_IMAGE'];
+				$options['ai_text_available'] = $arResult['AI_TEXT_AVAILABLE'];
+				$options['copilot_available'] = $arResult['COPILOT_AVAILABLE'];
+				$options['ai_text_active'] = $arResult['AI_TEXT_ACTIVE'];
+				$options['ai_image_available'] = $arResult['AI_IMAGE_AVAILABLE'];
+				$options['ai_image_active'] = $arResult['AI_IMAGE_ACTIVE'];
+				$options['ai_unactive_info_code'] = $arResult['AI_UNACTIVE_INFO_CODE'];
+				$options['allow_minisites'] = \Bitrix\Landing\Restriction\Form::isMinisitesAllowed();
 				$options['folder_id'] = $landing->getFolderId();
 				$options['version'] = Manager::getVersion();
 				$options['default_section'] = $this->getCurrentBlockSection($type);
@@ -678,10 +684,6 @@ class LandingViewComponent extends LandingBaseComponent
 				if (!$site['TPL_CODE'] && mb_strpos($site['XML_ID'], '|'))
 				{
 					[, $site['TPL_CODE']] = explode('|', $site['XML_ID']);
-				}
-				if ($site['TPL_CODE'])
-				{
-					$options['theme'] = $this->getThemeManifest($site['TPL_CODE']);
 				}
 				$options['sites_count'] = $this->getSitesCount();
 				$options['pages_count'] = $this->getPagesCount($landing->getSiteId());
@@ -1123,11 +1125,6 @@ class LandingViewComponent extends LandingBaseComponent
 		$sliderConditions = [];
 
 		$sliderUrlKeys = [
-			'landing_edit',
-			'site_edit',
-			'site_show',
-			'landing_design',
-			'site_design',
 			'landing_settings',
 			'site_settings',
 		];
@@ -1208,8 +1205,13 @@ class LandingViewComponent extends LandingBaseComponent
 			Landing::setEditMode();
 			$landing = Landing::createInstance($this->arParams['LANDING_ID']);
 
-			$this->arResult['ALLOW_AI_TEXT'] = \Bitrix\Landing\Connector\Ai::isTextAvailable();
-			$this->arResult['ALLOW_AI_IMAGE'] = \Bitrix\Landing\Connector\Ai::isImageAvailable();
+			// ai
+			$this->arResult['AI_TEXT_AVAILABLE'] = \Bitrix\Landing\Connector\Ai::isTextAvailable();
+			$this->arResult['COPILOT_AVAILABLE'] = \Bitrix\Landing\Connector\Ai::isCopilotAvailable();
+			$this->arResult['AI_TEXT_ACTIVE'] = \Bitrix\Landing\Connector\Ai::isTextActive();
+			$this->arResult['AI_IMAGE_AVAILABLE'] = \Bitrix\Landing\Connector\Ai::isImageAvailable();
+			$this->arResult['AI_IMAGE_ACTIVE'] = \Bitrix\Landing\Connector\Ai::isImageActive();
+			$this->arResult['AI_UNACTIVE_INFO_CODE'] = self::getAiUnactiveInfoCode();
 
 			$this->arResult['AUTO_PUBLICATION_ENABLED'] = \CUserOptions::getOption('landing', 'auto_publication', 'Y') === 'Y';
 			$this->arResult['SUCCESS_SAVE'] = $this->request('success') === 'Y';
@@ -1228,6 +1230,8 @@ class LandingViewComponent extends LandingBaseComponent
 
 			if ($landing->exist())
 			{
+				\Bitrix\Landing\Site\Version::update($landing->getSiteId(), $landing->getMeta()['SITE_VERSION']);
+
 				$this->arResult['SPECIAL_TYPE'] = $this->getSpecialTypeSiteByLanding($landing);
 
 				// tmp fix for checking crm rights
@@ -1322,6 +1326,22 @@ class LandingViewComponent extends LandingBaseComponent
 					$rights
 				);
 
+				// params for analytics
+				$urlAddParams = [];
+				if ($this->arResult['SPECIAL_TYPE'])
+				{
+					$urlAddParams['specType'] = $this->arResult['SPECIAL_TYPE'];
+				}
+				$this->arParams['PAGE_URL_LANDING_ADD'] = $this->getUrlAdd(false, $urlAddParams);
+
+				$urlAddParams['replaceLid'] = $this->arParams['LANDING_ID'];
+				$urlAddParams['context'] = 'block_style';
+				$this->arParams['PAGE_URL_LANDING_REPLACE_FROM_STYLE'] = $this->getUrlAdd(
+					false,
+					$urlAddParams,
+					Manager::getMarketCollectionId('form_minisite')
+				);
+
 				if (\Bitrix\Main\Loader::includeModule('bitrix24'))
 				{
 					$this->arResult['LICENSE'] = \CBitrix24::getLicenseType();
@@ -1343,6 +1363,7 @@ class LandingViewComponent extends LandingBaseComponent
 						$this->arResult['FORM_NAME'] = $crmFormEditorData['formOptions']['name'];
 					}
 				}
+				$this->arResult['IS_AREA'] = TemplateRef::landingIsArea($landing->getId());
 
 				$this->onLandingView();
 				$this->onEpilog();

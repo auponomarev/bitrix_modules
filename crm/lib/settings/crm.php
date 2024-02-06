@@ -5,7 +5,10 @@ namespace Bitrix\Crm\Settings;
 use Bitrix\Crm\Relation;
 use Bitrix\Crm\RelationIdentifier;
 use Bitrix\Crm\Service\Container;
+use Bitrix\Main\Application;
+use Bitrix\Main\Error;
 use Bitrix\Main\Loader;
+use Bitrix\Main\Result;
 
 class Crm
 {
@@ -16,7 +19,6 @@ class Crm
 	private const DOCUMENT_SIGNING_OPTION_NAME = 'DOCUMENTS_SIGNING_ENABLED';
 	private const LF_GENERATION_OPTION_NAME = 'LIVE_FEED_RECORDS_GENERATION_ENABLED';
 	private const TIMELINE_TODO_CALENDAR_SYNC_OPTION_NAME = 'TIMELINE_TODO_CALENDAR_SYNC_ENABLED';
-	private const CALENDAR_SHARING_OPTION_NAME = 'isSharingEnabled';
 
 	public static function wasInitiated(): bool
 	{
@@ -43,11 +45,6 @@ class Crm
 				self::setInitiatedOption();
 			}
 		}
-	}
-
-	public static function isMobileMailScenarioEnabled(): bool
-	{
-		return (bool)\Bitrix\Main\Config\Option::get('main', 'mobile_crm_mail_is_active');
 	}
 
 	public static function isMobileDynamicTypesEnabled(): bool
@@ -79,14 +76,52 @@ class Crm
 
 	public static function setDocumentSigningEnabled(bool $isEnabled): void
 	{
-		\Bitrix\Main\Config\Option::set(self::OPTION_MODULE, self::DOCUMENT_SIGNING_OPTION_NAME, $isEnabled);
+		if ($isEnabled === (bool)\Bitrix\Main\Config\Option::get(self::OPTION_MODULE, self::DOCUMENT_SIGNING_OPTION_NAME, false))
+		{
+			return;
+		}
+
+		$logErrors = static function (Result $result) use ($isEnabled): void {
+			AddMessage2Log(
+				[
+					'message' => $isEnabled
+						? 'Error adding DEAL-SMART_DOCUMENT relation when enabling signing'
+						: 'Error deleting DEAL-SMART_DOCUMENT relation when disabling signing'
+					,
+					'errors' => $result->getErrors(),
+				],
+				'crm',
+			);
+		};
+
+		$logWarning = static function (Result $result) use ($isEnabled): void {
+			AddMessage2Log(
+				[
+					'message' => $isEnabled
+						? 'Warning adding DEAL-SMART_DOCUMENT relation when enabling signing'
+						: 'Warning deleting DEAL-SMART_DOCUMENT relation when disabling signing'
+					,
+					'errors' => $result->getErrors(),
+				],
+				'crm',
+			);
+		};
+
+		$connection = Application::getConnection();
+		if (!$connection->lock('crm_set_document_singing_enabled'))
+		{
+			$result = (new Result())->addError(new Error('Could not acquire lock'));
+
+			$logErrors($result);
+
+			return;
+		}
 
 		$relationManager = Container::getInstance()->getRelationManager();
 		$relationIdentifier = new RelationIdentifier(\CCrmOwnerType::Deal, \CCrmOwnerType::SmartDocument);
-
 		if ($isEnabled)
 		{
-			$relationManager->bindTypes(
+			$result = $relationManager->bindTypes(
 				new Relation(
 					$relationIdentifier,
 					(new Relation\Settings())
@@ -98,8 +133,30 @@ class Crm
 		}
 		else
 		{
-			$relationManager->unbindTypes($relationIdentifier);
+			$result = $relationManager->unbindTypes($relationIdentifier);
 		}
+
+		if (
+			$result->isSuccess()
+			// those errors are kinda okay
+			|| $result->getErrorCollection()->getErrorByCode(Relation\RelationManager::ERROR_CODE_BIND_TYPES_TYPES_ALREADY_BOUND)
+			|| $result->getErrorCollection()->getErrorByCode(Relation\RelationManager::ERROR_CODE_UNBIND_TYPES_TYPES_NOT_BOUND)
+		)
+		{
+			if (!$result->isSuccess())
+			{
+				$logWarning($result);
+			}
+
+			\Bitrix\Main\Config\Option::set(self::OPTION_MODULE, self::DOCUMENT_SIGNING_OPTION_NAME, $isEnabled);
+		}
+		else
+		{
+			// could not create/delete relation - dont set option
+			$logErrors($result);
+		}
+
+		$connection->unlock('crm_set_document_singing_enabled');
 	}
 
 	public static function isLiveFeedRecordsGenerationEnabled(): bool
@@ -130,14 +187,6 @@ class Crm
 			self::OPTION_MODULE,
 			self::TIMELINE_TODO_CALENDAR_SYNC_OPTION_NAME,
 			$isEnabled
-		);
-	}
-
-	public static function isCalendarSharingEnabled(): bool
-	{
-		return (
-			Loader::includeModule('calendar')
-			&& \Bitrix\Main\Config\Option::get('calendar', self::CALENDAR_SHARING_OPTION_NAME, false)
 		);
 	}
 }

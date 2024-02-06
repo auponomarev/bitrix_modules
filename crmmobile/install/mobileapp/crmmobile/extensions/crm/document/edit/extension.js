@@ -2,8 +2,9 @@
  * @module crm/document/edit
  */
 jn.define('crm/document/edit', (require, exports, module) => {
-	const { FadeView } = require('animation/components/fade-view');
 	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
+	const { FadeView } = require('animation/components/fade-view');
 	const { StringField } = require('layout/ui/fields/string');
 	const { DateTimeField } = require('layout/ui/fields/datetime');
 	const { SelectField } = require('layout/ui/fields/select');
@@ -61,13 +62,15 @@ jn.define('crm/document/edit', (require, exports, module) => {
 						swipeContentAllowed: false,
 						horizontalSwipeAllowed: false,
 						hideNavigationBar: false,
-						navigationBarColor: '#eef2f4',
+						navigationBarColor: AppTheme.colors.bgSecondary,
 					},
 				})
-				.then((layoutWidget) => layoutWidget.showComponent(new CrmDocumentEditor({
-					...props,
-					layoutWidget,
-				})));
+				.then((layoutWidget) => layoutWidget.showComponent(
+					new CrmDocumentEditor({
+						...props,
+						layoutWidget,
+					}),
+				)).catch(console.error);
 		}
 
 		componentDidMount()
@@ -90,12 +93,14 @@ jn.define('crm/document/edit', (require, exports, module) => {
 					detailText: this.document.title,
 					useProgress: false,
 				});
-				this.layoutWidget.setRightButtons([{
-					name: Loc.getMessage('M_CRM_DOCUMENT_EDIT_SAVE'),
-					type: 'text',
-					color: '#0b66c3',
-					callback: () => this.save(),
-				}]);
+				this.layoutWidget.setRightButtons([
+					{
+						name: Loc.getMessage('M_CRM_DOCUMENT_EDIT_SAVE'),
+						type: 'text',
+						color: AppTheme.colors.accentMainLinks,
+						callback: () => this.save(),
+					},
+				]);
 			}).catch(() => {
 				this.setState({ loading: false });
 				this.layoutWidget.setTitle({
@@ -147,10 +152,12 @@ jn.define('crm/document/edit', (require, exports, module) => {
 									field.group = [Loc.getMessage('M_CRM_DOCUMENT_EDIT_UNKNOWN_GROUP_NAME')];
 									field.sort = -10000 + field.sort; // ungrouped fields must go very first
 								}
+
 								if (isFieldWithMultipleValues(field))
 								{
 									field.value = extractMultipleValues(field);
 								}
+
 								return field;
 							})
 							.sort((a, b) => {
@@ -255,7 +262,7 @@ jn.define('crm/document/edit', (require, exports, module) => {
 					style: {
 						flexDirection: 'column',
 						flexGrow: 1,
-						backgroundColor: '#eef2f4',
+						backgroundColor: AppTheme.colors.bgSecondary,
 					},
 				},
 				ScrollView(
@@ -263,7 +270,7 @@ jn.define('crm/document/edit', (require, exports, module) => {
 						style: {
 							flexDirection: 'column',
 							flexGrow: 1,
-							backgroundColor: '#fff',
+							backgroundColor: AppTheme.colors.bgContentPrimary,
 							borderRadius: 12,
 						},
 						safeArea: { bottom: true },
@@ -282,7 +289,7 @@ jn.define('crm/document/edit', (require, exports, module) => {
 				{
 					style: {
 						padding: 0,
-						backgroundColor: level > 2 ? '#EEF2F4' : '#fff',
+						backgroundColor: level > 2 ? AppTheme.colors.bgSecondary : AppTheme.colors.bgContentPrimary,
 						marginBottom: 12,
 						marginHorizontal: level === 3 ? 16 : 0,
 						borderRadius: level === 3 ? 12 : 0,
@@ -303,7 +310,10 @@ jn.define('crm/document/edit', (require, exports, module) => {
 				values[field.key] = newVal;
 				this.setState(values);
 			};
-			const ref = (fieldRef) => this.fieldRefs[field.key] = fieldRef;
+
+			const ref = (fieldRef) => {
+				this.fieldRefs[field.key] = fieldRef;
+			};
 
 			if (isFieldWithMultipleValues(field))
 			{
@@ -394,7 +404,7 @@ jn.define('crm/document/edit', (require, exports, module) => {
 			const currentValues = {};
 			Object.keys(this.state.values).forEach((key) => {
 				const field = this.state.rawFields[key];
-				let currentValue;
+				let currentValue = null;
 				// todo extract field conversion to separate method
 				if (field && field.type === FieldTypes.DATE)
 				{
@@ -418,9 +428,7 @@ jn.define('crm/document/edit', (require, exports, module) => {
 
 			this.fetchFields(currentValues)
 				.then(() => this.setState({}))
-				.catch((err) => {
-					console.error(err); // todo make some alerting
-				});
+				.catch(console.error);
 		}
 	}
 
@@ -433,11 +441,13 @@ jn.define('crm/document/edit', (require, exports, module) => {
 		{
 			return Object.values(field.value);
 		}
+
 		return field.value;
 	};
 
 	const makeMemoizedSetter = () => {
 		const cache = {};
+
 		return (obj, path, value) => {
 			const key = path.join('.');
 			if (cache[key])
@@ -457,6 +467,7 @@ jn.define('crm/document/edit', (require, exports, module) => {
 				result.push(node[key]);
 			}
 		});
+
 		return result;
 	};
 
@@ -477,7 +488,7 @@ jn.define('crm/document/edit', (require, exports, module) => {
 		},
 		Text({
 			style: {
-				color: '#333333',
+				color: AppTheme.colors.base1,
 				fontWeight: level < 3 ? 'normal' : 'bold',
 				fontSize: level < 3 ? 18 : 16,
 				width: '100%',

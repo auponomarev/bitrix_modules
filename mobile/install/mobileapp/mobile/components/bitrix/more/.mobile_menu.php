@@ -1,12 +1,14 @@
 <?php
 
+use Bitrix\Crm\Integration\IntranetManager;
+use Bitrix\Crm\Service\Container;
 use Bitrix\Intranet\AI;
+use Bitrix\Intranet\Settings\Tools\ToolsManager;
 use Bitrix\Main\Config\Option;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
-use Bitrix\Catalog\Access\AccessController;
 use Bitrix\Main\ModuleManager;
-use Bitrix\Mobile\Tab\Manager;
+use Bitrix\MobileApp\Janative\Manager;
 
 if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true)
 {
@@ -16,7 +18,7 @@ if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true)
 global $USER;
 
 /**
- * @var  $USER CAllUser
+ * @var  $USER CUser
  * @var  $this \Bitrix\MobileApp\Janative\Entity\Component
  * @var  $isExtranetUser bool
  */
@@ -33,7 +35,7 @@ if (CModule::IncludeModule("socialnetwork"))
 	$allowedFeatures = [];
 	foreach (["tasks", "files", "calendar"] as $feature)
 	{
-		$allowedFeatures[$feature] = $feature == "calendar"
+		$allowedFeatures[$feature] = $feature === "calendar"
 			? $socNetFeatures->isEnabledForGroup($feature)
 			: $socNetFeatures->isEnabledForUser($feature);
 	}
@@ -65,28 +67,8 @@ if ($isExtranetUser && $extranetSiteId)
 
 $imageDir = $this->getPath() . "/images/";
 
-$diskComponentVersion = \Bitrix\MobileApp\Janative\Manager::getComponentVersion("user.disk");
-$calendarComponentPath = \Bitrix\MobileApp\Janative\Manager::getComponentPath("calendar:calendar.events");
-$calendarComponentVersion = \Bitrix\MobileApp\Janative\Manager::getComponentVersion("calendar:calendar.events");
-$workgroupsComponentVersion = \Bitrix\MobileApp\Janative\Manager::getComponentVersion("workgroups");
-$catalogStoreDocumentListComponentVersion = \Bitrix\MobileApp\Janative\Manager::getComponentVersion("catalog.store.document.list");
-
-$taskParams = json_encode([
-	"COMPONENT_CODE" => "tasks.list",
-	"USER_ID" => $USER->GetId(),
-	"SITE_ID" => SITE_ID,
-	"LANGUAGE_ID" => LANGUAGE_ID,
-	"SITE_DIR" => SITE_DIR,
-	"PATH_TO_TASK_ADD" => "/mobile/tasks/snmrouter/?routePage=#action#&TASK_ID=#taskId#",
-	"MESSAGES" => [],
-]);
-
-$calendarMobileJSComponentsIsUsed = false;
-
-if (Loader::includeModule('calendarmobile'))
-{
-	$calendarMobileJSComponentsIsUsed = \Bitrix\CalendarMobile\JSComponent::isUsed();
-}
+$diskComponentVersion = Manager::getComponentVersion("user.disk");
+$workgroupsComponentVersion = Manager::getComponentVersion("workgroups");
 
 $menuStructure = [];
 $favoriteItems = [];
@@ -106,44 +88,14 @@ if (\Bitrix\MobileApp\Mobile::getApiVersion() < 41)
 	];
 }
 
-if ($calendarMobileJSComponentsIsUsed)
+$calendarComponentPath = Manager::getComponentPath("calendar:calendar.events");
+$calendarMobileJSComponentsIsUsed = false;
+if (Loader::includeModule('calendarmobile'))
 {
-	$favoriteItems[] = [
-		"title" => Loc::getMessage("MB_CALENDAR_LIST"),
-		"imageUrl" => $imageDir . "favorite/icon-calendar.png",
-		"color" => "#F5A200",
-		"hidden" => $isExtranetUser && !$allowedFeatures["calendar"],
-		"actions" => [
-			[
-				"title" => Loc::getMessage("MORE_ADD"),
-				"identifier" => "add",
-				"color" => "#7CB316",
-			],
-		],
-		"attrs" => [
-			"actionOnclick" => <<<JS
-					PageManager.openPage({url:"/mobile/calendar/edit_event.php", modal:true, data:{ modal:"Y"}});
-JS
-			,
-			"onclick" => <<<JS
-			PageManager.openComponent("JSStackComponent",
-						{
-							scriptPath:"{$calendarComponentPath}",
-							componentCode: "calendar",							
-							rootWidget:{
-								name:"list",
-								settings:{
-									title: this.title,
-									objectName: "list",
-								}
-							}
-						});
-JS
-			,
-		],
-	];
+	$calendarMobileJSComponentsIsUsed = \Bitrix\CalendarMobile\JSComponent::isUsed();
 }
-else
+
+if (!$calendarMobileJSComponentsIsUsed)
 {
 	$favoriteItems[] = [
 		"title" => Loc::getMessage("MB_CALENDAR_LIST"),
@@ -452,7 +404,7 @@ if (CModule::IncludeModule("rest"))
 		}
 	}
 
-	if (count($arMenuApps) > 0)
+	if (!empty($arMenuApps))
 	{
 		$menuStructure[] = [
 			"title" => Loc::getMessage("MB_MARKETPLACE_GROUP_TITLE_2"),
@@ -494,132 +446,66 @@ if (
 	];
 
 	$menuStructure[] = $crmMenuItems;
-}
 
-/**
- * Catalog menu
- */
+	$customSectionsMenuItems = [
+		'title' => Loc::getMessage('MB_CRM_DYNAMIC_CUSTOM_SECTION'),
+		'sort' => 123,
+		'hidden' => false,
+		'items' => [],
+	];
 
-if (
-	!$isExtranetUser
-	&& IsModuleInstalled('catalog')
-	&& CModule::IncludeModule('catalog')
-)
-{
-	$catalogMenuItems = [];
+	$toolsManager = \Bitrix\Crm\Service\Container::getInstance()->getIntranetToolsManager();
 
-	if (AccessController::getCurrent()->check(\Bitrix\Catalog\Access\ActionDictionary::ACTION_CATALOG_READ))
+	if (IntranetManager::isCustomSectionsAvailable() && $toolsManager->checkExternalDynamicAvailability())
 	{
-		$storeItemTitle = Loc::getMessage("MENU_CATALOG_STORE");
-		if (Option::get('mobile', 'catalog_store_test', 'N') === 'Y')
+		$customSections = IntranetManager::getCustomSections();
+		foreach ($customSections as $customSection)
 		{
-			$catalogMenuItems[] = [
-				"title" => "Entity Selector Test",
-				"imageUrl" => $imageDir . "catalog/icon-catalog-store.png",
-				"color" => '#8590a2',
-				"hidden" => false,
-				"attrs" => [
-					"id" => "selector.test",
-					"onclick" => <<<JS
-						ComponentHelper.openLayout({
-							name: 'selector.test',
-							object: 'layout',
-							widgetParams: {
-								title: 'Entity Selector Test'
-							}
-						});
-JS,
-				],
-			];
+			$pages = $customSection->getPages();
+			if (empty($pages))
+			{
+				continue;
+			}
 
-			$catalogMenuItems[] = [
-				"title" => "Stage slider",
-				"imageUrl" => $imageDir . "catalog/icon-catalog-store.png",
-				"color" => '#8590a2',
-				"hidden" => false,
-				"attrs" => [
-					"id" => "crm:crm.category.view.test",
-					"onclick" => <<<JS
+			$hasPermissions = false;
+			foreach ($pages as $page)
+			{
+				$entityTypeId = IntranetManager::getEntityTypeIdByPageSettings($page->getSettings());
+				if (Container::getInstance()->getUserPermissions()->canReadType($entityTypeId))
+				{
+					$hasPermissions = true;
+					break;
+				}
+			}
+
+			if (!$hasPermissions)
+			{
+				continue;
+			}
+
+			$customSectionId = $customSection->getId();
+			$customSectionTitle = $customSection->getTitle();
+			$customSectionComponentText = CUtil::JSescape($customSectionTitle);
+
+			$customSectionsMenuItems['items'][] = [
+				'title' => $customSectionTitle,
+				'imageUrl' => $imageDir . 'crm/icon-crm-dynamic.png',
+				'color' => '#3BA7EF',
+				'hidden' => false,
+				'attrs' => [
+					'id' => 'dynamic_custom_section_' . $customSectionId,
+					'onclick' => <<<JS
 						ComponentHelper.openLayout({
-							name: 'crm:crm.category.view.test',
-							object: 'layout',
 							widgetParams: {
-								title: 'Stage slider'
+								titleParams: {
+									text: '$customSectionComponentText',
+								},
 							},
+							name: 'crm:crm.tabs',
+							canOpenInDefault: true,
 							componentParams: {
-										entityTypeId: 2,
-										categoryId: 1,
-										readOnly: true
-							}
-						});
-JS,
-				],
-			];
-
-			$catalogMenuItems[] = [
-				"title" => "Fields Test",
-				"imageUrl" => $imageDir . "catalog/icon-catalog-store.png",
-				"color" => '#8590a2',
-				"hidden" => false,
-				"attrs" => [
-					"id" => "fields.component",
-					"onclick" => <<<JS
-						ComponentHelper.openLayout({
-								name: "fields.test",
-								version: '1',
-								object: "layout",
-								componentParams: {},
-								widgetParams: {
-									title: "Fields Test"
-								}
-						});
-JS,
-				],
-			];
-
-			$catalogMenuItems[] = [
-				"title" => "crm:crm.category.list",
-				"imageUrl" => $imageDir . "catalog/icon-catalog-store.png",
-				"color" => '#8590a2',
-				"hidden" => false,
-				"attrs" => [
-					"id" => "crm:crm.category.list",
-					"onclick" => <<<JS
-				ComponentHelper.openLayout({
-					name: 'crm:crm.category.list',
-					componentParams: {
-						entityTypeId: 2,
-						currentCategoryId: 0,
-						readOnly: false,
-					},
-					widgetParams: {
-						modal: true,
-						backdrop: {
-							showOnTop: true,
-							swipeContentAllowed: false,
-						}
-					}
-				});
-JS,
-				],
-			];
-
-			$catalogMenuItems[] = [
-				"title" => "crm:crm.test",
-				"imageUrl" => $imageDir . "catalog/icon-catalog-store.png",
-				"color" => '#8590a2',
-				"hidden" => false,
-				"attrs" => [
-					"id" => "crm:crm.test",
-					"onclick" => <<<JS
-						ComponentHelper.openLayout({
-								name: "crm:crm.test",
-								version: '1',
-								object: "layout",
-								componentParams: {},
-								widgetParams: {
-									title: "crm:crm.test"
-								}
+								customSectionId: $customSectionId,
+							},
 						});
 JS,
 				],
@@ -627,16 +513,36 @@ JS,
 		}
 	}
 
+	if (!empty($customSectionsMenuItems['items']))
+	{
+		$menuStructure[] = $customSectionsMenuItems;
+	}
+}
+
+/**
+ * Catalog menu
+ */
+if (
+	!$isExtranetUser
+	&& IsModuleInstalled('catalog')
+	&& CModule::IncludeModule('catalog')
+	&& \Bitrix\Catalog\Restriction\ToolAvailabilityManager::getInstance()->checkInventoryManagementAvailability()
+)
+{
 	$menuStructure[] = [
 		"title" => Loc::getMessage("MENU_CATALOG"),
 		"sort" => 125,
-		"code" => "catalog",
+		"code" => "catalog_store",
 		"hidden" => false,
-		"items" => $catalogMenuItems,
+		"items" => [],
 	];
 }
 
-if (!$isExtranetUser)
+if (
+	!$isExtranetUser
+	&& Bitrix\Main\Loader::includeModule('crm')
+	&& Container::getInstance()->getIntranetToolsManager()->checkTerminalAvailability()
+)
 {
 	$menuStructure[] = [
 		"title" => Loc::getMessage("MENU_CRM_TERMINAL_V2"),
@@ -669,7 +575,13 @@ $groupSection = [
 	"items" => [],
 ];
 
-if (!$isExtranetUser)
+$projectsEnabled = true;
+if (Loader::includeModule('intranet'))
+{
+	$projectsEnabled = ToolsManager::getInstance()->checkAvailabilityByToolId('tasks');
+}
+
+if (!$isExtranetUser && $projectsEnabled)
 {
 	$menuName = Loc::getMessage('MENU_INTRANET');
 	$groupSection["items"][] = [
@@ -791,8 +703,8 @@ JS
 	];
 }
 
-$settingsComponentPath = \Bitrix\MobileApp\Janative\Manager::getComponentPath("settings");
-$qrComponentPath = \Bitrix\MobileApp\Janative\Manager::getComponentPath("qrcodeauth");
+$settingsComponentPath = Manager::getComponentPath("settings");
+$qrComponentPath = Manager::getComponentPath("qrcodeauth");
 $settingsUserId = $USER->GetID();
 $settingsSiteId = SITE_ID;
 $isUserAdmin = ((\CModule::IncludeModule('bitrix24') ? \CBitrix24::isPortalAdmin($settingsUserId) : $USER->isAdmin()))
@@ -849,7 +761,7 @@ JS
 JS
 				,
 			],
-		]
+		],
 	],
 ];
 
@@ -911,8 +823,8 @@ JS,
 
 	$developerMenuItems[] = [
 		"title" => "Developer playground",
-		"imageUrl" => $imageDir . "catalog/icon-catalog-store.png",
 		"color" => '#8590a2',
+		"imageUrl" => $imageDir . "catalog/icon-catalog-store.png",
 		"hidden" => false,
 		"attrs" => [
 			"id" => "playground",
@@ -929,20 +841,21 @@ JS,
 	];
 
 	$developerMenuItems[] = [
-		"title" => "telegram connector",
-		"imageUrl" => $imageDir . "favorite/stream.png",
+		"title" => "Fields Test",
+		"imageUrl" => $imageDir . "catalog/icon-catalog-store.png",
 		"color" => '#8590a2',
 		"hidden" => false,
 		"attrs" => [
-			"id" => "imconnector:imconnector.telegram",
+			"id" => "fields.component",
 			"onclick" => <<<JS
 				ComponentHelper.openLayout({
-					name: 'imconnector:imconnector.telegram',
-					object: 'layout',
-					widgetParams: {
-						title: 'Telegram',
-						modal: true,
-					}
+						name: "fields.test",
+						version: '1',
+						object: "layout",
+						componentParams: {},
+						widgetParams: {
+							title: "Fields Test"
+						}
 				});
 JS,
 		],

@@ -1,15 +1,17 @@
-(() => {
-	const require = (ext) => jn.require(ext);
-
+/**
+ * @module layout/ui/context-menu/item
+ */
+jn.define('layout/ui/context-menu/item', (require, exports, module) => {
+	const { Type } = require('type');
+	const AppTheme = require('apptheme');
 	const { AnalyticsLabel } = require('analytics-label');
 	const { CounterView } = require('layout/ui/counter-view');
 	const { chevronRight } = require('assets/common');
 	const { Badge } = require('layout/ui/context-menu/item/badge');
 	const { get, mergeImmutable } = require('utils/object');
 	const { changeFillColor } = require('utils/svg');
-	const { Type } = require('type');
 
-	const TINT_COLOR = '#6a737f';
+	const TINT_COLOR = AppTheme.colors.base3;
 
 	const TYPE_BUTTON = 'button';
 	const TYPE_LAYOUT = 'layout';
@@ -24,10 +26,10 @@
 
 	const svgIcons = {
 		[ImageAfterTypes.WEB]: {
-			content: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.93726 0.9375H6.00552V3.18574H4.1855C3.63321 3.18574 3.1855 3.63346 3.1855 4.18574V11.8122C3.1855 12.3645 3.63321 12.8122 4.1855 12.8122H11.812C12.3643 12.8122 12.812 12.3645 12.812 11.8122V10.5903H15.0624V12.0627C15.0624 13.7195 13.7193 15.0627 12.0624 15.0627H3.93725C2.2804 15.0627 0.937256 13.7195 0.937256 12.0627V3.9375C0.937256 2.28064 2.2804 0.9375 3.93726 0.9375Z" fill="#bdc1c6"/><path d="M8.98799 1.66387C8.799 1.47488 8.93285 1.15174 9.20012 1.15174H13.8782C14.4305 1.15174 14.8782 1.59945 14.8782 2.15174V6.82982C14.8782 7.09709 14.5551 7.23094 14.3661 7.04195L12.3898 5.06566L7.89355 9.56189C7.69829 9.75715 7.38171 9.75715 7.18644 9.56189L6.34414 8.71959C6.14888 8.52433 6.14888 8.20775 6.34414 8.01248L10.8404 3.51625L8.98799 1.66387Z" fill="#bdc1c6"/></svg>`,
+			content: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.93726 0.9375H6.00552V3.18574H4.1855C3.63321 3.18574 3.1855 3.63346 3.1855 4.18574V11.8122C3.1855 12.3645 3.63321 12.8122 4.1855 12.8122H11.812C12.3643 12.8122 12.812 12.3645 12.812 11.8122V10.5903H15.0624V12.0627C15.0624 13.7195 13.7193 15.0627 12.0624 15.0627H3.93725C2.2804 15.0627 0.937256 13.7195 0.937256 12.0627V3.9375C0.937256 2.28064 2.2804 0.9375 3.93726 0.9375Z" fill="#bdc1c6"/><path d="M8.98799 1.66387C8.799 1.47488 8.93285 1.15174 9.20012 1.15174H13.8782C14.4305 1.15174 14.8782 1.59945 14.8782 2.15174V6.82982C14.8782 7.09709 14.5551 7.23094 14.3661 7.04195L12.3898 5.06566L7.89355 9.56189C7.69829 9.75715 7.38171 9.75715 7.18644 9.56189L6.34414 8.71959C6.14888 8.52433 6.14888 8.20775 6.34414 8.01248L10.8404 3.51625L8.98799 1.66387Z" fill="${TINT_COLOR}"/></svg>`,
 		},
 		[ImageAfterTypes.LOCK]: {
-			content: `<svg width="28" height="29" viewBox="0 0 28 29" fill="none" xmlns="http://www.w3.org/2000/svg"><g opacity="0.8"><path fill-rule="evenodd" clip-rule="evenodd" d="M14.17 18.4443V20.3019H12.6987V18.4443C12.4339 18.2285 12.2644 17.8989 12.2644 17.5293C12.2644 16.8792 12.7882 16.3522 13.4344 16.3522C14.0804 16.3522 14.6043 16.8792 14.6043 17.5293C14.6043 17.8989 14.4348 18.2285 14.17 18.4443ZM10.2313 10.8976C10.2313 9.11768 11.6653 7.67481 13.4343 7.67481C15.2033 7.67481 16.6374 9.11768 16.6374 10.8976V13.6219H10.2313V10.8976ZM18.3301 13.6219V10.8976C18.3301 8.17704 16.1382 5.97168 13.4343 5.97168C10.7305 5.97168 8.53854 8.17704 8.53854 10.8976V13.6219H7.05225V22.9508H19.8164V13.6219H18.3301Z" fill="#2FC6F6"/></g></svg>`,
+			content: '<svg width="28" height="29" viewBox="0 0 28 29" fill="none" xmlns="http://www.w3.org/2000/svg"><g opacity="0.8"><path fill-rule="evenodd" clip-rule="evenodd" d="M14.17 18.4443V20.3019H12.6987V18.4443C12.4339 18.2285 12.2644 17.8989 12.2644 17.5293C12.2644 16.8792 12.7882 16.3522 13.4344 16.3522C14.0804 16.3522 14.6043 16.8792 14.6043 17.5293C14.6043 17.8989 14.4348 18.2285 14.17 18.4443ZM10.2313 10.8976C10.2313 9.11768 11.6653 7.67481 13.4343 7.67481C15.2033 7.67481 16.6374 9.11768 16.6374 10.8976V13.6219H10.2313V10.8976ZM18.3301 13.6219V10.8976C18.3301 8.17704 16.1382 5.97168 13.4343 5.97168C10.7305 5.97168 8.53854 8.17704 8.53854 10.8976V13.6219H7.05225V22.9508H19.8164V13.6219H18.3301Z" fill="#2FC6F6"/></g></svg>',
 		},
 	};
 
@@ -122,6 +124,11 @@
 			return BX.prop.getBoolean(this.props, 'isDisabled', false);
 		}
 
+		get isDestructive()
+		{
+			return BX.prop.getBoolean(this.props, 'isDestructive', false);
+		}
+
 		get sectionCode()
 		{
 			return this.props.sectionCode || ContextMenuSection.getDefaultSectionName();
@@ -212,6 +219,18 @@
 			return BX.prop.getObject(this.props, 'analyticsLabel', null);
 		}
 
+		get isRawIcon()
+		{
+			return BX.prop.getBoolean(this.props, 'isRawIcon', false);
+		}
+
+		get testId()
+		{
+			const { id, testId } = this.props;
+
+			return `${testId || 'ContextMenu'}_${id}`;
+		}
+
 		render()
 		{
 			if (!this.isActive)
@@ -219,24 +238,46 @@
 				return null;
 			}
 
-			const { id, testId } = this.props;
-
 			const containerStyle = get(this.props, 'data.style.container', {});
 			const itemStyle = get(this.props, 'data.style.item', {});
 
 			return View(
 				{
 					style: mergeImmutable(styles.wrapper(this.dimmed), containerStyle),
-					testId: `${testId || ""}_${id}`,
+					testId: this.testId,
 					onClick: this.handleSelectItem,
 				},
 				...this.renderByType(itemStyle),
 			);
 		}
 
+		onClickSelected(callback)
+		{
+			return callback(
+				this.id,
+				this.parentId,
+				{
+					parentWidget: this.getParentWidget ? this.getParentWidget() : null,
+					parent: this.parent || null,
+				},
+			);
+		}
+
+		sendAnalytics()
+		{
+			if (Type.isPlainObject(this.analyticsLabel))
+			{
+				AnalyticsLabel.send({
+					event: 'context-menu-click',
+					id: this.id,
+					...this.analyticsLabel,
+				});
+			}
+		}
+
 		handleSelectItem()
 		{
-			if (this.state.isProcessing || this.isTypeLayout())
+			if (this.isProcessing() || this.isTypeLayout())
 			{
 				return;
 			}
@@ -245,37 +286,25 @@
 			{
 				if (this.onDisableClick)
 				{
-					this.onDisableClick(
-						this.id,
-						this.parentId,
-						{
-							parentWidget: this.getParentWidget ? this.getParentWidget() : null,
-							parent: this.parent || null,
-						},
-					);
+					this.onClickSelected(this.onDisableClick);
 				}
 
 				return;
 			}
 
-			this.setState({ isProcessing: true }, () => {
-				let promise = this.onClickCallback(
-					this.id,
-					this.parentId,
-					{
-						parentWidget: this.getParentWidget ? this.getParentWidget() : null,
-						parent: this.parent || null,
-					},
-				);
+			const { needProcessing = true } = this.props;
 
-				if (Type.isPlainObject(this.analyticsLabel))
-				{
-					AnalyticsLabel.send({
-						event: 'context-menu-click',
-						id: this.id,
-						...this.analyticsLabel,
-					});
-				}
+			if (!needProcessing)
+			{
+				this.onClickSelected(this.onClickCallback);
+				this.sendAnalytics();
+
+				return;
+			}
+
+			this.setState({ isProcessing: true }, () => {
+				let promise = this.onClickSelected(this.onClickCallback);
+				this.sendAnalytics();
 
 				if (!(promise instanceof Promise))
 				{
@@ -299,7 +328,7 @@
 						},
 						({ errors } = {}) => {
 							this.setState({ isProcessing: false }, () => {
-								if (errors && errors.length)
+								if (errors && errors.length > 0)
 								{
 									this.showErrors(errors);
 								}
@@ -312,7 +341,7 @@
 
 		showError(errorText)
 		{
-			if (errorText.length)
+			if (errorText.length > 0)
 			{
 				navigator.notification.alert(errorText, null, '');
 			}
@@ -321,7 +350,7 @@
 		showErrors(errors, callback = null)
 		{
 			navigator.notification.alert(
-				errors.map(error => error.message).join('\n'),
+				errors.map((error) => error.message).join('\n'),
 				callback,
 				'',
 			);
@@ -342,7 +371,7 @@
 			{
 				title = Text({
 					style: {
-						...styles.title(this.isActive),
+						...styles.title(this.isActive, this.isDestructive),
 						...styles.cancel,
 					},
 					text: this.title || BX.message('CONTEXT_MENU_CANCEL'),
@@ -357,7 +386,8 @@
 			else
 			{
 				title = Text({
-					style: styles.title(!this.isSemitransparent),
+					testId: `${this.testId}_title`,
+					style: styles.title(!this.isSemitransparent, this.isDestructive),
 					text: this.title,
 					numberOfLines: 1,
 					ellipsize: 'end',
@@ -367,6 +397,7 @@
 					const subtitleStyle = get(customStyle, 'subtitle', {});
 
 					subtitle = Text({
+						testId: `${this.testId}_subtitle`,
 						style: styles.subtitle(this.subtitleType, subtitleStyle),
 						text: this.subtitle,
 						numberOfLines: 1,
@@ -390,7 +421,7 @@
 								width: 25,
 								height: 25,
 							},
-							tintColor: '#000000',
+							tintColor: AppTheme.colors.base0,
 							animating: true,
 							size: 'small',
 						}),
@@ -399,18 +430,18 @@
 			}
 			else if (this.showIcon)
 			{
-				const { imgUri } = this.data;
+				const { imgUri, svgUri } = this.data;
 				let { svgIcon } = this.data;
 				let tintColor;
 
 				if (!this.isCustomIconColor)
 				{
-					tintColor = TINT_COLOR;
+					tintColor = this.isDestructive ? AppTheme.colors.accentMainAlert : TINT_COLOR;
 
 					// Android can't change color of inline svg icons, only uri
 					if (svgIcon && Application.getPlatform() === 'android')
 					{
-						svgIcon = changeFillColor(svgIcon, TINT_COLOR);
+						svgIcon = changeFillColor(svgIcon, tintColor);
 					}
 				}
 
@@ -425,9 +456,12 @@
 						Image({
 							uri: imgUri,
 							style: styles.icon(this.largeIcon),
-							resizeMode: imgUri ? 'contain' : 'center',
+							resizeMode: this.getImageResizeMode(imgUri),
 							tintColor,
-							svg: { content: svgIcon },
+							svg: {
+								content: svgIcon,
+								uri: svgUri,
+							},
 						}),
 					),
 				);
@@ -475,19 +509,18 @@
 
 			if (this.isSelected && this.props.showSelectedImage)
 			{
-				selectedImage = Image(
-					{
-						style: {
-							width: 20,
-							height: 15,
-							marginRight: 15,
-							opacity: this.isDisabled ? 0.4 : 1,
-						},
-						svg: {
-							content: `<svg width="20" height="15" viewBox="0 0 20 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M7.34211 14.351L0.865234 8.03873L3.13214 5.82945L7.34211 9.9324L16.8677 0.648926L19.1346 2.85821L7.34211 14.351Z" fill="#828B95"/></svg>`,
-						},
+				selectedImage = Image({
+					testId: `${this.testId}_selected`,
+					style: {
+						width: 20,
+						height: 15,
+						marginRight: 15,
+						opacity: this.isDisabled ? 0.4 : 1,
 					},
-				);
+					svg: {
+						content: '<svg width="20" height="15" viewBox="0 0 20 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M7.34211 14.351L0.865234 8.03873L3.13214 5.82945L7.34211 9.9324L16.8677 0.648926L19.1346 2.85821L7.34211 14.351Z" fill="#828B95"/></svg>',
+					},
+				});
 			}
 
 			if (this.showArrow)
@@ -506,7 +539,7 @@
 				);
 			}
 
-			if (Array.isArray(this.props.badges) && this.props.badges.length)
+			if (Array.isArray(this.props.badges) && this.props.badges.length > 0)
 			{
 				const items = [];
 				this.props.badges.forEach((params) => items.push(new Badge(params)));
@@ -522,7 +555,13 @@
 				imageContainer,
 				View(
 					{
-						style: styles.divider(this.hasAnyLeftIcon(), this.isSelected, this.dimmed, this.lastInSection, this.isTypeLayout()),
+						style: styles.divider(
+							this.hasAnyLeftIcon(),
+							this.isSelected,
+							this.dimmed,
+							this.lastInSection,
+							this.isTypeLayout(),
+						),
 					},
 				),
 				View(
@@ -581,6 +620,21 @@
 			];
 		}
 
+		getImageResizeMode(imgUri)
+		{
+			if (this.isRawIcon)
+			{
+				return 'cover';
+			}
+
+			if (imgUri)
+			{
+				return 'contain';
+			}
+
+			return 'center';
+		}
+
 		isProcessing()
 		{
 			return this.state.isProcessing;
@@ -611,19 +665,18 @@
 	}
 
 	const styles = {
-		nonSelectedColor: (isService) => isService ? '#fbfbfc' : '#ffffff',
-		wrapper: (isService) => {
+		wrapper: () => {
 			return {
 				flexDirection: 'row',
 				alignItems: 'center',
-				backgroundColor: styles.nonSelectedColor(isService),
+				backgroundColor: AppTheme.colors.bgContentPrimary,
 			};
 		},
 		container: (isLast) => {
 			return {
 				justifyContent: 'center',
 				alignItems: 'center',
-				borderBottomColor: (!isLast ? '#edeef0' : '#00ffffff'),
+				borderBottomColor: (isLast ? null : AppTheme.colors.bgSeparatorPrimary),
 				borderBottomWidth: 1,
 				padding: 4,
 				paddingBottom: 3,
@@ -634,12 +687,12 @@
 		},
 		divider: (hasAnyLeftIcon, isSelected, isService, isLastInSection, autoHeight = false) => {
 			const dividerStyles = {
-				backgroundColor: (isSelected && !isService ? '#d3f4ff' : null),
+				backgroundColor: (isSelected && !isService ? AppTheme.colors.accentSoftBlue1 : null),
 				borderBottomLeftRadius: hasAnyLeftIcon ? 0 : 8,
 				borderTopLeftRadius: hasAnyLeftIcon ? 0 : 8,
 				width: hasAnyLeftIcon ? 0 : 11,
 				marginLeft: hasAnyLeftIcon ? 0 : 4,
-				borderBottomColor: (!isLastInSection ? '#edeef0' : '#00ffffff'),
+				borderBottomColor: (isLastInSection ? null : AppTheme.colors.bgSeparatorSecondar),
 			};
 
 			if (!autoHeight)
@@ -648,7 +701,6 @@
 			}
 
 			return dividerStyles;
-
 		},
 		selectedView: (isSelected, isService) => {
 			return {
@@ -656,7 +708,7 @@
 				flexDirection: 'row',
 				justifyContent: 'center',
 				alignItems: 'center',
-				backgroundColor: (isSelected && !isService ? '#d3f4ff' : null),
+				backgroundColor: (isSelected && !isService ? AppTheme.colors.accentSoftBlue1 : null),
 				borderTopRightRadius: 8,
 				borderBottomRightRadius: 8,
 			};
@@ -673,16 +725,25 @@
 
 			return styles;
 		},
-		title: (isSemitransparent) => ({
-			fontSize: 18,
-			color: isSemitransparent ? '#333333' : '#6a737f',
-		}),
+		title: (isSemitransparent, isDestructive) => {
+			let color = isSemitransparent ? AppTheme.colors.base1 : AppTheme.colors.base3;
+
+			if (isDestructive)
+			{
+				color = AppTheme.colors.accentMainAlert;
+			}
+
+			return {
+				fontSize: 18,
+				color,
+			};
+		},
 		subtitle: (type, subtitleStyle = {}) => {
-			let color = '#bdc1c6';
+			let color = AppTheme.colors.base3;
 
 			if (type === WARNING_TYPE)
 			{
-				color = '#c48300';
+				color = AppTheme.colors.accentMainWarning;
 			}
 
 			return mergeImmutable({
@@ -691,15 +752,13 @@
 			}, subtitleStyle);
 		},
 		cancel: {
-			color: '#959ca4',
+			color: AppTheme.colors.base4,
 		},
 		imageContainerOuter: (isSelected, isService, autoHeight = false) => {
 			const imageStyles = {
 				justifyContent: 'center',
 				alignContent: 'center',
-
-				backgroundColor: (isSelected && !isService ? '#d3f4ff' : null),
-
+				backgroundColor: (isSelected && !isService ? AppTheme.colors.accentSoftBlue1 : null),
 				marginTop: 4,
 				marginLeft: 4,
 				marginBottom: 4,
@@ -746,6 +805,5 @@
 		},
 	};
 
-	this.ContextMenuItem = ContextMenuItem;
-	this.ContextMenuItem.ImageAfterTypes = ImageAfterTypes;
-})();
+	module.exports = { ContextMenuItem, ImageAfterTypes };
+});

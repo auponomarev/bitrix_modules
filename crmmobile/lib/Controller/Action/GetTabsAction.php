@@ -4,24 +4,28 @@ declare(strict_types = 1);
 
 namespace Bitrix\CrmMobile\Controller\Action;
 
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
 use Bitrix\Crm\Counter\EntityCounterFactory;
 use Bitrix\Crm\Counter\EntityCounterType;
+use Bitrix\Crm\Integration\IntranetManager;
 use Bitrix\Crm\Restriction\RestrictionManager;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Service\Factory;
 use Bitrix\Crm\Service\UserPermissions;
 use Bitrix\CrmMobile\Controller\Action;
+use Bitrix\CrmMobile\CustomSections;
 use Bitrix\CrmMobile\Entity\FactoryProvider;
 use Bitrix\CrmMobile\Kanban\Entity;
 use Bitrix\CrmMobile\Kanban\GridId;
 use Bitrix\ImOpenlines\Security\Permissions;
-use Bitrix\Main\Config\Option;
 use Bitrix\Main\Loader;
 use Bitrix\Main\UI\Filter\Options;
+use Bitrix\Crm\Integration\Im;
 
 class GetTabsAction extends Action
 {
-	public function run()
+	private const TITLE_MAX_LENGTH = 30;
+	public function run(?int $customSectionId = null): array
 	{
 		$this->checkModules();
 		if ($this->hasErrors())
@@ -32,10 +36,9 @@ class GetTabsAction extends Action
 		$userPermissions = Container::getInstance()->getUserPermissions();
 		$crmPermissions = $userPermissions->getCrmPermissions();
 		$hasRegisterTelegramConnector = $this->hasRegisterTelegramConnector();
-		$isGoToChatAvailable = (bool)Option::get('crmmobile', 'release-spring-2023', true);
 
 		return [
-			'tabs' => $this->getTabs($userPermissions),
+			'tabs' => $this->getTabs($userPermissions, $customSectionId),
 			'user' => \CCrmViewHelper::getUserInfo(),
 			'restrictions' => [
 				'crmMode' => !\Bitrix\CrmMobile\Entity\RestrictionManager::isEntityRestricted(\CCrmOwnerType::Deal)
@@ -44,14 +47,15 @@ class GetTabsAction extends Action
 			'permissions' => [
 				'exclude' => !$crmPermissions->HavePerm('EXCLUSION', BX_CRM_PERM_NONE, 'WRITE'),
 				'openLinesAccess' => $this->hasOpenLinesAccess(),
+				'crmMode' => !$crmPermissions->HavePerm('CONFIG', BX_CRM_PERM_CONFIG, 'WRITE'),
 			],
 			'connectors' => [
-				'telegram' => $hasRegisterTelegramConnector || !$isGoToChatAvailable,
+				'telegram' => $hasRegisterTelegramConnector,
 			],
 		];
 	}
 
-	private function getTabs(UserPermissions $userPermissions): array
+	private function getTabs(UserPermissions $userPermissions, ?int $customSectionId): array
 	{
 		$result = [];
 		$searchRestriction = RestrictionManager::getSearchLimitRestriction();
@@ -59,13 +63,38 @@ class GetTabsAction extends Action
 
 		foreach (FactoryProvider::getAvailableFactories() as $factory)
 		{
-			$entityTypeName = $factory->getEntityName();
 			$entityTypeId = $factory->getEntityTypeId();
+			$toolsManager = \Bitrix\Crm\Service\Container::getInstance()->getIntranetToolsManager();
 
-			if (\CCrmOwnerType::isPossibleDynamicTypeId($entityTypeId))
+			if (!$toolsManager->checkEntityTypeAvailability($entityTypeId))
 			{
 				continue;
 			}
+
+			$isPossibleDynamicTypeId = \CCrmOwnerType::isPossibleDynamicTypeId($entityTypeId);
+			if (
+				$customSectionId === null
+				&& $isPossibleDynamicTypeId
+				&& IntranetManager::isEntityTypeInCustomSection($entityTypeId)
+			)
+			{
+				continue;
+			}
+
+			if ($customSectionId !== null && !$isPossibleDynamicTypeId)
+			{
+				continue;
+			}
+			if ($customSectionId !== null && $isPossibleDynamicTypeId)
+			{
+				$customSection = IntranetManager::getCustomSectionByEntityTypeId($entityTypeId);
+				if (!$customSection || $customSection->getId() !== $customSectionId)
+				{
+					continue;
+				}
+			}
+
+			$entityTypeName = $factory->getEntityName();
 
 			$hasRestrictions = \Bitrix\CrmMobile\Entity\RestrictionManager::isEntityRestricted($entityTypeId);
 			$counter = EntityCounterFactory::create($factory->getEntityTypeId(), EntityCounterType::ALL)->getValue();
@@ -86,21 +115,22 @@ class GetTabsAction extends Action
 				'selectable' => !$hasRestrictions,
 				'hasRestrictions' => $hasRestrictions,
 				'link' => $this->getLinkToDesktop($entityTypeName, $categoryId),
-				'title' => $factory->getEntityDescription(),
-				'titleInPlural' => $factory->getEntityDescriptionInPlural(),
+				'title' => TruncateText($factory->getEntityDescription(),self::TITLE_MAX_LENGTH),
+				'titleInPlural' => TruncateText($factory->getEntityDescriptionInPlural(), self::TITLE_MAX_LENGTH),
 				'entityLink' => $this->getEntityLink($entityTypeName),
 				'pageUrl' => null,
 				'label' => $counter > 0 ? (string)$counter : '',
+				'isClientEnabled' => $factory->isClientEnabled() || $factory->isMyCompanyEnabled(),
 				'isStagesEnabled' => $factory->isStagesEnabled(),
 				'isCategoriesSupported' => $isCategoriesSupported,
 				'isCategoriesEnabled' => $isCategoriesEnabled,
+				'isChatSupported' => Im\Chat::isEntitySupported($entityTypeId),
 				'isLastActivityEnabled' => $factory->isLastActivityEnabled(),
-				'isAvailableCrmMode' => (bool)Option::get('crmmobile', 'release-spring-2023', true),
-
-				// @todo temporary support only deals,
-				// in the feature will be use factory when smart processes will be support this too
-				'needSaveCurrentCategoryId' => ($entityTypeName === \CCrmOwnerType::DealName),
-
+				'isLinkWithProductsEnabled' => $factory->isLinkWithProductsEnabled(),
+				'needSaveCurrentCategoryId' => (
+					$entityTypeName === \CCrmOwnerType::DealName
+					|| (\CCrmOwnerType::isPossibleDynamicTypeId($entityTypeId) && $isCategoriesEnabled)
+				),
 				'data' => [
 					'currentCategoryId' => $categoryId,
 					'categoriesCount' => $isCategoriesEnabled ? count($categories) : 1,
@@ -109,6 +139,7 @@ class GetTabsAction extends Action
 					'defaultFilterId' => $this->getDefaultFilterId($filterOptions),
 					'sortType' => $this->getSortType($entityTypeName, $categoryId),
 					'smartActivitySettings' => $this->getSmartActivitySettings($factory, $permissions),
+					'reminders' => (new TodoPingSettingsProvider($entityTypeId, (int)$categoryId))->fetchForJsComponent(),
 				],
 				'permissions' => $permissions,
 				'restrictions' => [
@@ -120,7 +151,7 @@ class GetTabsAction extends Action
 				],
 			];
 		}
-
+		CustomSections\TabSorter::sort($result, $customSectionId);
 		$this->prepareActiveTab($result);
 
 		return $result;
@@ -156,13 +187,19 @@ class GetTabsAction extends Action
 			return $defaultCategoryId;
 		}
 
-		// @todo temporary support only deals,
-		// in the feature will be use factory when smart processes will be support this too
 		if ($factory->getEntityName() === \CCrmOwnerType::DealName)
 		{
 			$currentCategoryId = (int)\CUserOptions::GetOption(
 				'crm',
 				'current_deal_category',
+				$defaultCategoryId
+			);
+		}
+		else if (\CCrmOwnerType::isPossibleDynamicTypeId($factory->getEntityTypeId()))
+		{
+			$currentCategoryId = (int)\CUserOptions::GetOption(
+				'crm',
+				'current_' . mb_strtolower($factory->getEntityName()) . '_category',
 				$defaultCategoryId
 			);
 		}

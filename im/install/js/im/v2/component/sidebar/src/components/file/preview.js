@@ -3,7 +3,7 @@ import {FilePreviewItem} from './item/file-preview-item';
 import {DetailEmptyState} from '../detail-empty-state';
 import '../../css/file/preview.css';
 
-import type {ImModelDialog, ImModelSidebarFileItem} from 'im.v2.model';
+import type {ImModelChat, ImModelSidebarFileItem} from 'im.v2.model';
 
 // @vue/component
 export const FilePreview = {
@@ -39,22 +39,14 @@ export const FilePreview = {
 		{
 			return this.$store.state.sidebar.isFilesMigrated;
 		},
-		dialog(): ImModelDialog
+		dialog(): ImModelChat
 		{
-			return this.$store.getters['dialogues/get'](this.dialogId, true);
+			return this.$store.getters['chats/get'](this.dialogId, true);
 		},
 		chatId(): number
 		{
 			return this.dialog.chatId;
 		},
-		dialogInited()
-		{
-			return this.dialog.inited;
-		},
-		isLoadingState(): boolean
-		{
-			return !this.dialogInited || this.isLoading;
-		}
 	},
 	methods:
 	{
@@ -73,7 +65,7 @@ export const FilePreview = {
 	},
 	template: `
 		<div class="bx-im-sidebar-file-preview__scope">
-			<div v-if="isLoadingState" class="bx-im-sidebar-file-preview__skeleton"></div>
+			<div v-if="isLoading" class="bx-im-sidebar-file-preview__skeleton"></div>
 			<div v-else class="bx-im-sidebar-file-preview__container">
 				<div 
 					class="bx-im-sidebar-file-preview__header_container" 

@@ -306,6 +306,7 @@ export const Toolbar = {
 			}
 
 			this.search.loader = true;
+			this.search.currentPage = 1;
 			this.loadItems();
 		},
 		loadItems: function (append) {
@@ -358,7 +359,7 @@ export const Toolbar = {
 			return '';
 		},
 		openSubscriptionSlider: function () {
-			BX.UI.InfoHelper.show(this.$root.marketSlider);
+			top.BX.UI.InfoHelper.show(this.$root.marketSlider);
 		},
 		...mapActions(ratingStore, ['isActiveStar', 'getAppRating',]),
 	},
@@ -450,7 +451,9 @@ export const Toolbar = {
 							<span class="market-toolbar__nav_text">{{ $Bitrix.Loc.getMessage('MARKET_TOOLBAR_JS_FAVORITES_TITLE') }}</span>
 						</a>
 					</div>
-					<div class="market-toolbar__nav_item">
+					<div class="market-toolbar__nav_item"
+						 v-if="$root.showMarketIcon === 'Y'"
+					>
 						<a href="#" class="market-toolbar__nav_link"
 						   @click="openSubscriptionSlider"
 						>

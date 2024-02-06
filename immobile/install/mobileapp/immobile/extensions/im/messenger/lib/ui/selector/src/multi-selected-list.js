@@ -4,7 +4,9 @@
 jn.define('im/messenger/lib/ui/selector/multi-selected-list', (require, exports, module) => {
 	const { SelectedItem, EmptySearchItem } = require('im/messenger/lib/ui/base/item');
 	const { List } = require('im/messenger/lib/ui/base/list');
-	
+	const { LoaderItem } = require('im/messenger/lib/ui/base/loader');
+	const AppTheme = require('apptheme');
+
 	class MultiSelectedList extends List
 	{
 		constructor(props)
@@ -23,44 +25,58 @@ jn.define('im/messenger/lib/ui/selector/multi-selected-list', (require, exports,
 			{
 				return true;
 			}
+
 			return super.shouldComponentUpdate(nextProps, nextState);
 		}
 
 		render()
 		{
-			return ListView({
-				style: {
-					flex: 1,
-				},
-				data: [{items: this.state.itemList}],
-				renderItem: (props) => {
-					if (props.type === 'empty')
-					{
-						return new EmptySearchItem();
-					}
-					return  new SelectedItem(
-					{
-						...props,
-						onClick: (itemData, isSelected) => {
-							if (isSelected)
-							{
-								this.props.onSelectItem(itemData);
-
-								return;
-							}
-							this.props.onUnselectItem(itemData);
-						},
-						parentEmitter: this.emitter,
-					});
-				},
-				onLoadMore: () =>
+			return View(
 				{
+					style: {
+						flex: 1,
+						backgroundColor: AppTheme.colors.bgContentTertiary,
+						borderTopRightRadius: 12,
+						borderTopLeftRadius: 12,
+					},
 				},
-				renderLoadMore: () => {
-					return this.loader;
-				},
-				ref: ref => this.listRef = ref,
-			});
+				this.renderRecentText(),
+				ListView({
+					style: {
+						flex: 1,
+						backgroundColor: AppTheme.colors.bgContentPrimary,
+					},
+					data: [{ items: this.state.itemList }],
+					renderItem: (props) => {
+						if (props.type === 'empty')
+						{
+							return new EmptySearchItem();
+						}
+
+						if (props.type === 'loader')
+						{
+							return new LoaderItem({ enable: true });
+						}
+
+						return new SelectedItem(
+							{
+								...props,
+								onClick: (itemData, isSelected) => {
+									if (isSelected)
+									{
+										this.props.onSelectItem(itemData);
+
+										return;
+									}
+									this.props.onUnselectItem(itemData);
+								},
+								parentEmitter: this.emitter,
+							},
+						);
+					},
+					ref: (ref) => this.listRef = ref,
+				}),
+			);
 		}
 
 		unselectItem(itemData)

@@ -2,6 +2,8 @@
 
 use Bitrix\Main\Config;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Mail\Integration\AI;
+use Bitrix\Main\Loader;
 
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) die();
 
@@ -29,7 +31,7 @@ class CrmActivityEmailBodyComponent extends CBitrixComponent
 			}
 		}
 
-		\CrmActivityEmailComponent::prepareActivityRcpt($activity);
+		CrmActivityEmailComponent::prepareActivityRcpt($activity);
 
 		$trackingAvailable = Config\Option::get('main', 'track_outgoing_emails_read', 'Y') == 'Y';
 
@@ -50,7 +52,25 @@ class CrmActivityEmailBodyComponent extends CBitrixComponent
 		$this->arParams['USER_IMAGE'] = !empty($userImage['src']) ? $userImage['src'] : '';
 		$this->arParams['USER_FULL_NAME'] = \CUser::formatName(\CSite::getNameFormat(), $userFields, true, false);
 
+		$mailMessageId = (int)($activity['UF_MAIL_MESSAGE'] ?? null);
+		$this->arParams['COPILOT_PARAMS'] = self::prepareCopilotParams($USER->getId(), $mailMessageId);
+
 		$this->includeComponentTemplate();
+	}
+
+	private static function prepareCopilotParams(int $userId = 0, ?int $messageId = null): array
+	{
+		if (!Loader::includeModule('mail') || !class_exists('\Bitrix\Mail\Integration\AI\Settings'))
+		{
+			return [
+				'isCopilotEnabled' => false,
+			];
+		}
+
+		return AI\Settings::instance()->getMailCrmCopilotParams(
+			AI\Settings::MAIL_CRM_REPLY_MESSAGE_CONTEXT_ID,
+			['messageId' => $messageId],
+		);
 	}
 
 }

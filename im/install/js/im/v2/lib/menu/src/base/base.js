@@ -1,3 +1,4 @@
+import { Type } from 'main.core';
 import {MenuManager, Menu} from 'main.popup';
 import {EventEmitter} from 'main.core.events';
 import {Store} from 'ui.vue3.vuex';
@@ -46,7 +47,7 @@ export class BaseMenu extends EventEmitter
 		this.menuInstance = this.getMenuInstance();
 		this.menuInstance.show();
 
-		EventEmitter.subscribe(EventType.dialog.closePopup, this.onClosePopupHandler);
+		// EventEmitter.subscribe(EventType.dialog.closePopup, this.onClosePopupHandler);
 	}
 
 	getMenuInstance(): Menu
@@ -63,7 +64,7 @@ export class BaseMenu extends EventEmitter
 			bindElement: this.target,
 			cacheable: false,
 			className: this.getMenuClassName(),
-			items: this.getMenuItems(),
+			items: this.#prepareMenuItems(),
 			events: {
 				onClose: () => {
 					this.emit(BaseMenu.events.onCloseMenu);
@@ -90,7 +91,7 @@ export class BaseMenu extends EventEmitter
 
 	close()
 	{
-		EventEmitter.unsubscribe(EventType.dialog.closePopup, this.onClosePopupHandler);
+		// EventEmitter.unsubscribe(EventType.dialog.closePopup, this.onClosePopupHandler);
 		if (!this.menuInstance)
 		{
 			return;
@@ -108,5 +109,60 @@ export class BaseMenu extends EventEmitter
 	getCurrentUserId(): number
 	{
 		return Core.getUserId();
+	}
+
+	#prepareMenuItems(): MenuItem[]
+	{
+		return this.#filterExcessDelimiters(this.getMenuItems());
+	}
+
+	#filterExcessDelimiters(menuItems: MenuItem[]): MenuItem[]
+	{
+		const menuItemsWithoutDuplicates = this.#filterDuplicateDelimiters(menuItems);
+
+		return this.#filterFinishingDelimiter(menuItemsWithoutDuplicates);
+	}
+
+	#filterDuplicateDelimiters(menuItems: MenuItem[]): MenuItem[]
+	{
+		let previousElement = null;
+
+		return menuItems.filter((element) => {
+			if (this.#isDelimiter(previousElement) && this.#isDelimiter(element))
+			{
+				return false;
+			}
+
+			if (element !== null)
+			{
+				previousElement = element;
+			}
+
+			return true;
+		});
+	}
+
+	#filterFinishingDelimiter(menuItems: MenuItem[]): MenuItem[]
+	{
+		let previousElement = null;
+
+		return menuItems.reverse().filter((element) => {
+			if (previousElement === null && this.#isDelimiter(element))
+			{
+				return false;
+			}
+
+			if (element !== null)
+			{
+				previousElement = element;
+			}
+
+			return true;
+		}).reverse();
+	}
+
+	#isDelimiter(element: ?MenuItem): boolean
+	{
+		return Type.isObjectLike(element) && element.delimiter === true;
 	}
 }

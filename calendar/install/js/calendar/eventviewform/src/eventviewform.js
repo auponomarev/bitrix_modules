@@ -3,13 +3,13 @@
 import { Util } from 'calendar.util';
 import { Type, Event, Loc, Dom, Runtime, Text, Tag } from 'main.core';
 import { Entry, EntryManager } from 'calendar.entry';
-import { MeetingStatusControl } from 'calendar.controls';
+import { MeetingStatusControl, IntranetButton } from 'calendar.controls';
 import { BaseEvent, EventEmitter } from 'main.core.events';
 import { Planner } from 'calendar.planner';
-import { ControlButton } from 'intranet.control-button';
 import { BitrixVue } from 'ui.vue3';
 import { ViewEventSlider } from './view-event-slider';
 import { CalendarSection } from 'calendar.sectionmanager';
+import 'viewer';
 
 export class EventViewForm {
 	permissions = {};
@@ -26,6 +26,7 @@ export class EventViewForm {
 	constructor(options = {})
 	{
 		this.type = options.type || 'user';
+		this.attendees = [];
 		this.ownerId = options.ownerId || 0;
 		this.userId = options.userId || 0;
 		this.zIndex = 3100;
@@ -147,6 +148,11 @@ export class EventViewForm {
 				{
 					let params = response.data;
 					params.eventExists = !!(params.entry.ID);
+					this.attendees = [];
+					for (const status in params.attendees)
+					{
+						this.attendees.push(...params.attendees[status]);
+					}
 
 					//load components' css and js
 					if (params.filesView)
@@ -199,6 +205,28 @@ export class EventViewForm {
 						+ '</div>'
 						+ '</div>'
 					);
+				}
+
+				if (response.data && !Type.isNil(response.data.isAvailable) && !response.data.isAvailable)
+				{
+					const showHelperCallback = () => {
+						top.BX.UI.InfoHelper.show('limit_office_calendar_off', {
+							isLimit: true,
+							limitAnalyticsLabels: {
+								module: 'calendar',
+								source: 'eventViewForm',
+							},
+						});
+					};
+
+					if (this.slider)
+					{
+						this.slider.close(true, showHelperCallback);
+					}
+					else
+					{
+						showHelperCallback();
+					}
 				}
 
 				this.displayError(response.errors);
@@ -369,17 +397,23 @@ export class EventViewForm {
 		)
 		{
 			this.DOM.videoCall.style.display = '';
-			this.intranetControllButton = new ControlButton({
-				container: this.DOM.videoCall,
-				entityType: 'calendar_event',
-				entityId: this.entry.parentId,
-				entityData: {
-					dateFrom: Util.formatDate(this.entry.from),
-					parentId: this.entry.parentId
+			this.intranetControllButton = new IntranetButton({
+				intranetControlButtonParams: {
+					container: this.DOM.videoCall,
+					entityType: 'calendar_event',
+					entityId: this.entry.parentId,
+					entityData: {
+						dateFrom: Util.formatDate(this.entry.from),
+						parentId: this.entry.parentId
+					},
+					analyticsLabel: {
+						formType: 'full'
+					}
 				},
-				analyticsLabel: {
-					formType: 'full'
-				}
+				callbacks: {
+					getUsersCount: () => this.attendees.length,
+					hasChat: () => this.entry.data?.MEETING?.CHAT_ID > 0,
+				},
 			});
 		}
 		else
@@ -489,7 +523,7 @@ export class EventViewForm {
 							</div>
 						</div>
 						<div class="calendar-slider-sidebar-user-info">
-							<a href="${user.URL ? user.URL : '#'}" class="calendar-slider-sidebar-user-info-name">${user.DISPLAY_NAME}</a>
+							<a href="${user.URL ? user.URL : '#'}" class="calendar-slider-sidebar-user-info-name">${Text.encode(user.DISPLAY_NAME)}</a>
 						</div>
 					</div>
 				`;
@@ -500,15 +534,19 @@ export class EventViewForm {
 				autoHide: true,
 				closeByEsc: true,
 				offsetTop: 0,
-				offsetLeft: 0,
+				offsetLeft: node.offsetWidth / 2,
 				resizable: false,
 				lightShadow: true,
 				content: this.DOM.userListPopupWrap,
 				className: 'calendar-user-list-popup',
-				zIndex: 4000
+				maxWidth: 300,
+				maxHeight: 500,
+				zIndex: 4000,
+				angle: {
+					position: 'top',
+				},
 			});
 
-			this.userListPopup.setAngle({offset: 36});
 			this.userListPopup.show();
 			this.BX.addCustomEvent(this.userListPopup, 'onPopupClose', ()=>{this.userListPopup.destroy();});
 		}

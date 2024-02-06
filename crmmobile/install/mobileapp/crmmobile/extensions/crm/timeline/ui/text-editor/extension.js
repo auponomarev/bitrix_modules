@@ -3,6 +3,7 @@
  */
 jn.define('crm/timeline/ui/text-editor', (require, exports, module) => {
 	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
 	const { Textarea } = require('crm/timeline/ui/textarea');
 	const { WidgetHeaderButton } = require('layout/ui/widget-header-button');
 
@@ -18,28 +19,35 @@ jn.define('crm/timeline/ui/text-editor', (require, exports, module) => {
 		 */
 		static open({ title, ...options })
 		{
-			PageManager.openWidget('layout', {
-				modal: true,
-				backgroundColor: '#eef2f4',
-				backdrop: {
-					onlyMediumPosition: true,
-					showOnTop: false,
-					mediumPositionPercent: 70,
-					navigationBarColor: '#eef2f4',
-					swipeAllowed: true,
-					swipeContentAllowed: false,
-					horizontalSwipeAllowed: false,
-				},
-			})
-				.then((widget) => {
+			const backdrop = {
+				onlyMediumPosition: true,
+				showOnTop: false,
+				mediumPositionPercent: 70,
+				navigationBarColor: AppTheme.colors.bgSecondary,
+				swipeAllowed: true,
+				swipeContentAllowed: false,
+				horizontalSwipeAllowed: false,
+			};
+
+			return new Promise((resolve) => {
+				PageManager.openWidget(
+					'layout',
+					{
+						modal: true,
+						backgroundColor: AppTheme.colors.bgSecondary,
+						backdrop,
+					},
+				).then((widget) => {
 					widget.setTitle({ text: title });
 					widget.enableNavigationBarBorder(false);
 					widget.showComponent(new TimelineTextEditor({
 						layout: widget,
 						...options,
 					}));
-				})
-			;
+
+					resolve({ layout: widget });
+				}).catch(console.error);
+			});
 		}
 
 		constructor(props)
@@ -113,7 +121,7 @@ jn.define('crm/timeline/ui/text-editor', (require, exports, module) => {
 					style: {
 						flexDirection: 'column',
 						flex: 1,
-						backgroundColor: '#eef2f4',
+						backgroundColor: AppTheme.colors.bgContentPrimary,
 					},
 					resizableByKeyboard: true,
 				},
@@ -121,7 +129,6 @@ jn.define('crm/timeline/ui/text-editor', (require, exports, module) => {
 					{
 						style: {
 							flex: 1,
-							backgroundColor: '#ffffff',
 							borderTopLeftRadius: 12,
 							borderTopRightRadius: 12,
 							maxHeight: this.state.maxHeight,
@@ -149,6 +156,24 @@ jn.define('crm/timeline/ui/text-editor', (require, exports, module) => {
 		{
 			const isIOS = Application.getPlatform() === 'ios';
 
+			const params = {
+				ref: (ref) => {
+					this.textInputRef = ref;
+				},
+				text: this.state.text,
+				placeholder: this.placeholder,
+				onChange: (text) => {
+					this.state.text = text;
+					this.refreshSaveButton();
+				},
+			};
+			const { onLinkClick } = this.props;
+
+			if (onLinkClick)
+			{
+				params.onLinkClick = onLinkClick;
+			}
+
 			return View(
 				{
 					style: {
@@ -156,16 +181,9 @@ jn.define('crm/timeline/ui/text-editor', (require, exports, module) => {
 						paddingRight: 48,
 						paddingLeft: isIOS ? 8 : 0,
 					},
+					interactable: !isIOS,
 				},
-				Textarea({
-					ref: (ref) => this.textInputRef = ref,
-					text: this.state.text,
-					placeholder: this.placeholder,
-					onChange: (text) => {
-						this.state.text = text;
-						this.refreshSaveButton();
-					},
-				}),
+				Textarea(params),
 			);
 		}
 
@@ -173,6 +191,7 @@ jn.define('crm/timeline/ui/text-editor', (require, exports, module) => {
 		{
 			return View(
 				{
+					testId: 'TimelineTextEditorClearIcon',
 					onClick: () => this.clear(),
 					style: {
 						position: 'absolute',
@@ -187,7 +206,7 @@ jn.define('crm/timeline/ui/text-editor', (require, exports, module) => {
 				},
 				Image({
 					svg: {
-						content: '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 18C13.9706 18 18 13.9706 18 9C18 4.02944 13.9706 0 9 0C4.02944 0 0 4.02944 0 9C0 13.9706 4.02944 18 9 18ZM13 11.8873L10.1127 9L13 6.11272L11.8873 5L9 7.88728L6.11272 5L5 6.11272L7.88728 9L5 11.8873L6.11272 13L9 10.1127L11.8873 13L13 11.8873Z" fill="#D5D7DB"/></svg>',
+						content: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 18C13.9706 18 18 13.9706 18 9C18 4.02944 13.9706 0 9 0C4.02944 0 0 4.02944 0 9C0 13.9706 4.02944 18 9 18ZM13 11.8873L10.1127 9L13 6.11272L11.8873 5L9 7.88728L6.11272 5L5 6.11272L7.88728 9L5 11.8873L6.11272 13L9 10.1127L11.8873 13L13 11.8873Z" fill="${AppTheme.colors.base6}"/></svg>`,
 					},
 					style: {
 						width: 18,
@@ -242,8 +261,10 @@ jn.define('crm/timeline/ui/text-editor', (require, exports, module) => {
 				{
 					throw new TypeError('Timeline text editor: onBeforeSave hook must return Promise');
 				}
+
 				return promise;
 			}
+
 			return Promise.resolve();
 		}
 

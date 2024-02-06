@@ -1,4 +1,6 @@
+import { Type } from 'main.core';
 import { EventEmitter } from 'main.core.events';
+
 import type Server from './server';
 import type UploaderFile from '../uploader-file';
 
@@ -32,7 +34,8 @@ export default class AbstractRemoveController extends EventEmitter
 		{
 			return this.#options[option];
 		}
-		else if (!Type.isUndefined(defaultValue))
+
+		if (!Type.isUndefined(defaultValue))
 		{
 			return defaultValue;
 		}

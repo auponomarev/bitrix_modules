@@ -1,4 +1,5 @@
 import {Type} from 'main.core'
+import {DesktopApi} from 'im.v2.lib.desktop-api';
 import {Logger} from './logger'
 import {CallType, CallEvent, CallState, CallEngine, Provider} from './engine'
 import Util from '../util'
@@ -71,6 +72,8 @@ export class AbstractCall
 		{
 			this.initEventListeners(params.events);
 		}
+
+		this.connectionData = params.connectionData;
 
 		this._microphoneLevel = 0;
 	};
@@ -208,9 +211,9 @@ export class AbstractCall
 	{
 		let text = Util.getLogMessage.apply(null, arguments);
 
-		if (BX.desktop && BX.desktop.ready())
+		if (DesktopApi.isDesktop())
 		{
-			BX.desktop.log(BX.message('USER_ID') + '.video.log', text.substr(3));
+			DesktopApi.writeToLogFile(BX.message('USER_ID') + '.video.log', text.substr(3));
 		}
 		if (CallEngine.debugFlag && console)
 		{

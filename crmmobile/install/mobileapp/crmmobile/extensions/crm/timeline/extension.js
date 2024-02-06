@@ -4,7 +4,8 @@
 jn.define('crm/timeline', (require, exports, module) => {
 	const { FadeView } = require('animation/components/fade-view');
 	const { StickyDate } = require('crm/timeline/ui/sticky-date');
-	const { Divider, DateDivider } = require('crm/timeline/ui/divider');
+	const { Divider } = require('layout/ui/timeline/components/divider');
+	const { DateDivider } = require('crm/timeline/ui/date-divider');
 	const { CreateReminder } = require('crm/timeline/ui/reminder');
 	const { Banner, BannerStack } = require('crm/timeline/ui/banner');
 	const { TimelinePushProcessor } = require('crm/timeline/services/push-processor');
@@ -21,6 +22,7 @@ jn.define('crm/timeline', (require, exports, module) => {
 	const { Moment } = require('utils/date');
 	const { EventEmitter } = require('event-emitter');
 	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
 
 	/**
 	 * @class Timeline
@@ -141,6 +143,7 @@ jn.define('crm/timeline', (require, exports, module) => {
 				new FadeView({
 					visible: false,
 					fadeInOnMount: true,
+					notVisibleOpacity: 0.5,
 					style: {
 						flexGrow: 1,
 					},
@@ -191,7 +194,7 @@ jn.define('crm/timeline', (require, exports, module) => {
 					return View(
 						{
 							style: {
-								backgroundColor: '#eef2f4',
+								backgroundColor: AppTheme.colors.bgPrimary,
 							},
 						},
 						this.renderItemContent(props),
@@ -211,6 +214,7 @@ jn.define('crm/timeline', (require, exports, module) => {
 
 		renderItemContent({ type, props, index })
 		{
+			// eslint-disable-next-line default-case
 			switch (type)
 			{
 				case 'Divider':
@@ -222,6 +226,7 @@ jn.define('crm/timeline', (require, exports, module) => {
 					});
 				case 'DateDivider':
 					const moment = new Moment(props.date);
+
 					return DateDivider({
 						moment,
 						onLayout: ({ y }) => StickyDate.registerBreakpoint(y, moment),
@@ -259,10 +264,12 @@ jn.define('crm/timeline', (require, exports, module) => {
 			{
 				return this.pinnedStream.renderItem(props.id, index);
 			}
+
 			if (type.startsWith('TimelineItem:scheduled'))
 			{
 				return this.scheduledStream.renderItem(props.id, index);
 			}
+
 			if (type.startsWith('TimelineItem:history'))
 			{
 				return this.historyStream.renderItem(props.id, index);
@@ -303,11 +310,13 @@ jn.define('crm/timeline', (require, exports, module) => {
 					this.scheduledStream.getAttentionableItems().length,
 				]);
 
-				this.timelineScopeEventBus.emit('Crm.Timeline::onCounterChange', [{
-					needsAttention: this.scheduledStream.getNeedsAttentionItems().length,
-					incomingChannel: this.scheduledStream.getIncomingChannelItems().length,
-					total: this.scheduledStream.getItems().length,
-				}]);
+				this.timelineScopeEventBus.emit('Crm.Timeline::onCounterChange', [
+					{
+						needsAttention: this.scheduledStream.getNeedsAttentionItems().length,
+						incomingChannel: this.scheduledStream.getIncomingChannelItems().length,
+						total: this.scheduledStream.getItems().length,
+					},
+				]);
 			}
 		}
 
@@ -338,9 +347,10 @@ jn.define('crm/timeline', (require, exports, module) => {
 		fullscreenContainer: {
 			flexDirection: 'column',
 			flexGrow: 1,
-			backgroundColor: '#eef2f4',
+			backgroundColor: AppTheme.colors.bgPrimary,
 		},
 		listView: {
+			backgroundColor: AppTheme.colors.bgPrimary,
 			flexDirection: 'column',
 			flexGrow: 1,
 			position: 'absolute',

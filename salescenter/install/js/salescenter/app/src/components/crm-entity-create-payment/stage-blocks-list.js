@@ -1,4 +1,4 @@
-import {Loc} from 'main.core';
+import {ajax as Ajax, Loc} from 'main.core';
 import {StatusTypes as Status} from 'salescenter.component.stage-block';
 import * as TimeLineItem from 'salescenter.timeline';
 import {UI} from 'ui.notification';
@@ -42,13 +42,16 @@ export default {
 				selectedSmsSender: this.$root.$app.sendingMethodDesc.provider,
 				manager: this.$root.$app.options.entityResponsible,
 				phone: this.$root.$app.options.contactPhone,
+				ownerId: this.$root.$app.options.ownerId,
+				ownerTypeId: this.$root.$app.options.ownerTypeId,
 				contactEditorUrl: this.$root.$app.options.contactEditorUrl,
 				titleTemplate: this.$root.$app.sendingMethodDesc.sent
 					? Loc.getMessage('SALESCENTER_APP_CONTACT_BLOCK_TITLE_MESSAGE_2_PAST_TIME')
 					: Loc.getMessage('SALESCENTER_APP_CONTACT_BLOCK_TITLE_MESSAGE_2'),
 				showHint: this.$root.$app.options.templateMode !== 'view',
 				editorTemplate: this.$root.$app.sendingMethodDesc.text,
-				editorUrl: this.$root.$app.orderPublicUrl
+				editorUrl: this.$root.$app.orderPublicUrl,
+				selectedMode: 'payment',
 			},
 			product: {
 				status: this.$root.$app.options.basket && this.$root.$app.options.basket.length > 0
@@ -181,7 +184,7 @@ export default {
 		},
 		stageRefresh(e, type)
 		{
-			BX.ajax.runComponentAction(
+			Ajax.runComponentAction(
 				"bitrix:salescenter.app",
 				"getAjaxData",
 				{
@@ -211,6 +214,7 @@ export default {
 					: Status.disabled;
 				this.stages.paysystem.tiles = this.getTileCollection(data.items);
 				this.stages.paysystem.installed = data.isSet;
+				this.stages.paysystem.titleItems = this.getTitleItems(data.items);
 			}
 			else if(type === 'CASHBOX')
 			{
@@ -257,10 +261,13 @@ export default {
 				:manager="stages.message.manager"
 				:phone="stages.message.phone"
 				:contactEditorUrl="stages.message.contactEditorUrl"
+				:ownerId="stages.message.ownerId"
+				:ownerTypeId="stages.message.ownerTypeId"
 				:titleTemplate="stages.message.titleTemplate"
 				:showHint="stages.message.showHint"
 				:editorTemplate="stages.message.editorTemplate"
 				:editorUrl="stages.message.editorUrl"
+				:selectedMode="stages.message.selectedMode"
 			/>
 			<product-block
 				:counter="counter++"

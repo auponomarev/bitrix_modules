@@ -1,3 +1,6 @@
+/**
+ * @namespace BX.UI.Uploader
+ */
 export const FileEvent = {
 	ADD: 'onAdd',
 	BEFORE_UPLOAD: 'onBeforeUpload',
@@ -16,5 +19,6 @@ export const FileEvent = {
 	REMOVE_CONTROLLER_INIT: 'onRemoveControllerInit',
 	STATE_CHANGE: 'onStateChange',
 	STATUS_CHANGE: 'onStatusChange',
+	VALIDATE_FILE_ASYNC: 'onValidateFileAsync',
 	PREPARE_FILE_ASYNC: 'onPrepareFileAsync',
 };

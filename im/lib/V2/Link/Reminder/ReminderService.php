@@ -25,7 +25,7 @@ class ReminderService
 	{
 		(new static())->remind();
 
-		return '\Bitrix\Im\V2\Link\Reminder\ReminderService::remindAgent();';
+		return __METHOD__. '();';
 	}
 
 	public function getCount(int $chatId): int
@@ -217,7 +217,7 @@ class ReminderService
 	{
 		$chat = Chat::getInstance($reminder->getChatId())->setContext((new Context())->setUserId($reminder->getAuthorId()));
 
-		$chatTitle = $isOut ? $chat->getTitle() : "[CHAT={$chat->getChatId()}]{$chat->getTitle()}[/CHAT]";
+		$chatTitle = $isOut ? $chat->getDisplayedTitle() : "[CHAT={$chat->getChatId()}]{$chat->getDisplayedTitle()}[/CHAT]";
 
 		return Loc::getMessage(
 			'IM_CHAT_REMINDER_REMIND_NOTIFICATION',

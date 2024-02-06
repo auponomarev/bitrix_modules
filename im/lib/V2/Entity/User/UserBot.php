@@ -2,14 +2,20 @@
 
 namespace Bitrix\Im\V2\Entity\User;
 
+use Bitrix\Im\V2\Entity\User\Data\BotData;
+use Bitrix\Imbot\Bot\CopilotChatBot;
+use Bitrix\Main\Loader;
+
 class UserBot extends User
 {
-	protected function fillOnlineData(): void
+	private ?BotData $botData = null;
+
+	protected function fillOnlineData(bool $withStatus = false): void
 	{
 		return;
 	}
 
-	public function isOnlineDataFilled(): bool
+	public function isOnlineDataFilled(bool $withStatus): bool
 	{
 		return true;
 	}
@@ -19,6 +25,11 @@ class UserBot extends User
 		if (!static::$moduleManager::isModuleInstalled('intranet'))
 		{
 			return $this->hasAccessBySocialNetwork($otherUser->getId());
+		}
+
+		if (Loader::includeModule('imbot') && $this->getBotData()->getCode() === CopilotChatBot::BOT_CODE)
+		{
+			return false;
 		}
 
 		global $USER;
@@ -56,5 +67,30 @@ class UserBot extends User
 		}
 
 		return true;
+	}
+
+	public function toRestFormat(array $option = []): array
+	{
+		$userData = parent::toRestFormat($option);
+
+		if (isset($userData['botData']))
+		{
+			return $userData;
+		}
+
+		$botData = $this->getBotData()->toRestFormat();
+		$userData['botData'] = empty($botData) ? null : $botData;
+
+		return $userData;
+	}
+
+	public function getBotData(): BotData
+	{
+		if ($this->botData !== null)
+		{
+			return $this->botData;
+		}
+
+		return BotData::getInstance($this->getId());
 	}
 }

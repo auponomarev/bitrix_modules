@@ -13,7 +13,7 @@ $APPLICATION->SetAdditionalCSS('/bitrix/js/crm/css/crm-preview.css');
 	<div class="crm-preview-header">
 		<span class="crm-preview-header-icon crm-preview-header-icon-quote"></span>
 		<span class="crm-preview-header-title">
-			<?=GetMessage("CRM_TITLE_QUOTE")?>:
+			<?=GetMessage("CRM_TITLE_QUOTE_MSGVER_1")?>:
 			<a href="<?=htmlspecialcharsbx($arParams['URL'])?>" target="_blank"><?=htmlspecialcharsbx($arResult['TITLE'])?></a>
 		</span>
 	</div>
@@ -25,7 +25,7 @@ $APPLICATION->SetAdditionalCSS('/bitrix/js/crm/css/crm-preview.css');
 					<?=htmlspecialcharsbx($arResult['ASSIGNED_BY_FORMATTED_NAME'])?>
 				</a>
 			</td>
-			<td><?= GetMessage('CRM_FIELD_STATUS')?>: </td>
+			<td><?= GetMessage('CRM_FIELD_STATUS_MSGVER_1')?>: </td>
 			<td><?=htmlspecialcharsbx($arResult['STATUS_TEXT'])?></td>
 		</tr>
 		<tr>

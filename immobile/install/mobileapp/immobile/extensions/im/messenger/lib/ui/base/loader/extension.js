@@ -2,8 +2,10 @@
  * @module im/messenger/lib/ui/base/loader
  */
 jn.define('im/messenger/lib/ui/base/loader', (require, exports, module) => {
-
 	const { Loc } = require('loc');
+	const { Type } = require('type');
+	const AppTheme = require('apptheme');
+
 	class LoaderItem extends LayoutComponent
 	{
 		/**
@@ -16,7 +18,11 @@ jn.define('im/messenger/lib/ui/base/loader', (require, exports, module) => {
 		{
 			super(props);
 			this.state.enable = this.props.enable;
-			this.text = props.text || Loc.getMessage('IMMOBILE_LOADER_ITEM_DEFAULT_TEXT');
+
+			this.text = Type.isString(props.text)
+				? props.text
+				: Loc.getMessage('IMMOBILE_LOADER_ITEM_DEFAULT_TEXT')
+			;
 		}
 
 		render()
@@ -39,29 +45,31 @@ jn.define('im/messenger/lib/ui/base/loader', (require, exports, module) => {
 					{},
 					Loader({
 						style: {
-							height: 24
+							height: 24,
 						},
-						tintColor: '#80333333',
+						tintColor: AppTheme.colors.base3,
 						animating: true,
 						size: 'small',
 					}),
 				),
-				View(
-					{
-						style: {
-							marginLeft: 3,
-						},
-					},
-					Text(
+				this.text === ''
+					? null
+					: View(
 						{
 							style: {
-								color: '#80333333',
-								fontSize: 18,
+								marginLeft: 3,
 							},
-							text: this.text,
 						},
+						Text(
+							{
+								style: {
+									color: AppTheme.colors.base3,
+									fontSize: 18,
+								},
+								text: this.text,
+							},
+						),
 					),
-				),
 			);
 		}
 

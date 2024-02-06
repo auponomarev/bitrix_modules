@@ -27,6 +27,7 @@ export class Editor
 	products: Row[] = [];
 	productsWasInitiated = false;
 	isChangedGrid = false;
+	isVisibleGrid = false;
 	pageEventsManager: PageEventsManager;
 	cache = new Cache.MemoryCache();
 
@@ -1157,6 +1158,7 @@ export class Editor
 		const list = this.getSettingValue('items', []);
 
 		const isReserveBlocked = this.getSettingValue('isReserveBlocked', false);
+		const isInventoryManagementToolEnabled = this.getSettingValue('isInventoryManagementToolEnabled', false);
 
 		for (const item of list)
 		{
@@ -1164,6 +1166,7 @@ export class Editor
 			const settings = {
 				selectorId: item.selectorId,
 				isReserveBlocked,
+				isInventoryManagementToolEnabled,
 			};
 			this.products.push(new Row(item.rowId, fields, settings, this));
 		}
@@ -1510,8 +1513,10 @@ export class Editor
 		}
 		delete(fields.RESERVE_ID);
 		const isReserveBlocked = this.getSettingValue('isReserveBlocked', false);
+		const isInventoryManagementToolEnabled = this.getSettingValue('isInventoryManagementToolEnabled', false);
 		const settings = {
 			isReserveBlocked,
+			isInventoryManagementToolEnabled,
 			selectorId: 'crm_grid_' + rowId,
 		};
 		const product = new Row(rowId, fields, settings, this);
@@ -2306,7 +2311,22 @@ export class Editor
 
 	handleOnTabShow(): void
 	{
+		if (!this.isVisible())
+		{
+			this.products.forEach(
+				(product) => {
+					product.getSelector()?.layout();
+					product.initHandlersForSelectors();
+				});
+		}
 		EventEmitter.emit('onDemandRecalculateWrapper', [this]);
+
+		this.isVisibleGrid = true;
+	}
+
+	isVisible(): boolean
+	{
+		return this.isVisibleGrid;
 	}
 
 	showFieldTourHint(fieldName: string, tourData: Object, endTourHandler: Function, addictedFields: Array<string> = [], rowId: string = ''): void
@@ -2355,6 +2375,14 @@ export class Editor
 			}
 
 			window.location.search += '&active_tab=tab_products';
+		});
+	}
+
+	openInventoryManagementToolDisabledSlider()
+	{
+		Runtime.loadExtension('catalog.tool-availability-manager').then((exports) => {
+			const { ToolAvailabilityManager } = exports;
+			ToolAvailabilityManager.openInventoryManagementToolDisabledSlider();
 		});
 	}
 

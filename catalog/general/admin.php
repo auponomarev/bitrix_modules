@@ -790,22 +790,13 @@ class CCatalogAdmin
 				$allowRows = false;
 				$rows = [
 					[
-						"text" => Loc::getMessage("CM_STORE_DOCS"),
+						"text" => Loc::getMessage("CM_STORE_DOCS_MSGVER_1"),
 						"url" => "cat_store_document_list.php?lang=".LANGUAGE_ID,
 						"more_url" => ["cat_store_document_edit.php"],
-						"title" => Loc::getMessage("CM_STORE_DOCS"),
+						"title" => Loc::getMessage("CM_STORE_DOCS_MSGVER_1"),
 						"readonly" => !self::$catalogStore,
 						"items_id" => "cat_store_document_list",
 						"sort" => 551,
-					],
-					[
-						"text" => Loc::getMessage("CM_CONTRACTORS"),
-						"url" => "cat_contractor_list.php?lang=".LANGUAGE_ID,
-						"more_url" => ["cat_contractor_edit.php"],
-						"title" => Loc::getMessage("CM_CONTRACTORS"),
-						"readonly" => !self::$catalogStore,
-						"items_id" => "cat_contractor_list",
-						"sort" => 552,
 					],
 				];
 				if (Catalog\Config\Feature::isInventoryManagementEnabled())
@@ -845,6 +836,16 @@ class CCatalogAdmin
 				"readonly" => !self::$catalogStore,
 				"items_id" => "cat_store_list",
 				"sort" => 553,
+			];
+
+			$result[] = [
+				"text" => Loc::getMessage("CM_CONTRACTORS"),
+				"url" => "cat_contractor_list.php?lang=".LANGUAGE_ID,
+				"more_url" => ["cat_contractor_edit.php"],
+				"title" => Loc::getMessage("CM_CONTRACTORS"),
+				"readonly" => !self::$catalogStore,
+				"items_id" => "cat_contractor_list",
+				"sort" => 552,
 			];
 			$arItems = $result;
 		}

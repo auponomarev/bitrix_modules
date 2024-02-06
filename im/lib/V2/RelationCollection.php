@@ -9,13 +9,13 @@ use Bitrix\Main\ORM\Query\Query;
 use Bitrix\Main\UserTable;
 
 /**
- * @method Relation next()
- * @method Relation current()
- * @method Relation offsetGet($offset)
+ * @implements \IteratorAggregate<int,Relation>
+ * @implements Registry<Relation>
+ * @method Relation offsetGet($key)
  */
 class RelationCollection extends Collection
 {
-	public const COMMON_FIELDS = ['ID', 'MESSAGE_TYPE', 'CHAT_ID', 'USER_ID', 'START_ID', 'LAST_FILE_ID', 'LAST_ID', 'NOTIFY_BLOCK', 'MANAGER'];
+	public const COMMON_FIELDS = ['ID', 'MESSAGE_TYPE', 'CHAT_ID', 'USER_ID', 'START_ID', 'LAST_FILE_ID', 'LAST_ID', 'UNREAD_ID', 'NOTIFY_BLOCK', 'MANAGER'];
 
 	protected static array $startIdStaticCache = [];
 
@@ -100,6 +100,11 @@ class RelationCollection extends Collection
 			$query->where('CHAT_ID', (int)$filter['CHAT_ID']);
 		}
 
+		if (isset($filter['MANAGER']))
+		{
+			$query->where('MANAGER', (string)$filter['MANAGER']);
+		}
+
 		if (isset($filter['USER_ID']))
 		{
 			if (is_array($filter['USER_ID']) && !empty($filter['USER_ID']))
@@ -129,20 +134,19 @@ class RelationCollection extends Collection
 			$query->where('MESSAGE_TYPE', (string)$filter['MESSAGE_TYPE']);
 		}
 
-		if (isset($order['ID']))
+		foreach (['ID', 'USER_ID', 'LAST_SEND_MESSAGE_ID'] as $allowedFieldToOrder)
 		{
-			$orderField = 'ID';
-			$relationOrder['ID'] = $order['ID'];
-		}
-		elseif (isset($order['USER_ID']))
-		{
-			$orderField = 'USER_ID';
-			$relationOrder['USER_ID'] = $order['USER_ID'];
+			if (isset($order[$allowedFieldToOrder]))
+			{
+				$orderField = $allowedFieldToOrder;
+				$relationOrder[$allowedFieldToOrder] = $order[$allowedFieldToOrder];
+				break;
+			}
 		}
 
 		if (isset($orderField))
 		{
-			$query->setOrder($orderField);
+			$query->setOrder($relationOrder);
 		}
 
 		if (isset($filter['LAST_ID']))

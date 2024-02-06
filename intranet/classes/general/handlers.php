@@ -107,7 +107,7 @@ class CIntranetEventHandlers
 						{
 //							$arPropertyValue = array_values($arFields['PROPERTY_VALUES']);
 //							$USER_ID = $arPropertyValue[0];
-							$USER_ID = $arFields['PROPERTY_VALUES']['USER'];
+							$USER_ID = $arFields['PROPERTY_VALUES']['USER'] ?? 0;
 							$dbRes = CUser::GetByID($USER_ID);
 							if ($arUser = $dbRes->Fetch())
 								CIBlockElement::SetPropertyValues($arFields['ID'], $arFields['IBLOCK_ID'], $arUser['ACTIVE'], 'USER_ACTIVE');
@@ -1373,13 +1373,6 @@ RegisterModuleDependences('iblock', 'OnAfterIBlockSectionUpdate', 'intranet', 'C
 	public static function OnBeforeProlog()
 	{
 		$conditionList = array();
-		if (\Bitrix\Main\ModuleManager::isModuleInstalled('replica'))
-		{
-			$conditionList[] = array(
-				'PATTERN' => 'EXTERNAL_AUTH_ID',
-				'VALUE' => "WHEN %s = 'replica' THEN 'network'"
-			);
-		}
 		if (\Bitrix\Main\ModuleManager::isModuleInstalled('sale'))
 		{
 			$conditionList[] = array(

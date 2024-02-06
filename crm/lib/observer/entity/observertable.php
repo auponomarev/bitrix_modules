@@ -1,13 +1,14 @@
 <?php
 namespace Bitrix\Crm\Observer\Entity;
 
+use Bitrix\Crm\CompanyTable;
+use Bitrix\Crm\ContactTable;
 use Bitrix\Crm\DealTable;
 use Bitrix\Crm\LeadTable;
 use Bitrix\Main;
-use Bitrix\Main\DB\SqlExpression;
 use Bitrix\Main\ORM\Data\DataManager;
-use Bitrix\Main\ORM\Fields\IntegerField;
 use Bitrix\Main\ORM\Fields\DatetimeField;
+use Bitrix\Main\ORM\Fields\IntegerField;
 use Bitrix\Main\ORM\Query\Join;
 
 /**
@@ -17,9 +18,9 @@ use Bitrix\Main\ORM\Query\Join;
  *
  * <<< ORMENTITYANNOTATION
  * @method static EO_Observer_Query query()
- * @method static EO_Observer_Result getByPrimary($primary, array $parameters = array())
+ * @method static EO_Observer_Result getByPrimary($primary, array $parameters = [])
  * @method static EO_Observer_Result getById($id)
- * @method static EO_Observer_Result getList(array $parameters = array())
+ * @method static EO_Observer_Result getList(array $parameters = [])
  * @method static EO_Observer_Entity getEntity()
  * @method static \Bitrix\Crm\Observer\Entity\EO_Observer createObject($setDefaultValues = true)
  * @method static \Bitrix\Crm\Observer\Entity\EO_Observer_Collection createCollection()
@@ -68,6 +69,18 @@ class ObserverTable extends DataManager
 				LeadTable::class,
 				Join::on('this.ENTITY_ID', 'ref.ID')
 					->where('this.ENTITY_TYPE_ID', \CCrmOwnerType::Lead)
+			)),
+			(new Main\ORM\Fields\Relations\Reference(
+				'CONTACT',
+				ContactTable::class,
+				Join::on('this.ENTITY_ID', 'ref.ID')
+					->where('this.ENTITY_TYPE_ID', \CCrmOwnerType::Contact)
+			)),
+			(new Main\ORM\Fields\Relations\Reference(
+				'COMPANY',
+				CompanyTable::class,
+				Join::on('this.ENTITY_ID', 'ref.ID')
+					->where('this.ENTITY_TYPE_ID', \CCrmOwnerType::Company)
 			)),
 		];
 	}

@@ -80,7 +80,7 @@ class Olx extends Base
 	{
 		if (
 			Loader::includeModule('imconnector')
-			&& Connector::isConnector(Library::ID_OLX_CONNECTOR, true)
+			&& Connector::isConnector(Library::ID_OLX_CONNECTOR)
 		)
 		{
 			$statuses = Status::getInstanceAllLine(Library::ID_OLX_CONNECTOR);
@@ -126,7 +126,7 @@ class Olx extends Base
 			}
 		}
 
-		return '\Bitrix\ImConnector\Connectors\OLX::initializeReceiveMessages();';
+		return __METHOD__. '();';
 	}
 
 	public static function sendNotificationToRenewToken(int $lineId): void
@@ -183,7 +183,7 @@ class Olx extends Base
 
 	public static function addAgent(): void
 	{
-		$agentName = '\Bitrix\ImConnector\Connectors\OLX::initializeReceiveMessages();';
+		$agentName = __CLASS__. '::initializeReceiveMessages();';
 		$agent = \CAgent::getList(
 			[],
 			[

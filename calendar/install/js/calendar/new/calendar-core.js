@@ -6,7 +6,6 @@
 		this.REFRESH_DELAY = 500;
 		this.id = config.id;
 		this.showTasks = config.showTasks;
-		this.calDavConnections = config.connections;
 		this.util = new window.BXEventCalendar.Util(this, config, additionalParams);
 		this.needForReload = false;
 		this.pullEventList = new Set();
@@ -14,6 +13,11 @@
 		if (this.util.isFilterEnabled() && config.filterId)
 		{
 			this.search = new BX.Calendar.Search(config.filterId, config.counters);
+		}
+
+		if (config.settings && config.weekStart)
+		{
+			config.settings.week_start = config.weekStart;
 		}
 
 		this.externalMode = config.externalDataHandleMode;
@@ -39,6 +43,7 @@
 		this.currentViewName = this.util.getUserOption(this.viewOption) || this.DEFAULT_VIEW;
 
 		BX.Calendar.Util.setUserSettings(config.userSettings);
+		BX.Calendar.Util.setOptions(config.settings);
 		BX.Calendar.Util.setAccessNames(config.accessNames);
 		BX.Calendar.Util.setEventWithEmailGuestAmount(config.countEventWithEmailGuestAmount);
 		BX.Calendar.Util.setEventWithEmailGuestLimit(config.eventWithEmailGuestLimit);
@@ -54,6 +59,8 @@
 		BX.Calendar.Util.setIsSharingFeatureEnabled(config.isSharingFeatureEnabled);
 		BX.Calendar.Util.setSharingConfig(config.sharing);
 		this.payAttentionToNewSharingFeature = config.payAttentionToNewSharingFeature;
+		this.sharingFeatureLimitEnable = config.sharingFeatureLimitEnable;
+		this.sharingSettingsCollapsed = config.sharingSettingsCollapsed;
 
 		this.requests = {};
 		this.currentUser = config.user;
@@ -199,8 +206,14 @@
 
 					this.sharingInterface = new BX.Calendar.Sharing.Interface({
 						buttonWrap: document.querySelector('#' + this.id + '-sharing-container'),
-						userId: this.currentUser.id,
+						userInfo: {
+							id: this.currentUser.id,
+							name: this.currentUser.name,
+							avatar: this.currentUser.avatar,
+						},
 						payAttentionToNewFeature: this.payAttentionToNewSharingFeature,
+						sharingFeatureLimit: !this.sharingFeatureLimitEnable,
+						sharingSettingsCollapsed: this.sharingSettingsCollapsed,
 					});
 
 					if (BX.Calendar.Util.checkSharingFeatureEnabled())
@@ -513,6 +526,7 @@
 					+ BX.message('EC_LOCATION_VIEW_UNLOCK_FEATURE')
 					+ '</a>',
 			}));
+			top.BX.UI.InfoHelper.show('limit_office_calendar_location');
 		},
 
 		setView: function(view, params)
@@ -1112,10 +1126,6 @@
 		{
 			if (BX.Calendar.Util.documentIsDisplayingNow())
 			{
-				if (params && params.syncGoogle)
-				{
-					this.reloadGoogle = true;
-				}
 				this.entryController.clearLoadIndexCache();
 				this.refresh();
 			}
@@ -1279,6 +1289,7 @@
 				case 'edit_section':
 				case 'delete_section':
 				case 'change_section_subscription':
+				case 'hidden_sections_updated':
 					this.sectionManager.handlePullChanges(data);
 					break;
 				case 'delete_room':

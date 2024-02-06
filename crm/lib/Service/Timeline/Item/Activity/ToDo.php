@@ -2,23 +2,32 @@
 
 namespace Bitrix\Crm\Service\Timeline\Item\Activity;
 
+use Bitrix\Crm\Activity\Provider;
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
+use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Service\Timeline\Item\Activity;
+use Bitrix\Crm\Service\Timeline\Item\Mixin\FileListPreparer;
 use Bitrix\Crm\Service\Timeline\Layout;
 use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock;
-use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\Audio;
 use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\ContentBlockFactory;
+use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\ContentBlockWithTitle;
+use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\EditableDate;
+use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\EditableDescription;
 use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\FileList;
-use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\Model\File;
+use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\ItemSelector;
+use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\LineOfTextBlocks;
+use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\Text;
 use Bitrix\Crm\Service\Timeline\Layout\Common\Icon;
 use Bitrix\Crm\Service\Timeline\Layout\Menu\MenuItem;
 use Bitrix\Crm\Service\Timeline\Layout\Menu\MenuItemFactory;
 use Bitrix\Crm\Settings\Crm;
 use Bitrix\Main\Localization\Loc;
-use CCrmActivity;
 use CCrmOwnerType;
 
 class ToDo extends Activity
 {
+	use FileListPreparer;
+
 	protected function getActivityTypeId(): string
 	{
 		return 'ToDo';
@@ -58,6 +67,18 @@ class ToDo extends Activity
 			$result['deadline'] = $deadlineBlock;
 		}
 
+		$webPingSelectorBlock = $this->buildWebPingListBlock();
+		if (isset($webPingSelectorBlock))
+		{
+			$result['webPingSelector'] = $webPingSelectorBlock->setScopeWeb();
+		}
+
+		$mobilePingSelectorBlock = $this->buildMobilePingListBlock();
+		if (isset($mobilePingSelectorBlock))
+		{
+			$result['mobilePingSelector'] = $mobilePingSelectorBlock->setScopeMobile();
+		}
+
 		$descriptionBlock = $this->buildDescriptionBlock();
 		if (isset($descriptionBlock))
 		{
@@ -67,7 +88,7 @@ class ToDo extends Activity
 		$filesBlock = $this->buildFilesBlock();
 		if (isset($filesBlock))
 		{
-			$result = array_merge($result, $filesBlock);
+			$result['fileList'] = $filesBlock;
 		}
 
 		$baseActivityBlock = $this->buildBaseActivityBlock();
@@ -178,20 +199,126 @@ class ToDo extends Activity
 			;
 		}
 
-		return (new Layout\Body\ContentBlock\LineOfTextBlocks())
-			->addContentBlock(
-				'completeTo',
-				ContentBlockFactory::createTitle(Loc::getMessage('CRM_TIMELINE_ITEM_TODO_COMPLETE_TO'))
-			)
-			->addContentBlock(
-				'deadlineSelector',
-				(new Layout\Body\ContentBlock\EditableDate())
-					->setStyle(Layout\Body\ContentBlock\EditableDate::STYLE_PILL)
+		return (new ContentBlockWithTitle())
+			->setFixedWidth(false)
+			->setAlignItems('center')
+			->setTitle(Loc::getMessage('CRM_TIMELINE_ITEM_TODO_COMPLETE_TO'))
+			->setContentBlock(
+				(new EditableDate())
+					->setReadonly(!$this->isScheduled())
+					->setStyle(EditableDate::STYLE_PILL)
 					->setDate($deadline)
 					->setAction($updateDeadlineAction)
-					->setBackgroundColor($this->isScheduled() ? Layout\Body\ContentBlock\EditableDate::BACKGROUND_COLOR_WARNING : null)
-			)
+					->setBackgroundColor($this->isScheduled() ? EditableDate::BACKGROUND_COLOR_WARNING : null)
+				)
+			->setInline()
 		;
+	}
+
+	private function buildWebPingListBlock(): ?ContentBlock
+	{
+		if ($this->isScheduled() && $this->hasUpdatePermission())
+		{
+			return $this->buildChangeablePingSelectorBlock();
+		}
+
+		$blockText = $this->buildWebPingBlockText();
+		return $this->buildReadonlyPingSelectorBlock($blockText);
+	}
+
+	private function buildMobilePingListBlock(): ?ContentBlock
+	{
+		$emptyStateText = Loc::getMessage('CRM_TIMELINE_ITEM_TODO_PING_OFFSETS_EMPTY_STATE');
+		$selectorTitle = Loc::getMessage('CRM_TIMELINE_ITEM_TODO_PING_OFFSETS_SELECTOR_TITLE_MSGVER_1');
+
+		if ($this->isScheduled() && $this->hasUpdatePermission())
+		{
+			return $this->buildChangeablePingSelectorBlock($emptyStateText, $selectorTitle);
+		}
+
+		$blockText = $this->buildMobilePingBlockText($emptyStateText);
+		return $this->buildReadonlyPingSelectorBlock($blockText);
+	}
+
+	private function buildChangeablePingSelectorBlock($emptyStateText = null, $selectorTitle = null): ?ContentBlock
+	{
+		$offsets = $this->getPingOffsets();
+		return (new ContentBlockWithTitle())
+			->setFixedWidth(false)
+			->setTitle(Loc::getMessage('CRM_TIMELINE_ITEM_TODO_PING_OFFSETS_TITLE'))
+			->setContentBlock(
+				(new ItemSelector())
+					->setSelectorTitle($selectorTitle)
+					->setValuesList(array_map(
+						static fn($item) => ['id' => (string)$item['offset'], 'title' => $item['title']],
+						TodoPingSettingsProvider::getDefaultOffsetList()
+					))
+					->setValue(array_column($offsets, 'offset'))
+					->setEmptyState($emptyStateText)
+					->setAction(
+						(new Layout\Action\RunAjaxAction('crm.activity.todo.updatePingOffsets'))
+							->addActionParamInt('ownerTypeId', $this->getContext()->getIdentifier()->getEntityTypeId())
+							->addActionParamInt('ownerId', $this->getContext()->getIdentifier()->getEntityId())
+							->addActionParamInt('id', $this->getActivityId())
+					)
+			)
+			->setInline();
+	}
+
+	private function buildMobilePingBlockText($emptyStateText = null)
+	{
+		$offsets = array_column($this->getPingOffsets(), 'title');
+		if (count($offsets) === 0)
+		{
+			return $emptyStateText;
+		}
+
+		$blockText = mb_strtolower(implode(', ', array_slice($offsets, 0, 2)));
+		if (count($offsets) > 2)
+		{
+			$blockText = Loc::getMessage( 'CRM_TIMELINE_ITEM_TODO_PING_OFFSETS_MORE',
+				[
+					'#ITEMS#' => $blockText,
+					'#COUNT#' => count($offsets) - 2,
+				],
+			);
+		}
+
+		return $blockText;
+	}
+
+	private function buildWebPingBlockText($emptyStateText = null)
+	{
+		$offsets = $this->getPingOffsets();
+		$blockText = mb_strtolower(implode(', ', array_column($offsets, 'title')));
+		if ($blockText === '')
+		{
+			$blockText = $emptyStateText;
+		}
+
+		return $blockText;
+	}
+
+	private function buildReadonlyPingSelectorBlock($blockText = null): ?ContentBlock
+	{
+		if ((string)$blockText === '')
+		{
+			return null;
+		}
+
+		return (new LineOfTextBlocks())
+			->addContentBlock(
+				'remindTo',
+				ContentBlockFactory::createTitle(Loc::getMessage('CRM_TIMELINE_ITEM_TODO_PING_OFFSETS_TITLE'))
+			)
+			->addContentBlock(
+				'pingSelectorReadonly',
+				(new Text())
+					->setValue($blockText)
+					->setColor(Text::COLOR_BASE_70)
+					->setFontSize(Text::FONT_SIZE_XS)
+					->setFontWeight(Text::FONT_WEIGHT_MEDIUM)
+			);
 	}
 
 	private function buildDescriptionBlock(): ?ContentBlock
@@ -204,12 +331,11 @@ class ToDo extends Activity
 		}
 		$description = trim($description);
 
-		$editableDescriptionBlock = (new Layout\Body\ContentBlock\EditableDescription())
+		$editableDescriptionBlock = (new EditableDescription())
 			->setText($description)
 			->setEditable(false)
-			->setBackgroundColor(Layout\Body\ContentBlock\EditableDescription::BG_COLOR_YELLOW)
+			->setBackgroundColor(EditableDescription::BG_COLOR_YELLOW)
 		;
-
 
 		if ($this->isScheduled())
 		{
@@ -225,7 +351,7 @@ class ToDo extends Activity
 		return $editableDescriptionBlock;
 	}
 
-	private function buildFilesBlock(): ?array
+	private function buildFilesBlock(): ?ContentBlock
 	{
 		$storageFiles = $this->fetchStorageFiles();
 		if (empty($storageFiles))
@@ -233,49 +359,16 @@ class ToDo extends Activity
 			return null;
 		}
 
-		$audioRecordsCount = $this->getAudioFilesCount($storageFiles);
-
-		$files = [];
-		$audioRecords = [];
-		foreach ($storageFiles as $file)
-		{
-			$fileId = $file['ID']; // unique ID
-			$sourceFileId = (int)$file['FILE_ID'];
-			$fileName = trim((string)$file['NAME']);
-			$fileSize = (int)$file['SIZE'];
-			$viewUrl = (string)$file['VIEW_URL'];
-			$previewUrl = $file['PREVIEW_URL'] ? (string)$file['PREVIEW_URL'] : null;
-
-			$fileModel = new File($fileId, $sourceFileId, $fileName, $fileSize, $viewUrl, $previewUrl);
-
-			// fill audio records
-			if (in_array($fileModel->getExtension(), self::ALLOWED_AUDIO_EXTENSIONS, true))
-			{
-				$audioRecord = (new Audio())
-					->setId($fileId)
-					->setSource((string)$file['VIEW_URL'])
-					->setTitle($fileName)
-				;
-
-				if (!empty($fileName && $audioRecordsCount > 1))
-				{
-					$audioRecord->setRecordName($fileName);
-				}
-
-				$audioRecords["audio_{$fileId}"] = $audioRecord;
-
-			}
-
-			$files[] = $fileModel;
-		}
+		$files = $this->prepareFiles($storageFiles);
 
 		$fileListBlock = (new FileList())
-			->setTitle(Loc::getMessage('CRM_TIMELINE_ITEM_TODO_FILES'))
+			->setTitle(Loc::getMessage('CRM_TIMELINE_ITEM_TODO_FILES_MSGVER_1'))
 			->setFiles($files);
 
 		if ($this->isScheduled() && $this->hasUpdatePermission())
 		{
 			$fileListBlock->setUpdateParams([
+				'type' => $this->getType(),
 				'entityTypeId' => CCrmOwnerType::Activity,
 				'entityId' => $this->getActivityId(),
 				'files' => array_column($storageFiles, 'FILE_ID'),
@@ -284,63 +377,50 @@ class ToDo extends Activity
 			]);
 		}
 
-		// audio record(s) at the top
-		return array_merge($audioRecords, ['fileList' => $fileListBlock]);
+		return $fileListBlock;
 	}
 
 	private function buildBaseActivityBlock(): ?ContentBlock
 	{
-		$associatedEntityId = $this->getAssociatedEntityModel()->get('ASSOCIATED_ENTITY_ID');
-		if (!isset($associatedEntityId))
+		$associatedActivityId = $this->getAssociatedEntityModel()?->get('ASSOCIATED_ENTITY_ID');
+		if (!isset($associatedActivityId))
 		{
 			return null;
 		}
 
-		$baseActivity = CCrmActivity::GetList(
-			[],
-			[
-				'=ID' => $associatedEntityId,
-				'CHECK_PERMISSIONS' => 'N'
-			],
-			false,
-			false,
-			[
-				'SUBJECT',
-				'ID'
-			]
-		)->Fetch();
-		if ($baseActivity)
+		$baseActivitySubject = Container::getInstance()
+			->getActivityBroker()
+			->getById($associatedActivityId)['SUBJECT'] ?? ''
+		;
+
+		if (empty($baseActivitySubject))
 		{
-			return (new Layout\Body\ContentBlock\LineOfTextBlocks())
-				->addContentBlock(
-					'createdFrom',
-					ContentBlockFactory::createTitle(Loc::getMessage('CRM_TIMELINE_ITEM_TODO_CREATED_FROM'))
-				)
-				->addContentBlock(
-					'baseActivity',
-					(new Layout\Body\ContentBlock\Text())
-						->setValue($baseActivity['SUBJECT'] ?: Loc::getMessage('CRM_COMMON_UNTITLED'))
-						->setIsBold(true)
-						->setColor(Layout\Body\ContentBlock\Text::COLOR_BASE_70)
-				)
-			;
+			return null;
 		}
 
-		return null;
+		return (new LineOfTextBlocks())
+			->addContentBlock(
+				'createdFrom',
+				ContentBlockFactory::createTitle(Loc::getMessage('CRM_TIMELINE_ITEM_TODO_CREATED_FROM'))
+			)
+			->addContentBlock(
+				'baseActivity',
+				(new Text())
+					->setValue($baseActivitySubject)
+					->setColor(Text::COLOR_BASE_70)
+					->setFontWeight(Text::FONT_WEIGHT_MEDIUM)
+			)
+		;
 	}
 
-	private function getAudioFilesCount(array $files): int
+	private function getPingOffsets(): array
 	{
-		$result =  array_values(
-			array_filter(
-				$files,
-				static fn($row) => in_array(
-					GetFileExtension(mb_strtolower($row['NAME'])),
-					self::ALLOWED_AUDIO_EXTENSIONS
-				)
-			)
-		);
+		$offsets = (array)($this->getAssociatedEntityModel()->get('PING_OFFSETS') ?? []);
+		if (empty($offsets))
+		{
+			$offsets = Provider\ToDo::getPingOffsets($this->getActivityId());
+		}
 
-		return count($result);
+		return TodoPingSettingsProvider::getValuesByOffsets($offsets);
 	}
 }

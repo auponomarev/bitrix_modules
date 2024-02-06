@@ -6,7 +6,7 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 
 /** @var array $arParams */
 /** @var array $arResult */
-/** @var \CAllMain $APPLICATION */
+/** @var CMain $APPLICATION */
 
 use Bitrix\DocumentGenerator\Driver;
 use Bitrix\DocumentGenerator\Integration\Bitrix24Manager;
@@ -33,11 +33,20 @@ Extension::load([
 Asset::getInstance()->addJs('/bitrix/js/crm/activity.js');
 
 $downloadButtonOptions = \CUserOptions::GetOption('crm.document.view', 'download_button', []);
-$defaultDownloadFormat = in_array(mb_strtolower($downloadButtonOptions['format']), ['doc', 'pdf'], true)
+$defaultDownloadFormat = in_array(mb_strtolower($downloadButtonOptions['format'] ?? ''), ['doc', 'pdf'], true)
 	? mb_strtolower($downloadButtonOptions['format'])
 	: 'pdf';
 
 $isSigningEnabledInCurrentTariff = (bool)($arResult['isSigningEnabledInCurrentTariff'] ?? false);
+
+if ($isSigningEnabledInCurrentTariff)
+{
+	Extension::load([
+		'sign.v2.ui.tokens',
+		'sign.v2.wizard',
+	]);
+}
+
 $APPLICATION->IncludeComponent("bitrix:bitrix24.limit.lock", "", array());
 
 $renderRequisiteSection = function(?string $entityName, array $data): void {
@@ -103,27 +112,33 @@ if ($arParams['IS_SLIDER']):
 else:
 	$APPLICATION->SetTitle($arResult['title']);
 endif;
+
+$shouldDisplayTransformationError =
+	!empty($arResult['transformationErrorMessage'])
+	&& ($arResult['isDisplayTransformationErrors'] ?? true)
+;
+
 ?>
 <div class="crm__document-view--wrap">
 	<div class="crm__document-view--inner crm__document-view--inner-slider">
 		<div class="ui-alert ui-alert-danger ui-alert-icon-danger ui-alert-text-center" id="crm-document-view-error"<?php
-		if ($arResult['ERRORS'] || $arResult['transformationErrorMessage']):
+		if (!empty($arResult['ERRORS']) || $shouldDisplayTransformationError):
 			?> style="display: block;"
 		<?php endif;?>>
 			<span class="ui-alert-message" id="crm-document-view-error-message">
-			<?php if (is_array($arResult['ERRORS'])):
+			<?php if (!empty($arResult['ERRORS']) && is_array($arResult['ERRORS'])):
 				foreach($arResult['ERRORS'] as $error):
 					echo htmlspecialcharsbx($error);
 					echo '<br />';
 				endforeach;
-			elseif ($arResult['transformationErrorMessage']):
+			elseif ($shouldDisplayTransformationError):
 				echo htmlspecialcharsbx($arResult['transformationErrorMessage']);
 			endif; ?></span>
 			<span class="ui-alert-close-btn" onclick="BX.hide(BX('crm-document-view-error'));"></span>
 		</div>
 		<?php if (!$arResult['ERRORS']):?>
 			<div class="crm__document-view--img">
-				<div class="crm__document-view--error" id="crm__document-view--transform-error"<?php if ($arResult['isTransformationError']):?> style="display: block;"<?php endif;?>>
+				<div class="crm__document-view--error" id="crm__document-view--transform-error"<?php if ($arResult['isTransformationError'] && !$arResult['pdfUrl']): ?> style="display: block;"<?php endif;?>>
 					<div class="crm__document-view--error-message">
 						<span class="crm__document-view--error-message-text"><?=Loc::getMessage('CRM_DOCUMENT_VIEW_TRANSFORM_ERROR');?></span>
 						<span class="crm__document-view--error-message-text"><?=Loc::getMessage('CRM_DOCUMENT_VIEW_TRY_LATER');?></span>

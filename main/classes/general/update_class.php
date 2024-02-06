@@ -85,9 +85,9 @@ class CUpdateSystem
 
 			CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-			$stime = CUpdateSystem::getmicrotime();
+			$stime = microtime(true);
 			$content = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-			CUpdateSystem::AddMessage2Log("TIME AddSites.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+			CUpdateSystem::AddMessage2Log("TIME AddSites.getHTTPPage ".round(microtime(true)-$stime,3)." sec");
 
 			if ($content == '')
 				$strError_tmp .= "[UAS02] ".GetMessage("SUPP_AS_EMPTY_RESP").".<br>";
@@ -164,9 +164,9 @@ class CUpdateSystem
 
 		CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-		$stime = CUpdateSystem::getmicrotime();
+		$stime = microtime(true);
 		$content = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-		CUpdateSystem::AddMessage2Log("TIME ActivateLicenseKey.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+		CUpdateSystem::AddMessage2Log("TIME ActivateLicenseKey.getHTTPPage ".round(microtime(true)-$stime,3)." sec");
 
 		if ($content == '')
 			$strError_tmp .= "[UALK01] ".GetMessage("SUPP_AS_EMPTY_RESP").".<br>";
@@ -238,9 +238,9 @@ class CUpdateSystem
 
 		CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-		$stime = CUpdateSystem::getmicrotime();
+		$stime = microtime(true);
 		$fcontent = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-		CUpdateSystem::AddMessage2Log("TIME RegisterVersion.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+		CUpdateSystem::AddMessage2Log("TIME RegisterVersion.getHTTPPage ".round(microtime(true)-$stime, 3)." sec");
 
 		if ($fcontent == '')
 			$strError_tmp .= "[URV01] ".GetMessage("SUPP_AS_EMPTY_RESP").".<br>";
@@ -557,9 +557,9 @@ class CUpdateSystem
 
 			CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-			$stime = CUpdateSystem::getmicrotime();
+			$stime = microtime(true);
 			$fcontent = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-			CUpdateSystem::AddMessage2Log("TIME LoadSources.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+			CUpdateSystem::AddMessage2Log("TIME LoadSources.getHTTPPage ".round(microtime(true)-$stime, 3)." sec");
 
 			if ($fcontent == '')
 				$strError_tmp .= "[ULS01] ".GetMessage("SUPP_AS_EMPTY_RESP").".<br>";
@@ -735,9 +735,9 @@ class CUpdateSystem
 
 			CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-			$stime = CUpdateSystem::getmicrotime();
+			$stime = microtime(true);
 			$content = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-			CUpdateSystem::AddMessage2Log("TIME GetAvailableUpdateTypes.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+			CUpdateSystem::AddMessage2Log("TIME GetAvailableUpdateTypes.getHTTPPage ".round(microtime(true)-$stime, 3)." sec");
 		}
 
 		if ($strError_tmp == '')
@@ -854,9 +854,9 @@ class CUpdateSystem
 
 			CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-			$stime = CUpdateSystem::getmicrotime();
+			$stime = microtime(true);
 			$content = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-			CUpdateSystem::AddMessage2Log("TIME GetServerModuleUpdates.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+			CUpdateSystem::AddMessage2Log("TIME GetServerModuleUpdates.getHTTPPage ".round(microtime(true)-$stime, 3)." sec");
 		}
 
 		if ($strError_tmp == '')
@@ -959,9 +959,9 @@ class CUpdateSystem
 
 			CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-			$stime = CUpdateSystem::getmicrotime();
+			$stime = microtime(true);
 			$content = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-			CUpdateSystem::AddMessage2Log("TIME GetServerLangsUpdates.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+			CUpdateSystem::AddMessage2Log("TIME GetServerLangsUpdates.getHTTPPage ".round(microtime(true)-$stime, 3)." sec");
 		}
 
 		if ($strError_tmp == '')
@@ -1064,9 +1064,9 @@ class CUpdateSystem
 
 			CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-			$stime = CUpdateSystem::getmicrotime();
+			$stime = microtime(true);
 			$content = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-			CUpdateSystem::AddMessage2Log("TIME GetServerHelpUpdates.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+			CUpdateSystem::AddMessage2Log("TIME GetServerHelpUpdates.getHTTPPage ".round(microtime(true)-$stime, 3)." sec");
 		}
 
 		if ($strError_tmp == '')
@@ -1186,9 +1186,9 @@ class CUpdateSystem
 
 			CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-			$stime = CUpdateSystem::getmicrotime();
+			$stime = microtime(true);
 			$content = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-			CUpdateSystem::AddMessage2Log("TIME LoadModuleUpdates.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+			CUpdateSystem::AddMessage2Log("TIME LoadModuleUpdates.getHTTPPage ".round(microtime(true)-$stime, 3)." sec");
 
 			if ($content == '')
 				$strError_tmp .= "[ULMU03] ".GetMessage("SUPP_AS_EMPTY_RESP").".<br>";
@@ -1277,9 +1277,9 @@ class CUpdateSystem
 
 			CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-			$stime = CUpdateSystem::getmicrotime();
+			$stime = microtime(true);
 			$content = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-			CUpdateSystem::AddMessage2Log("TIME LoadLangsUpdates.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+			CUpdateSystem::AddMessage2Log("TIME LoadLangsUpdates.getHTTPPage ".round(microtime(true)-$stime, 3)." sec");
 
 			if ($content == '')
 				$strError_tmp .= "[ULLU03] ".GetMessage("SUPP_AS_EMPTY_RESP").".<br>";
@@ -1369,9 +1369,9 @@ class CUpdateSystem
 
 			CUpdateSystem::AddMessage2Log(preg_replace("/LICENSE_KEY=[^&]*/i", "LICENSE_KEY=X", $strVars));
 
-			$stime = CUpdateSystem::getmicrotime();
+			$stime = microtime(true);
 			$content = CUpdateSystem::getHTTPPage("bit_sysserver.php", $strVars, $strError_tmp);
-			CUpdateSystem::AddMessage2Log("TIME LoadHelpUpdates.getHTTPPage ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+			CUpdateSystem::AddMessage2Log("TIME LoadHelpUpdates.getHTTPPage ".round(microtime(true)-$stime, 3)." sec");
 
 			if ($content == '')
 				$strError_tmp .= "[ULHU03] ".GetMessage("SUPP_AS_EMPTY_RESP").".<br>";
@@ -1411,7 +1411,7 @@ class CUpdateSystem
 		$strError_tmp = "";
 
 		CUpdateSystem::AddMessage2Log("exec CUpdateSystem::UnGzipArchive");
-		$stime = CUpdateSystem::getmicrotime();
+		$stime = microtime(true);
 
 		if ($DelArch!="Y")
 			$DelArch = "N";
@@ -1587,7 +1587,7 @@ class CUpdateSystem
 				@unlink($archiveFileName);
 		}
 
-		CUpdateSystem::AddMessage2Log("TIME UnGzipArchive ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+		CUpdateSystem::AddMessage2Log("TIME UnGzipArchive ".round(microtime(true)-$stime, 3)." sec");
 
 		if ($strError_tmp <> '')
 		{
@@ -1606,7 +1606,7 @@ class CUpdateSystem
 	{
 		$strError_tmp = "";
 
-		$stime = CUpdateSystem::getmicrotime();
+		$stime = microtime(true);
 
 		if (!is_array($arRes)
 			|| !isset($arRes["MODULES"])
@@ -1708,7 +1708,7 @@ class CUpdateSystem
 			}
 		}
 
-		CUpdateSystem::AddMessage2Log("TIME CheckVersions ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+		CUpdateSystem::AddMessage2Log("TIME CheckVersions ".round(microtime(true)-$stime, 3)." sec");
 
 		if ($strError_tmp <> '')
 		{
@@ -1802,14 +1802,14 @@ class CUpdateSystem
 		$strError_tmp = "";
 
 		$destFolder = str_replace("\\", "/", $destFolder);
-		$destFolder = Trim($destFolder, " \t\n\r\0\x0B/\\");
+		$destFolder = trim($destFolder," \t\n\r\0\x0B/\\");
 		if ($destFolder <> '')
 			$destFolder = "/".$destFolder;
 
 		if ($srcFolder && $srcFolder <> '')
 		{
 			$srcFolder = str_replace("\\", "/", $srcFolder);
-			$srcFolder = Trim($srcFolder, " \t\n\r\0\x0B/\\");
+			$srcFolder = trim($srcFolder," \t\n\r\0\x0B/\\");
 			if ($srcFolder <> '')
 				$srcFolder = "/".$srcFolder;
 
@@ -2206,7 +2206,7 @@ class CUpdateSystem
 		global $DB;
 		$strError_tmp = "";
 
-		$stime = CUpdateSystem::getmicrotime();
+		$stime = microtime(true);
 
 		$updates_dir_full = $_SERVER["DOCUMENT_ROOT"]."/bitrix/updates/".$updates_dir;
 
@@ -2392,7 +2392,7 @@ class CUpdateSystem
 			CUpdateSystem::DeleteDirFilesEx($updates_dir_full);
 		}
 
-		CUpdateSystem::AddMessage2Log("TIME UpdateKernel ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+		CUpdateSystem::AddMessage2Log("TIME UpdateKernel ".round(microtime(true)-$stime, 3)." sec");
 
 		if ($strError_tmp <> '')
 		{
@@ -2411,7 +2411,7 @@ class CUpdateSystem
 		global $DB;
 		$strError_tmp = "";
 
-		$stime = CUpdateSystem::getmicrotime();
+		$stime = microtime(true);
 
 		$updates_dir_full = $_SERVER["DOCUMENT_ROOT"]."/bitrix/updates/".$updates_dir;
 
@@ -2647,7 +2647,7 @@ class CUpdateSystem
 			CUpdateSystem::DeleteDirFilesEx($updates_dir_full);
 		}
 
-		CUpdateSystem::AddMessage2Log("TIME UpdateLangs ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+		CUpdateSystem::AddMessage2Log("TIME UpdateLangs ".round(microtime(true)-$stime, 3)." sec");
 
 		if ($strError_tmp <> '')
 		{
@@ -2666,7 +2666,7 @@ class CUpdateSystem
 		$strError_tmp = "";
 
 		CUpdateSystem::AddMessage2Log("exec CUpdateSystem::UpdateHelp");
-		$stime = CUpdateSystem::getmicrotime();
+		$stime = microtime(true);
 
 		$updates_dir_full = $_SERVER["DOCUMENT_ROOT"]."/bitrix/updates/".$updates_dir;
 		$help_dir_full = $_SERVER["DOCUMENT_ROOT"]."/bitrix/help";
@@ -2790,7 +2790,7 @@ class CUpdateSystem
 			CUpdateSystem::DeleteDirFilesEx($updates_dir_full);
 		}
 
-		CUpdateSystem::AddMessage2Log("TIME UpdateHelp ".Round(CUpdateSystem::getmicrotime()-$stime, 3)." sec");
+		CUpdateSystem::AddMessage2Log("TIME UpdateHelp ".round(microtime(true)-$stime, 3)." sec");
 
 		if ($strError_tmp <> '')
 		{
@@ -3384,12 +3384,12 @@ class CUpdateSystem
 				$maxReadSize = 4096;
 
 				$length = 0;
-				$line = FGets($FP, $maxReadSize);
-				$line = StrToLower($line);
+				$line = fgets($FP,$maxReadSize);
+				$line = strtolower($line);
 
 				$strChunkSize = "";
 				$i = 0;
-				while ($i < StrLen($line) && in_array($line[$i], array("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f")))
+				while ($i < strlen($line) && in_array($line[$i], array("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f")))
 				{
 					$strChunkSize .= $line[$i];
 					$i++;
@@ -3405,20 +3405,20 @@ class CUpdateSystem
 					while ($readSize > 0 && $line = fread($FP, $readSize))
 					{
 						$content .= $line;
-						$processedSize += StrLen($line);
+						$processedSize += strlen($line);
 						$newSize = $chunkSize - $processedSize;
 						$readSize = (($newSize > $maxReadSize) ? $maxReadSize : $newSize);
 					}
 					$length += $chunkSize;
 
-					$line = FGets($FP, $maxReadSize);
+					$line = fgets($FP,$maxReadSize);
 
-					$line = FGets($FP, $maxReadSize);
-					$line = StrToLower($line);
+					$line = fgets($FP,$maxReadSize);
+					$line = strtolower($line);
 
 					$strChunkSize = "";
 					$i = 0;
-					while ($i < StrLen($line) && in_array($line[$i], array("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f")))
+					while ($i < strlen($line) && in_array($line[$i], array("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f")))
 					{
 						$strChunkSize .= $line[$i];
 						$i++;
@@ -3441,7 +3441,7 @@ class CUpdateSystem
 			$strError .= GetMessage("SUPP_GHTTP_ER").": [".$errno."] ".$errstr.". ";
 			if (intval($errno)<=0) $strError .= GetMessage("SUPP_GHTTP_ER_DEF")." ";
 
-			CUpdateSystem::AddMessage2Log("Error connecting 2 ".$ServerIP.": [".$errno."] ".$errstr."", "ERRCONN");
+			CUpdateSystem::AddMessage2Log("Error connecting 2 ".$ServerIP.": [".$errno."] ".$errstr, "ERRCONN");
 		}
 		return $content;
 	}
@@ -3709,7 +3709,7 @@ class CUpdateSystem
 		$path = str_replace("\\", "/", $path);
 		$updaterPath = dirname($path);
 		$updaterPath = substr($updaterPath, strlen($_SERVER["DOCUMENT_ROOT"]));
-		$updaterPath = Trim($updaterPath, " \t\n\r\0\x0B/\\");
+		$updaterPath = trim($updaterPath," \t\n\r\0\x0B/\\");
 		if ($updaterPath <> '')
 			$updaterPath = "/".$updaterPath;
 
@@ -3718,7 +3718,7 @@ class CUpdateSystem
 		CUpdateSystem::AddMessage2Log("Run updater '".$updaterName."'", "CSURUS1");
 
 		$updater = new CUpdater();
-		$updater->Init($updaterPath, $DBType, $updaterName, $from_dir, $moduleID, "ALL");
+		$updater->Init($updaterPath, $DB->type, $updaterName, $from_dir, $moduleID, "ALL");
 
 		$errorMessage = "";
 
@@ -3749,10 +3749,12 @@ class CUpdateSystem
 		return $GLOBALS["CACHE4UPDATESYS_LICENSE_KEY"];
 	}
 
+	/**
+	 * @deprecated
+	 */
 	public static function getmicrotime()
 	{
-		list($usec, $sec) = explode(" ", microtime());
-		return ((float)$usec + (float)$sec);
+		return microtime(true);
 	}
 
 	public static function InsertSpaces($sText, $iMaxChar=80)
@@ -3849,9 +3851,6 @@ class CUpdateSystem
 /********************* Классы для разбора XML **************************/
 /************************************************************************/
 
-if (extension_loaded('mbstring') && function_exists('mb_strlen'))
-{
-
 /**********************************************************************/
 /*********   CUpdatesXMLNode   ****************************************/
 /**********************************************************************/
@@ -3866,7 +3865,7 @@ class CUpdatesXMLNode
 	{
 	}
 
-	function &__toString()
+	function __toString()
 	{
 		$ret = "";
 
@@ -3923,7 +3922,7 @@ class CUpdatesXMLNode
 		return $ret;
 	}
 
-	function &__toArray()
+	function __toArray()
 	{
 		$arInd = array();
 		$retHash = array();
@@ -3980,7 +3979,7 @@ class CUpdatesXMLDocument
 	}
 
 	/* Returns a XML string of the DOM document */
-	function &__toString()
+	function __toString()
 	{
 		$ret = "<"."?xml";
 		if ($this->version <> '')
@@ -4001,7 +4000,7 @@ class CUpdatesXMLDocument
 	}
 
 	/* Returns an array of the DOM document */
-	function &__toArray()
+	function __toArray()
 	{
 		$arRetArray = array();
 
@@ -4016,8 +4015,6 @@ class CUpdatesXMLDocument
 		return $arRetArray;
 	}
 }
-
-
 
 /**********************************************************************/
 /*********   CUpdatesXML   **************************************************/
@@ -4040,7 +4037,7 @@ class CUpdatesXML
 		if (file_exists($file))
 		{
 			$content = file_get_contents($file);
-			$this->tree = &$this->__parse($content);
+			$this->tree = $this->__parse($content);
 			return true;
 		}
 
@@ -4053,34 +4050,34 @@ class CUpdatesXML
 
 		if ($text <> '')
 		{
-			$this->tree = &$this->__parse($text);
+			$this->tree = $this->__parse($text);
 			return true;
 		}
 
 		return false;
 	}
 
-	function &GetTree()
+	function GetTree()
 	{
 		return $this->tree;
 	}
 
-	function &GetArray()
+	function GetArray()
 	{
 		return $this->tree->__toArray();
 	}
 
-	function &GetString()
+	function GetString()
 	{
 		return $this->tree->__toString();
 	}
 
-	function &SelectNodes($strNode)
+	function SelectNodes($strNode)
 	{
 		if (!is_object($this->tree))
 			return false;
 
-		$result = &$this->tree;
+		$result = $this->tree;
 
 		$tmp = explode("/", $strNode);
 		for ($i = 1, $ni = count($tmp); $i < $ni; $i++)
@@ -4095,7 +4092,7 @@ class CUpdatesXML
 				{
 					if ($result->children[$j]->name==$tmp[$i])
 					{
-						$result = &$result->children[$j];
+						$result = $result->children[$j];
 						$bFound = true;
 						break;
 					}
@@ -4110,15 +4107,15 @@ class CUpdatesXML
 	}
 
 
-	/* Will return an DOM object tree from the well formed XML. */
-	function &__parse(&$strXMLText)
+	/* Will return an DOM object tree from the well-formed XML. */
+	function __parse($strXMLText)
 	{
 		$TagStack = array();
 
 		$oXMLDocument = new CUpdatesXMLDocument();
 
 		// stip the !doctype
-		$strXMLText = &preg_replace("%<\!DOCTYPE.*?>%is", "", $strXMLText);
+		$strXMLText = preg_replace("%<\!DOCTYPE.*?>%is", "", $strXMLText);
 
 		// get document version and encoding from header
 		preg_match_all("#<\?(.*?)\?>#i", $strXMLText, $arXMLHeader_tmp);
@@ -4131,37 +4128,37 @@ class CUpdatesXML
 				{
 					$arXMLAttribute_tmp = explode("=\"", $strXMLParam_tmp);
 					if ($arXMLAttribute_tmp[0]=="version")
-						$oXMLDocument->version = mb_substr($arXMLAttribute_tmp[1], 0, mb_strlen($arXMLAttribute_tmp[1]) - 1);
+						$oXMLDocument->version = substr($arXMLAttribute_tmp[1], 0, strlen($arXMLAttribute_tmp[1]) - 1);
 					elseif ($arXMLAttribute_tmp[0]=="encoding")
-						$oXMLDocument->encoding = mb_substr($arXMLAttribute_tmp[1], 0, mb_strlen($arXMLAttribute_tmp[1]) - 1);
+						$oXMLDocument->encoding = substr($arXMLAttribute_tmp[1], 0, strlen($arXMLAttribute_tmp[1]) - 1);
 				}
 			}
 		}
 
 		// strip header
-		$strXMLText = &preg_replace("#<\?.*?\?>#", "", $strXMLText);
+		$strXMLText = preg_replace("#<\?.*?\?>#", "", $strXMLText);
 
 		// strip comments
-		$strXMLText = &CUpdatesXML::__stripComments($strXMLText);
+		$strXMLText = CUpdatesXML::__stripComments($strXMLText);
 
-		$oXMLDocument->root = &$oXMLDocument->children;
-		$currentNode = &$oXMLDocument;
+		$oXMLDocument->root = $oXMLDocument->children;
+		$currentNode = $oXMLDocument;
 
 		$pos = 0;
 		$endTagPos = 0;
-		while ($pos < mb_strlen($strXMLText))
+		while ($pos < strlen($strXMLText))
 		{
-			$char = mb_substr($strXMLText, $pos, 1);
+			$char = substr($strXMLText, $pos, 1);
 			if ($char == "<")
 			{
 				// find tag name
-				$endTagPos = mb_strpos($strXMLText, ">", $pos);
+				$endTagPos = strpos($strXMLText, ">", $pos);
 
 				// tag name with attributes
-				$tagName = mb_substr($strXMLText, $pos + 1, $endTagPos - ($pos + 1));
+				$tagName = substr($strXMLText, $pos + 1, $endTagPos - ($pos + 1));
 
 				// check if it's an endtag </tagname>
-				if (mb_substr($tagName, 0, 1) == "/")
+				if (substr($tagName, 0, 1) == "/")
 				{
 					$lastNodeArray = array_pop($TagStack);
 					$lastTag = $lastNodeArray["TagName"];
@@ -4171,13 +4168,13 @@ class CUpdatesXML
 					unset($currentNode);
 					$currentNode = &$lastNode;
 
-					$tagName = mb_substr($tagName, 1, mb_strlen($tagName));
+					$tagName = substr($tagName, 1, strlen($tagName));
 
 					// strip out namespace; nameSpace:Name
-					$colonPos = mb_strpos($tagName, ":");
+					$colonPos = strpos($tagName, ":");
 
 					if ($colonPos > 0)
-						$tagName = mb_substr($tagName, $colonPos + 1, mb_strlen($tagName));
+						$tagName = substr($tagName, $colonPos + 1, strlen($tagName));
 
 					if ($lastTag != $tagName)
 					{
@@ -4187,8 +4184,8 @@ class CUpdatesXML
 				}
 				else
 				{
-					$firstSpaceEnd = mb_strpos($tagName, " ");
-					$firstNewlineEnd = mb_strpos($tagName, "\n");
+					$firstSpaceEnd = strpos($tagName, " ");
+					$firstNewlineEnd = strpos($tagName, "\n");
 
 					if ($firstNewlineEnd != false)
 					{
@@ -4213,36 +4210,31 @@ class CUpdatesXML
 						}
 					}
 
-					if ($tagNameEnd > 0)
-					{
-						$justName = mb_substr($tagName, 0, $tagNameEnd);
-					}
-					else
-						$justName = $tagName;
-
+					$justName = $tagNameEnd > 0 ? substr($tagName, 0, $tagNameEnd) : $tagName;
 
 					// strip out namespace; nameSpace:Name
-					$colonPos = mb_strpos($justName, ":");
+					$colonPos = strpos($justName, ":");
 
 					if ($colonPos > 0)
-						$justName = mb_substr($justName, $colonPos + 1, mb_strlen($justName));
-
-					// remove trailing / from the name if exists
-					if (mb_substr($justName, mb_strlen($justName) - 1, 1) == "/")
 					{
-						$justName = mb_substr($justName, 0, mb_strlen($justName) - 1);
+						$justName = substr($justName, $colonPos + 1, strlen($justName));
 					}
 
+					// remove trailing / from the name if exists
+					if (substr($justName, strlen($justName) - 1, 1) == "/")
+					{
+						$justName = substr($justName, 0, strlen($justName) - 1);
+					}
 
 					// check for CDATA
 					$cdataSection = "";
 					$isCDATASection = false;
-					$cdataPos = mb_strpos($strXMLText, "<![CDATA[", $pos);
+					$cdataPos = strpos($strXMLText, "<![CDATA[", $pos);
 					if ($cdataPos == $pos && $pos > 0)
 					{
 						$isCDATASection = true;
-						$endTagPos = mb_strpos($strXMLText, "]]>", $cdataPos);
-						$cdataSection = &mb_substr($strXMLText, $cdataPos + 9, $endTagPos - ( $cdataPos + 9));
+						$endTagPos = strpos($strXMLText, "]]>", $cdataPos);
+						$cdataSection = substr($strXMLText, $cdataPos + 9, $endTagPos - ( $cdataPos + 9));
 
 						// new CDATA node
 						unset($subNode);
@@ -4268,11 +4260,11 @@ class CUpdatesXML
 					// find attributes
 					if ($tagNameEnd > 0)
 					{
-						$attributePart = &mb_substr($tagName, $tagNameEnd, mb_strlen($tagName));
+						$attributePart = substr($tagName, $tagNameEnd, strlen($tagName));
 
 						// attributes
 						unset($attr);
-						$attr = &CUpdatesXML::__parseAttributes($attributePart);
+						$attr = CUpdatesXML::__parseAttributes($attributePart);
 
 						if ($attr != false)
 							$subNode->attributes = &$attr;
@@ -4280,41 +4272,36 @@ class CUpdatesXML
 
 					// check it it's a oneliner: <tagname /> or a cdata section
 					if ($isCDATASection == false)
-						if (mb_substr($tagName, mb_strlen($tagName) - 1, 1) != "/")
+					{
+						if (substr($tagName, strlen($tagName) - 1, 1) != "/")
 						{
-							array_push($TagStack,
-								array("TagName" => $justName, "ParentNodeObject" => &$currentNode));
+							array_push($TagStack, array("TagName" => $justName, "ParentNodeObject" => &$currentNode));
 
 							unset($currentNode);
 							$currentNode = &$subNode;
 						}
+					}
 				}
 			}
 
-			$pos = mb_strpos($strXMLText, "<", $pos + 1);
+			$pos = strpos($strXMLText, "<", $pos + 1);
 
-			if ($pos == false)
+			if ($pos === false)
 			{
 				// end of document
-				$pos = mb_strlen($strXMLText);
+				$pos = strlen($strXMLText);
 			}
 			else
 			{
 				// content tag
-				$tagContent = mb_substr($strXMLText, $endTagPos + 1, $pos - ($endTagPos + 1));
+				$tagContent = substr($strXMLText, $endTagPos + 1, $pos - ($endTagPos + 1));
 
 				if (($this->TrimWhiteSpace && (trim($tagContent)!="")) || !$this->TrimWhiteSpace)
 				{
 					unset($subNode);
 
 					// convert special chars
-					$tagContent = &str_replace("&gt;", ">", $tagContent);
-					$tagContent = &str_replace("&lt;", "<", $tagContent);
-					$tagContent = &str_replace("&apos;", "'", $tagContent);
-					$tagContent = &str_replace("&quot;", '"', $tagContent);
-					$tagContent = &str_replace("&amp;", "&", $tagContent);
-
-					$currentNode->content = $tagContent;
+					$currentNode->content = static::replaceSpecialChars($tagContent);
 				}
 			}
 		}
@@ -4322,14 +4309,23 @@ class CUpdatesXML
 		return $oXMLDocument;
 	}
 
+	protected function replaceSpecialChars($content)
+	{
+		return str_replace(
+			array("&gt;", "&lt;", "&apos;", "&quot;", "&amp;"),
+			array(">", "<", "'", '"', "&"),
+			$content
+		);
+	}
+
 	function __stripComments(&$str)
 	{
-		$str = &preg_replace("#<\!--.*?-->#s", "", $str);
+		$str = preg_replace("#<\!--.*?-->#s", "", $str);
 		return $str;
 	}
 
 	/* Parses the attributes. Returns false if no attributes in the supplied string is found */
-	function &__parseAttributes($attributeString)
+	function __parseAttributes($attributeString)
 	{
 		$ret = false;
 
@@ -4337,548 +4333,32 @@ class CUpdatesXML
 
 		foreach ($attributeArray[0] as $i => $attributePart)
 		{
-			$attributePart = $attributePart;
-
 			if (trim($attributePart) != "" && trim($attributePart) != "/")
 			{
 				$attributeName = $attributeArray[1][$i];
 
 				// strip out namespace; nameSpace:Name
-				$colonPos = mb_strpos($attributeName, ":");
+				$colonPos = strpos($attributeName, ":");
 
 				if ($colonPos > 0)
-					$attributeName = mb_substr($attributeName, $colonPos + 1, mb_strlen($attributeName));
+				{
+					$attributeName = substr($attributeName, $colonPos + 1, strlen($attributeName));
+				}
 
 				$attributeValue = $attributeArray[2][$i];
 
 				unset($attrNode);
 				$attrNode = new CUpdatesXMLNode();
 				$attrNode->name = $attributeName;
-				$attrNode->content = $attributeValue;
+
+				// convert special chars
+				$attrNode->content = static::replaceSpecialChars($attributeValue);
 
 				$ret[] = &$attrNode;
 			}
 		}
 		return $ret;
 	}
-}
-
-}
-else
-{
-
-
-	/**********************************************************************/
-	/*********   CUpdatesXMLNode   ****************************************/
-	/**********************************************************************/
-	class CUpdatesXMLNode
-	{
-		var $name;				// Name of the node
-		var $content;			// Content of the node
-		var $children;			// Subnodes
-		var $attributes;		// Attributes
-
-		public function __construct()
-		{
-		}
-
-		function &__toString()
-		{
-			$ret = "";
-
-			switch ($this->name)
-			{
-				case "cdata-section":
-					$ret = "<![CDATA[";
-					$ret .= $this->content;
-					$ret .= "]]>";
-					break;
-
-				default:
-					$isOneLiner = false;
-
-					if (empty($this->children) && ($this->content == ''))
-						$isOneLiner = true;
-
-					$attrStr = "";
-
-					if (!empty($this->attributes))
-					{
-						foreach ($this->attributes as $attr)
-						{
-							$attrStr .= " ".$attr->name."=\"".$attr->content."\" ";
-						}
-					}
-
-					if ($isOneLiner)
-						$oneLinerEnd = " /";
-					else
-						$oneLinerEnd = "";
-
-					$ret = "<".$this->name.$attrStr.$oneLinerEnd.">";
-
-					if (!empty($this->children))
-					{
-						foreach ($this->children as $child)
-						{
-							$ret .= $child->__toString();
-						}
-					}
-
-					if (!$isOneLiner)
-					{
-						if ($this->content <> '')
-							$ret .= $this->content;
-
-						$ret .= "</".$this->name.">";
-					}
-
-					break;
-			}
-
-			return $ret;
-		}
-
-		function &__toArray()
-		{
-			$arInd = array();
-			$retHash = array();
-
-			$retHash["@"] = array();
-			if (!empty($this->attributes) && is_array($this->attributes))
-				foreach ($this->attributes as $attr)
-				{
-					$retHash["@"][$attr->name] = $attr->content;
-				}
-
-			$retHash["#"] = "";
-			if ($this->content <> '')
-			{
-				$retHash["#"] = $this->content;
-			}
-			else
-			{
-				if (!empty($this->children) && is_array($this->children))
-				{
-					$ar = array();
-					foreach ($this->children as $child)
-					{
-						if (array_key_exists($child->name, $arInd))
-							$arInd[$child->name] = $arInd[$child->name] + 1;
-						else
-							$arInd[$child->name] = 0;
-
-						$ar[$child->name][$arInd[$child->name]] = $child->__toArray();
-					}
-					$retHash["#"] = $ar;
-				}
-			}
-
-			return $retHash;
-		}
-	}
-
-
-
-	/**********************************************************************/
-	/*********   CUpdatesXMLDocument   ******************************************/
-	/**********************************************************************/
-	class CUpdatesXMLDocument
-	{
-		var $version;				// XML version
-		var $encoding;				// XML encoding
-
-		var $children;
-		var $root;
-
-		public function __construct()
-		{
-		}
-
-		/* Returns a XML string of the DOM document */
-		function &__toString()
-		{
-			$ret = "<"."?xml";
-			if ($this->version <> '')
-				$ret .= " version=\"".$this->version."\"";
-			if ($this->encoding <> '')
-				$ret .= " encoding=\"".$this->encoding."\"";
-			$ret .= "?".">";
-
-			if (!empty($this->children))
-			{
-				foreach ($this->children as $child)
-				{
-					$ret .= $child->__toString();
-				}
-			}
-
-			return $ret;
-		}
-
-		/* Returns an array of the DOM document */
-		function &__toArray()
-		{
-			$arRetArray = array();
-
-			if (!empty($this->children))
-			{
-				foreach ($this->children as $child)
-				{
-					$arRetArray[$child->name] = $child->__toArray();
-				}
-			}
-
-			return $arRetArray;
-		}
-	}
-
-
-
-	/**********************************************************************/
-	/*********   CUpdatesXML   **************************************************/
-	/**********************************************************************/
-	class CUpdatesXML
-	{
-		var $tree;
-		var $TrimWhiteSpace;
-
-		public function __construct($TrimWhiteSpace = true)
-		{
-			$this->TrimWhiteSpace = ($TrimWhiteSpace ? true : false);
-			$this->tree = false;
-		}
-
-		function Load($file)
-		{
-			$this->tree = false;
-
-			if (file_exists($file))
-			{
-				$content = file_get_contents($file);
-				$this->tree = &$this->__parse($content);
-				return true;
-			}
-
-			return false;
-		}
-
-		function LoadString($text)
-		{
-			$this->tree = false;
-
-			if ($text <> '')
-			{
-				$this->tree = &$this->__parse($text);
-				return true;
-			}
-
-			return false;
-		}
-
-		function &GetTree()
-		{
-			return $this->tree;
-		}
-
-		function &GetArray()
-		{
-			return $this->tree->__toArray();
-		}
-
-		function &GetString()
-		{
-			return $this->tree->__toString();
-		}
-
-		function &SelectNodes($strNode)
-		{
-			if (!is_object($this->tree))
-				return false;
-
-			$result = &$this->tree;
-
-			$tmp = explode("/", $strNode);
-			for ($i = 1, $ni = count($tmp); $i < $ni; $i++)
-			{
-				if ($tmp[$i] != "")
-				{
-					if (!is_array($result->children))
-						return false;
-
-					$bFound = false;
-					for ($j = 0, $nj = count($result->children); $j < $nj; $j++)
-					{
-						if ($result->children[$j]->name==$tmp[$i])
-						{
-							$result = &$result->children[$j];
-							$bFound = true;
-							break;
-						}
-					}
-
-					if (!$bFound)
-						return false;
-				}
-			}
-
-			return $result;
-		}
-
-
-		/* Will return an DOM object tree from the well formed XML. */
-		function &__parse(&$strXMLText)
-		{
-			$TagStack = array();
-
-			$oXMLDocument = new CUpdatesXMLDocument();
-
-			// stip the !doctype
-			$strXMLText = &preg_replace("%<\!DOCTYPE.*?>%is", "", $strXMLText);
-
-			// get document version and encoding from header
-			preg_match_all("#<\?(.*?)\?>#i", $strXMLText, $arXMLHeader_tmp);
-			foreach ($arXMLHeader_tmp[0] as $strXMLHeader_tmp)
-			{
-				preg_match_all("/([a-zA-Z:]+=\".*?\")/i", $strXMLHeader_tmp, $arXMLParam_tmp);
-				foreach ($arXMLParam_tmp[0] as $strXMLParam_tmp)
-				{
-					if ($strXMLParam_tmp <> '')
-					{
-						$arXMLAttribute_tmp = explode("=\"", $strXMLParam_tmp);
-						if ($arXMLAttribute_tmp[0]=="version")
-							$oXMLDocument->version = substr($arXMLAttribute_tmp[1], 0, strlen($arXMLAttribute_tmp[1]) - 1);
-						elseif ($arXMLAttribute_tmp[0]=="encoding")
-							$oXMLDocument->encoding = substr($arXMLAttribute_tmp[1], 0, strlen($arXMLAttribute_tmp[1]) - 1);
-					}
-				}
-			}
-
-			// strip header
-			$strXMLText = &preg_replace("#<\?.*?\?>#", "", $strXMLText);
-
-			// strip comments
-			$strXMLText = &CUpdatesXML::__stripComments($strXMLText);
-
-			$oXMLDocument->root = &$oXMLDocument->children;
-			$currentNode = &$oXMLDocument;
-
-			$pos = 0;
-			$endTagPos = 0;
-			while ($pos < strlen($strXMLText))
-			{
-				$char = substr($strXMLText, $pos, 1);
-				if ($char == "<")
-				{
-					// find tag name
-					$endTagPos = strpos($strXMLText, ">", $pos);
-
-					// tag name with attributes
-					$tagName = substr($strXMLText, $pos + 1, $endTagPos - ($pos + 1));
-
-					// check if it's an endtag </tagname>
-					if (substr($tagName, 0, 1) == "/")
-					{
-						$lastNodeArray = array_pop($TagStack);
-						$lastTag = $lastNodeArray["TagName"];
-
-						$lastNode = &$lastNodeArray["ParentNodeObject"];
-
-						unset($currentNode);
-						$currentNode = &$lastNode;
-
-						$tagName = substr($tagName, 1, strlen($tagName));
-
-						// strip out namespace; nameSpace:Name
-						$colonPos = strpos($tagName, ":");
-
-						if ($colonPos > 0)
-							$tagName = substr($tagName, $colonPos + 1, strlen($tagName));
-
-						if ($lastTag != $tagName)
-						{
-							print("Error parsing XML, unmatched tags $tagName");
-							return false;
-						}
-					}
-					else
-					{
-						$firstSpaceEnd = strpos($tagName, " ");
-						$firstNewlineEnd = strpos($tagName, "\n");
-
-						if ($firstNewlineEnd != false)
-						{
-							if ($firstSpaceEnd != false)
-							{
-								$tagNameEnd = min($firstSpaceEnd, $firstNewlineEnd);
-							}
-							else
-							{
-								$tagNameEnd = $firstNewlineEnd;
-							}
-						}
-						else
-						{
-							if ($firstSpaceEnd != false)
-							{
-								$tagNameEnd = $firstSpaceEnd;
-							}
-							else
-							{
-								$tagNameEnd = 0;
-							}
-						}
-
-						if ($tagNameEnd > 0)
-						{
-							$justName = substr($tagName, 0, $tagNameEnd);
-						}
-						else
-							$justName = $tagName;
-
-
-						// strip out namespace; nameSpace:Name
-						$colonPos = strpos($justName, ":");
-
-						if ($colonPos > 0)
-							$justName = substr($justName, $colonPos + 1, strlen($justName));
-
-						// remove trailing / from the name if exists
-						if (substr($justName, strlen($justName) - 1, 1) == "/")
-						{
-							$justName = substr($justName, 0, strlen($justName) - 1);
-						}
-
-
-						// check for CDATA
-						$cdataSection = "";
-						$isCDATASection = false;
-						$cdataPos = strpos($strXMLText, "<![CDATA[", $pos);
-						if ($cdataPos == $pos && $pos > 0)
-						{
-							$isCDATASection = true;
-							$endTagPos = strpos($strXMLText, "]]>", $cdataPos);
-							$cdataSection = &substr($strXMLText, $cdataPos + 9, $endTagPos - ( $cdataPos + 9));
-
-							// new CDATA node
-							unset($subNode);
-							$subNode = new CUpdatesXMLNode();
-							$subNode->name = "cdata-section";
-							$subNode->content = $cdataSection;
-
-							$currentNode->children[] = &$subNode;
-
-							$pos = $endTagPos;
-							$endTagPos += 2;
-						}
-						else
-						{
-							// normal start tag
-							unset($subNode);
-							$subNode = new CUpdatesXMLNode();
-							$subNode->name = $justName;
-
-							$currentNode->children[] = &$subNode;
-						}
-
-						// find attributes
-						if ($tagNameEnd > 0)
-						{
-							$attributePart = &substr($tagName, $tagNameEnd, strlen($tagName));
-
-							// attributes
-							unset($attr);
-							$attr = &CUpdatesXML::__parseAttributes($attributePart);
-
-							if ($attr != false)
-								$subNode->attributes = &$attr;
-						}
-
-						// check it it's a oneliner: <tagname /> or a cdata section
-						if ($isCDATASection == false)
-							if (substr($tagName, strlen($tagName) - 1, 1) != "/")
-							{
-								array_push($TagStack,
-									array("TagName" => $justName, "ParentNodeObject" => &$currentNode));
-
-								unset($currentNode);
-								$currentNode = &$subNode;
-							}
-					}
-				}
-
-				$pos = strpos($strXMLText, "<", $pos + 1);
-
-				if ($pos == false)
-				{
-					// end of document
-					$pos = strlen($strXMLText);
-				}
-				else
-				{
-					// content tag
-					$tagContent = substr($strXMLText, $endTagPos + 1, $pos - ($endTagPos + 1));
-
-					if (($this->TrimWhiteSpace && (trim($tagContent)!="")) || !$this->TrimWhiteSpace)
-					{
-						unset($subNode);
-
-						// convert special chars
-						$tagContent = &str_replace("&gt;", ">", $tagContent);
-						$tagContent = &str_replace("&lt;", "<", $tagContent);
-						$tagContent = &str_replace("&apos;", "'", $tagContent);
-						$tagContent = &str_replace("&quot;", '"', $tagContent);
-						$tagContent = &str_replace("&amp;", "&", $tagContent);
-
-						$currentNode->content = $tagContent;
-					}
-				}
-			}
-
-			return $oXMLDocument;
-		}
-
-		function __stripComments(&$str)
-		{
-			$str = &preg_replace("#<\!--.*?-->#s", "", $str);
-			return $str;
-		}
-
-		/* Parses the attributes. Returns false if no attributes in the supplied string is found */
-		function &__parseAttributes($attributeString)
-		{
-			$ret = false;
-
-			preg_match_all("/(\\S+?)\\s*=\\s*[\"](.*?)[\"]/s", $attributeString, $attributeArray);
-
-			foreach ($attributeArray[0] as $i => $attributePart)
-			{
-				$attributePart = $attributePart;
-
-				if (trim($attributePart) != "" && trim($attributePart) != "/")
-				{
-					$attributeName = $attributeArray[1][$i];
-
-					// strip out namespace; nameSpace:Name
-					$colonPos = strpos($attributeName, ":");
-
-					if ($colonPos > 0)
-						$attributeName = substr($attributeName, $colonPos + 1, strlen($attributeName));
-
-					$attributeValue = $attributeArray[2][$i];
-
-					unset($attrNode);
-					$attrNode = new CUpdatesXMLNode();
-					$attrNode->name = $attributeName;
-					$attrNode->content = $attributeValue;
-
-					$ret[] = &$attrNode;
-				}
-			}
-			return $ret;
-		}
-	}
-
 }
 
 /************************************************************************/
@@ -4900,7 +4380,7 @@ class CUpdater
 	{
 		$this->errorMessage = array();
 		$this->curPath = $curPath;
-		$this->dbType = StrToUpper($dbType);
+		$this->dbType = strtoupper($dbType);
 		$this->updater = $updater;
 		$this->curModulePath = $curDir;
 		$this->moduleID = $moduleID;
@@ -5200,7 +4680,7 @@ class CUpdater
 			{
 				foreach ($query as $key => $value)
 				{
-					if ($this->dbType == StrToUpper($key))
+					if ($this->dbType == strtoupper($key))
 					{
 						$strQuery = $value;
 						break;
@@ -5251,7 +4731,7 @@ class CUpdater
 			{
 				foreach ($queryPath as $key => $value)
 				{
-					if ($this->dbType == StrToUpper($key))
+					if ($this->dbType == strtoupper($key))
 					{
 						$strQueryPath = $value;
 						break;
@@ -5290,25 +4770,28 @@ class CUpdater
 
 	function TableExists($tableName)
 	{
+		global $DB;
+
 		if (!in_array("DATABASE", $this->callType))
 			return false;
 
-		$tableName = preg_replace("/[^A-Za-z0-9%_]+/i", "", $tableName);
-		$tableName = trim($tableName);
-
+		$tableName = preg_replace("/[^A-Za-z0-9%_]+/", "", $tableName);
 		if ($tableName == '')
 			return false;
 
-		$strSql = "";
 		if ($this->dbType == "MYSQL")
-			$strSql = "SHOW TABLES LIKE '".strtolower($GLOBALS["DB"]->ForSql($tableName))."'";
+			$strSql = "SHOW TABLES LIKE '".strtolower($DB->ForSql($tableName))."'";
 		elseif ($this->dbType == "ORACLE")
-			$strSql = "SELECT TABLE_NAME FROM USER_TABLES WHERE TABLE_NAME LIKE UPPER('".strtoupper($GLOBALS["DB"]->ForSql($tableName))."')";
+			$strSql = "SELECT TABLE_NAME FROM USER_TABLES WHERE TABLE_NAME LIKE UPPER('".strtoupper($DB->ForSql($tableName))."')";
 		elseif ($this->dbType == "MSSQL")
-			$strSql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE '".strtoupper($GLOBALS["DB"]->ForSql($tableName))."'";
+			$strSql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE '".strtoupper($DB->ForSql($tableName))."'";
+		elseif ($this->dbType == "PGSQL")
+			$strSql = "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE '".strtolower($DB->ForSql($tableName))."'";
+		else
+			$strSql = "";
 
-		$dbResult = $GLOBALS["DB"]->Query($strSql);
-		if ($arResult = $dbResult->Fetch())
+		$dbResult = $DB->Query($strSql);
+		if ($dbResult->Fetch())
 			return true;
 		else
 			return false;

@@ -16,6 +16,7 @@ class CCrmDocument
 
 	private static $UNGROUPED_USERS = array();
 	private static $USER_GROUPS = array();
+	private static ?int $b24employeeGroupId;
 	private static $USER_PERMISSION_CHECK = array();
 	private static $webFormSelectList;
 
@@ -34,22 +35,22 @@ class CCrmDocument
 			'email' => array(
 				'Name' => GetMessage('BPVDX_EMAIL'),
 				'BaseType' => 'string',
-				'typeClass' => \Bitrix\Crm\Integration\BizProc\FieldType\Email::class
+				'typeClass' => \Bitrix\Crm\Integration\BizProc\FieldType\Email::class,
 			),
 			'phone' => array(
 				'Name' => GetMessage('BPVDX_PHONE'),
 				'BaseType' => 'string',
-				'typeClass' => \Bitrix\Crm\Integration\BizProc\FieldType\Phone::class
+				'typeClass' => \Bitrix\Crm\Integration\BizProc\FieldType\Phone::class,
 			),
 			'web' => array(
 				'Name' => GetMessage('BPVDX_WEB'),
 				'BaseType' => 'string',
-				'typeClass' => \Bitrix\Crm\Integration\BizProc\FieldType\Web::class
+				'typeClass' => \Bitrix\Crm\Integration\BizProc\FieldType\Web::class,
 			),
 			'im' => array(
 				'Name' => GetMessage('BPVDX_MESSANGER'),
 				'BaseType' => 'string',
-				'typeClass' => \Bitrix\Crm\Integration\BizProc\FieldType\Im::class
+				'typeClass' => \Bitrix\Crm\Integration\BizProc\FieldType\Im::class,
 			),
 			'text' => array('Name' => GetMessage('BPVDX_TEXT'), 'BaseType' => 'text'),
 			'double' => array('Name' => GetMessage('BPVDX_NUM'), 'BaseType' => 'double'),
@@ -87,14 +88,14 @@ class CCrmDocument
 				'Name' => \Bitrix\Bizproc\UserType\MailSender::getName(),
 				'BaseType' => \Bitrix\Bizproc\UserType\MailSender::getType(),
 				'typeClass' => \Bitrix\Bizproc\UserType\MailSender::class,
-			]
+			],
 		);
 
 		//'Disk File' is disabled due to GUI issues (see CCrmFields::GetFieldTypes)
 		$ignoredUserTypes = array(
 			'string', 'double', 'boolean', 'integer', 'datetime', 'file', 'employee', 'enumeration', 'video',
 			'string_formatted', 'webdav_element_history', 'disk_version', 'disk_file', 'vote', 'url_preview', 'hlblock',
-			'mail_message'
+			'mail_message',
 		);
 		$arTypes = $USER_FIELD_MANAGER->GetUserType();
 		foreach ($arTypes as $arType)
@@ -111,7 +112,7 @@ class CCrmDocument
 
 			$arResult[$sType] = array(
 				'Name' => $arType['DESCRIPTION'],
-				'BaseType' => $arType['BASE_TYPE']
+				'BaseType' => $arType['BASE_TYPE'],
 			);
 
 			if ($arType['USER_TYPE_ID'] === 'date')
@@ -244,7 +245,7 @@ class CCrmDocument
 					'ENTITY_ID' => $arDocumentID['TYPE'],
 					'ELEMENT_ID' => $arDocumentID['ID'],
 					'TYPE_ID' => mb_strtoupper($arFieldType['Type']),
-					'VALUES' => $value1
+					'VALUES' => $value1,
 				),
 				null,
 				array('HIDE_ICONS' => 'Y')
@@ -367,7 +368,7 @@ class CCrmDocument
 						'form_name' => $arFieldName['Form'],
 						'FILE_MAX_HEIGHT' => 400,
 						'FILE_MAX_WIDTH' => 400,
-						'FILE_SHOW_POPUP' => true
+						'FILE_SHOW_POPUP' => true,
 					),
 					false,
 					array('HIDE_ICONS' => 'Y')
@@ -467,7 +468,7 @@ class CCrmDocument
 								'form_name' => $arFieldName['Form'],
 								'FILE_MAX_HEIGHT' => 400,
 								'FILE_MAX_WIDTH' => 400,
-								'FILE_SHOW_POPUP' => true
+								'FILE_SHOW_POPUP' => true,
 							),
 							false,
 							array('HIDE_ICONS' => 'Y')
@@ -519,7 +520,7 @@ class CCrmDocument
 										'FORM_NAME' => $arFieldName['Form'],
 										'INPUT_NAME' => $fieldNameName,
 										'INPUT_VALUE' => $v,
-										'SHOW_TIME' => $arFieldType['Type'] === 'datetime' ? 'Y' : 'N'
+										'SHOW_TIME' => $arFieldType['Type'] === 'datetime' ? 'Y' : 'N',
 									),
 									false,
 									array('HIDE_ICONS' => 'Y')
@@ -977,7 +978,7 @@ class CCrmDocument
 								$arCustomType["CheckFields"],
 								array(
 									array("LINK_IBLOCK_ID" => $arFieldType["Options"]),
-									array("VALUE" => $value)
+									array("VALUE" => $value),
 								)
 							);
 							if (count($arErrorsTmp1) > 0)
@@ -1200,7 +1201,7 @@ class CCrmDocument
 					'MANDATORY' => $arFieldType['Required'] ? 'Y' : 'N',
 					'EDIT_FORM_LABEL' => $arUserFieldType['DESCRIPTION'],
 					'VALUE' => $fieldValue,
-					'USER_TYPE' => $arUserFieldType
+					'USER_TYPE' => $arUserFieldType,
 				);
 				if ($arFieldType['Type'] == 'UF:iblock_element' || $arFieldType['Type'] == 'UF:iblock_section')
 				{
@@ -1232,7 +1233,7 @@ class CCrmDocument
 						'printable' => true,
 						'FILE_MAX_HEIGHT' => 400,
 						'FILE_MAX_WIDTH' => 400,
-						'FILE_SHOW_POPUP' => true
+						'FILE_SHOW_POPUP' => true,
 					),
 					false,
 					array('HIDE_ICONS' => 'Y')
@@ -1738,23 +1739,27 @@ class CCrmDocument
 			}
 		}
 
-		//Crutch for Bitrix24 context (user group management is not suppotted)
+		//Crutch for Bitrix24 context (user group management is not supported)
 		if(IsModuleInstalled('bitrix24'))
 		{
-			$siteID = CSite::GetDefSite();
-			$dbResult = CGroup::GetList(
-				'',
-				'',
-				array('STRING_ID' => 'EMPLOYEES_'.$siteID,
-				'STRING_ID_EXACT_MATCH' => 'Y')
-			);
-			if($arEmloyeeGroup = $dbResult->Fetch())
+			if (!isset(static::$b24employeeGroupId))
 			{
-				$employeeGroupID = intval($arEmloyeeGroup['ID']);
-				if(!in_array($employeeGroupID, $arGroupsID, true))
-				{
-					$arGroupsID[] = $employeeGroupID;
-				}
+				$siteID = CSite::GetDefSite();
+				$dbResult = CGroup::GetList(
+					'',
+					'',
+					[
+						'STRING_ID' => 'EMPLOYEES_' . $siteID,
+						'STRING_ID_EXACT_MATCH' => 'Y',
+					]
+				);
+				$arEmployeeGroup = $dbResult->fetch();
+				static::$b24employeeGroupId = (int) ($arEmployeeGroup['ID'] ?? 0);
+			}
+
+			if(!in_array(static::$b24employeeGroupId, $arGroupsID, true))
+			{
+				$arGroupsID[] = static::$b24employeeGroupId;
 			}
 		}
 
@@ -1910,7 +1915,7 @@ class CCrmDocument
 			'COMPANY' => "CCrmDocumentCompany",
 			'ORDER' => \Bitrix\Crm\Integration\BizProc\Document\Order::class,
 			'INVOICE' => \Bitrix\Crm\Integration\BizProc\Document\Invoice::class,
-			'ORDER_SHIPMENT' => \Bitrix\Crm\Integration\BizProc\Document\Shipment::class
+			'ORDER_SHIPMENT' => \Bitrix\Crm\Integration\BizProc\Document\Shipment::class,
 		];
 
 		$arDocumentId[0] = mb_strtoupper($arDocumentId[0]);
@@ -1922,7 +1927,7 @@ class CCrmDocument
 		return array(
 			'TYPE' => $arDocumentId[0],
 			'ID' => (int) $arDocumentId[1],
-			'DOCUMENT_TYPE' => array("crm", $arMap[$arDocumentId[0]], $arDocumentId[0])
+			'DOCUMENT_TYPE' => array("crm", $arMap[$arDocumentId[0]], $arDocumentId[0]),
 		);
 	}
 
@@ -2094,7 +2099,7 @@ class CCrmDocument
 			{
 				$arDstData['n'.(count($arDstData) + 1)] = array(
 					'VALUE' => $item,
-					'VALUE_TYPE' => $defaultValueType
+					'VALUE_TYPE' => $defaultValueType,
 				);
 			}
 			elseif(is_array($item))
@@ -2105,7 +2110,7 @@ class CCrmDocument
 					{
 						$arDstData['n'.(count($arDstData) + 1)] = array(
 							'VALUE' => $item['VALUE'],
-							'VALUE_TYPE' => isset($item['VALUE_TYPE']) ? $item['VALUE_TYPE'] : $defaultValueType
+							'VALUE_TYPE' => isset($item['VALUE_TYPE']) ? $item['VALUE_TYPE'] : $defaultValueType,
 						);
 					}
 					elseif(is_array($item['VALUE']))
@@ -2511,7 +2516,7 @@ class CCrmDocument
 
 	protected static function getVirtualFields(): array
 	{
-		return [
+		$fields = [
 			'CRM_ID' => [
 				'Name' => GetMessage('CRM_DOCUMENT_FIELD_CRM_ID'),
 				'Type' => 'string',
@@ -2525,6 +2530,20 @@ class CCrmDocument
 				'Type' => 'string',
 			],
 		];
+
+		// remove after bizproc 23.400.0 has delivered
+		if (defined('Bitrix\Bizproc\FieldType::TIME'))
+		{
+			$fields['TIME_CREATE'] = [
+				'Name' => Loc::getMessage('CRM_DOCUMENT_FIELD_TIME_CREATE'),
+				'Type' => 'time',
+				'Filterable' => true,
+				'Editable' => false,
+				'Required' => false,
+			];
+		}
+
+		return $fields;
 	}
 
 	protected static function getAssignedByFields()
@@ -2642,7 +2661,7 @@ class CCrmDocument
 			$fields[$code] = [
 				'Name' => $name,
 				'Type' => 'string',
-				'Editable' => true
+				'Editable' => true,
 			];
 		}
 
@@ -2725,5 +2744,47 @@ class CCrmDocument
 	protected static function shouldUseTransaction()
 	{
 		return (COption::GetOptionString("crm", "bizproc_use_transaction", "N") === "Y");
+	}
+
+	protected static function castFileFieldValues($id, $typeId, $fieldId, $values)
+	{
+		$arFileOptions = ['ENABLE_ID' => true];
+		$prevValue = null;
+		if ($id)
+		{
+			global $USER_FIELD_MANAGER;
+			if ($USER_FIELD_MANAGER instanceof \CUserTypeManager)
+			{
+				$prevValue = array_flip((array)$USER_FIELD_MANAGER->GetUserFieldValue(
+					\CCrmOwnerType::ResolveUserFieldEntityID($typeId),
+					$fieldId,
+					$id
+				));
+
+				foreach ($values as $fileId)
+				{
+					if (is_numeric($fileId))
+					{
+						unset($prevValue[$fileId]);
+					}
+				}
+				$prevValue = array_flip($prevValue);
+			}
+		}
+
+		foreach ($values as &$value)
+		{
+			//Issue #40380. Secure URLs and file IDs are allowed.
+			$file = false;
+			$resultResolveFile = CCrmFileProxy::TryResolveFile($value, $file, $arFileOptions);
+			if ($prevValue && $resultResolveFile)
+			{
+				$file['old_id'] = $prevValue;
+			}
+			$value = $file;
+		}
+		unset($value, $prevValue);
+
+		return $values;
 	}
 }

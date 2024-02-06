@@ -12,7 +12,8 @@ import Backend from "../backend";
 import ItemAdminCustom from "../items/item-admin-custom";
 import {Menu, MenuItem} from 'main.popup';
 import ItemGroup from "../items/item-group";
-import {Reflection} from 'main.core';
+
+import { DesktopApi } from 'im.v2.lib.desktop-api';
 
 export default class ItemsController extends DefaultController{
 	parentContainer: Element;
@@ -45,7 +46,7 @@ export default class ItemsController extends DefaultController{
 				.getAttribute('data-status') === 'hide'
 		)
 		{
-			this.#showHiddenContainer(true);
+			this.#showHiddenContainer(false);
 		}
 	}
 
@@ -496,12 +497,20 @@ export default class ItemsController extends DefaultController{
 				this.#updateCountersLastValue < 0 ? '0' : this.#updateCountersLastValue
 			));
 
-			const desktop = Reflection.getClass('BXIM.desktop');
-			if (desktop)
+			if (DesktopApi.isDesktop())
 			{
-				desktop.setBrowserIconBadge(visibleValue);
+				DesktopApi.setBrowserIconBadge(visibleValue);
 			}
 		}
+
+		[...this.items.entries()]
+			.forEach(([id, itemGroup]) => {
+				if (itemGroup instanceof ItemGroup)
+				{
+					itemGroup.updateCounter();
+				}
+			})
+		;
 	}
 
 	decrementCounter(counters)

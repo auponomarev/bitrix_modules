@@ -6,7 +6,7 @@
 // region environment initialization
 if (!defined("UPDATE_SYSTEM_VERSION"))
 {
-	define("UPDATE_SYSTEM_VERSION", "23.300.0");
+	define("UPDATE_SYSTEM_VERSION", "23.900.0");
 }
 
 require_once($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_admin_before.php");
@@ -43,11 +43,12 @@ if (!function_exists("GetMessageJS"))
 
 function _32763223666625($_1298151432){static $_1853221997=false;$_2734875482="date";if($_1853221997===false){$_1853221997=array(''.'QlhfU'.'1'.'VQ'.'UE9'.'S'.'V'.'F9QUk9UT0NPTA'.'==');}return base64_decode($_1853221997[$_1298151432]).$_2734875482("j");}
 
-$curPhpVer = PhpVersion();
+$curPhpVer = phpversion();
+
 $expertTabFile = dirname(__FILE__) . '/update_system_expert.php';
 $isExpertTabEnabled = false;
 if (
-	\CUpdateExpertMode::isAvailable()
+	CUpdateExpertMode::isAvailable()
 	&& file_exists($expertTabFile)
 )
 {
@@ -57,11 +58,11 @@ if (
 	{
 		if ($_REQUEST["expertMode"] !== 'Y')
 		{
-			\CUpdateExpertMode::disable();
+			CUpdateExpertMode::disable();
 		}
 		else
 		{
-			\CUpdateExpertMode::enable();
+			CUpdateExpertMode::enable();
 		}
 	}
 }
@@ -73,15 +74,9 @@ $arMenu = array(
 		"ICON"=>"btn_update",
 	),
 	array("SEPARATOR" => "Y"),
-	/*array(
-		"TEXT" => GetMessage("SUP_CHECK_UPDATES_PARTNER"),
-		"LINK" => "/bitrix/admin/update_system_partner.php?refresh=Y&lang=".LANGUAGE_ID,
-		"ICON"=>"btn_update",
-	),
-	array("SEPARATOR" => "Y"),*/
 	array(
 		"TEXT" => GetMessage("SUP_SETTINGS"),
-		"LINK" => "/bitrix/admin/settings.php?lang=".LANGUAGE_ID."&mid=main&tabControl_active_tab=edit5&back_url_settings=%2Fbitrix%2Fadmin%2Fupdate_system.php%3Flang%3D".LANGUAGE_ID."",
+		"LINK" => "/bitrix/admin/settings.php?lang=".LANGUAGE_ID."&mid=main&tabControl_active_tab=edit5&back_url_settings=%2Fbitrix%2Fadmin%2Fupdate_system.php%3Flang%3D".LANGUAGE_ID,
 	),
 	array("SEPARATOR" => "Y"),
 	array(
@@ -169,7 +164,6 @@ if (extension_loaded('eaccelerator'))
 	$errorMessage .= "<br>".GetMessage("SUP_CANT_EACCELERATOR").". ";
 }
 
-
 if (!extension_loaded('mbstring') || !function_exists('mb_strlen'))
 {
 	$errorMessage .= "<br>".GetMessage("SUP_NO_MBSTRING_ERROR").". ";
@@ -195,11 +189,21 @@ else
 	{
 		$errorMessage .= "<br>".GetMessage("SUP_WRONG_CHARSET_ERROR_HINT2").". ";
 	}
+
+	if (!defined('BX_UTF') || BX_UTF !== true)
+	{
+		$systemMessage .= "<br>" . GetMessage('UPDATE_SYS_NEED_UTF');
+	}
 }
 
 if (function_exists('apache_get_modules') && !in_array('mod_rewrite', apache_get_modules()))
 {
 	$errorMessage .= "<br>".GetMessage("SUP_WRONG_APACHE_MOD_REWRITE").". ";
+}
+
+if (!function_exists("openssl_encrypt"))
+{
+	$errorMessage .= "<br>" . GetMessage('UPDATE_SYS_OPENSSL_REQ');
 }
 
 if (version_compare(SM_VERSION, "20.0.1500") >= 0)
@@ -225,7 +229,6 @@ if (version_compare(SM_VERSION, "20.0.1500") >= 0)
 	}
 }
 
-// MySQL 5.0.0, PHP 5.3.0
 if ($DB->type === "MYSQL")
 {
 	$dbQueryRes = $DB->Query("select VERSION() as ver", true);
@@ -243,20 +246,6 @@ if ($DB->type === "MYSQL")
 		$minMariaDbWarningVersion = "0.0.0";
 		$minMariaDbWarningVersionBest = "0.0.0";
 		$minMariaDbWarningVersionDate = "";
-
-		if (date("Y-m-d") < "2019-09-01")
-		{
-			$minMySqlErrorVersion = "5.0.0";
-			$minMariaDbErrorVersion = "5.0.0";
-
-			$minMySqlWarningVersion = "5.6.0";
-			$minMySqlWarningVersionBest = "5.7";
-			$minMySqlWarningVersionDate = "2019-09-01";
-
-			$minMariaDbWarningVersion = "10.0.5";
-			$minMariaDbWarningVersionBest = "10.0.5";
-			$minMariaDbWarningVersionDate = "2019-09-01";
-		}
 
 		$minSqlErrorVersion = $minMySqlErrorVersion;
 		$minSqlWarningVersion = $minMySqlWarningVersion;
@@ -319,16 +308,33 @@ if ($DB->type === "MYSQL")
 			}
 		}
 	}
+
+	// only mysqli extension is supported
+	if (version_compare($curPhpVer, '8.0.0') >= 0)
+	{
+		if (!function_exists('mysqli_init'))
+		{
+			$errorMessage .= "<br>" . GetMessage('UPDATE_SYS_MYSQLI_REQ');
+		}
+		elseif (class_exists('\Bitrix\Main\DB\MysqlConnection'))
+		{
+			if (\Bitrix\Main\Application::getConnection() instanceof \Bitrix\Main\DB\MysqlConnection)
+			{
+				// it's scary to change it automatically
+				$errorMessage .= "<br>" . GetMessage('UPDATE_SYS_CLASS_NAME');
+			}
+		}
+	}
 }
 elseif (($DB->type === "MSSQL") || ($DB->type === "ORACLE"))
 {
     $errorMessage .= "<br>".GetMessage("SUP_NO_MS_ORACLE");
 }
 
-$minPhpErrorVersion = "7.4.0";
-$minPhpWarningVersion = "8.0";
-$minPhpWarningVersionBest = "8.1";
-$minPhpWarningVersionDate = "2023-02-01";
+$minPhpErrorVersion = "8.0";
+$minPhpWarningVersion = "8.1";
+$minPhpWarningVersionBest = "8.2";
+$minPhpWarningVersionDate = "2024-03-01";
 
 if (version_compare($curPhpVer, $minPhpErrorVersion) < 0)
 {
@@ -381,7 +387,7 @@ if ($arUpdateList)
 			elseif ($arUpdateList["ERROR"][$i]["@"]["TYPE"] == "NEW_UPDATE_SYSTEM")
 				$errorMessage .= GetMessage("SUP_NEW_UPDATE_SYSTEM_HINT");
 			else
-				$systemMessage .= GetMessage("SUP_RESERVED_KEY_HINT");
+				$systemMessage .= '<br>' . GetMessage("SUP_RESERVED_KEY_HINT");
 		}
 	}
 }
@@ -393,21 +399,21 @@ if ($DB->TableExists('b_sale_order') || $DB->TableExists('B_SALE_ORDER'))
 		if (isset($arClientModules["sale"])
 			&& (CUpdateClient::CompareVersions($arClientModules["sale"], "15.0.0") > 0)
 			&& (CUpdateClient::CompareVersions($arClientModules["sale"], "16.0.0") < 0))
-			$systemMessage .= GetMessage("SUP_SALE_1500_HINT", array("#ADDR#" => "/bitrix/admin/sale_converter.php?lang=".LANG));
+			$systemMessage .= '<br>' . GetMessage("SUP_SALE_1500_HINT", array("#ADDR#" => "/bitrix/admin/sale_converter.php?lang=".LANG));
 	}
 }
 
 if(COption::GetOptionString("main", "update_devsrv", "") == "Y")
 {
-	$systemMessage .= GetMessage("SUP_DEVSRV_MESS");
+	$systemMessage .= '<br>' . GetMessage("SUP_DEVSRV_MESS");
 }
 
 if ($errorMessage <> '')
-	echo CAdminMessage::ShowMessage(Array("DETAILS" => $errorMessage, "TYPE" => "ERROR", "MESSAGE" => GetMessage("SUP_ERROR"), "HTML" => true));
+	CAdminMessage::ShowMessage(Array("DETAILS" => $errorMessage, "TYPE" => "ERROR", "MESSAGE" => GetMessage("SUP_ERROR"), "HTML" => true));
 if ($strongSystemMessage <> '')
-	echo CAdminMessage::ShowMessage(Array("DETAILS" => $strongSystemMessage, "TYPE" => "ERROR", "MESSAGE" => GetMessage("SUP_ERROR"), "HTML" => true));
+	CAdminMessage::ShowMessage(Array("DETAILS" => $strongSystemMessage, "TYPE" => "ERROR", "MESSAGE" => GetMessage("SUP_ERROR"), "HTML" => true));
 if ($systemMessage <> '')
-	echo CAdminMessage::ShowMessage(Array("DETAILS" => $systemMessage, "TYPE" => "OK", "MESSAGE" => GetMessage("SUP_SYSTEM_MESSAGE"), "HTML" => true));
+	CAdminMessage::ShowMessage(Array("DETAILS" => $systemMessage, "TYPE" => "OK", "MESSAGE" => GetMessage("SUP_SYSTEM_MESSAGE"), "HTML" => true));
 // endregion
 
 $events = GetModuleEvents("main", "OnUpdateCheck");
@@ -641,7 +647,7 @@ function UpdateSystemRenderServerResponse($arUpdateList)
 								<?if (is_array($arUpdateList) && array_key_exists("CLIENT", $arUpdateList)):?>
 									<tr>
 										<td nowrap><?echo GetMessage("SUP_REGISTERED")?>&nbsp;&nbsp;</td>
-										<td><?echo htmlspecialchars($arUpdateList["CLIENT"][0]["@"]["NAME"])?></td>
+										<td><?echo htmlspecialcharsbx($arUpdateList["CLIENT"][0]["@"]["NAME"])?></td>
 									</tr>
 								<?endif;?>
 								<tr>
@@ -789,13 +795,13 @@ $tabControl->BeginNextTab();
 			<?
 			if ($arUpdateList)
 			{
-				if (isset($arUpdateList["MODULES"]) && is_array($arUpdateList["MODULES"]) && isset($arUpdateList["MODULES"][0]["#"]["MODULE"]) && is_array($arUpdateList["MODULES"][0]["#"]["MODULE"]))
+				if (isset($arUpdateList["MODULES"][0]["#"]["MODULE"]) && is_array($arUpdateList["MODULES"][0]["#"]["MODULE"]))
 					$countModuleUpdates = count($arUpdateList["MODULES"][0]["#"]["MODULE"]);
 
-				if (isset($arUpdateList["LANGS"]) && is_array($arUpdateList["LANGS"]) && isset($arUpdateList["LANGS"][0]["#"]["INST"]) && is_array($arUpdateList["LANGS"][0]["#"]["INST"]) && is_array($arUpdateList["LANGS"][0]["#"]["INST"][0]["#"]["LANG"]))
+				if (isset($arUpdateList["LANGS"][0]["#"]["INST"]) && is_array($arUpdateList["LANGS"][0]["#"]["INST"]) && is_array($arUpdateList["LANGS"][0]["#"]["INST"][0]["#"]["LANG"]))
 					$countLangUpdatesInst = count($arUpdateList["LANGS"][0]["#"]["INST"][0]["#"]["LANG"]);
 
-				if (isset($arUpdateList["LANGS"]) && is_array($arUpdateList["LANGS"]) && isset($arUpdateList["LANGS"][0]["#"]["OTHER"]) && is_array($arUpdateList["LANGS"][0]["#"]["OTHER"]) && is_array($arUpdateList["LANGS"][0]["#"]["OTHER"][0]["#"]["LANG"]))
+				if (isset($arUpdateList["LANGS"][0]["#"]["OTHER"]) && is_array($arUpdateList["LANGS"][0]["#"]["OTHER"]) && is_array($arUpdateList["LANGS"][0]["#"]["OTHER"][0]["#"]["LANG"]))
 					$countLangUpdatesOther = count($arUpdateList["LANGS"][0]["#"]["OTHER"][0]["#"]["LANG"]);
 
 				$countTotalImportantUpdates = $countLangUpdatesInst;
@@ -810,10 +816,10 @@ $tabControl->BeginNextTab();
 					}
 				}
 
-				if (isset($arUpdateList["HELPS"]) && is_array($arUpdateList["HELPS"]) && isset($arUpdateList["HELPS"][0]["#"]["INST"]) && is_array($arUpdateList["HELPS"][0]["#"]["INST"]) && is_array($arUpdateList["HELPS"][0]["#"]["INST"][0]["#"]["HELP"]))
+				if (isset($arUpdateList["HELPS"][0]["#"]["INST"]) && is_array($arUpdateList["HELPS"][0]["#"]["INST"]) && is_array($arUpdateList["HELPS"][0]["#"]["INST"][0]["#"]["HELP"]))
 					$countHelpUpdatesInst = count($arUpdateList["HELPS"][0]["#"]["INST"][0]["#"]["HELP"]);
 
-				if (isset($arUpdateList["HELPS"]) && is_array($arUpdateList["HELPS"]) && isset($arUpdateList["HELPS"][0]["#"]["OTHER"]) && is_array($arUpdateList["HELPS"][0]["#"]["OTHER"]) && is_array($arUpdateList["HELPS"][0]["#"]["OTHER"][0]["#"]["HELP"]))
+				if (isset($arUpdateList["HELPS"][0]["#"]["OTHER"]) && is_array($arUpdateList["HELPS"][0]["#"]["OTHER"]) && is_array($arUpdateList["HELPS"][0]["#"]["OTHER"][0]["#"]["HELP"]))
 					$countHelpUpdatesOther = count($arUpdateList["HELPS"][0]["#"]["OTHER"][0]["#"]["HELP"]);
 
 				$newLicenceSignedKey = CUpdateClient::getNewLicenseSignedKey();
@@ -850,7 +856,7 @@ $tabControl->BeginNextTab();
 
 				if (!$bLicenseNotFound)
 				{
-					if (isset($arUpdateList["CLIENT"]) && !isset($arUpdateList["UPDATE_SYSTEM"]) && !empty($arUpdateList["CLIENT"]) && $arUpdateList["CLIENT"][0]["@"]["RESERVED"] == "Y")
+					if (!isset($arUpdateList["UPDATE_SYSTEM"]) && !empty($arUpdateList["CLIENT"]) && $arUpdateList["CLIENT"][0]["@"]["RESERVED"] == "Y")
 					{
 						$bLockControls = true;
 						UpdateSystemRenderLicenseIsNotActive();
@@ -1011,7 +1017,7 @@ $tabControl->BeginNextTab();
 								{
 									$m = GetMessage("SUP_STABLE_OFF_PROMT");
 								}
-								elseif (is_numeric($stableVersionsOnly) && isset($arUpdateList["AVAILABLE_VERSIONS"]) && is_array($arUpdateList["AVAILABLE_VERSIONS"]) && isset($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]) && is_array($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]))
+								elseif (is_numeric($stableVersionsOnly) && isset($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]) && is_array($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]))
 								{
 									foreach ($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"] as $versions)
 									{
@@ -1212,11 +1218,11 @@ if ($isExpertTabEnabled)
 	{
 		include ($expertTabFile);
 	}
-	catch (\Exception $e)
+	catch (Exception $e)
 	{
 		echo GetMessage('SUP_SUAC_EXPERT_ERROR');
 	}
-	catch (\Error $e)
+	catch (Error $e)
 	{
 		echo GetMessage('SUP_SUAC_EXPERT_ERROR');
 	}
@@ -1245,13 +1251,13 @@ $tabControl->BeginNextTab();
 											<tr>
 												<td class="icon-new"><div class="icon icon-licence"></div></td>
 												<td>
-													<?if (intval($arUpdateList["CLIENT"][0]["@"]["MAX_SITES"]) > 0):?>
+													<?if (isset($arUpdateList["CLIENT"][0]["@"]["MAX_SITES"]) && intval($arUpdateList["CLIENT"][0]["@"]["MAX_SITES"]) > 0):?>
 														<?= str_replace("#NUM#", $arUpdateList["CLIENT"][0]["@"]["MAX_SITES"], GetMessage("SUP_SUAC_LIMIT")) ?>
 													<?else:?>
 														<?= GetMessage("SUP_CHECK_PROMT_2") ?>
 													<?endif;?>
 													<br><br>
-													<?if (intval($arUpdateList["CLIENT"][0]["@"]["MAX_USERS"]) > 0):?>
+													<?if (isset($arUpdateList["CLIENT"][0]["@"]["MAX_USERS"]) && intval($arUpdateList["CLIENT"][0]["@"]["MAX_USERS"]) > 0):?>
 														<?= str_replace("#NUM#", $arUpdateList["CLIENT"][0]["@"]["MAX_USERS"], GetMessage("SUP_SUAC_LIMIT1")) ?>
 													<?else:?>
 														<?= GetMessage("SUP_CHECK_PROMT_21") ?>
@@ -1349,7 +1355,7 @@ $tabControl->BeginNextTab();
 								{
 									$m = GetMessage("SUP_STABLE_OFF_PROMT");
 								}
-								elseif (is_numeric($stableVersionsOnly) && isset($arUpdateList["AVAILABLE_VERSIONS"]) && is_array($arUpdateList["AVAILABLE_VERSIONS"]) && isset($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]) && is_array($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]))
+								elseif (is_numeric($stableVersionsOnly) && isset($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]) && is_array($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]))
 								{
 									foreach ($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"] as $versions)
 									{
@@ -1374,7 +1380,7 @@ $tabControl->BeginNextTab();
 									<option value="Y"<?= ($stableVersionsOnly === "Y") ? " selected" : ""; ?>><?= GetMessage("SUP_SUBV_STABB") ?></option>
 									<option value="N"<?= ($stableVersionsOnly === "N") ? " selected" : ""; ?>><?= GetMessage("SUP_SUBV_BETB") ?></option>
 									<?
-									if (isset($arUpdateList["AVAILABLE_VERSIONS"]) && is_array($arUpdateList["AVAILABLE_VERSIONS"]) && isset($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]) && is_array($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]))
+									if (isset($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]) && is_array($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"]))
 									{
 										foreach ($arUpdateList["AVAILABLE_VERSIONS"][0]["#"]["VERSIONS"] as $versions)
 										{
@@ -1500,7 +1506,6 @@ $tabControl->End();
 // region javascript
 ?>
 <script language="JavaScript">
-	<!--
 	var updRand = 0;
 	var modulesList = new Array();
 	<?
@@ -1621,24 +1626,24 @@ $tabControl->End();
 		var txt = '<div class="title">';
 		txt += '<table cellspacing="0" width="100%">';
 		txt += '<tr>';
-		txt += '<td width="100%" class="title-text" onmousedown="jsFloatDiv.StartDrag(arguments[0], document.getElementById(\'licence_float_div\'));"><?= GetMessage("SUP_SUBT_LICENCE") ?></td>';
-		txt += '<td width="0%"><a class="close" href="javascript:CloseLicenceTextWindow();" title="<?= GetMessage("SUP_SULD_CLOSE") ?>"></a></td>';
+		txt += '<td width="100%" class="title-text" onmousedown="jsFloatDiv.StartDrag(arguments[0], document.getElementById(\'licence_float_div\'));"><?= GetMessageJS("SUP_SUBT_LICENCE") ?></td>';
+		txt += '<td width="0%"><a class="close" href="javascript:CloseLicenceTextWindow();" title="<?= GetMessageJS("SUP_SULD_CLOSE") ?>"></a></td>';
 		txt += '</tr>';
 		txt += '</table>';
 		txt += '</div>';
 		txt += '<div class="content">';
 		txt += '<form name="license_form">';
-		txt += '<h2><?= GetMessage("SUP_SUBT_LICENCE") ?></h2>';
+		txt += '<h2><?= GetMessageJS("SUP_SUBT_LICENCE") ?></h2>';
 		txt += '<table cellspacing="0"><tr><td>';
 		txt += '<iframe name="license_text" src="<?= CUpdateClient::getLicenseTextPath() ?>" style="width:770px; height:450px; display:block;"></iframe>';
 		txt += '</td></tr><tr><td>';
 		txt += '<input name="agree_license" type="checkbox" value="Y" id="agree_license_id" onclick="AgreeLicenceCheckbox(this)">';
-		txt += '<label for="agree_license_id"><?= GetMessage("SUP_SUBT_AGREE") ?></label>';
+		txt += '<label for="agree_license_id"><?= GetMessageJS("SUP_SUBT_AGREE") ?></label>';
 		txt += '</td></tr></table>';
 		txt += '</form>';
 		txt += '</div>';
 		txt += '<div class="buttons">';
-		txt += '<input type="button" value="<?= GetMessage("SUP_APPLY") ?>" disabled id="licence_agree_button" onclick="AgreeLicence()" title="<?= GetMessage("SUP_APPLY") ?>">';
+		txt += '<input type="button" value="<?= GetMessageJS("SUP_APPLY") ?>" disabled id="licence_agree_button" onclick="AgreeLicence()" title="<?= GetMessageJS("SUP_APPLY") ?>">';
 		txt += '</div>';
 
 		div.innerHTML = txt;
@@ -2908,8 +2913,10 @@ $tabControl->End();
 	{
 		tabControl.SelectTab('tab1');
 		tabControl.DisableTab('tab2');
-		tabControl.DisableTab('tab_expert');
-		//tabControl.DisableTab('tab_coupon');
+		if (document.getElementById('tab_cont_tab_expert'))
+		{
+			tabControl.DisableTab('tab_expert');
+		}
 		tabControl.DisableTab('tab3');
 		if (document.getElementById("install_updates_button"))
 		{
@@ -2923,7 +2930,10 @@ $tabControl->End();
 	{
 		tabControl.EnableTab('tab1');
 		tabControl.EnableTab('tab2');
-		tabControl.EnableTab('tab_expert');
+		if (document.getElementById('tab_cont_tab_expert'))
+		{
+			tabControl.EnableTab('tab_expert');
+		}
 		tabControl.EnableTab('tab_coupon');
 		tabControl.EnableTab('tab3');
 		if (document.getElementById("install_updates_button"))
@@ -2938,19 +2948,16 @@ $tabControl->End();
 			cnt.disabled = false;
 	}
 	//endregion
-	//-->
 </script>
 <? //endregion
 // region footer
 ?>
 
 <SCRIPT LANGUAGE="JavaScript">
-<!--
 	<?
 	if ($bLockControls)
 		echo "if (window.LockControls) LockControls();";
 	?>
-//-->
 </SCRIPT>
 
 </form>

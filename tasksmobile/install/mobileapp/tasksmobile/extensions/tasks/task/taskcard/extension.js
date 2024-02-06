@@ -3,7 +3,6 @@ include('InAppNotifier');
 
 (() => {
 	const pathToExtension = '/bitrix/mobileapp/tasksmobile/extensions/tasks/task/taskcard/';
-	const apiVersion = Application.getApiVersion();
 	const platform = Application.getPlatform();
 
 	class Request
@@ -465,7 +464,7 @@ include('InAppNotifier');
 
 			InAppNotifier.showNotification({
 				title: BX.message('TASKS_TASK_DETAIL_TASK_WAS_REMOVED_IN_ANOTHER_PLACE'),
-				backgroundColor: '#333333',
+				backgroundColor: AppTheme.colors.base1,
 			});
 			if (this.taskCardHandler)
 			{
@@ -689,19 +688,14 @@ include('InAppNotifier');
 				title: BX.message('TASKS_TASK_DETAIL_DEADLINE_DATE_PICKER'),
 				type: 'datetime',
 				value: this.task.deadline,
+				items: [],
 			};
-
-			if (apiVersion >= 34)
-			{
-				pickerParams.items = [];
-
-				Object.keys(Task.deadlines).forEach((key) => {
-					pickerParams.items.push({
-						name: Task.deadlines[key].name,
-						value: this.deadlines[key] * 1000,
-					});
+			Object.keys(Task.deadlines).forEach((key) => {
+				pickerParams.items.push({
+					name: Task.deadlines[key].name,
+					value: this.deadlines[key] * 1000,
 				});
-			}
+			});
 
 			dialogs.showDatePicker(
 				pickerParams,
@@ -971,36 +965,29 @@ include('InAppNotifier');
 
 		openTaskPage(url, guid, title, taskId)
 		{
-			if (Application.getApiVersion() >= 33)
-			{
-				PageManager.openComponent('JSStackComponent', {
-					componentCode: 'tasks.edit',
-					scriptPath: availableComponents['tasks:tasks.view'].publicUrl,
-					rootWidget: {
-						name: 'web',
-						settings: {
-							objectName: 'taskcard',
-							modal: true,
-							cache: false,
-							page: {
-								url,
-								titleParams: {text: title},
-							},
+			PageManager.openComponent('JSStackComponent', {
+				componentCode: 'tasks.edit',
+				scriptPath: availableComponents['tasks:tasks.view'].publicUrl,
+				rootWidget: {
+					name: 'web',
+					settings: {
+						objectName: 'taskcard',
+						modal: true,
+						cache: false,
+						page: {
+							url,
+							titleParams: {text: title},
 						},
 					},
-					params: {
-						MODE: 'edit',
-						COMPONENT_CODE: 'tasks.view',
-						USER_ID: this.userId || 0,
-						TASK_ID: taskId,
-						GUID: guid,
-					},
-				});
-			}
-			else
-			{
-				PageManager.openPage({url, cache: false, modal: true});
-			}
+				},
+				params: {
+					MODE: 'edit',
+					COMPONENT_CODE: 'tasks.view',
+					USER_ID: this.userId || 0,
+					TASK_ID: taskId,
+					GUID: guid,
+				},
+			});
 		}
 
 		onAddToFavoriteAction()
@@ -1222,7 +1209,7 @@ include('InAppNotifier');
 					{
 						InAppNotifier.showNotification({
 							title: BX.message('TASKS_TASK_DETAIL_TASK_WAS_REMOVED'),
-							backgroundColor: '#333333',
+							backgroundColor: AppTheme.colors.base1,
 						});
 
 						void this.task.remove();
@@ -1365,7 +1352,7 @@ include('InAppNotifier');
 					action: this.onPauseAction,
 				},
 				disapprove: {
-					title: BX.message('TASKS_TASK_DETAIL_BTN_REDO_TASK'),
+					title: BX.message('TASKS_TASK_DETAIL_BTN_REDO_TASK_MSGVER_1'),
 					iconUrl: `${urlPrefix}renew.png`,
 					action: this.onDisapproveAction,
 				},
@@ -1431,7 +1418,6 @@ include('InAppNotifier');
 		{
 			BX.onViewLoaded(() => {
 				this.taskCardHandler = new TaskCardHandler(taskcard);
-				this.checklistController = new ChecklistController(this.taskId, this.userId, this.guid, this.mode);
 
 				const taskInfo = this.getTaskInfo();
 				delete taskInfo.project;
@@ -1465,8 +1451,6 @@ include('InAppNotifier');
 			this.mode = 'edit';
 
 			BX.onViewLoaded(() => {
-				this.checklistController = new ChecklistController(this.taskId, this.userId, this.guid, this.mode);
-
 				this.taskPopupMenu = dialogs.createPopupMenu();
 				this.taskPopupMenu.setPosition('center');
 				this.redrawTaskPopupMenu();

@@ -2,9 +2,9 @@
 
 namespace Bitrix\Crm\Timeline;
 
+use Bitrix\Crm\Service;
 use Bitrix\Crm\Timeline\Entity\NoteTable;
 use Bitrix\Main\Loader;
-use Bitrix\Crm\Service;
 
 class TimelineManager
 {
@@ -75,6 +75,11 @@ class TimelineManager
 		if ($typeID === TimelineType::TASK)
 		{
 			return Tasks\Controller::getInstance();
+		}
+
+		if ($typeID === TimelineType::AI_CALL_PROCESSING)
+		{
+			return AI\Call\Controller::getInstance();
 		}
 
 		if($assocEntityTypeID === \CCrmOwnerType::Activity)
@@ -158,7 +163,13 @@ class TimelineManager
 		self::prepareDisplayData($items);
 		$item = $items[0];
 	}
-	public static function prepareDisplayData(array &$items, $userID = 0, $userPermissions = null, bool $checkPermissions = true)
+	public static function prepareDisplayData(
+		array &$items,
+		$userID = 0,
+		$userPermissions = null,
+		bool $checkPermissions = true,
+		array $params = []
+	)
 	{
 		$entityMap = array();
 		$items = NoteTable::loadForItems($items, NoteTable::NOTE_TYPE_HISTORY);
@@ -384,7 +395,10 @@ class TimelineManager
 				{
 					$shipment['SHOW_URL'] = Service\Sale\EntityLinkBuilder\EntityLinkBuilder::getInstance()
 						->getShipmentDetailsLink($shipment['ID']);
-					$shipment['PRICE_WITH_CURRENCY'] = \CCrmCurrency::MoneyToString($shipment['PRICE'], $shipment['CURRENCY']);
+					$shipment['PRICE_WITH_CURRENCY'] = \CCrmCurrency::MoneyToString(
+						$shipment['PRICE'] ?? 0.0,
+						$shipment['CURRENCY']
+					);
 					$orderShipmentMap[$shipment['ORDER_ID']][$shipment['ID']] = $shipment;
 				}
 
@@ -542,7 +556,8 @@ class TimelineManager
 		}
 
 		$defaultController = new EntityController();
-		foreach($items as $ID => &$item)
+		$options = ['TYPE' => $params['type'] ?? Service\Timeline\Context::DESKTOP];
+		foreach($items as &$item)
 		{
 			if(!is_array($item))
 			{
@@ -554,7 +569,7 @@ class TimelineManager
 			{
 				$controller = $defaultController;
 			}
-			$item = $controller->prepareHistoryDataModel($item);
+			$item = $controller->prepareHistoryDataModel($item, $options);
 		}
 		unset($item);
 

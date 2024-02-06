@@ -2,8 +2,7 @@
 
 return [
 	'extensions' => [
-		'crm:timeline/item/activity',
-		'crm:timeline/item/log',
+		'crm:timeline/item/custom-types',
 
 		'crm:timeline/item/ui/background',
 		'crm:timeline/item/ui/body',
@@ -15,8 +14,9 @@ return [
 		'crm:timeline/item/ui/market-banner',
 		'crm:timeline/item/ui/styles',
 		'crm:timeline/item/ui/user-avatar',
-
 		'crm:type',
+
+		'apptheme',
 		'animation',
 		'loc',
 		'in-app-url',
@@ -30,6 +30,7 @@ return [
 		'./factory',
 		'./base',
 		'./compatible',
+		'./generic',
 		'./model',
 	],
 ];

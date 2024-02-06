@@ -5,13 +5,16 @@ namespace Bitrix\Intranet\Integration\Main;
 use Bitrix\Main;
 use Bitrix\Main\Localization\CultureTable;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\Type\DateTime;
 
 final class Culture
 {
 	public static function getCultures(): array
 	{
 		$langCultures = [];
-		$data = CultureTable::getList();
+		$data = CultureTable::getList([
+			'select' => ['ID', 'CODE', 'NAME', 'SHORT_DATE_FORMAT', 'LONG_DATE_FORMAT']
+		]);
 
 		global $b24Languages;
 		$fileName = \Bitrix\Main\Application::getDocumentRoot() . getLocalPath('templates/bitrix24', BX_PERSONAL_ROOT) . "/languages.php";
@@ -19,6 +22,9 @@ final class Culture
 		{
 			include_once $fileName;
 		}
+
+		$userDateTime = new DateTime();
+		$userDateTime->toUserTime();
 
 		while($culture = $data->fetch())
 		{
@@ -29,9 +35,14 @@ final class Culture
 				'SHORT_DATE_FORMAT' => $culture["SHORT_DATE_FORMAT"] !== ''
 					? htmlspecialcharsbx(FormatDate($culture["SHORT_DATE_FORMAT"]))
 					: '',
-
 				'LONG_DATE_FORMAT' => $culture["LONG_DATE_FORMAT"] !== ''
 					? htmlspecialcharsbx(FormatDate($culture["LONG_DATE_FORMAT"]))
+					: '',
+				'LONG_DATE_FORMAT_USER' => $culture["LONG_DATE_FORMAT"] !== ''
+					? htmlspecialcharsbx(FormatDate($culture["LONG_DATE_FORMAT"], $userDateTime->format("U")))
+					: '',
+				'SHORT_DATE_FORMAT_USER' => $culture["SHORT_DATE_FORMAT"] !== ''
+					? htmlspecialcharsbx(FormatDate($culture["SHORT_DATE_FORMAT"], $userDateTime->format("U")))
 					: '',
 			];
 		}

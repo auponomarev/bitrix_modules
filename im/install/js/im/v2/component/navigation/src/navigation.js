@@ -1,40 +1,47 @@
-import {hint} from 'ui.vue3.directives.hint';
-import {MessageBox, MessageBoxButtons} from 'ui.dialogs.messagebox';
+import { Extension, Type } from 'main.core';
+import { hint } from 'ui.vue3.directives.hint';
+import { MessageBox, MessageBoxButtons } from 'ui.dialogs.messagebox';
 
-import {Logger} from 'im.v2.lib.logger';
-import {MessengerSlider} from 'im.v2.lib.slider';
-import {CallManager} from 'im.v2.lib.call';
-import {Layout} from 'im.v2.const';
+import { Logger } from 'im.v2.lib.logger';
+import { MessengerSlider } from 'im.v2.lib.slider';
+import { CallManager } from 'im.v2.lib.call';
+import { Layout } from 'im.v2.const';
+import { DesktopApi } from 'im.v2.lib.desktop-api';
+import { PhoneManager } from 'im.v2.lib.phone';
 
-import {UserSettings} from './components/user-settings';
-import {MarketApps} from './components/market-apps';
+import { UserSettings } from './components/user-settings';
+import { MarketApps } from './components/market-apps';
 
 import './css/navigation.css';
+
+import type { JsonObject } from 'main.core';
 
 type MenuItem = {
 	id: string,
 	text: string,
-	counter: number,
-	active: boolean
+	active?: boolean,
+	counter?: number,
+	clickHandler?: (clickTarget: HTMLElement) => void,
+	showCondition?: () => boolean,
 };
 
 // @vue/component
 export const MessengerNavigation = {
 	name: 'MessengerNavigation',
-	directives: {hint},
-	components: {UserSettings, MarketApps},
+	directives: { hint },
+	components: { UserSettings, MarketApps },
 	props: {
 		currentLayoutName: {
 			type: String,
-			required: true
-		}
+			required: true,
+		},
 	},
 	emits: ['navigationClick'],
-	data()
+	data(): JsonObject
 	{
 		return {
 			needTopShadow: false,
-			needBottomShadow: false
+			needBottomShadow: false,
 		};
 	},
 	computed:
@@ -45,34 +52,55 @@ export const MessengerNavigation = {
 				{
 					id: Layout.chat.name,
 					text: this.prepareNavigationText('IM_NAVIGATION_CHATS'),
-					counter: this.formatCounter(this.$store.getters['recent/getTotalCounter']),
-					active: true
+					counter: this.formatCounter(this.$store.getters['counters/getTotalChatCounter']),
+					active: true,
+				},
+				{
+					id: Layout.copilot.name,
+					text: this.prepareNavigationText('IM_NAVIGATION_COPILOT'),
+					counter: this.formatCounter(this.$store.getters['counters/getTotalCopilotCounter']),
+					showCondition: this.isCopilotActive,
+					active: true,
+				},
+				{
+					id: Layout.openlines.name,
+					text: this.prepareNavigationText('IM_NAVIGATION_OPENLINES'),
+					counter: this.formatCounter(this.$store.getters['counters/getTotalLinesCounter']),
+					active: true,
 				},
 				{
 					id: Layout.notification.name,
 					text: this.prepareNavigationText('IM_NAVIGATION_NOTIFICATIONS'),
 					counter: this.formatCounter(this.$store.getters['notifications/getCounter']),
-					active: true
-				},
-				{
-					id: Layout.openline.name,
-					text: this.prepareNavigationText('IM_NAVIGATION_OPENLINES'),
-					counter: 0,
-					active: false
+					active: true,
 				},
 				{
 					id: Layout.call.name,
 					text: this.prepareNavigationText('IM_NAVIGATION_CALLS'),
-					counter: 0,
-					active: false
+					clickHandler: this.onCallClick,
+					showCondition: PhoneManager.getInstance().canCall.bind(PhoneManager.getInstance()),
+					active: true,
 				},
 				{
-					id: 'settings',
+					id: 'timemanager',
+					text: this.prepareNavigationText('IM_NAVIGATION_TIMEMANAGER'),
+					clickHandler: this.onTimeManagerClick,
+					showCondition: this.isTimeManagerActive,
+					active: true,
+				},
+				{
+					id: 'market',
+				},
+				{
+					id: Layout.settings.name,
 					text: this.prepareNavigationText('IM_NAVIGATION_SETTINGS'),
-					counter: 0,
-					active: false
+					active: true,
 				},
 			];
+		},
+		showCloseIcon(): boolean
+		{
+			return !DesktopApi.isChatTab();
 		},
 	},
 	created()
@@ -81,26 +109,30 @@ export const MessengerNavigation = {
 	},
 	mounted()
 	{
-		const container = this.$refs['navigation'];
+		const container = this.$refs.navigation;
 		this.needBottomShadow = container.scrollTop + container.clientHeight !== container.scrollHeight;
 	},
 	methods:
 	{
-		onMenuItemClick(item: MenuItem)
+		onMenuItemClick(item: MenuItem, event: PointerEvent)
 		{
 			if (!item.active)
 			{
 				return;
 			}
 
-			this.$emit('navigationClick', {layoutName: item.id, layoutEntityId: ''});
+			if (Type.isFunction(item.clickHandler))
+			{
+				item.clickHandler(event.target);
+
+				return;
+			}
+
+			this.$emit('navigationClick', { layoutName: item.id, layoutEntityId: '' });
 		},
-		onMarketMenuItemClick({layoutName, layoutEntityId})
+		onMarketMenuItemClick({ layoutName, layoutEntityId })
 		{
-			this.$emit('navigationClick', {
-				layoutName: layoutName,
-				layoutEntityId: layoutEntityId
-			});
+			this.$emit('navigationClick', { layoutName, layoutEntityId });
 		},
 		closeSlider()
 		{
@@ -108,17 +140,18 @@ export const MessengerNavigation = {
 			if (hasCall)
 			{
 				this.showExitConfirm();
+
 				return;
 			}
 
 			MessengerSlider.getInstance().getCurrent().close();
 		},
-		getMenuItemClasses(item: MenuItem)
+		getMenuItemClasses(item: MenuItem): Object<string, boolean>
 		{
 			return {
 				'--selected': item.id === this.currentLayoutName,
 				'--with-counter': item.counter && item.id !== this.currentLayoutName,
-				'--active': item.active
+				'--active': item.active,
 			};
 		},
 		formatCounter(counter: number): string
@@ -128,9 +161,9 @@ export const MessengerNavigation = {
 				return '';
 			}
 
-			return counter > 99 ? '99+' : `${counter}`;
+			return counter > 99 ? '99+' : String(counter);
 		},
-		getHintContent(item: MenuItem)
+		getHintContent(item: MenuItem): ?{text: string, popupOptions: Object<string, any>}
 		{
 			if (item.active)
 			{
@@ -140,17 +173,17 @@ export const MessengerNavigation = {
 			return {
 				text: this.loc('IM_MESSENGER_NOT_AVAILABLE'),
 				popupOptions: {
-					angle: {position: 'left'},
+					angle: { position: 'left' },
 					targetContainer: document.body,
 					offsetLeft: 80,
-					offsetTop: -54
-				}
+					offsetTop: -54,
+				},
 			};
 		},
 		prepareNavigationText(phraseCode: string): string
 		{
 			return this.loc(phraseCode, {
-				'#BR#': '</br>'
+				'#BR#': '</br>',
 			});
 		},
 		showExitConfirm()
@@ -166,12 +199,17 @@ export const MessengerNavigation = {
 				},
 				onCancel: (messageBox: MessageBox) => {
 					messageBox.close();
-				}
+				},
 			});
 		},
-		loc(phraseCode: string, replacements: {[string]: string} = {}): string
+		needToShowMenuItem(item: MenuItem): boolean
 		{
-			return this.$Bitrix.Loc.getMessage(phraseCode, replacements);
+			if (!Type.isFunction(item.showCondition))
+			{
+				return true;
+			}
+
+			return item.showCondition() === true;
 		},
 		onScroll(event: Event)
 		{
@@ -181,6 +219,7 @@ export const MessengerNavigation = {
 			if (event.target.scrollTop === 0)
 			{
 				this.needTopShadow = false;
+
 				return;
 			}
 
@@ -188,17 +227,47 @@ export const MessengerNavigation = {
 		},
 		onClickScrollDown()
 		{
-			this.$refs['navigation'].scrollTo({
-				top: this.$refs['navigation'].scrollHeight,
+			this.$refs.navigation.scrollTo({
+				top: this.$refs.navigation.scrollHeight,
 				behavior: 'smooth',
 			});
 		},
 		onClickScrollUp()
 		{
-			this.$refs['navigation'].scrollTo({
+			this.$refs.navigation.scrollTo({
 				top: 0,
 				behavior: 'smooth',
 			});
+		},
+		onCallClick(clickTarget: HTMLElement)
+		{
+			const MENU_ITEM_CLASS = 'bx-im-navigation__item';
+			const KEYPAD_OFFSET_TOP = -30;
+			const KEYPAD_OFFSET_LEFT = 64;
+
+			PhoneManager.getInstance().openKeyPad({
+				bindElement: clickTarget.closest(`.${MENU_ITEM_CLASS}`),
+				offsetTop: KEYPAD_OFFSET_TOP,
+				offsetLeft: KEYPAD_OFFSET_LEFT,
+			});
+		},
+		isTimeManagerActive(): boolean
+		{
+			return Boolean(BX.Timeman?.Monitor?.isEnabled());
+		},
+		isCopilotActive(): boolean
+		{
+			const settings = Extension.getSettings('im.v2.component.navigation');
+
+			return settings.get('copilotActive');
+		},
+		async onTimeManagerClick()
+		{
+			BX.Timeman?.Monitor?.openReport();
+		},
+		loc(phraseCode: string, replacements: {[string]: string} = {}): string
+		{
+			return this.$Bitrix.Loc.getMessage(phraseCode, replacements);
 		},
 	},
 	template: `
@@ -207,32 +276,37 @@ export const MessengerNavigation = {
 				<div class="bx-im-navigation__scroll-button" @click="onClickScrollUp"></div>
 			</div>
 			<div class="bx-im-navigation__top" @scroll="onScroll" ref="navigation">
-				<!-- Close -->
-				<div class="bx-im-navigation__close_container" @click="closeSlider">
-					<div class="bx-im-navigation__close"></div>
-				</div>
-				<!-- Separator -->
-				<div class="bx-im-navigation__separator_container">
-					<div class="bx-im-navigation__close_separator"></div>
-				</div>
+				<template v-if="showCloseIcon">
+					<!-- Close -->
+					<div class="bx-im-navigation__close_container" @click="closeSlider">
+						<div class="bx-im-navigation__close"></div>
+					</div>
+					<!-- Separator -->
+					<div class="bx-im-navigation__separator_container">
+						<div class="bx-im-navigation__close_separator"></div>
+					</div>
+				</template>
 				<!-- Menu items -->
-				<div
-					v-for="item in menuItems"
-					v-hint="getHintContent(item)"
-					@click="onMenuItemClick(item)"
-					class="bx-im-navigation__item_container"
-				>
-					<div :class="getMenuItemClasses(item)" class="bx-im-navigation__item">
-						<div :class="'--' + item.id" class="bx-im-navigation__item_icon"></div>
-						<div class="bx-im-navigation__item_text" :title="item.text" v-html="item.text"></div>
-						<div v-if="item.active && item.counter" class="bx-im-navigation__item_counter">
-							<div class="bx-im-navigation__item_counter-text">
-								{{ item.counter }}
+				<template v-for="item in menuItems">
+					<MarketApps v-if="item.id === 'market'" @clickMarketItem="onMarketMenuItemClick"/>
+					<div
+						v-else-if="needToShowMenuItem(item)"
+						:key="item.id"
+						v-hint="getHintContent(item)"
+						@click="onMenuItemClick(item, $event)"
+						class="bx-im-navigation__item_container"
+					>
+						<div :class="getMenuItemClasses(item)" class="bx-im-navigation__item">
+							<div :class="'--' + item.id" class="bx-im-navigation__item_icon"></div>
+							<div class="bx-im-navigation__item_text" :title="item.text" v-html="item.text"></div>
+							<div v-if="item.active && item.counter" class="bx-im-navigation__item_counter">
+								<div class="bx-im-navigation__item_counter-text">
+									{{ item.counter }}
+								</div>
 							</div>
 						</div>
 					</div>
-				</div>
-				<MarketApps @clickMarketItem="onMarketMenuItemClick"/>
+				</template>
 			</div>
 			<div v-if="needBottomShadow" class="bx-im-navigation__shadow --bottom">
 				<div class="bx-im-navigation__scroll-button --bottom" @click="onClickScrollDown"></div>
@@ -242,5 +316,5 @@ export const MessengerNavigation = {
 				<UserSettings />
 			</div>
 		</div>
-	`
+	`,
 };

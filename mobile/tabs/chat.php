@@ -1,5 +1,6 @@
 <?php
 namespace Bitrix\Mobile\AppTabs;
+
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Mobile\Tab\Manager;
@@ -16,6 +17,7 @@ class Chat implements Tabable
 	{
 		return (
 			Loader::includeModule('im')
+			&& Loader::includeModule('immobile')
 			&& Loader::includeModule('mobileapp')
 		);
 	}
@@ -62,7 +64,8 @@ class Chat implements Tabable
 					'MIN_SEARCH_SIZE' => \Bitrix\Main\ORM\Query\Filter\Helper::getMinTokenSize(),
 					'IS_NETWORK_SEARCH_AVAILABLE' => $this->isNetworkSearchAvailable(),
 					'IS_DEVELOPMENT_ENVIRONMENT' => $this->isDevelopmentEnvironment(),
-				]
+				],
+				\Bitrix\ImMobile\MessengerParams::get(),
 			),
 			'settings' => [
 				'useSearch' => true,
@@ -217,6 +220,7 @@ class Chat implements Tabable
 			"rootWidget" => [
 				"name" => "tabs",
 				"settings" => [
+					"code" => "im.tabs",
 					"objectName" => "tabs",
 					"titleParams"=> [
 						"text" => Loc::getMessage("TAB_NAME_IM_RECENT_FULL"),
@@ -398,5 +402,10 @@ class Chat implements Tabable
 	public function isDevelopmentEnvironment(): bool
 	{
 		return \Bitrix\Main\Config\Option::get('immobile', 'IS_DEVELOPMENT_ENVIRONMENT', 'N') === 'Y';
+	}
+
+	public function getIconId(): string
+	{
+		return 'chat';
 	}
 }

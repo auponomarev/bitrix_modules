@@ -5,6 +5,7 @@ namespace Bitrix\Im\V2\Service;
 use Bitrix\Im\V2\Chat;
 use Bitrix\Im\V2\Chat\GroupChat;
 use Bitrix\Im\V2\Chat\PrivateChat;
+use Bitrix\Im\V2\Chat\EntityChat;
 use Bitrix\Im\V2\Chat\NullChat;
 use Bitrix\Im\V2\Link\Calendar\CalendarItem;
 use Bitrix\Im\V2\Link\Calendar\CalendarService;
@@ -13,11 +14,17 @@ use Bitrix\Im\V2\Entity\Task\TaskItem;
 use Bitrix\Im\V2\Chat\ChatFactory;
 use Bitrix\Im\V2\Common\ContextCustomer;
 use Bitrix\Im\V2\Message;
+use Bitrix\Im\V2\Message\Delete\DeleteService;
+use Bitrix\Im\V2\Message\MessageError;
+use Bitrix\Main\Loader;
+use Bitrix\Main\Result;
 use Bitrix\Tasks\Internals\TaskObject;
 
 class Messenger
 {
 	use ContextCustomer;
+
+	private const INTRANET_MENU_ID = 'menu_im_messenger';
 
 	/**
 	 * Returns current instance of the Messenger.
@@ -26,6 +33,23 @@ class Messenger
 	public static function getInstance(): self
 	{
 		return Locator::getMessenger();
+	}
+
+	public function checkAccessibility(): \Bitrix\Im\V2\Result
+	{
+		$result = new \Bitrix\Im\V2\Result();
+
+		if (!$this->isPullEnabled())
+		{
+			$result->addError(new MessengerError(MessengerError::PULL_NOT_ENABLED));
+		}
+
+		if (!$this->isEnabled())
+		{
+			$result->addError(new MessengerError(MessengerError::MESSENGER_NOT_ENABLED));
+		}
+
+		return $result;
 	}
 
 	//region Chats
@@ -54,7 +78,7 @@ class Messenger
 	/**
 	 * @param string $entityType
 	 * @param int|string $entityId
-	 * @return NullChat|GroupChat
+	 * @return EntityChat|GroupChat|NullChat
 	 */
 	public function getEntityChat(string $entityType, string $entityId): Chat
 	{
@@ -82,6 +106,11 @@ class Messenger
 		return $chat;
 	}
 
+	public function getGeneralChat(): Chat
+	{
+		return Chat\GeneralChat::get();
+	}
+
 	/**
 	 * @param int $chatId
 	 * @return Chat
@@ -106,6 +135,55 @@ class Messenger
 		}
 
 		return new Message($source);
+	}
+
+	/**
+	 * Delete message
+	 *
+	 * @param Message $message
+	 * @param int $mode DeleteService::MODE_AUTO|DeleteService::MODE_SOFT|DeleteService::MODE_HARD|DeleteService::MODE_COMPLETE
+	 * @return Result
+	 */
+	public function deleteMessage(Message $message, int $mode = 0): Result
+	{
+		$result = new Result();
+
+		$deleteService = new Message\Delete\DeleteService($message);
+		$deleteService->setMode($mode);
+		$deleteService->delete();
+
+		return $result;
+	}
+
+	/**
+	 * Disappear message
+	 *
+	 * @param Message $message
+	 * @param int $hours
+	 * @return Result
+	 */
+	public function disappearMessage(Message $message, int $hours): Result
+	{
+		$deleteService = new DeleteService($message);
+		if ($deleteService->canDelete() < DeleteService::DELETE_HARD)
+		{
+			return (new Result())->addError(new MessageError(MessageError::MESSAGE_ACCESS_ERROR));
+		}
+
+		return Message\Delete\DisappearService::disappearMessage($message, $hours);
+	}
+
+	/**
+	 * Update message
+	 *
+	 * @param Message $message
+	 * @param string|null $messageText
+	 * @return Result
+	 */
+	public function updateMessage(Message $message, ?string $messageText): Result
+	{
+		$updateService = new Message\Update\UpdateService($message);
+		return $updateService->update($messageText);
 	}
 
 	//endregion
@@ -221,4 +299,24 @@ class Messenger
 	}
 
 	//endregion
+
+	private function isPullEnabled(): bool
+	{
+		return \CModule::IncludeModule("pull") && \CPullOptions::GetQueueServerStatus();
+	}
+
+	private function isEnabled(): bool
+	{
+		if (
+			Loader::includeModule('intranet')
+			&& method_exists(\Bitrix\Intranet\Settings\Tools\ToolsManager::class, 'checkAvailabilityByMenuId')
+		)
+		{
+			return \Bitrix\Intranet\Settings\Tools\ToolsManager::getInstance()
+				->checkAvailabilityByMenuId(static::INTRANET_MENU_ID)
+			;
+		}
+
+		return true;
+	}
 }

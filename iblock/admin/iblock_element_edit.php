@@ -56,6 +56,9 @@ const MODULE_ID = "iblock";
 const ENTITY = "CIBlockDocument";
 define("DOCUMENT_TYPE", "iblock_" . $IBLOCK_ID);
 
+// TODO: remove this code after remove admin form from public catalof
+$internalAdminPage = defined('INTERNAL_ADMIN_PAGE') && INTERNAL_ADMIN_PAGE === 'Y';
+
 $bCustomForm = false;
 $customFormFile = '';
 
@@ -68,9 +71,19 @@ if ($urlBuilder === null)
 		$APPLICATION->SetTitle($iblockType['NAME']);
 	}
 	unset($iblockType);
-	require($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_admin_after.php");
+	if ($internalAdminPage)
+	{
+		require $_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/prolog_popup_admin.php';
+	}
+	else
+	{
+		require $_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/prolog_admin_after.php';
+	}
 	ShowError(GetMessage("IBLOCK_ELEMENT_ERR_BUILDER_ADSENT"));
-	require($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/epilog_admin.php");
+	if (!$internalAdminPage)
+	{
+		require $_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/epilog_admin.php';
+	}
 	die();
 }
 $urlBuilderId = $urlBuilder->getId();
@@ -84,6 +97,7 @@ if ($strLookup != '')
 	define('BT_UT_AUTOCOMPLETE', 1);
 }
 $bAutocomplete = defined('BT_UT_AUTOCOMPLETE') && (BT_UT_AUTOCOMPLETE == 1);
+$errorPopupProlog = $bAutocomplete || $internalAdminPage;
 
 /* property ajax */
 $bPropertyAjax = (isset($_REQUEST["ajax_action"]) && $_REQUEST["ajax_action"] === "section_property");
@@ -691,10 +705,19 @@ do{ //one iteration loop
 			{
 				foreach ($PROP[$k1] as $prop_value_id => $prop_value)
 				{
+					$filePropDescr = null;
+					if (isset($_POST['DESCRIPTION_PROP'][$k1][$prop_value_id]))
+					{
+						$filePropDescr = $_POST['DESCRIPTION_PROP'][$k1][$prop_value_id];
+					}
+					elseif (isset($_POST['PROP_descr'][$k1][$prop_value_id]))
+					{
+						$filePropDescr = $_POST['PROP_descr'][$k1][$prop_value_id];
+					}
 					$PROP[$k1][$prop_value_id] = CIBlock::makeFilePropArray(
 						$PROP[$k1][$prop_value_id],
 						($PROP_del[$k1][$prop_value_id] ?? 'N') === "Y",
-						$_POST["DESCRIPTION_PROP"][$k1][$prop_value_id] ?? $_POST["PROP_descr"][$k1][$prop_value_id]
+						$filePropDescr
 					);
 				}
 			}
@@ -996,7 +1019,7 @@ do{ //one iteration loop
 						$request->getPost('PREVIEW_PICTURE_del') === 'Y',
 						$request->getPost('PREVIEW_PICTURE_descr')
 					);
-					if ($arPREVIEW_PICTURE['error'] === 0)
+					if (is_array($arPREVIEW_PICTURE) && ($arPREVIEW_PICTURE['error'] ?? 0) === 0)
 					{
 						$arPREVIEW_PICTURE['COPY_FILE'] = 'Y';
 					}
@@ -1014,7 +1037,7 @@ do{ //one iteration loop
 						$request->getPost('DETAIL_PICTURE_del') === 'Y',
 						$request->getPost('DETAIL_PICTURE_descr')
 					);
-					if ($arDETAIL_PICTURE['error'] === 0)
+					if (is_array($arDETAIL_PICTURE) && ($arDETAIL_PICTURE['error'] ?? 0) === 0)
 					{
 						$arDETAIL_PICTURE['COPY_FILE'] = 'Y';
 					}
@@ -1578,12 +1601,21 @@ if ($error)
 
 if($error && $error->err_level==1)
 {
-	if ($bAutocomplete)
-		require($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_popup_admin.php");
+	if ($errorPopupProlog)
+	{
+		require $_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/prolog_popup_admin.php';
+	}
 	else
-		require($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_admin_after.php");
+	{
+		require $_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/prolog_admin_after.php';
+	}
 
 	CAdminMessage::ShowOldStyleError($error->GetErrorText());
+
+	if ($internalAdminPage)
+	{
+		die;
+	}
 }
 else
 {
@@ -1863,7 +1895,7 @@ else
 			if(array_key_exists($prop_fields["ID"], $PROP))
 				$prop_values = $PROP[$prop_fields["ID"]];
 			else
-				$prop_values = $PROP[$prop_fields["CODE"]];
+				$prop_values = $PROP[$prop_fields["CODE"]] ?? null;
 			$prop_values_with_descr = $prop_values;
 		}
 		elseif ($bVarsFromForm)
@@ -2637,7 +2669,7 @@ if($bVarsFromForm && !array_key_exists("PREVIEW_PICTURE", $_REQUEST) && $arEleme
 					"delete" => true,
 					"maxCount" => 1
 				))->show(
-					($bVarsFromForm ? $_REQUEST["PREVIEW_PICTURE"] : ($ID > 0 && !$bCopy ? $str_PREVIEW_PICTURE: 0)),
+					($bVarsFromForm ? ($_REQUEST["PREVIEW_PICTURE"] ?? null) : ($ID > 0 && !$bCopy ? $str_PREVIEW_PICTURE: 0)),
 					$bVarsFromForm
 				);
 			endif;?>
@@ -2742,7 +2774,7 @@ if($bVarsFromForm && !array_key_exists("DETAIL_PICTURE", $_REQUEST) && $arElemen
 					"delete" => true,
 					"maxCount" => 1
 				))->show(
-					$bVarsFromForm ? $_REQUEST["DETAIL_PICTURE"] : ($ID > 0 && !$bCopy? $str_DETAIL_PICTURE: 0),
+					$bVarsFromForm ? ($_REQUEST["DETAIL_PICTURE"] ?? null) : ($ID > 0 && !$bCopy? $str_DETAIL_PICTURE: 0),
 					$bVarsFromForm
 				);
 			endif;?>
@@ -3945,6 +3977,7 @@ if (
 endif;
 
 }
+
 if ($bAutocomplete)
 {
 	require($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/epilog_popup_admin.php");

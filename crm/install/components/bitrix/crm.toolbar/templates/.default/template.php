@@ -61,7 +61,8 @@ if(isset($arResult['spotlight']) && is_array($arResult['spotlight']))
 					{
 						button: node,
 						data: <?=CUtil::PhpToJSObject($buttonInfo['data'])?>,
-						ownerInfo: <?=CUtil::PhpToJSObject($buttonInfo['ownerInfo'])?>
+						ownerInfo: <?=CUtil::PhpToJSObject($buttonInfo['ownerInfo'])?>,
+						useClientSelector: <?= (($buttonInfo['useClientSelector'] ?? false) === true ? 'true' : 'false') ?>,
 					}
 				);
 			}
@@ -124,8 +125,12 @@ $renderViews = static function(array $views): void {
 			// init navigation bar panel
 			(new BX.Crm.NavigationBar({
 				id: "<?= $navigationBarId ?>",
-				items: <?= CUtil::PhpToJSObject($arResult['views']['left']) ?>
+				items: <?= CUtil::PhpToJSObject($arResult['views']['left'] ?? []) ?>
 			})).init();
 		});
 	</script>
-<?php endif; ?>
+<?php endif;
+//endregion
+
+$APPLICATION->includeComponent('bitrix:crm.filterdependent.wrapper', '');
+?>

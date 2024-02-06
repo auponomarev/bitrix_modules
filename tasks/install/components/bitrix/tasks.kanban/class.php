@@ -14,7 +14,12 @@ use \Bitrix\Main\Loader;
 use \Bitrix\Main\Application;
 
 use Bitrix\Tasks\Component\Kanban\ScrumManager;
+use Bitrix\Tasks\Integration\Intranet\Settings;
+use Bitrix\Tasks\Integration\Socialnetwork\Context\Context;
+use Bitrix\Tasks\Integration\Pull\PushCommand;
 use Bitrix\Tasks\Internals\Registry\TaskRegistry;
+use Bitrix\Tasks\Internals\Task\MetaStatus;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Internals\TaskTable;
 use \Bitrix\Tasks\Kanban\StagesTable;
 use \Bitrix\Tasks\Kanban\TaskStageTable;
@@ -35,6 +40,7 @@ use Bitrix\Tasks\Scrum\Service\PushService;
 use Bitrix\Tasks\Scrum\Service\SprintService;
 use Bitrix\Tasks\Scrum\Service\TaskService;
 use Bitrix\Tasks\Scrum\Service\KanbanService;
+use Bitrix\Tasks\Scrum\Utility\ViewHelper;
 
 use \Bitrix\Tasks\Components\Kanban\UserSettings;
 use \Bitrix\Tasks\Components\Kanban\DisplayService;
@@ -50,6 +56,7 @@ use Bitrix\Tasks\TourGuide;
 
 class TasksKanbanComponent extends \CBitrixComponent
 {
+	private const ORDER_OPTION = 'order_new_task_v2';
 	const TASK_TYPE_USER = 'user';
 	const TASK_TYPE_GROUP = 'group';
 
@@ -245,7 +252,9 @@ class TasksKanbanComponent extends \CBitrixComponent
 
 			$params['IS_SCRUM'] = true;
 
-			$params['IS_ACTIVE_SPRINT'] = ($this->getActiveTab($params['GROUP_ID']) === 'active_sprint' ? 'Y' : 'N');
+			$viewHelper = new ViewHelper();
+
+			$params['IS_ACTIVE_SPRINT'] = ($viewHelper->getActiveView($params['GROUP_ID']) === 'active_sprint' ? 'Y' : 'N');
 		}
 
 		// force set last user group
@@ -399,6 +408,13 @@ class TasksKanbanComponent extends \CBitrixComponent
 		$this->arResult['CALENDAR_SETTINGS']['deadlineTimeVisibility'] = (
 			(isset($deadlineTimeSettings['visibility']) && $deadlineTimeSettings['visibility'] == 'Y') ? 'Y' : 'N'
 		);
+
+		$this->arResult['IS_TOOL_AVAILABLE'] = $this->isToolAvailable();
+	}
+
+	private function isToolAvailable(): bool
+	{
+		return (new Settings())->isToolAvailable(Settings::TOOLS['base_tasks']);
 	}
 
 	/**
@@ -801,7 +817,6 @@ class TasksKanbanComponent extends \CBitrixComponent
 				'TIME_SPENT_IN_LOGS',
 				'TIME_ESTIMATE',
 				'STAGE_ID',
-				'SORTING',
 				'IS_MUTED',
 				'GROUP_ID',
 				'PARENT_ID',
@@ -918,7 +933,7 @@ class TasksKanbanComponent extends \CBitrixComponent
 		else
 		{
 			$this->order = [
-				'SORTING' => 'ASC',
+				'SORTING_ORDER' => 'ASC',
 				'STATUS_COMPLETE' => 'ASC',
 				'DEADLINE' => 'ASC,NULLS',
 				'ID' => 'ASC'
@@ -1205,27 +1220,24 @@ class TasksKanbanComponent extends \CBitrixComponent
 	 */
 	protected function getColumns($assoc = false)
 	{
-		$columns = array();
-		$counts = array();
-		$canSort = $this->canSortTasks();
+		$columns = [];
+		$counts = [];
 		$timeLineMode = $this->arParams['TIMELINE_MODE'] == 'Y';
 		$filter = $this->getFilter();
+		$stageList = StagesTable::getStages($this->arParams['STAGES_ENTITY_ID']);
 
 		// get counts
 		if (!$timeLineMode)
 		{
-			$res = StagesTable::getStagesCount(
+			$counts = StagesTable::getStagesCount(
+				$stageList,
 				$filter,
 				$this->arParams['USER_ID'] ? $this->arParams['USER_ID'] : false
 			);
-			while ($row = $res->fetch())
-			{
-				$counts[$row['STAGE_ID']] = $row['CNT'];
-			}
 		}
 
 		// get columns
-		foreach (StagesTable::getStages($this->arParams['STAGES_ENTITY_ID']) as $stage)
+		foreach ($stageList as $stage)
 		{
 			$count = 0;
 
@@ -1362,12 +1374,12 @@ class TasksKanbanComponent extends \CBitrixComponent
 			// statuses
 			'overdue' => false,
 			'is_expired' => $this->isExpired($this->getDateTimestamp($item['DEADLINE'])),
-			'high' => $item['PRIORITY'] == \CTasks::PRIORITY_HIGH,
-			'new' => $item['STATUS'] == \CTasks::METASTATE_VIRGIN_NEW,
-			'in_progress' => $item['REAL_STATUS'] == \CTasks::STATE_IN_PROGRESS,
-			'deferred' => $item['STATUS'] == \CTasks::STATE_DEFERRED,
-			'completed' => $item['STATUS'] == \CTasks::STATE_COMPLETED,
-			'completed_supposedly' => $item['STATUS'] == \CTasks::STATE_SUPPOSEDLY_COMPLETED,
+			'high' => (int)$item['PRIORITY'] === Task\Priority::HIGH,
+			'new' => (int)$item['STATUS'] === MetaStatus::UNSEEN,
+			'in_progress' => (int)$item['REAL_STATUS'] === Status::IN_PROGRESS,
+			'deferred' => (int)$item['STATUS'] === Status::DEFERRED,
+			'completed' => (int)$item['STATUS'] === Status::COMPLETED,
+			'completed_supposedly' => (int)$item['STATUS'] === Status::SUPPOSEDLY_COMPLETED,
 			'muted' => $item['IS_MUTED'] === 'Y',
 			'item_fields' => [
 				$this->displayService->fillId($item['ID']),
@@ -1637,7 +1649,7 @@ class TasksKanbanComponent extends \CBitrixComponent
 		if (
 			array_key_exists('STATUS', $filter)
 			&& is_array($filter['STATUS'])
-			&& in_array(CTasks::STATE_IN_PROGRESS, $filter['STATUS'])
+			&& in_array(Status::IN_PROGRESS, $filter['STATUS'])
 		)
 		{
 			unset($filter['STATUS']);
@@ -2039,7 +2051,7 @@ class TasksKanbanComponent extends \CBitrixComponent
 		}
 		else
 		{
-			return \CUserOptions::getOption('tasks', 'order_new_task_v2', 'actual');
+			return \CUserOptions::getOption('tasks', static::ORDER_OPTION, 'actual');
 		}
 	}
 
@@ -2061,6 +2073,7 @@ class TasksKanbanComponent extends \CBitrixComponent
 		$this->arResult['ITS_MY_TASKS'] = $this->itsMyTasks();
 		$this->arResult['TOURS'] = $this->processTours();
 		$this->arResult['ADMINS'] = [];
+		$this->arResult['CONTEXT'] = $this->arParams['CONTEXT'] ?? Context::DEFAULT;
 		if (!$this->isScrum())
 		{
 			// Kanban User Selected Fields
@@ -2530,6 +2543,9 @@ class TasksKanbanComponent extends \CBitrixComponent
 				if ($scrumProject)
 				{
 					$this->updateScrumItem($params['SPRINT_ID'], $newId, $fields);
+
+					$taskObject = new \CTasks;
+					$taskObject->update($newId, ['STAGE_ID' => $columnId]);
 				}
 
 				// output
@@ -2713,7 +2729,7 @@ class TasksKanbanComponent extends \CBitrixComponent
 								));
 								\Bitrix\Tasks\Integration\Pull\PushService::addEvent($this->getMembersTask($data), [
 									'module_id' => 'tasks',
-									'command' => 'stage_change',
+									'command' => PushCommand::TASK_STAGE_UPDATED,
 									'params' => [
 										'taskId' => $data['id']
 									]
@@ -2728,7 +2744,7 @@ class TasksKanbanComponent extends \CBitrixComponent
 							));
 							\Bitrix\Tasks\Integration\Pull\PushService::addEvent($this->getMembersTask($data), [
 								'module_id' => 'tasks',
-								'command' => 'stage_change',
+								'command' => PushCommand::TASK_STAGE_UPDATED,
 								'params' => [
 									'taskId' => $data['id']
 								]
@@ -2917,12 +2933,13 @@ class TasksKanbanComponent extends \CBitrixComponent
 			$isScrum = $this->request('isScrum') === 'Y';
 			if ($isScrum)
 			{
-				[$taskId] = $this->sortTaskIdsByScrumFilter(
+				$taskIds = $this->sortTaskIdsByScrumFilter(
 					[$taskId],
 					(int) $this->request('parentId'),
 					$this->arParams['GROUP_ID'],
 					$this->arParams['USER_ID']
 				);
+				$taskId = empty($taskIds) ? null : current($taskIds);
 				if (!$taskId)
 				{
 					return [];
@@ -3330,7 +3347,7 @@ class TasksKanbanComponent extends \CBitrixComponent
 			}
 			else
 			{
-				\CUserOptions::setOption('tasks', 'order_new_task_v2', $order);
+				\CUserOptions::setOption('tasks', static::ORDER_OPTION, $order);
 			}
 		}
 
@@ -3779,7 +3796,7 @@ class TasksKanbanComponent extends \CBitrixComponent
 			{
 				$queryObject = \CTasks::getList(
 					[],
-					['ID' => $taskId, '=STATUS' => \CTasks::STATE_COMPLETED],
+					['ID' => $taskId, '=STATUS' => Status::COMPLETED],
 					['ID'],
 					['USER_ID' => $this->userId]
 				);
@@ -4008,17 +4025,18 @@ class TasksKanbanComponent extends \CBitrixComponent
 	): array
 	{
 		$isChildScrumGrid = $parentId !== 0;
+
+		$taskService = new TaskService($userId);
+
 		if ($isChildScrumGrid)
 		{
-			$taskService = new TaskService($userId);
-
 			$subTaskIds = $taskService->getSubTaskIds($groupId, $parentId, false);
 
 			return array_intersect($inputTaskIds, $subTaskIds);
 		}
 		else
 		{
-			$kanbanService = new KanbanService();
+			$itemService = new ItemService();
 			$sprintService = new SprintService();
 
 			$sprint = $sprintService->getActiveSprintByGroupId($groupId);
@@ -4029,6 +4047,13 @@ class TasksKanbanComponent extends \CBitrixComponent
 
 			$taskIds = [];
 
+			$scrumManager = new ScrumManager($groupId);
+
+			$mapOfExistenceOfSubtasks = $scrumManager->buildMapOfExistenceOfSubtasks(
+				$sprint->getId(),
+				$itemService->getTaskIdsByEntityId($sprint->getId())
+			);
+
 			$queryObject = TaskTable::getList([
 				'filter' => [
 					'@ID' => $inputTaskIds,
@@ -4038,11 +4063,34 @@ class TasksKanbanComponent extends \CBitrixComponent
 			]);
 			while ($data = $queryObject->fetch())
 			{
-				if (
-					!$data['PARENT_ID']
-					|| !$kanbanService->isTaskInKanban($sprint->getId(), $data['PARENT_ID']))
+				$isChildTask = ((int) $data['PARENT_ID']) > 0;
+				if ($isChildTask)
 				{
-					$taskIds[] = (int) $data['ID'];
+					$hasParentTaskInCurrentSprint = !empty($mapOfExistenceOfSubtasks[$data['PARENT_ID']]);
+					if (!$hasParentTaskInCurrentSprint)
+					{
+						$taskIds[] = (int) $data['ID'];
+					}
+				}
+				else
+				{
+					$isParentTaskInCurrentSprint = !empty($mapOfExistenceOfSubtasks[$data['ID']]);
+					if ($isParentTaskInCurrentSprint)
+					{
+						$scrumItem = current($itemService->getItemsBySourceIds([$data['ID']]));
+						$isParentTaskInProcess = (
+							$scrumItem
+							&& !$scrumItem->getInfo()->isVisibilitySubtasks()
+						);
+						if ($isParentTaskInProcess)
+						{
+							$taskIds[] = (int) $data['ID'];
+						}
+					}
+					else
+					{
+						$taskIds[] = (int) $data['ID'];
+					}
 				}
 			}
 

@@ -44,7 +44,10 @@ Extension::load([
 	'bitrix24.phoneverify',
 ]);
 
-if ($arResult['ALLOW_AI_TEXT'] || $arResult['ALLOW_AI_IMAGE'])
+if (
+	($arResult['AI_TEXT_AVAILABLE'] && $arResult['AI_TEXT_ACTIVE'])
+	|| ($arResult['AI_IMAGE_AVAILABLE'] && $arResult['AI_IMAGE_ACTIVE'])
+)
 {
 	Extension::load('ai.picker');
 }
@@ -188,10 +191,19 @@ $urls = $arResult['TOP_PANEL_CONFIG']['urls'];
 $this->getComponent()->initAPIKeys();
 $formEditor = $arResult['SPECIAL_TYPE'] == Site\Type::PSEUDO_SCOPE_CODE_FORMS;
 
-$urlLandingAdd = $component->getUrlAdd(false);
+$urlLandingAdd = $arParams['PAGE_URL_LANDING_ADD'];
 $urlFolderAdd = str_replace(['#site_show#', '#landing_edit#'], [$siteId, 0], $arParams['~PARAMS']['sef_url']['site_show'] ?? '');
 $urlFolderAdd = $component->getPageParam($urlFolderAdd, ['folderId' => $folderId, 'folderNew' => 'Y']);
 $urlFormAdd = '/crm/webform/edit/0/';
+
+// Tool availability (by intranet settings)
+if (
+	!$component->isToolAvailable()
+	&& $request->offsetExists('landing_mode')
+)
+{
+	echo $component->getToolUnavailableInfoScript();
+}
 
 if ($formEditor)
 {
@@ -248,7 +260,7 @@ if (!$request->offsetExists('landing_mode')):
 	<div class="landing-ui-panel landing-ui-panel-top<?= $panelModifier;?>">
 		<!-- region Logotype -->
 		<div class="landing-ui-panel-top-logo">
-			<a href="<?= ($arParams['TYPE'] === 'GROUP') ? '#' : $arParams['PAGE_URL_URL_SITES']?>" class="landing-ui-panel-top-logo-link" data-slider-ignore-autobinding="true">
+			<a href="<?= ($arParams['TYPE'] === 'GROUP') ? '#' : $arParams['PAGE_URL_URL_SITES']?>" class="landing-ui-panel-top-logo-link" data-slider-ignore-autobinding="true"<?php if ($arParams['TYPE'] !== 'GROUP'){?> target="_top"<?php }?>>
 				<span class="landing-ui-panel-top-logo-home-btn" data-hint="<?= Loc::getMessage("LANDING_TPL_PREVIEW_EXIT")?>" data-hint-no-icon>
 					<svg class='landing-ui-panel-top-logo-home-btn-icon' width="27" height="27" viewBox="0 0 27 27" fill="none" xmlns="http://www.w3.org/2000/svg">
 						<path fill-rule="evenodd" clip-rule="evenodd" d="M11.902 19.6877V15.8046C11.902 15.5837 12.0811 15.4046 12.302 15.4046H14.5087C14.7296 15.4046 14.9087 15.5837 14.9087 15.8046V19.6877C14.9089 19.9086 15.0879 20.0876 15.3087 20.0878L18.8299 20.0891C19.0508 20.0893 19.2299 19.9103 19.23 19.6894C19.23 19.6893 19.23 19.6893 19.2299 19.6892V13.4563C19.2299 13.4365 19.2275 13.4142 19.2275 13.3943H20.4332C20.6633 13.3943 20.8604 13.2883 20.9909 13.0932C21.1189 12.9005 21.1425 12.6747 21.0581 12.4561C20.9519 12.1816 14.2383 5.92948 14.2047 5.90379C13.7957 5.59077 13.3216 5.58796 12.9131 5.89536C12.8759 5.92337 6.15525 12.1815 6.04901 12.4561C5.96462 12.6729 5.99059 12.9011 6.11629 13.0932C6.24671 13.2859 6.44145 13.3943 6.67162 13.3943H7.87965C7.87729 13.4142 7.87729 13.4365 7.87729 13.4563V19.6846C7.8776 19.9054 8.0565 20.0844 8.27729 20.0849L11.502 20.0874C11.7229 20.0879 11.9021 19.9089 11.9023 19.688C11.9023 19.6879 11.9023 19.6878 11.902 19.6877Z" fill="#525C69"/>
@@ -314,10 +326,20 @@ if (!$request->offsetExists('landing_mode')):
 		$panelBtnAutoPubClass = 'landing-ui-panel-top-pub-btn';
 		$panelBtnAutoPubClass .= (!$arResult['FAKE_PUBLICATION']) ? ' landing-ui-panel-top-pub-btn-error' : '';
 		$panelBtnAutoPubClass .= ($arResult['TOP_PANEL_CONFIG']['autoPublicationEnabled'] == 1) ? ' landing-ui-panel-top-pub-btn-auto' : '';
+		$panelBtnAutoPubClass .= (!$arResult['IS_AREA']) ? ' landing-ui-panel-top-pub-btn-enable' : '';
+
+		if ($arResult['IS_AREA'])
+		{
+			$btnAutoPubHint = Loc::getMessage('LANDING_SITE_HINT_AUTOPUBLISHING_AREA');
+		}
+		else
+		{
+			$btnAutoPubHint = Loc::getMessage('LANDING_SITE_HINT_AUTOPUBLISHING_OPTIONS');
+		}
 
 		if ($arParams['DRAFT_MODE'] != 'Y'):
 			?>
-			<button class="<?=$panelBtnAutoPubClass?>" id="landing-popup-publication-btn" data-hint="<?=Loc::getMessage('LANDING_SITE_HINT_AUTOPUBLISHING_OPTIONS')?>" data-hint-no-icon>
+			<button class="<?=$panelBtnAutoPubClass?>" id="landing-popup-publication-btn" data-hint="<?=$btnAutoPubHint?>" data-hint-no-icon>
 				<svg class="landing-ui-panel-top-pub-btn-icon" width="25" height="25" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
 					<path fill="#C6CDD3" class="landing-ui-panel-top-pub-btn-icon-defs-cloud"  d="M18.5075 18.8896H10.4177C10.3485 18.8896 10.2799 18.887 10.2119 18.882C8.38363 18.8398 6.91434 17.3271 6.91434 15.4671C6.91487 14.5606 7.27128 13.6914 7.90517 13.0507C8.2301 12.7223 8.61429 12.4678 9.03227 12.2978C9.02528 12.2055 9.02172 12.1123 9.02172 12.0182C9.02229 11.0617 9.39838 10.1446 10.0672 9.46862C10.7361 8.79266 11.6429 8.41324 12.5883 8.41382C13.7992 8.41531 14.8683 9.02804 15.5108 9.96325C15.816 9.85386 16.1444 9.79441 16.4866 9.79459C17.9982 9.79643 19.2397 10.9624 19.3836 12.4534C20.832 12.7729 21.9159 14.0785 21.9146 15.6395C21.9131 17.4385 20.4711 18.8958 18.6932 18.895C18.6309 18.895 18.569 18.8932 18.5075 18.8896Z" fill-rule="evenodd" clip-rule="evenodd"/>
 					<path fill="#FFFFFF" class="landing-ui-panel-top-pub-btn-icon-defs-success" d="M7.46967 13.782L9.1093 12.14L12.2726 15.2532L18.6078 8.91091L20.2474 10.5529L12.2881 18.5218L7.46967 13.782Z" fill-rule="evenodd" clip-rule="evenodd"/>
@@ -373,14 +395,16 @@ if (!$request->offsetExists('landing_mode')):
 
 		<div class="landing-ui-panel-top-menu" id="landing-panel-settings">
 			<?if ($arParams['DRAFT_MODE'] != 'Y'):?>
-			<a href="<?= $urls['preview']->getUri();?>" <?
-				?>id="landing-popup-preview-btn" <?
-				?>data-domain="<?= $site['DOMAIN_NAME']?>" <?
-				?>data-form-verification-required="<?=(($formEditor && $arResult['FORM_VERIFICATION_REQUIRED']) ? '1' : '0')?>" <?
-				?>data-form-verification-entity="<?=(int)$arResult['VERIFY_FORM_ID']?>" <?
-				?>class="ui-btn ui-btn-light-border landing-ui-panel-top-menu-link landing-btn-menu">
-				<?= $formEditor ? Loc::getMessage('LANDING_TPL_PREVIEW_URL_OPEN_FORM') : Loc::getMessage('LANDING_TPL_PREVIEW_URL_OPEN');?>
-			</a>
+				<?if ($arResult['IS_AREA'] === false):?>
+					<a href="<?= $urls['preview']->getUri();?>" <?
+					?>id="landing-popup-preview-btn" <?
+					   ?>data-domain="<?= $site['DOMAIN_NAME']?>" <?
+					   ?>data-form-verification-required="<?=(($formEditor && $arResult['FORM_VERIFICATION_REQUIRED']) ? '1' : '0')?>" <?
+					   ?>data-form-verification-entity="<?=(int)$arResult['VERIFY_FORM_ID']?>" <?
+					   ?>class="ui-btn ui-btn-light-border landing-ui-panel-top-menu-link landing-btn-menu">
+						<?= $formEditor ? Loc::getMessage('LANDING_TPL_PREVIEW_URL_OPEN_FORM') : Loc::getMessage('LANDING_TPL_PREVIEW_URL_OPEN');?>
+					</a>
+				<?endif;?>
 
 				<?if (!$formEditor):?>
 					<input type="button" id="landing-popup-features-btn"<?
@@ -433,8 +457,8 @@ if (!$request->offsetExists('landing_mode')):
 			LANDING_TPL_FEATURES_SETTINGS: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_TPL_FEATURES_SETTINGS'));?>',
 			LANDING_TPL_FEATURES_OL_TITLE: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_TPL_FEATURES_OL_TITLE'));?>',
 			LANDING_TPL_FEATURES_OL_PROMO_LINK: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_TPL_FEATURES_OL_PROMO_LINK'));?>',
-			LANDING_TPL_FEATURES_HELP_TITLE: '<?= \CUtil::jsEscape($component->getMessageType('LANDING_TPL_FEATURES_HELP_TITLE'));?>',
-			LANDING_TPL_FEATURES_HELP_PROMO_LINK: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_TPL_FEATURES_HELP_PROMO_LINK'));?>',
+			LANDING_TPL_FEATURES_HELP_TITLE_MSGVER_1: '<?= \CUtil::jsEscape($component->getMessageType('LANDING_TPL_FEATURES_HELP_TITLE_MSGVER_1'));?>',
+			LANDING_TPL_FEATURES_HELP_PROMO_LINK_MSGVER_1: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_TPL_FEATURES_HELP_PROMO_LINK_MSGVER_1'));?>',
 			LANDING_PAGE_STATUS_PUBLIC: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_PAGE_STATUS_PUBLIC'));?>',
 			LANDING_PAGE_STATUS_PUBLIC_NOW: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_PAGE_STATUS_PUBLIC_NOW'));?>',
 			LANDING_PAGE_STATUS_UPDATED_ORIG: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_PAGE_STATUS_UPDATED_ORIG'));?>',
@@ -525,12 +549,20 @@ if ($request->offsetExists('landing_mode'))
 			{
 				if (!!event.data.elementList && event.data.elementList.length > 0)
 				{
-					var gotoSiteButton = null;
+					let gotoSiteButton = null;
 					for (var i = 0; i < event.data.elementList.length; i++)
 					{
 						gotoSiteButton = event.data.elementList[i];
-						var replaces = [];
-						var landingPath = '<?= CUtil::jsEscape($arParams['PARAMS']['sef_url']['landing_view']) ?>';
+						if (
+							!gotoSiteButton
+							|| gotoSiteButton.nodeName !== 'A'
+						)
+						{
+							continue;
+						}
+						
+						const replaces = [];
+						let landingPath = '<?= CUtil::jsEscape($arParams['PARAMS']['sef_url']['landing_view']) ?>';
 
 						if (gotoSiteButton.dataset.siteId)
 						{
@@ -540,7 +572,11 @@ if ($request->offsetExists('landing_mode'))
 						{
 							replaces.push([/#landing_edit#/, gotoSiteButton.dataset.landingId]);
 						}
-
+						let replaceLid = null;
+						if (gotoSiteButton.dataset.replaceLid && gotoSiteButton.dataset.replaceLid > 0)
+						{
+							replaceLid = gotoSiteButton.dataset.replaceLid;
+						}
 						if (gotoSiteButton.getAttribute('href').substr(0, 1) === '#')
 						{
 							replaces.forEach(function(replace) {
@@ -552,34 +588,46 @@ if ($request->offsetExists('landing_mode'))
 								&& typeof BX.Landing.Metrika !== 'undefined'
 							)
 							{
-								var dataFrom = event.data.from.split('|');
-								var appCode = dataFrom[1];
-								var title = dataFrom[2];
-								var previewId = dataFrom[3];
+								// new analytic run by inserting script
 								if (
-									appCode !== null
-									&& title !== null
-									&& previewId !== null
+									event.data.finishResponse
+									&& event.data.finishResponse.isNewAnalytic
+									&& event.data.finishResponse.isNewAnalytic !== 'Y'
 								)
 								{
-									var metrikaValue =
-										landingPath
-										+ '?action=templateCreated&app_code='
-										+ appCode
-										+ '&title='
-										+ title
-										+ '&preview_id='
-										+ previewId;
-									var metrika = new BX.Landing.Metrika(true);
-									metrika.sendLabel(
-										null,
-										'templateCreated',
-										metrikaValue
-									);
+									const dataFrom = event.data.from.split('|');
+									const appCode = dataFrom[1];
+									const title = dataFrom[2];
+									const previewId = dataFrom[3];
+									if (
+										appCode !== null
+										&& title !== null
+										&& previewId !== null
+									)
+									{
+										let metrikaValue =
+											landingPath
+											+ '?action=templateCreated&app_code='
+											+ appCode
+											+ '&title='
+											+ title
+											+ '&preview_id='
+											+ previewId;
+										const metrika = new BX.Landing.Metrika(true);
+										metrika.sendLabel(
+											null,
+											'templateCreated',
+											metrikaValue
+										);
+									}
 								}
 							}
+							if (replaceLid)
+							{
+								landingPath += '?replacedLanding=Y';
+							}
 							gotoSiteButton.setAttribute('href', landingPath);
-							setTimeout(() => {top.window.location.href = landingPath}, 3000);
+							setTimeout(() => {top.window.location.href = landingPath}, 10000);
 						}
 					}
 				}
@@ -661,6 +709,7 @@ else
 				messages: {
 					LANDING_PREVIEW_DEVICE_MOBILES: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_PREVIEW_DEVICE_MOBILES'));?>',
 					LANDING_PREVIEW_DEVICE_TABLETS: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_PREVIEW_DEVICE_TABLETS'));?>',
+					LANDING_TPL_PREVIEW_LOADING: '<?= \CUtil::jsEscape(Loc::getMessage('LANDING_TPL_PREVIEW_LOADING'));?>',
 				}
 			});
 			new BX.Landing.View.ExternalControls({

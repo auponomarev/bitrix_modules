@@ -18,11 +18,12 @@ import {Util} from "calendar.util";
 import { Runtime } from 'main.core';
 
 type ManagerOptions = {
+	calendar: any,
 	wrapper: string,
-	syncInfo: Array,
+	syncInfo: any,
 	userId: number,
-	syncLinks: Array,
-	section: Array,
+	syncLinks: any,
+	sections: any,
 	portalAddress: string,
 	isRuZone: boolean,
 	calendarInstance: window.BXEventCalendar.Core,
@@ -35,6 +36,7 @@ export default class Manager extends EventEmitter
 	status = 'not_connected';
 	STATUS_SUCCESS = 'success';
 	STATUS_FAILED = 'failed';
+	STATUS_REFUSED = 'refused';
 	STATUS_NOT_CONNECTED = 'not_connected';
 	WIZARD_SYNC_MODE = 'wizard_sync_mode';
 	STATUS_SYNCHRONIZING = 'synchronizing';
@@ -42,12 +44,14 @@ export default class Manager extends EventEmitter
 	REFRESH_DELAY = 300;
 	REFRESH_CONTENT_DELAY = 300;
 	WIZARD_SLIDER_PREFIX = 'calendar:sync-wizard';
-	
-	constructor(options)
+
+	constructor(options: ManagerOptions)
 	{
 		super();
 		this.setEventNamespace('BX.Calendar.Sync.Manager.Manager');
-		
+
+		this.isGoogleApplicationRefused = options.calendar.util.config.isGoogleApplicationRefused === 'Y';
+		this.showGoogleApplicationRefused = options.calendar.util.config.showGoogleApplicationRefused === 'Y';
 		this.wrapper = options.wrapper;
 		this.setSyncInfo(options.syncInfo);
 		this.userId = options.userId;
@@ -60,21 +64,21 @@ export default class Manager extends EventEmitter
 		this.isSetSyncOffice365Settings = options.isSetSyncOffice365Settings;
 		this.refreshDebounce = Runtime.debounce(this.refresh, this.REFRESH_DELAY, this);
 		this.refreshContentDebounce = Runtime.debounce(this.refreshContent, this.REFRESH_CONTENT_DELAY, this);
-		
+
 		this.init();
 		this.subscribeOnEvent();
 	}
-	
+
 	subscribeOnEvent()
 	{
 		EventEmitter.subscribe('BX.Calendar.Sync.Interface.SyncStatusPopup:onRefresh', event => {
 			this.refreshDebounce(event);
 		});
-		
+
 		EventEmitter.subscribe('BX.Calendar.Sync.Interface.InterfaceTemplate:reDrawCalendarGrid', event => {
 			this.reDrawCalendarGrid();
 		});
-		
+
 		window.addEventListener('message', (event) => {
 			if (event.data.title === 'googleOAuthSuccess')
 			{
@@ -82,7 +86,7 @@ export default class Manager extends EventEmitter
 			}
 		});
 	}
-	
+
 	showSyncButton()
 	{
 		this.syncButton = new SyncButton({
@@ -90,19 +94,26 @@ export default class Manager extends EventEmitter
 			wrapper: this.wrapper,
 			connectionsProviders: this.connectionsProviders,
 			userId: this.userId,
+			isGoogleApplicationRefused: this.isGoogleApplicationRefused,
 		});
 		this.syncButton.show();
+
+		if (this.needToShowGoogleRefusedPopup())
+		{
+			this.syncButton.showGoogleApplicationRefusedPopup();
+			this.showGoogleApplicationRefused = false;
+		}
 	}
-	
+
 	init()
 	{
 		this.connectionsProviders = {};
 		const yandexConnections = [];
 		const caldavConnections = [];
-		
+
 		const syncInfo = this.syncInfo;
 		this.sectionsByType = this.sortSections();
-		
+
 		for (let key in syncInfo)
 		{
 			if (syncInfo.hasOwnProperty(key))
@@ -125,46 +136,46 @@ export default class Manager extends EventEmitter
 				}
 			}
 		}
-		
+
 		this.connectionsProviders = {
 			google: this.getGoogleProvider(),
-			office365: this.getOffice365Provider(),
 			icloud: this.getIcloudProvider(),
+			office365: this.getOffice365Provider(),
 			caldav: this.getCaldavProvider(caldavConnections),
 			iphone: this.getIphoneProvider(),
 			android: this.getAndroidProvider(),
 			mac: this.getMacProvider(),
 		};
-		
+
 		if (this.isRuZone)
 		{
 			this.connectionsProviders.yandex = this.getYandexProvider(yandexConnections);
 		}
-		
+
 		if (!BX.browser.IsMac())
 		{
 			this.connectionsProviders.outlook = this.getOutlookProvider();
 		}
-		
+
 		if (syncInfo.hasOwnProperty('exchange'))
 		{
 			this.connectionsProviders.exchange = this.getExchangeProvider();
 		}
-		
+
 		this.status = this.getSummarySyncStatus();
 		this.subscribeEventHandlers();
 	}
-	
+
 	setSyncMode(value)
 	{
 		this.syncMode = value;
 	}
-	
+
 	getSyncMode()
 	{
 		return this.syncMode;
 	}
-	
+
 	isWizardSyncMode()
 	{
 		for (let providerName in this.connectionsProviders)
@@ -177,7 +188,7 @@ export default class Manager extends EventEmitter
 		}
 		return false;
 	}
-	
+
 	isSyncInProcess()
 	{
 		for (let providerName in this.connectionsProviders)
@@ -192,7 +203,7 @@ export default class Manager extends EventEmitter
 		}
 		return false;
 	}
-	
+
 	sortSections()
 	{
 		const sections = this.sections;
@@ -203,7 +214,7 @@ export default class Manager extends EventEmitter
 		const outlookSections = [];
 		const office365Sections = [];
 		sectionsByType.caldav = {};
-		
+
 		sections.forEach(section => {
 			if (
 				section.belongsToView()
@@ -217,7 +228,7 @@ export default class Manager extends EventEmitter
 					text: section.name,
 				});
 			}
-			
+
 			if (section.data['IS_EXCHANGE'] === true)
 			{
 				exchangeSections.push(section.data);
@@ -243,16 +254,16 @@ export default class Manager extends EventEmitter
 				sectionsByType.caldav['caldav' + section.data['CAL_DAV_CON']] = section.data;
 			}
 		});
-		
+
 		sectionsByType.google = googleSections;
 		sectionsByType.icloud = icloudSections;
 		sectionsByType.office365 = office365Sections;
 		sectionsByType.exchange = exchangeSections;
 		sectionsByType.outlook = outlookSections;
-		
+
 		return sectionsByType;
 	}
-	
+
 	refresh(event)
 	{
 		return new Promise((resolve) => {
@@ -264,37 +275,44 @@ export default class Manager extends EventEmitter
 			}).then((response) => {
 				this.setSyncInfo(response.data);
 				this.status = this.getSummarySyncStatus();
+
+				if (this.needToShowGoogleRefusedPopup())
+				{
+					this.syncButton.showGoogleApplicationRefusedPopup();
+					this.showGoogleApplicationRefused = false;
+				}
+
 				const activePopup = (event && event.getTarget) ? event.getTarget() : null;
 				this.refreshContent(activePopup);
 				resolve();
 			});
 		});
 	}
-	
+
 	refreshContent(activePopup = {})
 	{
 		this.init();
-		
+
 		this.refreshCalendarGrid();
-		
+
 		if (this.syncButton)
 		{
 			this.syncButton.refresh(this.status);
 			this.syncButton.setConnectionProviders(this.connectionsProviders);
 		}
-		
+
 		if (activePopup)
 		{
 			this.refreshActivePopup(activePopup);
 			this.refreshOpenSliders(activePopup);
 		}
 	}
-	
+
 	refreshCalendarGrid()
 	{
 		this.calendarInstance.reload();
 	}
-	
+
 	refreshActivePopup(activePopup)
 	{
 		if (activePopup instanceof SyncStatusPopup && activePopup.getId() === 'calendar-syncPanel-status')
@@ -306,7 +324,7 @@ export default class Manager extends EventEmitter
 			this.syncButton.popup.refresh(this.getConnections());
 		}
 	}
-	
+
 	refreshOpenSliders(activePopup = {})
 	{
 		const openSliders = BX.SidePanel.Instance.getOpenSliders();
@@ -324,7 +342,7 @@ export default class Manager extends EventEmitter
 			});
 		}
 	}
-	
+
 	refreshConnectionSlider(slider, activePopup)
 	{
 		let updatedConnection = undefined;
@@ -334,30 +352,30 @@ export default class Manager extends EventEmitter
 		{
 			updatedConnection = this.connectionsProviders[connection.getType()].getConnectionById(connection.getId());
 		}
-		
+
 		if (activePopup instanceof SyncStatusPopup && updatedConnection)
 		{
 			activePopup.refresh([updatedConnection]);
 		}
-		
+
 		if (itemInterface && updatedConnection)
 		{
 			itemInterface.refresh(updatedConnection);
 		}
-		
+
 		slider.reload();
 	}
-	
+
 	refreshMainSlider(syncPanel)
 	{
 		syncPanel.refresh(this.status, this.connectionsProviders);
 	}
-	
+
 	getConnections()
 	{
 		const connections = [];
 		const items = Object.values(this.connectionsProviders);
-		
+
 		items.forEach(item => {
 			const itemConnections = item.getConnections();
 			if (itemConnections.length > 0)
@@ -371,15 +389,15 @@ export default class Manager extends EventEmitter
 				)
 			}
 		});
-		
+
 		return connections;
 	}
-	
+
 	reDrawCalendarGrid()
 	{
 		this.calendarInstance.reloadDebounce();
 	}
-	
+
 	updateSyncStatus(params)
 	{
 		for (let connectionName in params.syncInfo)
@@ -395,11 +413,11 @@ export default class Manager extends EventEmitter
 				};
 			}
 		}
-		
+
 		this.status = this.STATUS_SUCCESS;
 		this.refreshContentDebounce();
 	}
-	
+
 	addSyncConnection(params)
 	{
 		for (const connectionName in params.syncInfo)
@@ -408,7 +426,7 @@ export default class Manager extends EventEmitter
 			{
 				BX.reload();
 			}
-			
+
 			if (BX.Calendar.Util.checkRequestId(params.requestUid))
 			{
 				if (this.syncInfo[connectionName])
@@ -420,18 +438,18 @@ export default class Manager extends EventEmitter
 				}
 			}
 		}
-		
+
 		this.status = this.STATUS_SUCCESS;
 		this.refreshContentDebounce();
 	}
-	
+
 	deleteSyncConnection(params)
 	{
 		if (!BX.Calendar.Util.checkRequestId(params.requestUid))
 		{
 			return;
 		}
-		
+
 		if (params.connectionId)
 		{
 			for (const connectionName in this.syncInfo)
@@ -444,7 +462,7 @@ export default class Manager extends EventEmitter
 				}
 			}
 		}
-		
+
 		if (params.syncInfo)
 		{
 			for (const connectionName in params.syncInfo)
@@ -455,14 +473,14 @@ export default class Manager extends EventEmitter
 				}
 			}
 		}
-		
+
 		if (this.status !== this.STATUS_NOT_CONNECTED)
 		{
 			this.status = this.STATUS_SUCCESS;
 		}
 		this.refreshDebounce();
 	}
-	
+
 	getProviderById(id): Array
 	{
 		let connection;
@@ -481,10 +499,10 @@ export default class Manager extends EventEmitter
 				}
 			}
 		}
-		
+
 		return [undefined, undefined];
 	}
-	
+
 	processSyncConnection(params)
 	{
 		for (let providerName in this.connectionsProviders)
@@ -504,7 +522,7 @@ export default class Manager extends EventEmitter
 			}
 		}
 	}
-	
+
 	handlePullEvent(params)
 	{
 		let wizardSyncMode = this.isWizardSyncMode();
@@ -536,12 +554,12 @@ export default class Manager extends EventEmitter
 				break;
 		}
 	}
-	
+
 	setSyncInfo(syncInfo)
 	{
 		this.syncInfo = syncInfo;
 	}
-	
+
 	subscribeEventHandlers()
 	{
 		for (let providerName in this.connectionsProviders)
@@ -551,7 +569,7 @@ export default class Manager extends EventEmitter
 				this.connectionsProviders[providerName].unsubscribeAll('onStartWaitingMode');
 				this.connectionsProviders[providerName].unsubscribeAll('onEndWaitingMode');
 				this.connectionsProviders[providerName].unsubscribeAll('onCloseSyncWizard');
-				
+
 				this.connectionsProviders[providerName].subscribe(
 					'onStartWaitingMode',
 					this.handleStartWaitingMode.bind(this)
@@ -560,7 +578,7 @@ export default class Manager extends EventEmitter
 					'onEndWaitingMode',
 					this.handleEndWaitingMode.bind(this)
 				);
-				
+
 				this.connectionsProviders[providerName].subscribe(
 					'onCloseSyncWizard',
 					this.handleCloseSyncWizard.bind(this)
@@ -568,7 +586,7 @@ export default class Manager extends EventEmitter
 			}
 		}
 	}
-	
+
 	handleCloseSyncWizard()
 	{
 		if (this.isSyncInProcess())
@@ -583,24 +601,24 @@ export default class Manager extends EventEmitter
 			this.refreshContentDebounce();
 		}
 	}
-	
+
 	handleStartWaitingMode()
 	{
 		this.doPeriodicRefresh();
 	}
-	
+
 	handleEndWaitingMode()
 	{
 		this.stopPeriodicRefresh();
 	}
-	
+
 	doPeriodicRefresh()
 	{
 		if (!this.hasOpenedWizard())
 		{
 			return;
 		}
-		
+
 		if (Util.documentIsDisplayingNow())
 		{
 			this.refresh()
@@ -619,7 +637,7 @@ export default class Manager extends EventEmitter
 			);
 		}
 	}
-	
+
 	stopPeriodicRefresh()
 	{
 		if (this.refreshTimeout)
@@ -628,12 +646,12 @@ export default class Manager extends EventEmitter
 			this.refreshTimeout = null;
 		}
 	}
-	
+
 	openSyncPanel()
 	{
 		this.syncButton.handleClick();
 	}
-	
+
 	getSummarySyncStatus()
 	{
 		let status = this.STATUS_NOT_CONNECTED;
@@ -649,9 +667,36 @@ export default class Manager extends EventEmitter
 				}
 			}
 		}
+
+		if (status === this.STATUS_NOT_CONNECTED && this.hasRefusedStatus())
+		{
+			status = this.STATUS_REFUSED;
+		}
+
 		return status;
 	}
-	
+
+	needToShowGoogleRefusedPopup()
+	{
+		return this.syncButton && this.isGoogleApplicationRefused && this.showGoogleApplicationRefused && this.hasRefusedStatus();
+	}
+
+	hasRefusedStatus()
+	{
+		for (const providerName in this.connectionsProviders)
+		{
+			if (this.connectionsProviders.hasOwnProperty(providerName))
+			{
+				if (this.connectionsProviders[providerName].getStatus() === this.STATUS_REFUSED)
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
 	getGoogleProvider()
 	{
 		if (!this.googleProvider)
@@ -662,6 +707,7 @@ export default class Manager extends EventEmitter
 				syncLink: this.syncLinks.google || null,
 				isSetSyncGoogleSettings: this.isSetSyncGoogleSettings,
 				mainPanel: true,
+				isGoogleApplicationRefused: this.isGoogleApplicationRefused,
 			});
 		}
 		else
@@ -672,10 +718,10 @@ export default class Manager extends EventEmitter
 				syncLink: this.syncLinks.google || null,
 			});
 		}
-		
+
 		return this.googleProvider;
 	}
-	
+
 	getOffice365Provider()
 	{
 		if (!this.office365Provider)
@@ -696,10 +742,10 @@ export default class Manager extends EventEmitter
 				syncLink: this.syncLinks.office365 || null,
 			});
 		}
-		
+
 		return this.office365Provider;
 	}
-	
+
 	getIcloudProvider()
 	{
 		if (!this.icloudProvider)
@@ -717,10 +763,10 @@ export default class Manager extends EventEmitter
 				sections: this.sectionsByType.icloud || {},
 			})
 		}
-		
+
 		return this.icloudProvider;
 	}
-	
+
 	getCaldavProvider(caldavConnections)
 	{
 		return CaldavProvider.createInstance({
@@ -729,21 +775,21 @@ export default class Manager extends EventEmitter
 			connections: caldavConnections,
 		});
 	}
-	
+
 	getIphoneProvider()
 	{
 		return IphoneProvider.createInstance({
 			syncInfo: this.syncInfo.iphone,
 		});
 	}
-	
+
 	getAndroidProvider()
 	{
 		return AndroidProvider.createInstance({
 			syncInfo: this.syncInfo.android,
 		});
 	}
-	
+
 	getMacProvider()
 	{
 		return MacProvider.createInstance({
@@ -751,7 +797,7 @@ export default class Manager extends EventEmitter
 			portalAddress: this.portalAddress,
 		});
 	}
-	
+
 	getYandexProvider(yandexConnections)
 	{
 		return YandexProvider.createInstance({
@@ -760,7 +806,7 @@ export default class Manager extends EventEmitter
 			connections: yandexConnections,
 		});
 	}
-	
+
 	getOutlookProvider()
 	{
 		return OutlookProvider.createInstance({
@@ -769,7 +815,7 @@ export default class Manager extends EventEmitter
 			infoBySections: this.syncInfo.outlook.infoBySections || {},
 		});
 	}
-	
+
 	getExchangeProvider()
 	{
 		return ExchangeProvider.createInstance({
@@ -777,14 +823,16 @@ export default class Manager extends EventEmitter
 			sections: this.sectionsByType.exchange
 		})
 	}
-	
+
 	hasOpenedWizard()
 	{
 		const sliderList = BX.SidePanel.Instance.getOpenSliders();
 		for (let i in sliderList)
 		{
-			if (sliderList.hasOwnProperty(i)
-				&& sliderList[i].getUrl().indexOf(this.WIZARD_SLIDER_PREFIX) !== -1)
+			if (
+				sliderList.hasOwnProperty(i)
+				&& sliderList[i].getUrl().indexOf(this.WIZARD_SLIDER_PREFIX) !== -1
+			)
 			{
 				return true;
 			}

@@ -1,5 +1,5 @@
 import {Type} from 'main.core'
-import {CallEngine} from './engine/engine';
+import {CallEngine, Provider} from './engine/engine';
 
 const blankAvatar = '/bitrix/js/im/images/blank.gif';
 
@@ -348,6 +348,16 @@ const isCallServerAllowed = () =>
 	return BX.message('call_server_enabled') === 'Y'
 }
 
+const isVoximplantCallServerAllowed = () =>
+{
+	return BX.message('voximplant_call_server_enabled') === 'Y';
+}
+
+const isBitrixCallServerAllowed = () =>
+{
+	return BX.message('bitrix_call_server_enabled') === 'Y';
+}
+
 const isFeedbackAllowed = () =>
 {
 	return BX.message('call_allow_feedback') === 'Y'
@@ -494,6 +504,19 @@ function stopMediaStream(mediaStream)
 	});
 }
 
+function getConferenceProvider(): string{
+	if (isBitrixCallServerAllowed())
+	{
+		return Provider.Bitrix;
+	}
+	if (isVoximplantCallServerAllowed())
+	{
+		return Provider.Voximplant;
+	}
+
+	return Provider.Plain;
+}
+
 export default {
 	updateUserData,
 	setUserData,
@@ -516,6 +539,8 @@ export default {
 	getFilledArea,
 	isWebRTCSupported,
 	isCallServerAllowed,
+	isVoximplantCallServerAllowed,
+	isBitrixCallServerAllowed,
 	isFeedbackAllowed,
 	shouldCollectStats,
 	shouldShowDocumentButton,
@@ -530,4 +555,5 @@ export default {
 	getBrowserForStatistics,
 	isBlank,
 	stopMediaStream,
+	getConferenceProvider,
 }

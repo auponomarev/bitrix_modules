@@ -5,10 +5,10 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 	const { CategorySelectActions } = require('crm/category-list/actions');
 	const { Robot } = require('crm/tunnel-list/item/robot');
 	const { Alert } = require('alert');
-	const { CategoryListView } = require('crm/category-list-view');
 	const { trim } = require('utils/string');
+	const AppTheme = require('apptheme');
 
-	const DEFAULT_STAGE_BACKGROUND_COLOR = '#c3f0ff';
+	const DEFAULT_STAGE_BACKGROUND_COLOR = AppTheme.colors.accentSoftBlue1;
 
 	const DelayIntervalType = {
 		After: 'after',
@@ -43,6 +43,11 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 			this.robot = this.getRobotData(this.props.tunnel.robot);
 		}
 
+		get layout()
+		{
+			return BX.prop.get(this.props, 'layout', null);
+		}
+
 		getRobotData(robotData)
 		{
 			return new Robot(robotData);
@@ -55,15 +60,15 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 
 		componentDidMount()
 		{
-			BX.addCustomEvent(`Crm.TunnelListItem::selectTunnelDestinationCategory-${this.robot.name}`, (category) => {
-				this.selectedCategory = category;
-			});
-			BX.addCustomEvent(`Crm.TunnelListItem::selectTunnelDestinationStage-${this.robot.name}`, (stage) => {
-				this.selectedStage = stage;
-			});
-			BX.addCustomEvent(`Crm.TunnelListItem::onChangeTunnelDestination-${this.robot.name}`, () => {
-				this.onChangeTunnelDestination();
-			});
+			// BX.addCustomEvent(`Crm.TunnelListItem::selectTunnelDestinationCategory-${this.robot.name}`, (category) => {
+			// 	this.selectedCategory = category;
+			// });
+			// BX.addCustomEvent(`Crm.TunnelListItem::selectTunnelDestinationStage-${this.robot.name}`, (stage) => {
+			// 	this.selectedStage = stage;
+			// });
+			// BX.addCustomEvent(`Crm.TunnelListItem::onChangeTunnelDestination-${this.robot.name}`, () => {
+			// 	this.onChangeTunnelDestination();
+			// });
 		}
 
 		render()
@@ -205,13 +210,9 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 				const fieldSuffix = delay.type === DelayIntervalType.After
 					? BX.message('TUNNEL_MENU_DELAY_AFTER') : BX.message('TUNNEL_MENU_DELAY_BEFORE_1');
 
-				for (const basisField of basisFields)
+				if (delay.basisName)
 				{
-					if (delay.basis === basisField.systemExpression)
-					{
-						str += ` ${fieldSuffix} ${basisField.name}`;
-						break;
-					}
+					str += ` ${fieldSuffix} ${delay.basisName}`;
 				}
 			}
 
@@ -468,12 +469,12 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 		{
 			return {
 				'!empty': BX.message('TUNNEL_MENU_CONDITION_NOT_EMPTY'),
-				'empty': BX.message('TUNNEL_MENU_CONDITION_EMPTY'),
+				empty: BX.message('TUNNEL_MENU_CONDITION_EMPTY'),
 				'=': BX.message('TUNNEL_MENU_CONDITION_EQ'),
 				'!=': BX.message('TUNNEL_MENU_CONDITION_NE'),
-				'in': BX.message('TUNNEL_MENU_CONDITION_IN'),
+				in: BX.message('TUNNEL_MENU_CONDITION_IN'),
 				'!in': BX.message('TUNNEL_MENU_CONDITION_NOT_IN'),
-				'contain': BX.message('TUNNEL_MENU_CONDITION_CONTAIN'),
+				contain: BX.message('TUNNEL_MENU_CONDITION_CONTAIN'),
 				'!contain': BX.message('TUNNEL_MENU_CONDITION_NOT_CONTAIN'),
 				'>': BX.message('TUNNEL_MENU_CONDITION_GT'),
 				'>=': BX.message('TUNNEL_MENU_CONDITION_GTE'),
@@ -488,7 +489,7 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 				{},
 				Text({
 					style: {
-						color: '#a8adb4',
+						color: AppTheme.colors.base4,
 						fontSize: 12,
 					},
 					text: `${BX.message('TUNNEL_MENU_RESPONSIBLE_TITLE')}: ${this.prepareResponsibleText(this.robot.responsible)}`,
@@ -525,7 +526,7 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 								],
 								imagePath,
 								qrauth: {
-									redirectUrl: `/crm/deal/automation/${this.getCategoryId()}/`,
+									redirectUrl: `/crm/deal/automation/${this.props.categoryId}/`,
 									type: 'crm',
 								},
 							},
@@ -534,7 +535,7 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 								title: BX.message('TUNNEL_MENU_TITLE'),
 							},
 						});
-						this.menu.show(PageManager);
+						this.menu.show(this.layout);
 					},
 				},
 				Image({
@@ -571,22 +572,48 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 			];
 		}
 
-		openCategoryList()
+		async openCategoryList()
 		{
-			return CategoryListView.open({
-				entityTypeId: this.props.entityTypeId,
-				categoryId: this.props.categoryId,
-				currentCategoryId: this.props.tunnel && this.props.tunnel.dstCategoryId,
-				activeStageId: this.props.tunnel && this.props.tunnel.dstStageId,
-				selectAction: CategorySelectActions.SelectTunnelDestination,
-				enableSelect: true,
-				readOnly: true,
-				showCounters: false,
-				uid: this.robot.name,
-				disabledCategoryIds: [
-					this.getCategoryId(),
-				],
-			});
+			const { CategoryListView } = await requireLazy('crm:category-list-view');
+
+			return CategoryListView.open(
+				{
+					entityTypeId: this.props.entityTypeId,
+					kanbanSettingsId: this.props.kanbanSettingsId,
+					selectAction: CategorySelectActions.SelectTunnelDestination,
+					currentCategoryId: this.props.tunnel && this.props.tunnel.dstCategoryId,
+					activeStageId: this.props.tunnel && this.props.tunnel.dstStageId,
+					enableSelect: true,
+					readOnly: true,
+					showCounters: false,
+					uid: this.robot.name,
+					disabledCategoryIds: [this.props.kanbanSettingsId],
+					onViewHidden: (params) => {
+						const {
+							selectedStage,
+							selectedKanbanSettings,
+						} = params;
+						if (
+							this.selectedKanbanSettings
+							&& this.selectedKanbanSettings.id === selectedKanbanSettings.id
+							&& this.selectedStage
+							&& this.selectedStage.id === selectedStage.id
+						)
+						{
+							return;
+						}
+
+						this.selectedStage = selectedStage;
+						this.selectedKanbanSettings = selectedKanbanSettings;
+						if (this.selectedStage && this.selectedKanbanSettings)
+						{
+							this.onChangeTunnelDestination();
+						}
+					},
+				},
+				{},
+				this.layout,
+			);
 		}
 
 		openAlertOnDelete()
@@ -614,13 +641,13 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 
 		onChangeTunnelDestination()
 		{
-			const { onChangeTunnelDestination } = this.props;
+			const { onChangeTunnelDestination, tunnel } = this.props;
 			if (typeof onChangeTunnelDestination === 'function')
 			{
 				onChangeTunnelDestination(
-					this.props.tunnel,
+					tunnel,
 					this.selectedStage,
-					this.selectedCategory,
+					this.selectedKanbanSettings,
 				);
 			}
 		}
@@ -631,17 +658,10 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 
 			if (typeof onDeleteTunnel === 'function')
 			{
-				return new Promise((resolve) => {
-					onDeleteTunnel(tunnel).then(resolve);
-				});
+				onDeleteTunnel(tunnel);
 			}
 
 			return Promise.resolve();
-		}
-
-		getCategoryId()
-		{
-			return BX.prop.getInteger(this.props, 'categoryId', 0);
 		}
 	}
 
@@ -676,7 +696,7 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 		container: {
 			flexDirection: 'row',
 			marginLeft: 13,
-			borderBottomColor: '#e6e7e9',
+			borderBottomColor: AppTheme.colors.bgSeparatorPrimary,
 			borderBottomWidth: 1,
 			flex: 1,
 		},
@@ -691,23 +711,23 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 			flexGrow: 2,
 		},
 		titleItem: {
-			color: '#333333',
+			color: AppTheme.colors.base1,
 			fontSize: 18,
 			maxWidth: '70%',
 			flexWrap: 'no-wrap',
 		},
 		titleCategoryName: {
-			color: '#a8adb4',
+			color: AppTheme.colors.base4,
 			fontSize: 18,
 			width: '30%',
 			flexWrap: 'no-wrap',
 		},
 		delayText: {
-			color: '#a8adb4',
+			color: AppTheme.colors.base4,
 			fontSize: 12,
 		},
 		conditionText: {
-			color: '#a8adb4',
+			color: AppTheme.colors.base4,
 			fontSize: 12,
 		},
 		menuContainer: {
@@ -724,3 +744,4 @@ jn.define('crm/tunnel-list/item', (require, exports, module) => {
 
 	module.exports = { TunnelListItem };
 });
+

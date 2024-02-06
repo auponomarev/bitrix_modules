@@ -26,6 +26,7 @@ use Bitrix\Tasks\Integration\CRM\Timeline\Event\OnTaskExpired;
 use Bitrix\Tasks\Integration\CRM\Timeline\Event\OnTaskFilesUpdated;
 use Bitrix\Tasks\Integration\CRM\Timeline\Event\OnTaskGroupChanged;
 use Bitrix\Tasks\Integration\CRM\Timeline\Event\OnTaskPingSent;
+use Bitrix\Tasks\Integration\CRM\Timeline\Event\OnTaskPriorityChanged;
 use Bitrix\Tasks\Integration\CRM\Timeline\Event\OnTaskRenew;
 use Bitrix\Tasks\Integration\CRM\Timeline\Event\OnTaskResponsibleChanged;
 use Bitrix\Tasks\Integration\CRM\Timeline\Event\OnTaskResultAdded;
@@ -34,8 +35,8 @@ use Bitrix\Tasks\Integration\CRM\Timeline\Event\OnTaskTitleUpdated;
 use Bitrix\Tasks\Integration\CRM\Timeline\Event\OnTaskViewed;
 use Bitrix\Tasks\Integration\CRM\Timeline\TaskRepository;
 use Bitrix\Tasks\Internals\Task\Result\ResultTable;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Internals\TaskObject;
-use CTasks;
 
 class TimeLineManager
 {
@@ -45,7 +46,7 @@ class TimeLineManager
 	private TaskRepository $taskRepository;
 	private EventsController $eventsController;
 
-	public function __construct(int $taskId, int $userId = 0)
+	public function __construct(int $taskId, int $userId = 0, bool $isImmediately = false)
 	{
 		if (!Loader::includeModule('crm'))
 		{
@@ -56,7 +57,8 @@ class TimeLineManager
 		$this->userId = $userId;
 		$this->taskId = $taskId;
 		$this->taskRepository = new TaskRepository($taskId, $userId);
-		$this->eventsController = EventsController::getInstance();
+		$this->eventsController = EventsController::getInstance()
+			->setImmediately($isImmediately);
 	}
 
 	public function onTaskCreated(bool $restored = false): self
@@ -105,12 +107,12 @@ class TimeLineManager
 			return $this;
 		}
 
-		if (empty($taskBeforeUpdate->getCrmFields()) && empty($this->taskRepository->getTask()->getCrmFields()))
+		if (empty($taskBeforeUpdate->getCrmFields(false)) && empty($this->taskRepository->getTask()->getCrmFields()))
 		{
 			return $this;
 		}
 
-		if (!empty($taskBeforeUpdate->getCrmFields()) && empty($this->taskRepository->getTask()->getCrmFields()))
+		if (!empty($taskBeforeUpdate->getCrmFields(false)) && empty($this->taskRepository->getTask()->getCrmFields()))
 		{
 			$this->eventsController->addEvent(new OnTaskBindingsUpdated($this->taskRepository->getTask(), $this->userId));
 			return $this;
@@ -138,20 +140,20 @@ class TimeLineManager
 			);
 		}
 
-		if ($currentStatus !== $previousStatus && (int)$currentStatus === CTasks::STATE_COMPLETED)
+		if ($currentStatus !== $previousStatus && (int)$currentStatus === Status::COMPLETED)
 		{
 			$this->eventsController->addEvent(new OnTaskCompleted($this->taskRepository->getTask(), $this->userId));
 		}
 
-		if ($currentStatus !== $previousStatus && (int)$previousStatus === CTasks::STATE_COMPLETED)
+		if ($currentStatus !== $previousStatus && (int)$previousStatus === Status::COMPLETED)
 		{
 			$this->eventsController->addEvent(new OnTaskRenew($this->taskRepository->getTask(), $this->userId));
 		}
 
 		// task disapproved
 		if (
-			(int)$previousStatus === CTasks::STATE_SUPPOSEDLY_COMPLETED
-			&& (int)$currentStatus === CTasks::STATE_PENDING
+			(int)$previousStatus === Status::SUPPOSEDLY_COMPLETED
+			&& (int)$currentStatus === Status::PENDING
 		)
 		{
 			$this->eventsController->addEvent(
@@ -202,7 +204,7 @@ class TimeLineManager
 			$this->eventsController->addEvent(new OnTaskFilesUpdated($this->taskRepository->getTask(), $this->userId));
 		}
 
-		if ($this->isArrayFieldChanged($this->taskRepository->getTask()->getCrmFields(), $taskBeforeUpdate->getCrmFields()))
+		if ($this->isArrayFieldChanged($taskBeforeUpdate->getCrmFields(false), $this->taskRepository->getTask()->getCrmFields()))
 		{
 			$this->eventsController->addEvent(new OnTaskBindingsUpdated($this->taskRepository->getTask(), $this->userId));
 		}
@@ -218,6 +220,11 @@ class TimeLineManager
 		)
 		{
 			$this->eventsController->addEvent(new OnTaskDatePlanUpdated($this->taskRepository->getTask(), $this->userId));
+		}
+
+		if ((int)$this->taskRepository->getTask()->getPriority() !== (int)$taskBeforeUpdate->getPriority())
+		{
+			$this->eventsController->addEvent(new OnTaskPriorityChanged($this->taskRepository->getTask(), $this->userId));
 		}
 
 		return $this;
@@ -279,7 +286,7 @@ class TimeLineManager
 		}
 
 		if (
-			(int)$this->taskRepository->getTask()->getStatus() !== CTasks::STATE_COMPLETED
+			(int)$this->taskRepository->getTask()->getStatus() !== Status::COMPLETED
 			&& $this->userId !== $this->taskRepository->getTask()->getCreatedBy()
 			&& $this->userId === $this->taskRepository->getTask()->getResponsibleId()
 		)

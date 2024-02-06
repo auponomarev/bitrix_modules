@@ -4,25 +4,31 @@ namespace Bitrix\Crm\Service\Integration;
 
 use Bitrix\Crm\Activity\Provider\SignDocument;
 use Bitrix\Crm\Service\Operation\ConversionResult;
+use Bitrix\Crm\Service\UserPermissions;
 use Bitrix\DocumentGenerator\Document;
 use Bitrix\Main\DI\ServiceLocator;
+use Bitrix\Main\Engine\CurrentUser;
 use Bitrix\Main\Error;
+use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\ObjectNotFoundException;
 use Bitrix\Main\Result;
 use Bitrix\Sign\Config\Storage;
+use Bitrix\Sign\Service\Container;
+use Bitrix\Sign\Service\Sign\DocumentService as SignDocumentService;
 use Bitrix\Sign\Service\Integration\Crm\DocumentService;
 
 class Sign
 {
-	private ?DocumentService $signDocumentService = null;
+	private ?DocumentService $crmSignDocumentService = null;
+	private ?SignDocumentService $signDocumentService = null;
 
 	public function __construct()
 	{
 		if (self::isAvailable())
 		{
-			$this->signDocumentService = ServiceLocator::getInstance()
-				->get('sign.service.integration.crm.document');
+			$this->crmSignDocumentService = Container::instance()->getCrmSignDocumentService();
+			$this->signDocumentService = Container::instance()->getDocumentService();
 		}
 	}
 
@@ -73,6 +79,20 @@ class Sign
 			return new Result();
 		}
 
+		$currentUserId = CurrentUser::get()->getId();
+		if (!$this->checkUserPermissionToDealDocumentByDocument($documentId, $currentUserId))
+		{
+			return (new Result())->addError(
+				new Error("User doesnt has access to deal")
+			);
+		}
+		if (!$this->checkUserPermissionToCreateSmartDocument($currentUserId))
+		{
+			return (new Result())->addError(
+				new Error("User doesnt has access to smart document")
+			);
+		}
+
 		$document = Document::loadById($documentId);
 
 		if (!$document)
@@ -104,9 +124,20 @@ class Sign
 				$data = $result->getData();
 				try
 				{
-					ServiceLocator::getInstance()
+					/** @var \Bitrix\Main\Result $createDocResult */
+					$createDocResult = ServiceLocator::getInstance()
 						->get('sign.service.integration.crm.document')
-						->createSignDocumentFromDealDocument($fileId, $document, $data['SMART_DOCUMENT']);
+						->createSignDocumentFromDealDocument(
+							$fileId,
+							$document,
+							$data['SMART_DOCUMENT'],
+							true
+						);
+
+					if ($createDocResult && !$createDocResult->isSuccess())
+					{
+						return $result->addErrors($createDocResult->getErrors());
+					}
 
 					$item = \Bitrix\Crm\Service\Container::getInstance()
 						->getFactory(\CCrmOwnerType::SmartDocument)
@@ -131,7 +162,7 @@ class Sign
 	private function checkSignInitiation(Document $document, int $dealId, int $fileId): Result
 	{
 		$linkedBlank = $this
-			->signDocumentService
+			->crmSignDocumentService
 			->getLinkedBlankForDocumentGeneratorTemplate($document->TEMPLATE_ID);
 
 		if ($linkedBlank)
@@ -163,15 +194,22 @@ class Sign
 			return $result->addError(new Error(Loc::getMessage('CRM_INTEGRATION_SIGN_CAN_NOT_CONVERT')));
 		}
 
-		$result = $this->signDocumentService
+		$result = $this->crmSignDocumentService
 			->createSignDocumentFromBlank(
 				$fileId,
-				$blank,
+				$blank->getId(),
 				$document,
 				$smartDocId
 			);
 
-		if (!$result->isSuccess() || !isset($result->getData()['signDocument']))
+		$data = $result->getData();
+		if (isset($data['newSign']))
+		{
+			Container::instance()->getDocumentAgentService()->addConfigureAndStartAgent($data['signDocument']->uid);
+			return $result;
+		}
+
+		if (!$result->isSuccess() || !isset($data['signDocument']))
 		{
 			return $result;
 		}
@@ -205,7 +243,101 @@ class Sign
 		$operation = $factory->getConversionOperation($deal, $config);
 		$operation->disableAllChecks();
 
-		return $operation->launch();
+		$result = $operation->launch();
+		$data = $result->getData();
+		if ($result->isSuccess() && $result->isConversionFinished() && isset($data[\CCrmOwnerType::SmartDocumentName]))
+		{
+			$documentFactory = \Bitrix\Crm\Service\Container::getInstance()->getFactory(\CCrmOwnerType::SmartDocument);
+			if ($documentFactory)
+			{
+				$document = $documentFactory->getItem((int)$data[\CCrmOwnerType::SmartDocumentName]);
+				$userId = CurrentUser::get()?->getId();
+				if ($document && $userId)
+				{
+					$document->setAssignedById($userId);
+
+					$changeAssignedResult =
+						$documentFactory
+							->getUpdateOperation($document)
+							->disableAllChecks()
+							->launch()
+					;
+
+					if (!$changeAssignedResult->isSuccess())
+					{
+						$result->addErrors($changeAssignedResult->getErrors());
+					}
+				}
+			}
+
+		}
+
+		return $result;
 	}
 
+	final public function checkUserPermissionToCreateSmartDocument(int $userId): bool
+	{
+		$defaultSmartDocumentCategory = \Bitrix\Crm\Service\Container::getInstance()
+			->getFactory(\CCrmOwnerType::SmartDocument)
+			?->getDefaultCategory()
+			?->getId()
+		;
+
+		return (new UserPermissions($userId))->checkAddPermissions(
+			\CCrmOwnerType::SmartDocument,
+			$defaultSmartDocumentCategory
+		);
+	}
+
+	final public function checkUserPermissionToDealDocumentByDocument(int $documentId, int $userId): bool
+	{
+		if (!Loader::includeModule('documentgenerator'))
+		{
+			return false;
+		}
+
+		$documentGeneratorDriver = \Bitrix\DocumentGenerator\Driver::getInstance();
+		if (!$documentGeneratorDriver->getUserPermissions()->canViewDocuments())
+		{
+			return false;
+		}
+		$userPermission = new UserPermissions($userId);
+
+		$dealId = $this->getDealIdByDocument($documentId);
+		if ($dealId === null)
+		{
+			return false;
+		}
+
+		return $userPermission->checkUpdatePermissions(
+			\CCrmOwnerType::Deal,
+			$dealId,
+		);
+	}
+
+	private function getDealIdByDocument(int $documentId): ?int
+	{
+		$document = Document::loadById($documentId);
+		if (!$document)
+		{
+			return null;
+		}
+
+		$fileId = $document->PDF_ID;
+		if ($fileId === null || $fileId === 0)
+		{
+			$fileId = $document->FILE_ID;
+		}
+
+		$provider = $document->getProvider();
+
+		if (!$fileId || !$provider instanceof \Bitrix\Crm\Integration\DocumentGenerator\DataProvider\Deal)
+		{
+			return null;
+		}
+
+		$dealId = $document->getFields(['SOURCE'])['SOURCE']['VALUE'] ?? null;
+
+		return $dealId === null ? null : (int)$dealId;
+	}
 }

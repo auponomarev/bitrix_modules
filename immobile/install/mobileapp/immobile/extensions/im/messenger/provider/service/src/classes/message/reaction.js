@@ -6,74 +6,78 @@
  * @module im/messenger/provider/service/classes/message/reaction
  */
 jn.define('im/messenger/provider/service/classes/message/reaction', (require, exports, module) => {
-
+	const { core } = require('im/messenger/core');
 	const { Logger } = require('im/messenger/lib/logger');
 	const { MessengerParams } = require('im/messenger/lib/params');
-	const {
-		ReactionType,
-		RestMethod,
-	} = require('im/messenger/const');
+	const { RestMethod } = require('im/messenger/const');
+	const { UuidManager } = require('im/messenger/lib/uuid-manager');
+	const { runAction } = require('im/messenger/lib/rest');
 
 	/**
 	 * @class ReactionService
 	 */
 	class ReactionService
 	{
-		constructor({ store, chatId })
+		constructor({ chatId })
 		{
-			this.store = store;
+			/** @type {MessengerCoreStore} */
+			this.store = core.getStore();
 			this.chatId = chatId;
 		}
 
-		add(reactionId, messageId)
+		/**
+		 * @param {ReactionType} reaction
+		 * @param messageId
+		 */
+		add(reaction, messageId)
 		{
-			reactionId = ReactionType.like; //TODO: Support for other reactions
+			Logger.warn('ReactionService: add', reaction, messageId);
 
-			Logger.warn('ReactionService: add', reactionId, messageId);
-			this.store.dispatch('messagesModel/addReaction', {
+			/** @type {ReactionsModelSetReactionPayload} */
+			const storeParams = {
 				messageId,
-				reactionId,
-				userList: [MessengerParams.getUserId()],
-			});
+				reaction,
+				userId: MessengerParams.getUserId(),
+			};
+
+			this.store.dispatch('messagesModel/reactionsModel/setReaction', storeParams);
 
 			const queryParams = {
-				'MESSAGE_ID': messageId,
-				'ACTION': 'plus',
+				messageId,
+				reaction,
+				actionUuid: UuidManager.getInstance().getActionUuid(),
 			};
-			BX.rest.callMethod(RestMethod.imMessageLike, queryParams).catch(error => {
-				Logger.error('ReactionService: error reaction add', error);
 
-				this.store.dispatch('messagesModel/removeReaction', {
-					messageId,
-					reactionId,
-					userList: [MessengerParams.getUserId()],
-				});
+			runAction(RestMethod.imV2ChatMessageReactionAdd, { data: queryParams }).catch((errors) => {
+				Logger.error('ReactionService.add error:', errors);
+
+				this.store.dispatch('messagesModel/reactionsModel/removeReaction', storeParams);
 			});
 		}
 
-		remove(reactionId, messageId)
+		remove(reaction, messageId)
 		{
-			reactionId = ReactionType.like; //TODO: Support for other reactions
+			Logger.warn('ReactionService: remove', reaction, messageId);
 
-			Logger.warn('ReactionService: remove', reactionId, messageId);
-			this.store.dispatch('messagesModel/removeReaction', {
+			/** @type {ReactionsModelSetReactionPayload} */
+			const storeParams = {
 				messageId,
-				reactionId,
-				userList: [MessengerParams.getUserId()],
-			});
+				reaction,
+				userId: MessengerParams.getUserId(),
+			};
+
+			this.store.dispatch('messagesModel/reactionsModel/removeReaction', storeParams);
 
 			const queryParams = {
-				'MESSAGE_ID': messageId,
-				'ACTION': 'minus',
+				reaction,
+				messageId,
+				actionUuid: UuidManager.getInstance().getActionUuid(),
 			};
-			BX.rest.callMethod(RestMethod.imMessageLike, queryParams).catch(error => {
-				Logger.error('ReactionService: error reaction remove', error);
 
-				this.store.dispatch('messagesModel/addReaction', {
-					messageId,
-					reactionId,
-					userList: [MessengerParams.getUserId()],
-				});
+			runAction(RestMethod.imV2ChatMessageReactionDelete, { data: queryParams }).catch((errors) => {
+				Logger.error('ReactionService.remove error:', errors);
+
+				this.store.dispatch('messagesModel/reactionsModel/setReaction', storeParams);
 			});
 		}
 	}

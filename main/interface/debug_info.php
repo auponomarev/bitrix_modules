@@ -1,4 +1,4 @@
-<?
+<?php
 
 /**
  * @global CMain $APPLICATION
@@ -16,6 +16,12 @@ IncludeModuleLangFile(__FILE__);
 // ************************************************************************
 // $main_exec_time, $bShowTime, $bShowStat MUST be defined before include
 // ************************************************************************
+
+/**
+ * @global $bShowTime
+ * @global $bShowStat
+ * @global $bShowCacheStat
+ */
 
 global $APPLICATION;
 $application = \Bitrix\Main\Application::getInstance();
@@ -47,10 +53,11 @@ if ($bShowExtTime)
 	$CURRENT_TIME = microtime(true);
 
 	$PROLOG_BEFORE_1 = START_EXEC_PROLOG_BEFORE_1;
-	$PROLOG_BEFORE = START_EXEC_PROLOG_BEFORE_2 - $PROLOG_BEFORE_1;
+	$PROLOG_BEFORE_2 = defined('START_EXEC_PROLOG_BEFORE_2') ? START_EXEC_PROLOG_BEFORE_2 : START_EXEC_PROLOG_BEFORE_1;
+	$PROLOG_BEFORE = $PROLOG_BEFORE_2 - $PROLOG_BEFORE_1;
 
 	$PROLOG_AFTER = 0;
-	$PROLOG_AFTER_2 = START_EXEC_PROLOG_BEFORE_2;
+	$PROLOG_AFTER_2 = $PROLOG_BEFORE_2;
 	if (defined('START_EXEC_PROLOG_AFTER_2') && defined('START_EXEC_PROLOG_AFTER_1'))
 	{
 		$PROLOG_AFTER_2 = START_EXEC_PROLOG_AFTER_2;
@@ -604,7 +611,7 @@ if($bShowExtTime)
 				?><b><?=Loc::getMessage("debug_info_whole_page")?></b><?
 			endif?>
 		</td>
-		<td class="number" nowrap><b><?echo number_format($PAGE/$PAGE*100, 2),"%"?></b></td>
+		<td class="number" nowrap><b>100%</b></td>
 		<td class="number" nowrap><b><?echo number_format($PAGE, 4)?></b></td>
 		<?if($bShowComps):?>
 			<td class="number" nowrap><b><?echo intval($arAreas["PAGE"]["TRACE"]["COMPONENT_COUNT"])?></b></td>
@@ -868,4 +875,3 @@ if($bShowExtTime)
 		echo "<script>BX.ready(function() {jsDebugTimeWindow.Show(); jsDebugTimeWindow.ShowDetails('BX_DEBUG_TIME_1_1');});</script>";
 	}
 }
-?>

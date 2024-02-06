@@ -4,6 +4,7 @@ namespace Bitrix\Im\V2\Chat;
 
 use Bitrix\Im\Model\ChatTable;
 use Bitrix\Im\Model\RelationTable;
+use Bitrix\Im\V2\Chat;
 use Bitrix\Im\V2\Entity\User\User;
 use Bitrix\Im\V2\Result;
 use Bitrix\Im\Model\EO_Chat;
@@ -120,7 +121,7 @@ class FavoriteChat extends PrivateChat
 		}
 
 		$row = ChatTable::query()
-			->setSelect(['ID'])
+			->setSelect(['ID', 'TYPE', 'ENTITY_TYPE', 'ENTITY_ID'])
 			->where('TYPE', self::IM_TYPE_PRIVATE)
 			->where('ENTITY_TYPE', self::ENTITY_TYPE_FAVORITE)
 			->where('AUTHOR_ID', (int)$params['TO_USER_ID'])
@@ -130,7 +131,10 @@ class FavoriteChat extends PrivateChat
 		if ($row)
 		{
 			$result->setResult([
-				'ID' => (int)$row['ID']
+				'ID' => (int)$row['ID'],
+				'TYPE' => $row['TYPE'],
+				'ENTITY_TYPE' => $row['ENTITY_TYPE'],
+				'ENTITY_ID' => $row['ENTITY_ID'],
 			]);
 		}
 
@@ -167,12 +171,14 @@ class FavoriteChat extends PrivateChat
 
 		if (!$chat)
 		{
-			$chat = new FavoriteChat($params);
+			$chat = new static($params);
 			$chat
-				->setTitle(Loc::getMessage('IM_CHAT_FAVORITE_TITLE_V2'))
-				->setDescription(Loc::getMessage('IM_CHAT_FAVORITE_DESCRIPTION'))
+				->setTitle(Loc::getMessage('IM_CHAT_FAVORITE_TITLE_V3'))
+				->setDescription(Loc::getMessage('IM_CHAT_FAVORITE_DESCRIPTION_V2'))
 				->save()
 			;
+
+			$chat->sendBanner();
 
 			if (!$chat->getChatId())
 			{
@@ -190,14 +196,33 @@ class FavoriteChat extends PrivateChat
 			}
 		}
 
-		$chat->updateIndex();
-
 		$result->setResult([
 			'CHAT_ID' => $chat->getChatId(),
 			'CHAT' => $chat,
 		]);
 
 		return $result;
+	}
+
+	public static function getTitlePhrase(): string
+	{
+		return Loc::getMessage('IM_CHAT_FAVORITE_TITLE_V3') ?? '';
+	}
+
+	protected function sendBanner(): void
+	{
+		$messageText = Loc::getMessage('IM_CHAT_FAVORITE_CREATE_WELCOME');
+		\CIMMessage::Add([
+			'MESSAGE_TYPE' => $this->getType(),
+			'TO_CHAT_ID' => $this->getChatId(),
+			'FROM_USER_ID' => $this->getAuthorId(),
+			'MESSAGE' => $messageText,
+			'SYSTEM' => 'Y',
+			'PUSH' => 'N',
+			'PARAMS' => [
+				'COMPONENT_ID' => 'OwnChatCreationMessage',
+			],
+		]);
 	}
 
 	protected function prepareParams(array $params = []): Result
@@ -242,5 +267,15 @@ class FavoriteChat extends PrivateChat
 
 		$result = $chatResult->getResult();
 		return FavoriteChat::getInstance($result['ID']);
+	}
+
+	protected function addIndex(): Chat
+	{
+		return $this;
+	}
+
+	protected function updateIndex(): Chat
+	{
+		return $this;
 	}
 }

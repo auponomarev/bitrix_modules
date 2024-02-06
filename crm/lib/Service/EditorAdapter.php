@@ -14,8 +14,8 @@ use Bitrix\Crm\Controller\Action\Entity\SearchAction;
 use Bitrix\Crm\Controller\Entity;
 use Bitrix\Crm\Conversion\EntityConversionWizard;
 use Bitrix\Crm\Currency;
+use Bitrix\Crm\Entity\CommentsHelper;
 use Bitrix\Crm\Entity\EntityEditor;
-use Bitrix\Crm\Entity\FieldContentType;
 use Bitrix\Crm\Entity\Traits\VisibilityConfig;
 use Bitrix\Crm\EntityRequisite;
 use Bitrix\Crm\EO_Status_Collection;
@@ -38,6 +38,7 @@ use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Request;
 use Bitrix\Main\Result;
 use Bitrix\Main\UserField\Dispatcher;
+use Bitrix\Main\UserField\Types\BooleanType;
 use Bitrix\Main\Web\Json;
 use CCrmComponentHelper;
 use CCrmOwnerType;
@@ -251,9 +252,8 @@ class EditorAdapter
 			);
 		}
 
-		$this->entityData = FieldContentType::prepareFieldsFromDetailsToView(
+		$this->entityData = CommentsHelper::prepareFieldsFromEditorAdapterToView(
 			$item->getEntityTypeId(),
-			$item->getId(),
 			$this->entityData,
 		);
 
@@ -528,9 +528,8 @@ class EditorAdapter
 		if ($isFlexibleContentType === true)
 		{
 			$field =
-				FieldContentType::compileFieldDescriptionForDetails(
+				CommentsHelper::compileFieldDescriptionForDetails(
 					$this->item->getEntityTypeId(),
-					$this->item->getId(),
 					$name,
 				)
 				+ $field
@@ -783,6 +782,10 @@ class EditorAdapter
 			{
 				return 'html';
 			}
+			if (isset($fieldDescription['VALUE_TYPE']) && $fieldDescription['VALUE_TYPE'] === Field::VALUE_TYPE_BB)
+			{
+				return 'bb';
+			}
 
 			return 'text';
 		}
@@ -858,6 +861,7 @@ class EditorAdapter
 			'editable' => true,
 			'showAlways' => $showAlways,
 			'data' => [
+				'affectedFields' => [$fieldName . '_INFO'],
 				'compound' => [
 					[
 						'name' => 'COMPANY_ID',
@@ -897,6 +901,9 @@ class EditorAdapter
 				'useExternalRequisiteBinding' => true,
 				'enableRequisiteSelection' => true,
 				'enableTooltip' => $enableTooltip,
+				'duplicateControl' => CCrmComponentHelper::prepareClientEditorDuplicateControlParams(
+					['entityTypes' => [CCrmOwnerType::Company, CCrmOwnerType::Contact]]
+				),
 			],
 		];
 	}
@@ -1010,7 +1017,8 @@ class EditorAdapter
 		bool $isPaymentsEnabled = false
 	): array
 	{
-		$type = ($isPaymentsEnabled && Loader::includeModule('salescenter')) ? 'moneyPay' : 'money';
+		$isSalescenterIncluded = Loader::includeModule('salescenter');
+		$type = ($isPaymentsEnabled && $isSalescenterIncluded) ? 'moneyPay' : 'money';
 		return [
 			'name' => $fieldName ?? static::FIELD_OPPORTUNITY,
 			'title' => $title,
@@ -1029,6 +1037,10 @@ class EditorAdapter
 				'formattedWithCurrency' => 'FORMATTED_' . static::FIELD_OPPORTUNITY,
 				'isShowPaymentDocuments' => $isPaymentsEnabled,
 				'isWithOrdersMode' => \CCrmSaleHelper::isWithOrdersMode(),
+				'isSalescenterToolEnabled' =>
+					$isSalescenterIncluded
+					&& \Bitrix\Salescenter\Restriction\ToolAvailabilityManager::getInstance()->checkSalescenterAvailability()
+				,
 			],
 		];
 	}
@@ -1389,6 +1401,11 @@ class EditorAdapter
 			{
 				$fieldValue = array_values($fieldValue);
 			}
+			elseif ($fieldParams['USER_TYPE_ID'] === BooleanType::USER_TYPE_ID)
+			{
+				$fieldValue = $fieldValue ? '1' : '0';
+			}
+
 			$fieldParams['VALUE'] = $fieldValue;
 		}
 
@@ -1836,6 +1853,11 @@ class EditorAdapter
 		$opportunityEntityData['FORMATTED_' . static::FIELD_OPPORTUNITY] = Money::format(
 			$item->getOpportunity(), $item->getCurrencyId()
 		);
+
+		$opportunityEntityData['IS_SALESCENTER_TOOL_ENABLED'] =
+			Loader::includeModule('salescenter')
+			&& \Bitrix\Salescenter\Restriction\ToolAvailabilityManager::getInstance()->checkSalescenterAvailability()
+		;
 
 		return $opportunityEntityData;
 	}
@@ -2413,6 +2435,7 @@ class EditorAdapter
 			'editable' => $editable,
 			'showAlways' => $showAlways,
 			'data' => [
+				'affectedFields' => [$infoName],
 				'enableMyCompanyOnly' => true,
 				'enableRequisiteSelection' => true,
 				'enableCreation' => Container::getInstance()->getUserPermissions()->getMyCompanyPermissions()->canAdd(),

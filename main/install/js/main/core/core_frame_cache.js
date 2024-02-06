@@ -234,7 +234,7 @@
 			const items = styles.concat(scripts);
 			if (items.length > 0)
 			{
-				BX.load(items, callback)
+				BX.load(items, callback);
 			}
 			else
 			{
@@ -808,4 +808,3 @@
 	BX.frameCache.init();
 
 })(window);
-

@@ -85,10 +85,14 @@ class catalog extends CModule
 	{
 		global $APPLICATION;
 		global $DB;
-		global $errors;
+		$connection = \Bitrix\Main\Application::getConnection();
 
-		if(!$DB->Query("SELECT 'x' FROM b_catalog_group", true))
-			$errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT']."/bitrix/modules/catalog/install/db/mysql/install.sql");
+		$errors = null;
+
+		if (!$DB->TableExists('b_catalog_group'))
+		{
+			$errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/catalog/install/db/' . $connection->getType() . '/install.sql');
+		}
 
 		if (!empty($errors))
 		{
@@ -211,6 +215,22 @@ class catalog extends CModule
 			'catalog',
 			'\Bitrix\Catalog\v2\Integration\Seo\Facebook\FacebookFacade',
 			'onCatalogWebhookHandler'
+		);
+
+		$eventManager->registerEventHandler(
+			'sale',
+			'OnSaleCheckPrepareData',
+			'catalog',
+			'\Bitrix\Catalog\Integration\Sale\Cashbox\EventHandlers\Check',
+			'onSaleCheckPrepareData'
+		);
+
+		$eventManager->registerEventHandlerCompatible(
+			'iblock',
+			'OnBeforeIBlockElementDelete',
+			'catalog',
+			'\Bitrix\Catalog\v2\AgentContract\EventHandlers\IblockElement',
+			'onBeforeIBlockElementDelete'
 		);
 
 		if ($this->bitrix24mode)
@@ -342,6 +362,7 @@ class catalog extends CModule
 	{
 		global $APPLICATION, $DB, $errors;
 		global $USER_FIELD_MANAGER;
+		$connection = \Bitrix\Main\Application::getConnection();
 
 		if (!defined('BX_CATALOG_UNINSTALLED'))
 			define('BX_CATALOG_UNINSTALLED', true);
@@ -349,7 +370,7 @@ class catalog extends CModule
 		$enableDeprecatedEvents = Main\Config\Option::get('catalog', 'enable_processing_deprecated_events') === 'Y';
 		if (!isset($arParams["savedata"]) || $arParams["savedata"] != "Y")
 		{
-			$errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT']."/bitrix/modules/catalog/install/db/mysql/uninstall.sql");
+			$errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT']."/bitrix/modules/catalog/install/db/".$connection->getType()."/uninstall.sql");
 			if (!empty($errors))
 			{
 				$APPLICATION->ThrowException(implode("", $errors));
@@ -474,6 +495,22 @@ class catalog extends CModule
 			'catalog',
 			'\Bitrix\Catalog\v2\Integration\Seo\Facebook\FacebookFacade',
 			'onCatalogWebhookHandler'
+		);
+
+		$eventManager->unRegisterEventHandler(
+			'sale',
+			'OnSaleCheckPrepareData',
+			'catalog',
+			'\Bitrix\Catalog\Integration\Sale\Cashbox\EventHandlers\Check',
+			'onSaleCheckPrepareData'
+		);
+
+		$eventManager->unRegisterEventHandler(
+			'iblock',
+			'OnBeforeIBlockElementDelete',
+			'catalog',
+			'\Bitrix\Catalog\v2\AgentContract\EventHandlers\IblockElement',
+			'onBeforeIBlockElementDelete'
 		);
 
 		if (Main\Loader::includeModule('catalog'))

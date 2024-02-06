@@ -4,12 +4,15 @@ use Bitrix\Catalog\Access\AccessController;
 use Bitrix\Catalog\Access\ActionDictionary;
 use Bitrix\Catalog\v2\Integration\Seo\Facebook\FacebookFacade;
 use Bitrix\Catalog\v2\IoC\ServiceContainer;
+use Bitrix\Crm\Service\Container;
 use Bitrix\Main\ObjectNotFoundException;
 use Bitrix\Main;
 use Bitrix\Crm;
 use Bitrix\Main\Application;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Currency\CurrencyManager;
+use Bitrix\Main\Web\Uri;
+use Bitrix\SalesCenter\Component\PaymentSlip;
 use Bitrix\SalesCenter\Component\ReceivePaymentHelper;
 use Bitrix\SalesCenter\Driver;
 use Bitrix\SalesCenter\Integration\CatalogManager;
@@ -25,11 +28,6 @@ use Bitrix\Sale\PaySystem;
 use Bitrix\Sale\Cashbox;
 use Bitrix\Sale;
 use Bitrix\Main\Engine\Contract\Controllerable;
-use Bitrix\Main\Entity\Base;
-use Bitrix\Main\Entity\Query;
-use Bitrix\Main\Entity\ReferenceField;
-use Bitrix\Crm\Timeline\TimelineType;
-use Bitrix\Crm\Timeline\Entity;
 use Bitrix\Rest;
 use Bitrix\SalesCenter;
 use Bitrix\SalesCenter\Integration\LocationManager;
@@ -39,6 +37,7 @@ use Bitrix\Catalog\v2\Integration\JS\ProductForm\BasketItem;
 use Bitrix\Catalog\VatTable;
 use Bitrix\Sale\PaySystem\ClientType;
 use Bitrix\Sale\Tax\VatCalculator;
+use Bitrix\Salescenter\Restriction\ToolAvailabilityManager;
 
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) die();
 
@@ -56,6 +55,7 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 	private const PAYMENT_DELIVERY_MODE = 'payment_delivery';
 	private const PAYMENT_MODE = 'payment';
 	private const DELIVERY_MODE = 'delivery';
+	private const TERMINAL_PAYMENT_MODE = 'terminal_payment';
 
 	/** @var Crm\Order\Order $order */
 	private $order;
@@ -179,6 +179,8 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 
 		$arParams['compilationId'] ??= $this->request->get('compilationId');
 
+		$arParams['showModeList'] = (int)$arParams['ownerTypeId'] === CCrmOwnerType::Deal;
+
 		return parent::onPrepareComponentParams($arParams);
 	}
 
@@ -190,6 +192,17 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		if (!Driver::getInstance()->isEnabled())
 		{
 			$this->includeComponentTemplate('limit');
+			return;
+		}
+
+		if (
+			!ToolAvailabilityManager::getInstance()->checkSalescenterAvailability()
+			&& $this->arParams['context'] === SalesCenter\Component\ContextDictionary::CHAT
+			&& $this->arParams['templateMode'] === self::TEMPLATE_CREATE_MODE
+		)
+		{
+			$this->includeComponentTemplate('tool_disabled');
+
 			return;
 		}
 
@@ -237,6 +250,11 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		}
 
 		if (\CCrmSaleHelper::isWithOrdersMode())
+		{
+			return false;
+		}
+
+		if ($arParams['context'] === SalesCenter\Component\ContextDictionary::TERMINAL_LIST)
 		{
 			return false;
 		}
@@ -304,7 +322,10 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 			$this->arResult['currencyCode'] = $this->item->getCurrencyId();
 			$this->arResult['assignedById'] = $assignedById;
 			$this->arResult['entityResponsible'] = $this->getManagerInfo($assignedById);
-			$this->arResult['contactPhone'] = CrmManager::getInstance()->getItemContactPhoneFormatted($this->item);
+			CrmManager::getInstance()->getItemContactFields($this->item);
+			$contact = CrmManager::getInstance()->getItemContactFields($this->item);
+			$this->arResult['contactName'] = is_array($contact) ? \CCrmContact::PrepareFormattedName($contact) : '';
+			$this->arResult['contactPhone'] = is_array($contact) ? CrmManager::getInstance()->getFormattedContactPhone((int)$contact['ID']) : '';
 			$this->arResult['contactEditorUrl'] = CrmManager::getInstance()->getItemContactEditorUrl($this->item);
 		}
 		else
@@ -332,13 +353,14 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		$this->arResult['paymentId'] = (int)$this->arParams['paymentId'];
 		$this->arResult['shipmentId'] = (int)$this->arParams['shipmentId'];
 		$mode = self::PAYMENT_DELIVERY_MODE;
-		$allowedModes = [static::PAYMENT_MODE, static::DELIVERY_MODE];
+		$allowedModes = [static::PAYMENT_MODE, static::DELIVERY_MODE, static::TERMINAL_PAYMENT_MODE];
 		if (in_array($this->arParams['mode'], $allowedModes, true))
 		{
 			$mode = $this->arParams['mode'];
 		}
 		$this->arResult['mode'] = $mode;
 		$this->arResult['initialMode'] = $this->arParams['initialMode'] ?? $this->arResult['mode'];
+		$this->arResult['showModeList'] = $this->arParams['showModeList'] ?? true;
 
 		if ($this->arParams['orderId'] > 0)
 		{
@@ -497,7 +519,10 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		}
 
 		$this->arResult['sendingMethod'] = '';
-		if ($this->arResult['context'] === SalesCenter\Component\ContextDictionary::DEAL)
+		if (
+			$this->arResult['context'] === SalesCenter\Component\ContextDictionary::DEAL
+			|| $this->arResult['context'] === SalesCenter\Component\ContextDictionary::SMART_INVOICE
+		)
 		{
 			$this->arResult['sendingMethod'] = 'sms';
 		}
@@ -544,7 +569,7 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		$this->arResult['urlProductBuilderContext'] = Crm\Product\Url\ProductBuilder::TYPE_ID;
 
 		if (
-			$this->item
+			($this->arParams['context'] === SalesCenter\Component\ContextDictionary::TERMINAL_LIST || $this->item)
 			&&
 			(
 				!\CCrmSaleHelper::isWithOrdersMode()
@@ -564,6 +589,51 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 				array_column($this->arResult['basket'], 'fields'),
 				$this->arResult['currencyCode']
 			);
+		}
+
+		if ($this->arResult['mode'] === self::TERMINAL_PAYMENT_MODE)
+		{
+			if ($this->arParams['templateMode'] === self::TEMPLATE_VIEW_MODE && $this->payment)
+			{
+				$this->arResult['paymentResponsible'] = (int)$this->payment->getField('RESPONSIBLE_ID');
+				$this->arResult['entityResponsible'] = $this->getManagerInfo($this->arResult['paymentResponsible']);
+
+				$psAction = $this->payment->getPaySystem()?->getField('ACTION_FILE');
+
+				if (count($this->arResult['basket']) === 1 && is_null($this->arResult['basket'][0]['offerId']))
+				{
+					$this->arResult['isPaymentByAmount'] = true;
+					$this->arResult['currencyCode'] = $this->order->getCurrency();
+				}
+
+				if (!$this->item && $this->order)
+				{
+					/* @var \Bitrix\Crm\Order\Contact $contact */
+					$contact = $this->order->getContactCompanyCollection()->getPrimaryContact();
+					if ($contact)
+					{
+						$contactId = (int)$contact->getField('ENTITY_ID');
+						$contact = \CCrmContact::GetById($contactId);
+						$this->arResult['contactName'] = is_array($contact) ? \CCrmContact::PrepareFormattedName($contact) : '';
+						$this->arResult['contactPhone'] = CrmManager::getInstance()->getFormattedContactPhone($contactId);
+					}
+				}
+			}
+			else
+			{
+				$this->arResult['paymentResponsible'] = Main\Engine\CurrentUser::get()->getId();
+				if (SalesCenter\Integration\MobileManager::getInstance()->isEnabled())
+				{
+					$this->arResult['isMobileInstalledForResponsible'] =
+						SalesCenter\Integration\MobileManager::getInstance()
+							->isMobileInstalledForUser($this->arResult['paymentResponsible'])
+					;
+				}
+				else
+				{
+					$this->arResult['isMobileInstalledForResponsible'] = false;
+				}
+			}
 		}
 
 		if ($this->arResult['sessionId'] > 0)
@@ -632,9 +702,35 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 
 		$this->arResult['documentSelector'] = $this->getDocumentSelectorParameters();
 
-		$this->arResult['isAllowedFacebookRegion'] = $this->getFacebookFacade()->isExportAvailable();
+		$this->arResult['isAllowedFacebookRegion'] = $this->isFacebookExportAvailable();
 
 		$this->arResult['facebookSettingsPath'] = $this->getFacebookSettingsPath();
+
+		$this->arResult['isTerminalAvailable'] = Crm\Terminal\AvailabilityManager::getInstance()->isAvailable();
+
+		$this->arResult['isSalescenterToolEnabled'] = ToolAvailabilityManager::getInstance()->checkSalescenterAvailability();
+
+		$this->arResult['isTerminalToolEnabled'] = Container::getInstance()->getIntranetToolsManager()->checkTerminalAvailability();
+
+		$canShowCrmTerminalTour = Main\Config\Option::get('crm', 'can-show-crm-terminal-tour', 'N') === 'Y';
+		if ($canShowCrmTerminalTour && $this->arResult['isTerminalAvailable'])
+		{
+			$defaultTourSettings = [
+				'step-1-shown' => 'N',
+				'step-2-shown' => 'N',
+			];
+		}
+		else
+		{
+			$defaultTourSettings = [
+				'step-1-shown' => 'Y',
+				'step-2-shown' => 'Y',
+			];
+		}
+
+		$this->arResult['terminalTour'] = CUserOptions::GetOption('salescenter.tour', 'crm-terminal-tour', $defaultTourSettings);
+		$this->arResult['mobileAppLink'] = SalesCenter\Integration\MobileManager::MOBILE_APP_LINK;
+		$this->arResult['currentLanguage'] = Loc::getCurrentLang();
 	}
 
 	private function getCompilation(): ?array
@@ -642,7 +738,7 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		if ($this->arParams['compilationId'])
 		{
 			$compilation = CatalogManager::getInstance()->getCompilationById($this->arParams['compilationId']);
-			$exportedProducts = $this->getFacebookFacade()->getExportedProducts($compilation['PRODUCT_IDS']);
+			$exportedProducts = $this->getFacebookExportedProduct($compilation['PRODUCT_IDS']);
 			$failProducts = [];
 			foreach ($exportedProducts as $exportedProduct)
 			{
@@ -689,7 +785,11 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 			return $this->arResult['compilation']['TITLE'];
 		}
 
-		if ($this->arParams['context'] === SalesCenter\Component\ContextDictionary::DEAL)
+		if (
+			$this->arParams['context'] === SalesCenter\Component\ContextDictionary::DEAL
+			|| $this->arParams['context'] === SalesCenter\Component\ContextDictionary::SMART_INVOICE
+			|| $this->arParams['context'] === SalesCenter\Component\ContextDictionary::TERMINAL_LIST
+		)
 		{
 			if ($this->arResult['templateMode'] === self::TEMPLATE_VIEW_MODE)
 			{
@@ -698,6 +798,7 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 					&& (
 						$this->arResult['mode'] === self::PAYMENT_DELIVERY_MODE
 						|| $this->arResult['mode'] === self::PAYMENT_MODE
+						|| $this->arResult['mode'] === self::TERMINAL_PAYMENT_MODE
 					)
 				)
 				{
@@ -708,7 +809,9 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 						$this->payment->getField('CURRENCY')
 					);
 
-					return Loc::getMessage('SALESCENTER_PAYMENT_DETAILS_TITLE', [
+					$messageCode = $this->arResult['mode'] === self::TERMINAL_PAYMENT_MODE ? 'SALESCENTER_TERMINAL_PAYMENT_DETAILS_TITLE' : 'SALESCENTER_PAYMENT_DETAILS_TITLE' ;
+
+					return Loc::getMessage($messageCode, [
 						'#ACCOUNT_NUMBER#' => $this->payment->getField('ACCOUNT_NUMBER'),
 						'#DATE#' => ConvertTimeStamp($dateBill->getTimestamp()),
 						'#SUM#' => $paymentSum,
@@ -740,16 +843,19 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 			{
 				if ($this->arResult['mode'] === static::PAYMENT_MODE)
 				{
-					$title = Loc::getMessage('SALESCENTER_APP_PAYMENT_TITLE');
-
+					$title = Loc::getMessage('SALESCENTER_APP_PAYMENT_TITLE_MSGVER_1');
 				}
-				elseif ($this->arResult['mode'] == static::DELIVERY_MODE)
+				elseif ($this->arResult['mode'] === static::DELIVERY_MODE)
 				{
 					$title = Loc::getMessage('SALESCENTER_APP_DELIVERY_TITLE');
 				}
+				elseif ($this->arResult['mode'] === static::TERMINAL_PAYMENT_MODE)
+				{
+					$title = Loc::getMessage('SALESCENTER_APP_TERMINAL_PAYMENT_TITLE');
+				}
 				else
 				{
-					$title = Loc::getMessage('SALESCENTER_APP_PAYMENT_AND_DELIVERY_TITLE');
+					$title = Loc::getMessage('SALESCENTER_APP_PAYMENT_AND_DELIVERY_TITLE_MSGVER_1');
 				}
 
 				return $title;
@@ -888,11 +994,13 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 			return $this->getCompilationProducts();
 		}
 
-		if ($this->arParams['templateMode'] === self::TEMPLATE_VIEW_MODE) {
+		if ($this->arParams['templateMode'] === self::TEMPLATE_VIEW_MODE)
+		{
 			return $this->getOrderProducts();
 		}
 
-		if ($this->arParams['templateMode'] === self::TEMPLATE_CREATE_MODE) {
+		if ($this->arParams['templateMode'] === self::TEMPLATE_CREATE_MODE)
+		{
 			return $this->getProducts();
 		}
 
@@ -1037,53 +1145,83 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		if (
 			$this->arResult['mode'] !== self::PAYMENT_DELIVERY_MODE
 			&& $this->arResult['mode'] !== self::PAYMENT_MODE
+			&& $this->arResult['mode'] !== self::TERMINAL_PAYMENT_MODE
 		)
 		{
 			return [];
 		}
 
-		if ($this->arResult['templateMode'] === self::TEMPLATE_CREATE_MODE)
+		if (!$this->payment)
 		{
-			$result = [
-				[
-					'type' => 'sent',
-					'disabled' => true,
-					'content' => Loc::getMessage('SALESCENTER_TIMELINE_WATCH_CONTENT_DEFAULT'),
-				],
-				[
-					'type' => 'cash',
-					'disabled' => true,
-					'content' => Loc::getMessage('SALESCENTER_TIMELINE_PAYMENT_TITLE_DEFAULT'),
-				],
+			return [];
+		}
+
+		$result = [];
+
+		if ($this->payment->isPaid())
+		{
+			$result[] = [
+				'type' => 'payment',
+				'sum' => \CCrmCurrency::MoneyToString(
+					$this->payment->getSum(),
+					$this->payment->getField('CURRENCY'),
+					'#'
+				),
+				'currency' => \CCrmCurrency::GetCurrencyText($this->payment->getField('CURRENCY')),
+				'currencyCode' => $this->payment->getField('CURRENCY'),
+				'content' => Loc::getMessage('SALESCENTER_TIMELINE_PAYMENT_SUBTITLE', [
+					'#PAY_SYSTEM_NAME#' => $this->payment->getField('PAY_SYSTEM_NAME'),
+				]),
+				'title' => Loc::getMessage('SALESCENTER_TIMELINE_PAYMENT_TITLE', [
+					'#DATE_CREATED#' => $this->prepareTimeLineItemsDateTime($this->payment->getField('DATE_PAID')),
+				]),
 			];
 
-			if (Driver::getInstance()->isCashboxEnabled())
+			$culture = Application::getInstance()->getContext()->getCulture();
+
+			if ($this->arResult['mode'] === self::TERMINAL_PAYMENT_MODE)
 			{
 				$result[] = [
-					'type' => 'check-sent',
-					'disabled' => true,
-					'content' => Loc::getMessage('SALESCENTER_TIMELINE_CHECK_CONTENT_DEFAULT'),
+					'type' => 'custom',
+					'icon' => 'check',
+					'content' => Loc::getMessage('SALESCENTER_TIMELINE_TERMINAL_CHECK_CONTENT', [
+						'[link]' => '<a href="' . PaymentSlip::getFullPathToSlip($this->payment->getId()) . '" target="_blank"">',
+						'[/link]' => '</a>',
+						'#DATE_CREATED#' => $this->prepareTimeLineItemsDateTime($this->payment->getField('DATE_PAID'), $culture->getLongDateFormat()),
+					]),
 				];
 			}
 
-			return $result;
+			$checks = Cashbox\CheckManager::getList([
+				'select' => ['ID'],
+				'filter' => [
+					'=PAYMENT_ID' => $this->payment->getId(),
+					'=STATUS' => 'Y',
+				]
+			])->fetchAll();
+			if (!empty($checks))
+			{
+				foreach ($checks as $check)
+				{
+					$checkObject = Cashbox\CheckManager::getObjectById($check['ID']);
+					if (!$checkObject)
+					{
+						continue;
+					}
+
+					$result[] = [
+						'type' => 'check',
+						'url' => $checkObject->getUrl(),
+						'content' => Loc::getMessage('SALESCENTER_TIMELINE_CHECK_CONTENT', [
+							'#ID#' => $checkObject->getField('ID'),
+							'#DATE_CREATED#' => $this->prepareTimeLineItemsDateTime($checkObject->getField('DATE_CREATE'), $culture->getLongDateFormat()),
+						]),
+					];
+				}
+			}
 		}
 
-		$items = $this->getTimeLineItemsByFilter([
-			'TYPE_ID'=>[
-				CCrmOwnerType::Order,
-				CCrmOwnerType::OrderCheck,
-			],
-			'ENTITY_ID'=>$this->arResult['orderId'],
-			'ENTITY_TYPE_ID'=>CCrmOwnerType::Order,
-			'ASSOCIATED_ENTITY_TYPE_ID'=>[
-				CCrmOwnerType::Order,
-				CCrmOwnerType::OrderPayment,
-				CCrmOwnerType::OrderCheck,
-			],
-		]);
-
-		return count($items)>0 ? $this->prepareTimeLineItems($items):[];
+		return $result;
 	}
 
 	/**
@@ -1150,6 +1288,8 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		$result = [
 			'name' => '',
 			'photo' => '',
+			'fullName' => '',
+			'position' => '',
 		];
 
 		$by = 'id';
@@ -1159,12 +1299,14 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 			$by,
 			$order,
 			['ID' => $userId],
-			['FIELDS' => ['PERSONAL_PHOTO', 'NAME']]
+			['FIELDS' => ['PERSONAL_PHOTO', 'NAME', 'LAST_NAME', 'SECOND_NAME', 'LOGIN', 'TITLE', 'WORK_POSITION']]
 		);
 
 		if ($user = $dbRes->Fetch())
 		{
 			$result['name'] = $user['NAME'];
+			$result['fullName'] = CUser::FormatName(CSite::GetNameFormat(false), $user, true);
+			$result['position'] = $user['WORK_POSITION'];
 
 			$fileInfo = \CFile::ResizeImageGet(
 				$user['PERSONAL_PHOTO'] ?? '',
@@ -1174,7 +1316,7 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 
 			if (is_array($fileInfo) && isset($fileInfo['src']))
 			{
-				$result['photo'] = $fileInfo['src'];
+				$result['photo'] = Uri::urnEncode(htmlspecialcharsbx($fileInfo['src']));
 			}
 		}
 
@@ -1427,7 +1569,7 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 						$paySystemPath->addParams($queryParams);
 
 						$psModeImage = $img.'_'.$psMode.'.svg';
-						if (!Main\IO\File::isFileExists(Main\Application::getDocumentRoot().$psModeImage))
+						if (!Main\IO\File::isFileExists(Application::getDocumentRoot().$psModeImage))
 						{
 							$psModeImage = $img.'.svg';
 						}
@@ -1447,11 +1589,6 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 							'showTitle' => false,
 							'sort' => $this->getPaySystemSort($systemHandler, $psMode),
 						];
-
-						if (count($result['items']) >= self::LIMIT_COUNT_PAY_SYSTEM)
-						{
-							break 2;
-						}
 					}
 				}
 				else
@@ -1472,11 +1609,6 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 						'showTitle' => false,
 						'sort' => $this->getPaySystemSort($systemHandler),
 					];
-
-					if (count($result['items']) >= self::LIMIT_COUNT_PAY_SYSTEM)
-					{
-						break;
-					}
 				}
 			}
 
@@ -1492,6 +1624,8 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 			if ($result['items'])
 			{
 				Main\Type\Collection::sortByColumn($result['items'], ['sort' => SORT_ASC]);
+
+				$result['items'] = array_slice($result['items'], 0, self::LIMIT_COUNT_PAY_SYSTEM);
 			}
 
 			$result['isSet'] = false;
@@ -1501,24 +1635,6 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 				'type' => 'more',
 				'group' => 'other',
 			];
-
-			if (Bitrix24Manager::getInstance()->isEnabled())
-			{
-				$feedbackPath = $this->getComponentSliderPath('bitrix:salescenter.feedback');
-				$queryParams = [
-					'lang' => LANGUAGE_ID,
-					'feedback_type' => 'paysystem_offer',
-				];
-				$feedbackPath->addParams($queryParams);
-
-				$result['items'][] = [
-					'name' => Loc::getMessage('SALESCENTER_APP_OFFER_TITLE'),
-					'link' => $feedbackPath->getLocator(),
-					'width' => 735,
-					'type' => 'offer',
-					'group' => 'other',
-				];
-			}
 		}
 		return $result;
 	}
@@ -1857,22 +1973,6 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 						'showTitle' => true,
 					];
 				}
-				else
-				{
-					$result['items'][] = [
-						'name' => $handler::getName(),
-						'img' => '/bitrix/components/bitrix/salescenter.cashbox.panel/templates/.default/images/checkbox.svg',
-						'link' => $cashboxPath->getLocator(),
-						'info' => Loc::getMessage(
-							'SALESCENTER_APP_CASHBOX_INFO',
-							[
-								'#CASHBOX_NAME#' => $handler::getName(),
-							]
-						),
-						'type' => 'cashbox',
-						'showTitle' => false,
-					];
-				}
 			}
 
 			$queryParams['handler'] = 'offline';
@@ -2115,7 +2215,7 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 	{
 		if (!$format)
 		{
-			$culture = \Bitrix\Main\Application::getInstance()->getContext()->getCulture();
+			$culture = Application::getInstance()->getContext()->getCulture();
 			$format = $culture->getLongDateFormat() . ' ' . $culture->getShortTimeFormat();
 		}
 		$result = '';
@@ -2125,152 +2225,6 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		}
 
 		return $result;
-	}
-
-	/**
-	 * @param array $items
-	 * @return array
-	 */
-	private function prepareTimeLineItems(array $items): array
-	{
-		$result = [];
-		foreach ($items as $item)
-		{
-			if ($item['ASSOCIATED_ENTITY_TYPE_ID'] == CCrmOwnerType::OrderPayment)
-			{
-				if (
-					$item['CHANGED_ENTITY'] === CCrmOwnerType::OrderPaymentName
-					&& isset($item['FIELDS']['ORDER_PAID'])
-					&& $item['FIELDS']['ORDER_PAID'] === 'Y'
-				)
-				{
-					$registry = Sale\Registry::getInstance(Sale\Registry::REGISTRY_TYPE_ORDER);
-					/** @var Sale\Payment $paymentClassName */
-					$paymentClassName = $registry->getPaymentClassName();
-					$dbRes = $paymentClassName::getList(array('filter' => array('ID' => $item['ASSOCIATED_ENTITY_ID'])));
-					$data = $dbRes->fetch();
-
-					$result[$item['ID']] = [
-						'type'=>'payment',
-						'sum'=>\CCrmCurrency::MoneyToString($data['SUM'], $data['CURRENCY'], '#'),
-						'currency'=>\CCrmCurrency::GetCurrencyText($data['CURRENCY']),
-						'content'=>$item['ASSOCIATED_ENTITY']['SUBLEGEND'],
-						'title'=>Loc::getMessage('SALESCENTER_TIMELINE_PAYMENT_TITLE',[
-							'#DATE_CREATED#'=>$this->prepareTimeLineItemsDateTime($item['CREATED']),
-						]),
-					];
-				}
-			}
-			elseif ($item['ASSOCIATED_ENTITY_TYPE_ID'] == CCrmOwnerType::OrderCheck)
-			{
-				if ($item['TYPE_CATEGORY_ID'] == TimelineType::MARK)
-				{
-					if (isset($item['SENDED']) && $item['SENDED'] === 'Y')
-					{
-						$check = \Bitrix\Sale\Cashbox\CheckManager::getObjectById($item['ASSOCIATED_ENTITY_ID']);
-						$result[] = [
-							'type'=>'check-sent',
-							'url'=>(is_null($check) ? '':$check->getUrl()),
-							'content'=>Loc::getMessage('SALESCENTER_TIMELINE_CHECKSENT_CONTENT',[
-								'#ID#'=>$item['ASSOCIATED_ENTITY_ID'],
-								'#DATE_CREATED#'=>$this->prepareTimeLineItemsDateTime($item['CREATED']),
-							]),
-						];
-					}
-				}
-				elseif ($item['TYPE_CATEGORY_ID'] == TimelineType::UNDEFINED)
-				{
-					$culture = \Bitrix\Main\Application::getInstance()->getContext()->getCulture();
-					$result[] = [
-						'type' => 'check',
-						'url' => $item['CHECK_URL'] ?? '',
-						'content' => Loc::getMessage('SALESCENTER_TIMELINE_CHECK_CONTENT', [
-							'#ID#' => $item['ASSOCIATED_ENTITY_ID'],
-							'#DATE_CREATED#' => $this->prepareTimeLineItemsDateTime($item['CREATED'], $culture->getLongDateFormat())
-						]),
-					];
-				}
-			}
-			elseif ($item['ASSOCIATED_ENTITY_TYPE_ID'] == CCrmOwnerType::Order)
-			{
-				if ($item['TYPE_CATEGORY_ID'] == TimelineType::MODIFICATION)
-				{
-					if (isset($item['FIELDS']['VIEWED']) && $item['FIELDS']['VIEWED'] === 'Y')
-					{
-						$result[] = [
-							'type'=>'watch',
-							'content'=>Loc::getMessage('SALESCENTER_TIMELINE_WATCH_CONTENT',[
-								'#DATE_CREATED#'=>$this->prepareTimeLineItemsDateTime($item['CREATED']),
-							]),
-						];
-					}
-					elseif (isset($item['FIELDS']['SENT']) && $item['FIELDS']['SENT'] === 'Y')
-					{
-						$paymentInfo = isset($item['ASSOCIATED_ENTITY']['PAYMENTS_INFO'])
-							? current($item['ASSOCIATED_ENTITY']['PAYMENTS_INFO'])
-							: [];
-
-						$result[] = [
-							'type'=>'sent',
-							'url'=>$paymentInfo['SHOW_URL'] ?? '',
-							'content'=>Loc::getMessage('SALESCENTER_TIMELINE_SENT_CONTENT_PAYMENT',[
-								'#DATE_CREATED#'=>$this->prepareTimeLineItemsDateTime($item['CREATED']),
-							]),
-						];
-					}
-				}
-			}
-		}
-		return $result;
-	}
-
-	/**
-	 * @param array $filter
-	 * @return array
-	 */
-	private function getTimeLineItemsByFilter(array $filter): array
-	{
-		$query = new Query(Entity\TimelineTable::getEntity());
-		$query->addSelect('*');
-
-		$bindingQuery = new Query(Entity\TimelineBindingTable::getEntity());
-		$bindingQuery->addSelect('OWNER_ID');
-		$bindingQuery->addFilter('=ENTITY_TYPE_ID', $filter['ENTITY_TYPE_ID']);
-		$bindingQuery->addFilter('=ENTITY_ID', $filter['ENTITY_ID']);
-		$bindingQuery->addSelect('IS_FIXED');
-		$query->addSelect('bind.IS_FIXED', 'IS_FIXED');
-
-		$query->registerRuntimeField('',
-			new ReferenceField('bind',
-				Base::getInstanceByQuery($bindingQuery),
-				array('=this.ID' => 'ref.OWNER_ID'),
-				array('join_type' => 'INNER')
-			)
-		);
-		$query->whereNotIn(
-			'ASSOCIATED_ENTITY_TYPE_ID',
-			Crm\Timeline\TimelineManager::getIgnoredEntityTypeIDs()
-		);
-		$query->addFilter('TYPE_CATEGORY_ID', [TimelineType::CREATION, TimelineType::MODIFICATION, TimelineType::MARK, TimelineType::UNDEFINED]);
-		$query->addFilter('TYPE_ID', $filter['TYPE_ID']);
-		$query->addFilter('ASSOCIATED_ENTITY_TYPE_ID', $filter['ASSOCIATED_ENTITY_TYPE_ID']);
-		$query->setOrder(array('CREATED' => 'ASC', 'ID' => 'ASC'));
-		$query->setLimit(10);
-
-		$dbResult = $query->exec();
-		$itemIDs = [];
-		$items = [];
-
-		while ($fields = $dbResult->fetch())
-		{
-			$itemID = (int)$fields['ID'];
-			$items[] = $fields;
-			$itemIDs[] = $itemID;
-		}
-
-		$itemsMap = array_combine($itemIDs, $items);
-		\Bitrix\Crm\Timeline\TimelineManager::prepareDisplayData($itemsMap);
-		return array_values($itemsMap);
 	}
 
 	/**
@@ -2483,6 +2437,20 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		return false;
 	}
 
+	private function isFacebookExportAvailable(): bool
+	{
+		$facebookFacade = $this->getFacebookFacade();
+
+		return $facebookFacade && $facebookFacade->isExportAvailable();
+	}
+
+	private function getFacebookExportedProduct(array $productIds): array
+	{
+		$facebookFacade = $this->getFacebookFacade();
+
+		return $facebookFacade ? $facebookFacade->getExportedProducts($productIds) : [];
+	}
+
 	// region Actions
 
 	/**
@@ -2652,7 +2620,7 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 		{
 			$optionsName = 'add_payment_collapse_options';
 		}
-		elseif ($this->arResult['mode'] === self::PAYMENT_MODE)
+		elseif ($this->arResult['mode'] === self::PAYMENT_MODE || $this->arResult['mode'] === self::TERMINAL_PAYMENT_MODE)
 		{
 			$optionsName = 'add_payment_collapse_options';
 		}
@@ -2667,7 +2635,7 @@ class CSalesCenterAppComponent extends CBitrixComponent implements Controllerabl
 	public function getFacebookSettingsPathAction($dialogId): ?string
 	{
 		$this->arParams['dialogId'] = $dialogId;
-		$this->arResult['isAllowedFacebookRegion'] = $this->getFacebookFacade()->isExportAvailable();
+		$this->arResult['isAllowedFacebookRegion'] = $this->isFacebookExportAvailable();
 
 		return $this->getFacebookSettingsPath();
 	}

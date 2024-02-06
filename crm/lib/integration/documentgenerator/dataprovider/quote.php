@@ -4,7 +4,6 @@ namespace Bitrix\Crm\Integration\DocumentGenerator\DataProvider;
 
 use Bitrix\Crm\Binding\QuoteContactTable;
 use Bitrix\Crm\Integration\DocumentGenerator\Value\Money;
-use Bitrix\Crm\Item;
 use Bitrix\Crm\QuoteTable;
 use Bitrix\Crm\Service\Container;
 use Bitrix\DocumentGenerator\DataProvider\ArrayDataProvider;
@@ -25,6 +24,10 @@ class Quote extends ProductsDataProvider
 		if($this->fields === null)
 		{
 			parent::getFields();
+			if (isset($this->fields['STATUS']))
+			{
+				$this->fields['STATUS']['TITLE'] = \CCrmLead::GetFieldCaption('STATUS_ID');
+			}
 			$factory = Container::getInstance()->getFactory(\CCrmOwnerType::Quote);
 			$factoryFieldsInfo = $factory ? $factory->getFieldsInfo() : [];
 			$this->fields['ID'] = ['TITLE' => GetMessage('CRM_DOCGEN_DATAPROVIDER_QUOTE_ID_TITLE'),];
@@ -38,7 +41,7 @@ class Quote extends ProductsDataProvider
 			$this->fields['LOCATION_ID'] = ['TITLE' => GetMessage('CRM_DOCGEN_DATAPROVIDER_QUOTE_LOCATION_ID_TITLE'),];
 			$this->fields['COMMENTS'] = ['TITLE' => GetMessage('CRM_DOCGEN_DATAPROVIDER_QUOTE_COMMENTS_TITLE'), 'TYPE' => static::FIELD_TYPE_TEXT];
 			$this->fields['BEGINDATE'] = [
-				'TITLE' => $factoryFieldsInfo['BEGINDATE']['TITLE'] ?? GetMessage('CRM_DOCGEN_DATAPROVIDER_QUOTE_BEGINDATE_TITLE'),
+				'TITLE' => $factoryFieldsInfo['BEGINDATE']['TITLE'] ?? GetMessage('CRM_DOCGEN_DATAPROVIDER_QUOTE_BEGINDATE_TITLE_MSGVER_1'),
 				'TYPE' => DateTime::class,
 			];
 			$this->fields['CLOSEDATE'] = [
@@ -88,6 +91,7 @@ class Quote extends ProductsDataProvider
 			if($data)
 			{
 				$this->data = $data;
+				$this->convertBBFieldsToHtml();
 			}
 		}
 		if(!$this->isLightMode())
@@ -121,7 +125,7 @@ class Quote extends ProductsDataProvider
 	 */
 	public static function getLangName()
 	{
-		return GetMessage('CRM_DOCGEN_DATAPROVIDER_QUOTE_TITLE');
+		return GetMessage('CRM_DOCGEN_DATAPROVIDER_QUOTE_TITLE_MSGVER_1');
 	}
 
 	/**

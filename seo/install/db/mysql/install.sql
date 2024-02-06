@@ -18,7 +18,7 @@ create table if not exists b_seo_search_engine
 	CLIENT_ID varchar(255) NULL,
 	CLIENT_SECRET varchar(255) NULL,
 	REDIRECT_URI varchar(255) NULL,
-	SETTINGS text NULL,
+	SETTINGS longtext NULL,
 	PRIMARY KEY (ID),
 	UNIQUE INDEX ux_b_seo_search_engine_code (CODE)
 );
@@ -37,6 +37,21 @@ create table if not exists b_seo_sitemap
 	DATE_RUN datetime NULL default NULL,
 	SETTINGS longtext NULL,
 	PRIMARY KEY (ID)
+);
+
+create table if not exists b_seo_sitemap_job
+(
+	ID int(11) NOT NULL auto_increment,
+	SITEMAP_ID int (11) NOT NULL DEFAULT 0,
+	RUNNING char(1) NOT NULL DEFAULT 'N',
+	STATUS char(1) NOT NULL DEFAULT 'R',
+	STATUS_MESSAGE varchar(255) NULL,
+	STEP int(11) NOT NULL DEFAULT 0,
+	STATE longtext NULL,
+	DATE_MODIFY timestamp,
+	PRIMARY KEY (ID),
+	INDEX ix_seo_sitemap_job_sid (SITEMAP_ID),
+	INDEX ix_seo_sitemap_job_sid_status (SITEMAP_ID, STATUS)
 );
 
 create table if not exists b_seo_sitemap_runtime

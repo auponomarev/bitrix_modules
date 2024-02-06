@@ -2,10 +2,11 @@
  * @module tasks/layout/task/fields/datePlan
  */
 jn.define('tasks/layout/task/fields/datePlan', (require, exports, module) => {
-	const {DatePlanIs} = require('tasks/layout/task/fields/datePlanIs');
-	const {DatePlanStart} = require('tasks/layout/task/fields/datePlanStart');
-	const {DatePlanEnd} = require('tasks/layout/task/fields/datePlanEnd');
-	const {DatePlanDuration} = require('tasks/layout/task/fields/datePlanDuration');
+	const AppTheme = require('apptheme');
+	const { DatePlanIs } = require('tasks/layout/task/fields/datePlanIs');
+	const { DatePlanStart } = require('tasks/layout/task/fields/datePlanStart');
+	const { DatePlanEnd } = require('tasks/layout/task/fields/datePlanEnd');
+	const { DatePlanDuration } = require('tasks/layout/task/fields/datePlanDuration');
 
 	class DatePlan extends LayoutComponent
 	{
@@ -69,7 +70,7 @@ jn.define('tasks/layout/task/fields/datePlan', (require, exports, module) => {
 					readOnly: this.state.readOnly,
 					isDatePlan: this.state.isDatePlan,
 					deepMergeStyles: this.getDeepMergeStyles(),
-					ref: ref => this.props.onDatePlanIsRef(ref),
+					ref: (ref) => this.props.onDatePlanIsRef(ref),
 					onChange: (value) => {
 						this.animateBlock(value);
 						this.props.onChange(value);
@@ -81,46 +82,48 @@ jn.define('tasks/layout/task/fields/datePlan', (require, exports, module) => {
 							height: (this.state.isDatePlan ? 200 : 0),
 							opacity: (this.state.isDatePlan ? 1 : 0),
 						},
-						ref: ref => this.datePlanBlockRef = ref,
+						ref: (ref) => {
+							this.datePlanBlockRef = ref;
+						},
 					},
-					this.renderWithTopBorder(
+					DatePlan.renderWithTopBorder(
 						new DatePlanStart({
 							readOnly: this.state.readOnly,
 							startDatePlan: this.props.startDatePlan,
 							datesResolver: this.props.datesResolver,
 							deepMergeStyles: this.getDeepMergeStyles(),
-							ref: ref => this.props.onDatePlanStartRef(ref),
-						})
+							ref: (ref) => this.props.onDatePlanStartRef(ref),
+						}),
 					),
-					this.renderWithTopBorder(
+					DatePlan.renderWithTopBorder(
 						new DatePlanEnd({
 							readOnly: this.state.readOnly,
 							endDatePlan: this.props.endDatePlan,
 							datesResolver: this.props.datesResolver,
 							deepMergeStyles: this.getDeepMergeStyles(),
-							ref: ref => this.props.onDatePlanEndRef(ref),
-						})
+							ref: (ref) => this.props.onDatePlanEndRef(ref),
+						}),
 					),
-					this.renderWithTopBorder(
+					DatePlan.renderWithTopBorder(
 						new DatePlanDuration({
 							readOnly: this.state.readOnly,
 							datesResolver: this.props.datesResolver,
 							deepMergeStyles: this.getDeepMergeStyles(),
-							ref: ref => this.props.onDatePlanDurationRef(ref),
-						})
+							ref: (ref) => this.props.onDatePlanDurationRef(ref),
+						}),
 					),
 				),
 			);
 		}
 
-		renderWithTopBorder(field)
+		static renderWithTopBorder(field)
 		{
 			return View(
 				{},
 				View({
 					style: {
 						height: 0.5,
-						backgroundColor: '#e6e7e9',
+						backgroundColor: AppTheme.colors.bgSeparatorSecondary,
 					},
 				}),
 				field,
@@ -128,5 +131,5 @@ jn.define('tasks/layout/task/fields/datePlan', (require, exports, module) => {
 		}
 	}
 
-	module.exports = {DatePlan};
+	module.exports = { DatePlan };
 });

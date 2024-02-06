@@ -40,9 +40,13 @@ Class intranet extends CModule
 	function InstallDB()
 	{
 		global $DB, $APPLICATION;
+		$connection = \Bitrix\Main\Application::getConnection();
+		$errors = null;
 
-		if (!$DB->Query("SELECT 'x' FROM b_intranet_sharepoint ", true))
-			$errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"].'/bitrix/modules/'.$this->MODULE_ID.'/install/db/mysql/install.sql');
+		if (!$DB->TableExists('b_intranet_sharepoint'))
+		{
+			$errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/intranet/install/db/' . $connection->getType() . '/install.sql');
+		}
 
 		if (!empty($errors))
 		{
@@ -193,6 +197,11 @@ Class intranet extends CModule
 		$eventManager->registerEventHandler('tasks', 'onTaskUpdate', 'intranet', '\Bitrix\Intranet\Integration\Tasks', 'onTaskUpdate');
 		$eventManager->registerEventHandler('calendar', 'OnAfterCalendarEntryUpdate', 'intranet', '\Bitrix\Intranet\Integration\Calendar', 'onCalendarEventUpdate');
 		$eventManager->registerEventHandler('calendar', 'OnAfterCalendarEventDelete', 'intranet', '\Bitrix\Intranet\Integration\Calendar', 'OnCalendarEventDelete');
+
+		//for side-panel integration
+		$eventManager->registerEventHandler('ui', 'OnSidepanelBelowPage', 'intranet', 'Bitrix\Intranet\UI\Sidepanel\EventHandler', 'onBelowPage');
+		$eventManager->registerEventHandler('crm', 'OnCrmEntityDetailsFrameBelowPage', 'intranet', 'Bitrix\Intranet\UI\Sidepanel\EventHandler', 'onBelowPage');
+		$eventManager->registerEventHandler('main', 'MainSenderSmtpLimitDecrease', 'intranet', 'Bitrix\Intranet\Integration\Main\EventHandler', 'onSenderSmtpLimitDecrease');
 
 		CAgent::AddAgent('\\Bitrix\\Intranet\\UStat\\UStat::recountHourlyCompanyActivity();', "intranet", "N", 60);
 		CAgent::AddAgent('\\Bitrix\\Intranet\\UStat\\UStat::recount();', "intranet", "N", 3600);

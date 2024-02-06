@@ -1,18 +1,17 @@
-/* eslint-disable flowtype/require-return-type */
-
+/* eslint-disable no-param-reassign */
 /**
  * @module im/messenger/model/files
  */
 jn.define('im/messenger/model/files', (require, exports, module) => {
-
 	const { Type } = require('type');
 	const { DateHelper } = require('im/messenger/lib/helper');
-	const { FilesCache } = require('im/messenger/cache');
-	const { Logger } = require('im/messenger/lib/logger');
+	const { LoggerManager } = require('im/messenger/lib/logger');
+	const logger = LoggerManager.getInstance().getLogger('model--files');
 
 	const {
 		FileStatus,
 		FileType,
+		FileImageType,
 	} = require('im/messenger/const');
 
 	const elementState = {
@@ -20,11 +19,9 @@ jn.define('im/messenger/model/files', (require, exports, module) => {
 		chatId: 0,
 		dialogId: '0',
 		name: 'File is deleted',
-		templateId: 0,
 		date: new Date(),
 		type: 'file',
 		extension: '',
-		icon: 'empty',
 		size: 0,
 		image: false,
 		status: FileStatus.done,
@@ -34,8 +31,12 @@ jn.define('im/messenger/model/files', (require, exports, module) => {
 		urlPreview: '',
 		urlShow: '',
 		urlDownload: '',
-		init: false,
-		viewerAttrs: {},
+		localUrl: '',
+		viewerAttrs: null,
+		uploadData: {
+			byteSent: 0,
+			byteTotal: 0,
+		},
 	};
 
 	const filesModel = {
@@ -44,20 +45,47 @@ jn.define('im/messenger/model/files', (require, exports, module) => {
 			collection: {},
 		}),
 		getters: {
-			/** @function filesModel/hasFile */
+			/**
+			 * @function filesModel/hasFile
+			 * @return {boolean}
+			 */
 			hasFile: (state) => (fileId) => {
-				return !!state.collection[fileId];
+				return Boolean(state.collection[fileId]);
 			},
 
-			/** @function filesModel/getById */
+			/**
+			 * @function filesModel/getById
+			 * @return {FilesModelState}
+			 */
 			getById: (state) => (fileId) => {
 				return state.collection[fileId];
+			},
+
+			/**
+			 * @function filesModel/getByIdList
+			 * @return {FilesModelState[]}
+			 */
+			getByIdList: (state, getters) => (fileIdList) => {
+				return fileIdList.map((fileId) => getters.getById(fileId));
+			},
+
+			/**
+			 * @function filesModel/isInCollection
+			 * @return {boolean}
+			 */
+			isInCollection: (state) => ({ fileId }) => {
+				return Boolean(state.collection[fileId]);
 			},
 		},
 		actions: {
 			/** @function filesModel/setState */
 			setState: (store, payload) => {
-				store.commit('setState', payload);
+				store.commit('setState', {
+					actionName: 'setState',
+					data: {
+						collection: payload,
+					},
+				});
 			},
 
 			/** @function filesModel/set */
@@ -65,15 +93,14 @@ jn.define('im/messenger/model/files', (require, exports, module) => {
 				let fileList = [];
 				if (Type.isArray(payload))
 				{
-					fileList = payload.map(file => {
+					fileList = payload.map((file) => {
 						const result = validate(store, { ...file });
 						result.templateId = result.id;
 
 						return {
 							...elementState,
 							...result,
-							...{ init: true },
-						}
+						};
 					});
 				}
 				else
@@ -83,16 +110,16 @@ jn.define('im/messenger/model/files', (require, exports, module) => {
 					fileList.push({
 						...elementState,
 						...result,
-						...{ init: true },
 					});
 				}
 
 				const existingFileList = [];
 				const newFileList = [];
-				fileList.forEach(file => {
+				fileList.forEach((file) => {
 					if (store.getters.hasFile(file.id))
 					{
 						existingFileList.push(file);
+
 						return;
 					}
 
@@ -101,71 +128,150 @@ jn.define('im/messenger/model/files', (require, exports, module) => {
 
 				if (existingFileList.length > 0)
 				{
-					store.commit('update', existingFileList);
+					store.commit('update', {
+						actionName: 'set',
+						data: {
+							fileList: existingFileList,
+						},
+					});
 				}
 
 				if (newFileList.length > 0)
 				{
-					store.commit('add', newFileList);
+					store.commit('add', {
+						actionName: 'set',
+						data: {
+							fileList: newFileList,
+						},
+					});
 				}
+			},
+
+			/** @function filesModel/updateWithId */
+			updateWithId: (store, payload) => {
+				const { id, fields } = payload;
+
+				if (!store.state.collection[id])
+				{
+					return;
+				}
+
+				store.commit('updateWithId', {
+					actionName: 'updateWithId',
+					data: {
+						id,
+						fields: validate(store, fields),
+					},
+				});
 			},
 
 			/** @function filesModel/delete */
 			delete: (store, payload) => {
+				const { id } = payload;
+				if (!store.state.collection[id])
+				{
+					return;
+				}
 
+				store.commit('delete', {
+					actionName: 'delete',
+					data: {
+						id,
+					},
+				});
 			},
 		},
 		mutations: {
+			/**
+			 * @param state
+			 * @param {MutationPayload} payload
+			 */
 			setState: (state, payload) => {
-				state.collection = payload.collection;
-			},
-			add: (state, payload) => {
-				Logger.warn('filesModel: add mutation', payload);
+				const {
+					collection,
+				} = payload.data;
 
-				payload.forEach(file => {
+				state.collection = collection;
+			},
+
+			/**
+			 * @param state
+			 * @param {MutationPayload} payload
+			 */
+			add: (state, payload) => {
+				logger.log('filesModel: add mutation', payload);
+
+				const {
+					fileList,
+				} = payload.data;
+
+				fileList.forEach((file) => {
 					state.collection[file.id] = file;
 				});
-
-				FilesCache.save();
 			},
-			update: (state, payload) => {
-				Logger.warn('filesModel: update mutation', payload);
 
-				payload.forEach(file => {
+			/**
+			 * @param state
+			 * @param {MutationPayload} payload
+			 */
+			update: (state, payload) => {
+				logger.log('filesModel: update mutation', payload);
+
+				const {
+					fileList,
+				} = payload.data;
+
+				fileList.forEach((file) => {
 					state.collection[file.id] = {
 						...state.collection[file.id],
-						...file.fields
+						...file,
 					};
 				});
+			},
 
-				FilesCache.save();
+			/**
+			 * @param state
+			 * @param {MutationPayload} payload
+			 */
+			updateWithId: (state, payload) => {
+				logger.log('filesModel: updateWithId mutation', payload);
+
+				const {
+					id,
+					fields,
+				} = payload.data;
+
+				const currentFile = { ...state.collection[id] };
+
+				delete state.collection[id];
+				state.collection[fields.id] = {
+					...currentFile,
+					...fields,
+				};
 			},
+
+			/**
+			 * @param state
+			 * @param {MutationPayload} payload
+			 */
 			delete: (state, payload) => {
-				Logger.warn('filesModel: update mutation', payload);
-				//TODO: delete mutation
-				FilesCache.save();
+				logger.log('filesModel: delete mutation', payload);
+				const {
+					id,
+				} = payload.data;
+
+				delete state.collection[id];
 			},
-		}
+		},
 	};
 
 	function validate(store, fields)
 	{
 		const result = {};
 
-		if (Type.isNumber(fields.id))
+		if (Type.isNumber(fields.id) || Type.isStringFilled(fields.id))
 		{
 			result.id = fields.id;
-		}
-		else if (Type.isString(fields.id))
-		{
-			if (fields.id.startsWith('temporary'))
-			{
-				result.id = fields.id;
-			}
-			else
-			{
-				result.id = Number(fields.id);
-			}
 		}
 
 		if (Type.isNumber(fields.templateId))
@@ -201,19 +307,27 @@ jn.define('im/messenger/model/files', (require, exports, module) => {
 
 		if (Type.isString(fields.extension))
 		{
-			result.extension = fields.extension.toString();
+			result.extension = fields.extension.toString().toLowerCase();
 
-			if (result.type === 'image')
+			if (result.type === FileType.image
+				&& Application.getPlatform() === 'ios' // ios cant show webp and bmp and others type
+				&& (result.extension !== FileImageType.jpeg
+					&& result.extension !== FileImageType.jpg
+					&& result.extension !== FileImageType.png
+					&& result.extension !== FileImageType.gif
+					&& result.extension !== FileImageType.heif
+					&& result.extension !== FileImageType.heic)
+			)
 			{
-				result.icon = 'img';
+				result.type = FileType.file;
 			}
-			else if (result.type === 'video')
+
+			if (result.type === FileType.image
+				&& Application.getPlatform() !== 'ios'
+				&& (result.extension === FileImageType.heic || result.extension === FileImageType.heif)
+			)
 			{
-				result.icon = 'mov';
-			}
-			else
-			{
-				result.icon = getIconType(result.extension);
+				result.type = FileType.file;
 			}
 		}
 
@@ -221,7 +335,6 @@ jn.define('im/messenger/model/files', (require, exports, module) => {
 		{
 			result.name = fields.name.toString();
 		}
-
 
 		if (Type.isNumber(fields.size) || Type.isString(fields.size))
 		{
@@ -241,11 +354,12 @@ jn.define('im/messenger/model/files', (require, exports, module) => {
 
 			if (Type.isString(fields.image.width) || Type.isNumber(fields.image.width))
 			{
-				result.image.width = parseInt(fields.image.width);
+				result.image.width = parseInt(fields.image.width, 10);
 			}
+
 			if (Type.isString(fields.image.height) || Type.isNumber(fields.image.height))
 			{
-				result.image.height = parseInt(fields.image.height);
+				result.image.height = parseInt(fields.image.height, 10);
 			}
 
 			if (result.image.width <= 0 || result.image.height <= 0)
@@ -326,115 +440,32 @@ jn.define('im/messenger/model/files', (require, exports, module) => {
 			}
 		}
 
+		if (Type.isString(fields.localUrl))
+		{
+			result.localUrl = fields.localUrl;
+		}
+		else
+		{
+			const localUrl = store.state.collection[fields.id]?.localUrl;
+			if (localUrl)
+			{
+				result.localUrl = localUrl;
+			}
+		}
+
+		// it is necessary for the native dialog on iOS to display heic as an image message
+		if (Application.getPlatform() === 'ios' && result.extension === 'heic' && !result.urlPreview)
+		{
+			result.type = FileType.image;
+			result.urlPreview = result.urlShow;
+		}
+
+		if (Type.isObject(fields.uploadData))
+		{
+			result.uploadData = fields.uploadData;
+		}
+
 		return result;
-	}
-
-	function getType(name)
-	{
-		const extension = name.toString().toLowerCase().split('.').splice(-1)[0];
-
-		switch(extension)
-		{
-			case 'png':
-			case 'jpe':
-			case 'jpg':
-			case 'jpeg':
-			case 'gif':
-			case 'heic':
-			case 'bmp':
-			case 'webp':
-				return FileType.image;
-
-			case 'mp4':
-			case 'mkv':
-			case 'webm':
-			case 'mpeg':
-			case 'hevc':
-			case 'avi':
-			case '3gp':
-			case 'flv':
-			case 'm4v':
-			case 'ogg':
-			case 'wmv':
-			case 'mov':
-				return FileType.video;
-
-			case 'mp3':
-				return FileType.audio;
-		}
-
-		return FileType.file;
-	}
-
-	function getIconType(extension)
-	{
-		switch(extension.toString())
-		{
-			case 'png':
-			case 'jpe':
-			case 'jpg':
-			case 'jpeg':
-			case 'gif':
-			case 'heic':
-			case 'bmp':
-			case 'webp':
-				return 'img';
-
-			case 'mp4':
-			case 'mkv':
-			case 'webm':
-			case 'mpeg':
-			case 'hevc':
-			case 'avi':
-			case '3gp':
-			case 'flv':
-			case 'm4v':
-			case 'ogg':
-			case 'wmv':
-			case 'mov':
-				return 'mov';
-
-			case 'txt':
-				return 'txt';
-
-			case 'doc':
-			case 'docx':
-				return 'doc';
-
-			case 'xls':
-			case 'xlsx':
-				return 'xls';
-
-			case 'php':
-				return 'php';
-
-			case 'pdf':
-				return 'pdf';
-
-			case 'ppt':
-			case 'pptx':
-				return 'ppt';
-
-			case 'rar':
-				return 'rar';
-
-			case 'zip':
-			case '7z':
-			case 'tar':
-			case 'gz':
-			case 'gzip':
-				return 'zip';
-
-			case 'set':
-				return 'set';
-
-			case 'conf':
-			case 'ini':
-			case 'plist':
-				return 'set';
-		}
-
-		return 'empty';
 	}
 
 	module.exports = { filesModel };

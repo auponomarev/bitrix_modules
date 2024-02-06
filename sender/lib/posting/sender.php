@@ -165,6 +165,8 @@ class Sender
 		{
 			$this->resultCode = self::RESULT_ERROR;
 
+			AddMessage2Log('Mailing without id','sender');
+
 			return;
 		}
 
@@ -196,6 +198,18 @@ class Sender
 		// lock posting for exclude double parallel sending
 		if (is_null($threadId))
 		{
+			if (!$this->threadStrategy->hasUnprocessedThreads())
+			{
+				// update status of posting
+				$status = self::updateActualStatus(
+					$this->postingId,
+					$this->isPrevented()
+				);
+
+				$this->finalizePosting($status);
+				return;
+			}
+
 			$this->resultCode = static::RESULT_CONTINUE;
 			return;
 		}
@@ -225,9 +239,19 @@ class Sender
 
 		$this->changeStatusToPart();
 
+		// posting competed by status SENT_WITH_ERROR
+		if ($this->status === PostingTable::STATUS_SENT_WITH_ERRORS)
+		{
+			$this->resultCode = static::RESULT_SENT;
+			$this->threadStrategy->updateStatus(PostingThreadTable::STATUS_DONE);
+			static::unlock($this->postingId, $threadId);
+			return;
+		}
+
 		// posting not in right status
 		if ($this->status != PostingTable::STATUS_PART)
 		{
+			AddMessage2Log('Status does not equal Part. PostingId: ' . $this->postingId,'sender');
 			$this->resultCode = static::RESULT_ERROR;
 			$this->threadStrategy->updateStatus(PostingThreadTable::STATUS_NEW);
 			static::unlock($this->postingId, $threadId);
@@ -289,31 +313,7 @@ class Sender
 			return;
 		}
 
-		if (!PostingRecipientTable::hasUnprocessed($this->postingId))
-		{
-			$onAfterEndResult = $this->message->onAfterEnd();
-			if (!$onAfterEndResult->isSuccess())
-			{
-				$this->resultCode = static::RESULT_CONTINUE;
-
-				return;
-			}
-			$errorMessage = implode(', ', $onAfterEndResult->getErrorMessages());
-			if (strlen($errorMessage))
-			{
-				Model\LetterTable::update($this->letterId, ['ERROR_MESSAGE' => $errorMessage]);
-			}
-		}
-
-		// set result code to continue or end of sending
-		$isContinue       = $status == PostingTable::STATUS_PART;
-		$this->resultCode = $isContinue ? static::RESULT_CONTINUE : static::RESULT_SENT;
-
-		if ($this->resultCode == static::RESULT_SENT)
-		{
-			$this->resultCode = !$this->threadStrategy->finalize() ? static::RESULT_CONTINUE : static::RESULT_SENT;
-			TimeLineJob::addEventAgent($this->letterId);
-		}
+		$this->finalizePosting($status);
 	}
 
 	/**
@@ -391,11 +391,7 @@ class Sender
 			return true;
 		}
 
-		if (
-			($this->status !== PostingTable::STATUS_NEW)
-			&& !$this->isReiterate
-			&& ($this->letter->getData()['WAITING_RECIPIENT'] !== 'N')
-		)
+		if ($this->status !== PostingTable::STATUS_NEW)
 		{
 			return true;
 		}
@@ -418,7 +414,6 @@ class Sender
 		if (
 			($this->status !== PostingTable::STATUS_NEW)
 			&& !$this->isTrigger
-			&& !$this->isReiterate
 		)
 		{
 			return;
@@ -507,56 +502,32 @@ class Sender
 	/**
 	 * Lock posting for preventing double sending
 	 *
-	 * @param integer $id ID.
-	 * @param $threadId default 0
+	 * @param int $id ID
+	 * @param int $threadId Default 0
 	 *
 	 * @return bool
-	 * @throws Main\Db\SqlQueryException
-	 * @throws Main\SystemException
 	 */
 	public static function lock($id, $threadId = 0)
 	{
-		$id       = intval($id);
+		$id = intval($id);
 		$threadId = intval($threadId);
 
-		$uniqueSalt = self::getLockUniqueSalt();
-		$connection = Application::getInstance()->getConnection();
-		if ($connection instanceof DB\MysqlCommonConnection)
-		{
-			$lockDb = $connection->query(
-				sprintf(
-					"SELECT GET_LOCK('%s_sendpost_%d_%d', 0) as L",
-					$uniqueSalt,
-					$id,
-					$threadId
-				),
-				false,
-				"File: ".__FILE__."<br>Line: ".__LINE__
-			);
-			$lock   = $lockDb->fetch();
-			if ($lock["L"] == "1")
-			{
-				return true;
-			}
-			else
-			{
-				return false;
-			}
-		}
+		$lockName = self::getSendpostLockName($id, $threadId);
 
-		return false;
+		return Application::getInstance()->getConnection()->lock($lockName);
 	}
 
-	protected static function getLockUniqueSalt($generate = true)
+	/**
+	 * Get lock name
+	 *
+	 * @param int $id
+	 * @param int $threadId
+	 *
+	 * @return string
+	 */
+	private static function getSendpostLockName(int $id, int $threadId): string
 	{
-		$uniqueSalt = Option::get("main", "server_uniq_id", "");
-		if ($uniqueSalt == '' && $generate)
-		{
-			$uniqueSalt = md5(uniqid(rand(), true));
-			Option::set("main", "server_uniq_id", $uniqueSalt);
-		}
-
-		return $uniqueSalt;
+		return "sendpost_{$id}_{$threadId}";
 	}
 
 	/**
@@ -860,47 +831,19 @@ class Sender
 	/**
 	 * UnLock posting that was locking for preventing double sending
 	 *
-	 * @param integer $id ID.
+	 * @param int $id ID
 	 * @param int $threadId
 	 *
 	 * @return bool
-	 * @throws Main\Db\SqlQueryException
-	 * @throws Main\SystemException
 	 */
 	public static function unlock($id, $threadId = 0)
 	{
-		$id       = intval($id);
+		$id = intval($id);
 		$threadId = intval($threadId);
 
-		$connection = Application::getInstance()->getConnection();
-		if ($connection instanceof DB\MysqlCommonConnection)
-		{
-			$uniqueSalt = self::getLockUniqueSalt(false);
-			if (!$uniqueSalt)
-			{
-				return false;
-			}
+		$lockName = self::getSendpostLockName($id, $threadId);
 
-			$lockDb = $connection->query(
-				sprintf(
-					"SELECT RELEASE_LOCK('%s_sendpost_%d_%d') as L",
-					$uniqueSalt,
-					$id,
-					$threadId
-				)
-			);
-			$lock   = $lockDb->fetch();
-			if ($lock["L"] == "0")
-			{
-				return false;
-			}
-			else
-			{
-				return true;
-			}
-		}
-
-		return false;
+		return Application::getInstance()->getConnection()->unlock($lockName);
 	}
 
 	/**
@@ -1032,5 +975,39 @@ class Sender
 			{
 				return $recipient['STATUS'] === PostingRecipientTable::SEND_RESULT_NONE;
 			});
+	}
+
+	/**
+	 * @param string $status
+	 * @return void
+	 * @throws \Exception
+	 */
+	private function finalizePosting(string $status): void
+	{
+		if (!PostingRecipientTable::hasUnprocessed($this->postingId))
+		{
+			$onAfterEndResult = $this->message->onAfterEnd();
+			if (!$onAfterEndResult->isSuccess())
+			{
+				$this->resultCode = static::RESULT_CONTINUE;
+
+				return;
+			}
+			$errorMessage = implode(', ', $onAfterEndResult->getErrorMessages());
+			if (strlen($errorMessage))
+			{
+				Model\LetterTable::update($this->letterId, ['ERROR_MESSAGE' => $errorMessage]);
+			}
+		}
+
+		// set result code to continue or end of sending
+		$isContinue = $status == PostingTable::STATUS_PART;
+		$this->resultCode = $isContinue ? static::RESULT_CONTINUE : static::RESULT_SENT;
+
+		if ($this->resultCode == static::RESULT_SENT)
+		{
+			$this->resultCode = !$this->threadStrategy->finalize() ? static::RESULT_CONTINUE : static::RESULT_SENT;
+			TimeLineJob::addEventAgent($this->letterId);
+		}
 	}
 }

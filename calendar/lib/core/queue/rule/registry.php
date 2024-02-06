@@ -8,7 +8,8 @@ use Bitrix\Calendar\Core\Queue\Rule\Rules\EventAttendeesUpdateRule;
 use Bitrix\Calendar\Core\Queue\Rule\Rules\EventDelayedSyncRule;
 use Bitrix\Calendar\Core\Queue\Rule\Rules\EventWithEntityAttendeesFindRule;
 use Bitrix\Calendar\Core\Queue\Rule\Rules\PushDelayedRule;
-use Bitrix\Calendar\Internals\SingletonTrait;
+use Bitrix\Calendar\Core\Base\SingletonTrait;
+use Bitrix\Calendar\Core\Queue\Rule\Rules\SendingEmailNotificationRule;
 
 class Registry
 {
@@ -22,10 +23,7 @@ class Registry
 		$this->registerRule(new PushDelayedRule());
 		$this->registerRule(new EventAttendeesUpdateRule());
 		$this->registerRule(new EventWithEntityAttendeesFindRule());
-		// add preinstalled rules here
-		// for example:
-		// $this->registerRule(new ExampleRule());
-		// $this->registerRuleClass(ExampleRule::class);
+		$this->registerRule(new SendingEmailNotificationRule());
 	}
 
 	/**

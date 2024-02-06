@@ -36,6 +36,7 @@ class Queue
 	public const REASON_OPERATOR_ABSENT = 'VACATION';
 	public const REASON_OPERATOR_DAY_PAUSE = 'NONWORKING';
 	public const REASON_OPERATOR_DAY_END = 'NONWORKING';
+	public const REASON_OPERATOR_DAY_END_SILENT = 'NONWORKING_SILENT';
 	public const REASON_OPERATOR_DELETED = 'DISMISSAL';
 	public const REASON_REMOVED_FROM_QUEUE = 'REMOVING';
 	public const REASON_OPERATOR_NOT_AVAILABLE = 'NOT_AVAILABLE';
@@ -711,7 +712,11 @@ class Queue
 
 				if($result === true)
 				{
-					if(Config::isTimeManActive())
+					if ((new \Bitrix\ImOpenLines\UserPause((int)$userId))->getStatus())
+					{
+						$result = self::REASON_OPERATOR_DAY_PAUSE;
+					}
+					elseif(Config::isTimeManActive())
 					{
 						$result = self::getActiveStatusByTimeman($userId, $ignorePause);
 					}

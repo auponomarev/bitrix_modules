@@ -6,13 +6,14 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 }
 
 use Bitrix\Main;
-use Bitrix\Main\Config;
 use Bitrix\Main\Type;
 
 class IntranetNotifyPanelComponent extends \CBitrixComponent implements Main\Engine\Contract\Controllerable
 {
 	private const CONFIG_OPTION_NAME = 'notify-configuration';
 	private const CONFIG_OPTION_MODULE = 'intranet';
+	private const DAY_ALMOST_EXPIRED_DEFAULT = 15;
+	private const DAY_ALMOST_EXPIRED_CIS = 60;
 	private const DEFAULT_NOTIFICATION_CONFIG = [
 		'isAvailable' => false,
 	];
@@ -24,11 +25,13 @@ class IntranetNotifyPanelComponent extends \CBitrixComponent implements Main\Eng
 	private static int $queueCounter = 0; // counter of notifications that are ready to be shown
 	private Main\License $license;
 	private bool $isAdmin;
+	private bool $isCIS;
 
 	public function __construct($component = null)
 	{
 		$this->license = Main\Application::getInstance()->getLicense();
 		$this->isAdmin = Main\Engine\CurrentUser::get()->isAdmin();
+		$this->isCIS = in_array($this->license->getRegion(), ['ru', 'by', 'kz']);
 
 		parent::__construct($component);
 	}
@@ -81,7 +84,7 @@ class IntranetNotifyPanelComponent extends \CBitrixComponent implements Main\Eng
 
 			$remainder = $expireDate < $dateNow ? 0 : $dateNow->getDiff($expireDate)->days;
 
-			if ($remainder > 60)
+			if ($remainder > $this->getNumberDaysForStartLicensePopup())
 			{
 				return self::DEFAULT_NOTIFICATION_CONFIG;
 			}
@@ -105,10 +108,11 @@ class IntranetNotifyPanelComponent extends \CBitrixComponent implements Main\Eng
 				: self::TYPES_LICENSE_NOTIFICATION['almost-expired-60'];
 			$data['expireDate'] = $expireDate->getTimestamp();
 			$data['blockDate'] = $expireDate->add('+15 days')->getTimestamp();
-			$data['isPortalWithPartner'] = (int)Config\Option::get('main', '~PARAM_PARTNER_ID', 0) > 0;
+			$data['isPortalWithPartner'] = $this->license->getPartnerId() > 0;
 			$data['urlBuyWithPartner'] = self::URL_PARTNER_BUY;
 			$data['urlDefaultBuy'] = $this->license->getBuyLink();
 			$data['urlArticle'] = $this->license->getDocumentationLink();
+			$data['isCIS'] = $this->isCIS;
 
 			return $data;
 		}
@@ -147,6 +151,16 @@ class IntranetNotifyPanelComponent extends \CBitrixComponent implements Main\Eng
 		}
 
 		return self::DEFAULT_NOTIFICATION_CONFIG;
+	}
+
+	private function getNumberDaysForStartLicensePopup(): int
+	{
+		if ($this->isCIS)
+		{
+			return self::DAY_ALMOST_EXPIRED_CIS;
+		}
+
+		return self::DAY_ALMOST_EXPIRED_DEFAULT;
 	}
 
 	private function getNotifyConfig(): array

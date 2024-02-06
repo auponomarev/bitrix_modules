@@ -1,61 +1,53 @@
-(() =>
-{
-	this.NewPostComponent = class NewPostComponent extends LayoutComponent {
+(() => {
+	const require = (ext) => jn.require(ext);
+	const AppTheme = require('apptheme');
+	AppTheme.extend('medalSelector', {
+		Opacity: [1, 0.1],
+	});
 
-		constructor(props) {
+	this.NewPostComponent = class NewPostComponent extends LayoutComponent
+	{
+		constructor(props)
+		{
 			super(props);
 
 			this.styles = {
-				menuCancelTextColor: '#aaaaaa',
-				inputTextColor: '#333333',
-				inputColoredTextColor: '#ffffff',
-				placeholderTextColor: '#80333333',
-				placeholderColoredTextColor: '#FFFFFF33'
+				menuCancelTextColor: AppTheme.colors.base4,
+				inputTextColor: AppTheme.colors.base1,
+				inputColoredTextColor: AppTheme.colors.bgContentPrimary,
+				placeholderTextColor: AppTheme.colors.base4,
+				placeholderColoredTextColor: AppTheme.colors.baseWhiteFixed,
 			};
 
 			const postData = BX.componentParameters.get('POST_DATA', {});
 			const forAll = Utils.getForAllValue({
-				postData: postData,
+				postData,
 				forAllAllowed: !BX.componentParameters.get('DESTINATION_TO_ALL_DENY', false),
-				forAllDefault: BX.componentParameters.get('DESTINATION_TO_ALL_DEFAULT', true)
+				forAllDefault: BX.componentParameters.get('DESTINATION_TO_ALL_DEFAULT', true),
 			});
 
 			const recipientsCount = Utils.getRecipientsCountValue({
 				recipients: (
-					typeof postData.recipients !== 'undefined'
-						? postData.recipients
-						: { users: (forAll ? [ 'UA' ] : []) }
-				)
+					typeof postData.recipients === 'undefined'
+						? { users: (forAll ? ['UA'] : []) }
+						: postData.recipients
+				),
 			});
 			const recipientsValue = Utils.getRecipientsValue({
-				postData: postData,
+				postData,
 				forAllAllowed: !BX.componentParameters.get('DESTINATION_TO_ALL_DENY', false),
-				forAllDefault: BX.componentParameters.get('DESTINATION_TO_ALL_DEFAULT', true)
+				forAllDefault: BX.componentParameters.get('DESTINATION_TO_ALL_DEFAULT', true),
 			});
-			const attachmentsValue = Utils.getAttachmentsValue({
-				postData: postData
-			});
-			const backgroundImageCodeValue = Utils.getBackgroundImageCodeValue({
-				postData: postData
-			});
-			const isImportantValue = Utils.getIsImportantValue({
-				postData: postData
-			});
-			const importantUntilValue = (isImportantValue ? Utils.getImportantUntilValue({
-				postData: postData
-			}) : null);
-			const medalValue = (!isImportantValue ? Utils.getMedalValue({
-				postData: postData
-			}): null);
-			const gratitudeEmployeesValue = (medalValue ? Utils.getGratitudeEmployeesValue({
-				postData: postData
-			}) : []);
-			let voteValue = (!isImportantValue && !medalValue ? Utils.getVoteValue({
-				postData: postData
-			}) : {
-				questions: []
-			});
-			const backgroundImageValue = (isImportantValue || medalValue ? null : this.getBackgroundImageFromCode(backgroundImageCodeValue));
+			const attachmentsValue = Utils.getAttachmentsValue({ postData });
+			const backgroundImageCodeValue = Utils.getBackgroundImageCodeValue({ postData });
+			const isImportantValue = Utils.getIsImportantValue({ postData });
+			const importantUntilValue = (isImportantValue ? Utils.getImportantUntilValue({ postData }) : null);
+			const medalValue = (isImportantValue ? null : Utils.getMedalValue({ postData }));
+			const gratitudeEmployeesValue = (medalValue ? Utils.getGratitudeEmployeesValue({ postData }) : []);
+			const voteValue = (!isImportantValue && !medalValue ? Utils.getVoteValue({ postData }) : { questions: [] });
+			const backgroundImageValue = isImportantValue || medalValue
+				? null
+				: this.getBackgroundImageFromCode(backgroundImageCodeValue);
 
 			this.postTitleValue = (
 				typeof postData.post !== 'undefined'
@@ -90,15 +82,15 @@
 				mentionHintShown: (this.postText.length <= 0),
 				isEdit: false,
 				attachments: attachmentsValue,
-				backgroundImage: (backgroundImageValue !== undefined ? backgroundImageValue : null),
+				backgroundImage: (backgroundImageValue === undefined ? null : backgroundImageValue),
 				backgroundImageCode: backgroundImageCodeValue,
 				isImportant: isImportantValue,
 				importantUntil: importantUntilValue,
 				voteData: voteValue,
 				medal: medalValue,
 				gratitudeEmployees: gratitudeEmployeesValue,
-				forAll: forAll,
-				recipientsCount: recipientsCount,
+				forAll,
+				recipientsCount,
 				recipientsStringActionsheet: renderDestinationList({
 					recipients: recipientsValue,
 				}),
@@ -120,7 +112,7 @@
 				postTitleMargin: 10,
 				backdropHeight: 630,
 				maxKeyboardRecipientsHeight: 45,
-//				maxActionSheetRecipientsHeight: 60,
+				// maxActionSheetRecipientsHeight: 60,
 			};
 
 			this.actionSheet = null;
@@ -133,17 +125,15 @@
 
 			this.postTextCursorPosition = 0;
 			this.recipients = recipientsValue;
-			this.hiddenRecipients = Utils.getHiddenRecipientsValue({
-				postData: postData
-			});
+			this.hiddenRecipients = Utils.getHiddenRecipientsValue({ postData });
 			this.attachments = attachmentsValue;
 
 			this.keyboardPanelRecipientsCountLimit = 3;
-//			this.actionSheetRecipientsCountLimit = 3;
+			// this.actionSheetRecipientsCountLimit = 3;
 
-			this.pageId = (!!postData.pageId ? postData.pageId : false);
-			this.postId = (parseInt(postData.postId) > 0 ? parseInt(postData.postId) : 0);
-			this.groupId = (parseInt(postData.groupId) > 0 ? parseInt(postData.groupId) : 0);
+			this.pageId = postData.pageId || false;
+			this.postId = (parseInt(postData.postId, 10) > 0 ? parseInt(postData.postId, 10) : 0);
+			this.groupId = (parseInt(postData.groupId, 10) > 0 ? parseInt(postData.groupId, 10) : 0);
 
 			this.postTitleRef = null;
 			this.postMessageRef = null;
@@ -176,12 +166,15 @@
 			};
 		}
 
-		isScrollContentReachedScrollHeight() {
+		isScrollContentReachedScrollHeight()
+		{
 			return this.height.scrollContent >= this.height.rootScroll - this.config.marginBottom;
 		}
 
-		onScrollViewClick() {
-			if (this.isScrollContentReachedScrollHeight()) {
+		onScrollViewClick()
+		{
+			if (this.isScrollContentReachedScrollHeight())
+			{
 				return;
 			}
 
@@ -190,18 +183,15 @@
 			});
 		}
 
-		onPostMessageChange({ height }) {
-
+		onPostMessageChange({ height })
+		{
 			this.scrollPostMessageToCursor();
 
 			this.height.postMessage = height;
 		}
 
-		onPostMessageInput({
-			char,
-			selection,
-		}) {
-
+		onPostMessageInput({ char, selection })
+		{
 			if (char === '@')
 			{
 				this.onClickMentionMenuItem({
@@ -217,8 +207,8 @@
 			this.postMessageScrollCheckNeeded = false;
 		}
 
-		scrollPostMessageToCursor() {
-
+		scrollPostMessageToCursor()
+		{
 			const {
 				attachments,
 			} = this.state;
@@ -251,9 +241,7 @@
 			}
 		}
 
-		scrollPostMessageToEnd({
-			type
-		})
+		scrollPostMessageToEnd({ type })
 		{
 			const {
 				attachments,
@@ -261,17 +249,21 @@
 
 			let actionBlockHeight = 0;
 
-			if (type === 'important')
+			switch (type)
 			{
-				actionBlockHeight = parseInt(this.height.importantPanel);
-			}
-			else if (type === 'medal')
-			{
-				actionBlockHeight = this.height.gratitudePanel;
-			}
-			else if (type === 'vote')
-			{
-				actionBlockHeight = this.height.votePanel;
+				case 'important':
+					actionBlockHeight = parseInt(this.height.importantPanel, 10);
+					break;
+
+				case 'medal':
+					actionBlockHeight = this.height.gratitudePanel;
+					break;
+
+				case 'vote':
+					actionBlockHeight = this.height.votePanel;
+					break;
+
+				default: // No default
 			}
 
 			const contentHeight = this.height.postMessage + actionBlockHeight;
@@ -292,15 +284,18 @@
 			}
 		}
 
-		onCursorPositionChange({ y }) {
+		onCursorPositionChange({ y })
+		{
 			this.postMessageCursorY = y;
 		}
 
-		showActionSheet() {
+		showActionSheet()
+		{
 			this.setState({ actionSheetShown: true });
 		}
 
-		hideActionSheet(callback) {
+		hideActionSheet(callback)
+		{
 			this.setState({ actionSheetShown: false }, () => {
 				if (typeof callback === 'function')
 				{
@@ -309,12 +304,13 @@
 			});
 		}
 
-		getStyle(key) {
+		getStyle(key)
+		{
 			return this.styles[key];
 		}
 
-		onClose() {
-
+		onClose()
+		{
 			const {
 				voteData,
 				medal,
@@ -336,6 +332,7 @@
 			)
 			{
 				postFormLayoutWidget.close();
+
 				return;
 			}
 
@@ -355,7 +352,7 @@
 				[
 					BX.message('MOBILE_EXT_LAYOUT_POSTFORM_CLOSE_CONFIRM_BUTTON_OK'),
 					BX.message('MOBILE_EXT_LAYOUT_POSTFORM_CLOSE_CONFIRM_BUTTON_CANCEL'),
-				]
+				],
 			);
 		}
 
@@ -374,13 +371,13 @@
 				gratitudeEmployees,
 				voteData,
 				backgroundImageCode,
-				titleShown
+				titleShown,
 			} = this.state;
 
 			const ufCode = BX.componentParameters.get('POST_FILE_UF_CODE', 'UF_BLOG_POST_FILE');
 			const postData = {
 				contentType: 'post',
-				ufCode: ufCode
+				ufCode,
 			};
 
 			if (!titleShown)
@@ -388,62 +385,53 @@
 				postTitle = '';
 			}
 
-			this.processData(postData).then((postData) => {
-				return this.processDestinations(postData, recipients, hiddenRecipients);
-			}).then((postData) => {
-				return this.processFiles(postData, attachments, {
-					ufCode: ufCode
+			this.processData(postData)
+				.then((postData) => this.processDestinations(postData, recipients, hiddenRecipients))
+				.then((postData) => this.processFiles(postData, attachments, { ufCode }))
+				.then((postData) => this.processText(postData, postText, postTitle))
+				.then((postData) => this.processImportant(postData, isImportant, importantUntil))
+				.then((postData) => this.processGratitude(postData, medal, gratitudeEmployees))
+				.then((postData) => this.processBackground(postData, backgroundImageCode))
+				.then((postData) => this.processVote(postData, voteData))
+				.then((postData) => {
+					BX.postComponentEvent(
+						'Livefeed.PublicationQueue::setItem',
+						[
+							{
+								key: postData.postVirtualId,
+								item: postData,
+								pageId: this.pageId,
+								groupId: this.groupId,
+							},
+						],
+						'background',
+					);
+
+					postFormLayoutWidget.close();
+				})
+				.catch((error) => {
+					console.error(error.message);
+
+					if (error.code === 'DESTINATIONS_EMPTY')
+					{
+						this.onClickDestinationMenuItem({
+							title: BX.message('RECIPIENT_SELECT_TITLE'),
+							callback: this.onPublish.bind(this),
+						});
+					}
+					else
+					{
+						Utils.showError({
+							errorText: error.message,
+							callback: null,
+						});
+					}
 				});
-			}).then((postData) => {
-				return this.processText(postData, postText, postTitle);
-			}).then((postData) => {
-				return this.processImportant(postData, isImportant, importantUntil);
-			}).then((postData) => {
-				return this.processGratitude(postData, medal, gratitudeEmployees);
-			}).then((postData) => {
-				return this.processBackground(postData, backgroundImageCode);
-			}).then((postData) => {
-				return this.processVote(postData, voteData);
-			}).then((postData) => {
-
-				BX.postComponentEvent(
-					'Livefeed.PublicationQueue::setItem',
-					[{
-						key: postData.postVirtualId,
-						item: postData,
-						pageId: this.pageId,
-						groupId: this.groupId,
-					}],
-					'background'
-				);
-
-				postFormLayoutWidget.close();
-
-			}).catch((error) => {
-
-				console.error(error.message);
-
-				if (error.code === 'DESTINATIONS_EMPTY')
-				{
-					this.onClickDestinationMenuItem({
-						title: BX.message('RECIPIENT_SELECT_TITLE'),
-						callback: this.onPublish.bind(this),
-					});
-				}
-				else
-				{
-					Utils.showError({
-						errorText: error.message,
-						callback: null,
-					});
-				}
-			});
 		}
 
 		processText(postData, postText, postTitle)
 		{
-			const promise = new Promise((resolve, reject) =>
-			{
+			const promise = new Promise((resolve, reject) => {
 				if (postText.length <= 0)
 				{
 					reject({
@@ -462,16 +450,16 @@
 				resolve(postData);
 			});
 
-			promise.catch((error) => {console.error(error)});
+			promise.catch((error) => {
+				console.error(error);
+			});
 
 			return promise;
 		}
 
 		processData(postData)
 		{
-			const promise = new Promise((resolve, reject) =>
-			{
-
+			const promise = new Promise((resolve, reject) => {
 				if (this.postId > 0)
 				{
 					postData.post_id = this.postId;
@@ -480,38 +468,37 @@
 				resolve(postData);
 			});
 
-			promise.catch((error) => {console.error(error)});
+			promise.catch((error) => {
+				console.error(error);
+			});
 
 			return promise;
 		}
 
 		processDestinations(postData, recipients, hiddenRecipients)
 		{
-			const promise = new Promise((resolve, reject) =>
-			{
+			const promise = new Promise((resolve, reject) => {
 				let destinationList = [];
-				let destinationData = {};
-				let entityPrefixes = {
-					'users': 'U',
-					'groups': 'SG',
-					'departments': 'DR',
+				const destinationData = {};
+				const entityPrefixes = {
+					users: 'U',
+					groups: 'SG',
+					departments: 'DR',
 				};
 
 				Object.keys(recipients)
-					.filter( key => Array.isArray(recipients[key]) && recipients[key].length)
-					.forEach( key =>
-					{
-						let prefix = entityPrefixes[key];
-						recipients[key].forEach(item =>
-						{
+					.filter((key) => Array.isArray(recipients[key]) && recipients[key].length)
+					.forEach((key) => {
+						const prefix = entityPrefixes[key];
+						recipients[key].forEach((item) => {
 							destinationList.push((item.id === 'UA' ? 'UA' : prefix + item.id));
-							destinationData[prefix + item.id] = {title: item.title};
+							destinationData[prefix + item.id] = { title: item.title };
 						});
-					})
+					});
 
 				if (Array.isArray(hiddenRecipients))
 				{
-					destinationList = destinationList.concat(hiddenRecipients);
+					destinationList = [...destinationList, ...hiddenRecipients];
 				}
 
 				if (destinationList.length <= 0)
@@ -528,15 +515,14 @@
 				resolve(postData);
 			});
 
-			promise.catch(error => console.error(error));
+			promise.catch((error) => console.error(error));
 
 			return promise;
 		}
 
 		processImportant(postData, isImportant, importantUntil)
 		{
-			const promise = new Promise((resolve, reject) =>
-			{
+			const promise = new Promise((resolve, reject) => {
 				postData.IMPORTANT = 'N';
 				postData.IMPORTANT_DATE_END = false;
 
@@ -553,15 +539,16 @@
 				resolve(postData);
 			});
 
-			promise.catch((error) => {console.error(error)});
+			promise.catch((error) => {
+				console.error(error);
+			});
 
 			return promise;
 		}
 
 		processGratitude(postData, medal, gratitudeEmployees)
 		{
-			const promise = new Promise((resolve, reject) =>
-			{
+			const promise = new Promise((resolve, reject) => {
 				postData.GRATITUDE_MEDAL = '';
 				postData.GRATITUDE_EMPLOYEES_DATA = {};
 
@@ -586,7 +573,9 @@
 				)
 				{
 					postData.GRATITUDE_MEDAL = medal;
-					postData.GRATITUDE_EMPLOYEES = gratitudeEmployees.map((item) => { return parseInt(item.id); });
+					postData.GRATITUDE_EMPLOYEES = gratitudeEmployees.map((item) => {
+						return parseInt(item.id, 10);
+					});
 
 					postData.GRATITUDE_EMPLOYEES_DATA = {};
 					gratitudeEmployees.forEach((item) => {
@@ -597,15 +586,16 @@
 				resolve(postData);
 			});
 
-			promise.catch((error) => {console.error(error)});
+			promise.catch((error) => {
+				console.error(error);
+			});
 
 			return promise;
 		}
 
 		processBackground(postData, backgroundImageCode)
 		{
-			const promise = new Promise((resolve, reject) =>
-			{
+			const promise = new Promise((resolve, reject) => {
 				postData.BACKGROUND_CODE = '';
 
 				if (
@@ -620,7 +610,9 @@
 				resolve(postData);
 			});
 
-			promise.catch((error) => {console.error(error)});
+			promise.catch((error) => {
+				console.error(error);
+			});
 
 			return promise;
 		}
@@ -630,12 +622,11 @@
 			if (!voteData)
 			{
 				voteData = {
-					questions: []
+					questions: [],
 				};
 			}
 
-			const promise = new Promise((resolve, reject) =>
-			{
+			const promise = new Promise((resolve, reject) => {
 				postData.UF_BLOG_POST_VOTE = 0;
 
 				if (
@@ -644,18 +635,18 @@
 				)
 				{
 					const voteId = 'n0';
-					const dataKey = 'UF_BLOG_POST_VOTE_' + voteId + '_DATA';
+					const dataKey = `UF_BLOG_POST_VOTE_${voteId}_DATA`;
 
 					postData.UF_BLOG_POST_VOTE = voteId;
-					postData['UF_BLOG_POST_VOTE_' + voteId] = 0;
+					postData[`UF_BLOG_POST_VOTE_${voteId}`] = 0;
 					postData[dataKey] = {
 						ID: 0,
 						URL: '',
 						QUESTIONS: [],
 						ANONYMITY: true,
 						OPTIONS: [
-							true
-						]
+							true,
+						],
 					};
 
 					voteData.questions.forEach((question, questionIndex) => {
@@ -664,7 +655,7 @@
 							QUESTION_TYPE: 'text',
 							FIELD_TYPE: question.allowMultiSelect ? '1' : '0',
 							ANSWERS: [],
-							C_SORT: (questionIndex+1)*10
+							C_SORT: (questionIndex + 1) * 10,
 						};
 						if (
 							Array.isArray(question.answers)
@@ -676,7 +667,7 @@
 									MESSAGE: answer.value,
 									MESSAGE_TYPE: 'text',
 									FIELD_TYPE: 0,
-									C_SORT: (answerIndex+1)*10
+									C_SORT: (answerIndex + 1) * 10,
 								});
 							});
 						}
@@ -688,18 +679,19 @@
 				resolve(postData);
 			});
 
-			promise.catch((error) => {console.error(error)});
+			promise.catch((error) => {
+				console.error(error);
+			});
 
 			return promise;
 		}
 
 		processFiles(postData, attachedFiles, params)
 		{
-			const promise = new Promise((resolve, reject) =>
-			{
+			const promise = new Promise((resolve, reject) => {
 				const ufCode = params.ufCode;
 
-				postData.postVirtualId = parseInt(Math.random() * 100000);
+				postData.postVirtualId = parseInt(Math.random() * 100_000);
 				postData.tasksList = [];
 
 				if (
@@ -711,7 +703,7 @@
 					const fileTotal = attachedFiles.length;
 					const fileCountIncrement = (() => {
 						readedFileCount++;
-						if(readedFileCount >= fileTotal)
+						if (readedFileCount >= fileTotal)
 						{
 							this.postProgressingFiles(postData, attachedFiles, params);
 							resolve(postData);
@@ -720,10 +712,9 @@
 
 					const uploadTasks = [];
 
-					attachedFiles.forEach((fileData) =>
-					{
-						let isFileFromBitrix24Disk = (
-							typeof fileData.VALUE !== 'undefined'  // Android
+					attachedFiles.forEach((fileData) => {
+						const isFileFromBitrix24Disk = (
+							typeof fileData.VALUE !== 'undefined' // Android
 							|| (
 								typeof fileData.id !== 'undefined'
 								&& parseInt(fileData.id) > 0
@@ -738,7 +729,7 @@
 							)
 						);
 
-						let isNewFileOnDevice = (
+						const isNewFileOnDevice = (
 							typeof fileData.url === 'undefined'
 							|| typeof fileData.id !== 'number'
 						);
@@ -749,7 +740,7 @@
 							&& !isFileFromBitrix24Disk
 						)
 						{
-							let taskId = 'postTask_' + parseInt(Math.random() * 100000);
+							const taskId = `postTask_${parseInt(Math.random() * 100_000)}`;
 
 							let filename = fileData.name;
 							const extension = Utils.getExtension({
@@ -757,27 +748,27 @@
 							});
 							if (extension === 'heic')
 							{
-								filename = filename.substring(0, filename.length - (extension.length)) + 'jpg';
+								filename = `${filename.slice(0, Math.max(0, filename.length - (extension.length)))}jpg`;
 							}
 
 							uploadTasks.push({
-								taskId: taskId,
+								taskId,
 								type: fileData.type,
 								name: filename,
 								mimeType: Utils.getFileMimeType(fileData.type),
 								folderId: parseInt(BX.componentParameters.get('USER_FOLDER_FOR_SAVED_FILES', 0)),
 								params: {
-									postVirtualId: postData.postVirtualId
+									postVirtualId: postData.postVirtualId,
 								},
 								url: fileData.url,
 								previewUrl: (fileData.previewUrl ? fileData.previewUrl : null),
-								resize: Utils.getResizeOptions(fileData.type)
+								resize: Utils.getResizeOptions(fileData.type),
 							});
 							postData.tasksList.push(taskId);
 						}
 						else
 						{
-							if(isFileFromBitrix24Disk)
+							if (isFileFromBitrix24Disk)
 							{
 								if (typeof postData[ufCode] === 'undefined')
 								{
@@ -795,21 +786,18 @@
 								else if (
 									typeof fileData.dataAttributes !== 'undefined'
 									&& typeof fileData.dataAttributes.VALUE !== 'undefined'
-								)
+									&& typeof fileData.dataAttributes.ID !== 'undefined')
 								{
-									if (typeof fileData.dataAttributes.ID !== 'undefined')
+									const matches = /^n(\d+)$/.exec(fileData.dataAttributes.VALUE);
+									if (matches)
 									{
-										let matches = /^n(\d+)$/.exec(fileData.dataAttributes.VALUE);
-										if (matches)
+										if (parseInt(matches[1]) === parseInt(fileData.dataAttributes.ID))
 										{
-											if (parseInt(matches[1]) === parseInt(fileData.dataAttributes.ID))
-											{
-												postData[ufCode].push(fileData.dataAttributes.VALUE);
-											}
-											else
-											{
-												postData[ufCode].push(fileData.dataAttributes.ID);
-											}
+											postData[ufCode].push(fileData.dataAttributes.VALUE);
+										}
+										else
+										{
+											postData[ufCode].push(fileData.dataAttributes.ID);
 										}
 									}
 								}
@@ -821,27 +809,31 @@
 
 					if (uploadTasks.length > 0)
 					{
-						BX.postComponentEvent('onFileUploadTaskReceived', [{
-							files: uploadTasks,
-						}], 'background');
+						BX.postComponentEvent('onFileUploadTaskReceived', [
+							{
+								files: uploadTasks,
+							},
+						], 'background');
 					}
 					resolve(postData);
 				}
 				else
 				{
-					postData[ufCode] = [ 'empty' ];
+					postData[ufCode] = ['empty'];
 					resolve(postData);
 				}
 			});
 
-			promise.catch((error) => {console.error(error)});
+			promise.catch((error) => {
+				console.error(error);
+			});
 
 			return promise;
-		};
+		}
 
-		postProgressingFiles(postData, attachedFiles, params) {
-
-			var ufCode = params.ufCode;
+		postProgressingFiles(postData, attachedFiles, params)
+		{
+			const ufCode = params.ufCode;
 
 			if (typeof postData[ufCode] === 'undefined')
 			{
@@ -857,17 +849,15 @@
 			{
 				postData[ufCode].push('empty');
 			}
-		};
+		}
 
 		showKeyboardPanel(options = {}, callback)
 		{
-			const newState = Object.assign({
-				actionSheetShown: false
-			}, options);
+			const newState = { actionSheetShown: false, ...options };
 
 			let differenceFound = false;
 
-			for (let key in this.state)
+			for (const key in this.state)
 			{
 				if (
 					!this.state.hasOwnProperty(key)
@@ -902,7 +892,7 @@
 		{
 			this.setState({
 				isEdit: false,
-				actionSheetShown: true
+				actionSheetShown: true,
 			});
 			Keyboard.dismiss();
 		}
@@ -921,7 +911,7 @@
 		{
 			const recipients = this.recipients;
 			const showAll = !BX.componentParameters.get('DESTINATION_TO_ALL_DENY', false);
-			let entities = ['users', 'groups', 'departments'];
+			const entities = ['users', 'groups', 'departments'];
 			if (showAll === true)
 			{
 				entities.push('meta-user');
@@ -933,39 +923,39 @@
 							'all-users': {
 								title: BX.message('MOBILE_EXT_LAYOUT_POSTFORM_PANEL_ITEM_SELECTOR_VALUE_ALL'),
 								allowView: true,
-							}
+							},
 						},
 						searchable: true,
 						dynamicLoad: true,
 						dynamicSearch: false,
 					},
-					'project': {
+					project: {
 						options: {
 							features: {
-								blog:  [ 'premoderate_post', 'moderate_post', 'write_post', 'full_post' ],
-							}
+								blog: ['premoderate_post', 'moderate_post', 'write_post', 'full_post'],
+							},
 						},
 						searchable: true,
 						dynamicLoad: true,
-						dynamicSearch: true
+						dynamicSearch: true,
 					},
 				})
 				.open({
 					selected: Utils.formatSelectedRecipients(recipients),
 					title: (params && params.title ? params.title : null),
 				})
-				.then(recipients => {
+				.then((recipients) => {
 					this.onSelectedRecipient(recipients);
 					if (params && params.callback)
 					{
 						params.callback();
 					}
 				})
-				.catch(e=>console.error(e))
+				.catch((e) => console.error(e));
 		}
 
-		onSelectedRecipient(recipients) {
-
+		onSelectedRecipient(recipients)
+		{
 			if (typeof recipients === 'undefined')
 			{
 				return;
@@ -986,7 +976,7 @@
 
 				forAll: (
 					recipients.users
-					&& (typeof recipients.users.find(item => (item.id == 'A')) != 'undefined')
+					&& (typeof recipients.users.find((item) => (item.id == 'A')) !== 'undefined')
 				),
 				recipientsCount: Utils.getRecipientsCountValue({ recipients }),
 			};
@@ -1002,63 +992,63 @@
 
 		onClickMentionMenuItem({ keyboard })
 		{
-			let params = {
+			const params = {
 				allowMultipleSelection: false,
 				singleChoose: true,
-				title: BX.message('MOBILE_EXT_LAYOUT_POSTFORM_DIALOG_MENTION_TITLE')
+				title: BX.message('MOBILE_EXT_LAYOUT_POSTFORM_DIALOG_MENTION_TITLE'),
 			};
 
 			(new FormEntitySelector('MENTION', ['user', 'project', 'department']))
 				.setEntitiesOptions({
-					'user': {
-						'options': {
-							'intranetUsersOnly': true,
-							'emailUsers': true
+					user: {
+						options: {
+							intranetUsersOnly: true,
+							emailUsers: true,
 						},
-						'searchable': true,
-						'dynamicLoad': true,
-						'dynamicSearch': true
-					}
+						searchable: true,
+						dynamicLoad: true,
+						dynamicSearch: true,
+					},
 				})
 				.open(params)
-				.then(recipients => {
+				.then((recipients) => {
 					const regexList = [
 						{
-							full: /\[USER=(\d+)\]|\[\/USER\]/gi,
-							end: '[/USER]'
+							full: /\[user=(\d+)]|\[\/user]/gi,
+							end: '[/USER]',
 						},
 						{
-							full: /\[PROJECT=(\d+)\]|\[\/PROJECT\]/gi,
-							end: '[/PROJECT]'
+							full: /\[project=(\d+)]|\[\/project]/gi,
+							end: '[/PROJECT]',
 						},
 						{
-							full: /\[DEPARTMENT=(\d+)\]|\[\/DEPARTMENT\]/gi,
-							end: '[/DEPARTMENT]'
+							full: /\[department=(\d+)]|\[\/department]/gi,
+							end: '[/DEPARTMENT]',
 						},
 						{
-							full: /\[B\]|\[\/B\]/gi,
-							end: '[/B]'
+							full: /\[b]|\[\/b]/gi,
+							end: '[/B]',
 						},
 						{
-							full: /\[I\]|\[\/I\]/gi,
-							end: '[/I]'
+							full: /\[i]|\[\/i]/gi,
+							end: '[/I]',
 						},
 						{
-							full: /\[S\]|\[\/S\]/gi,
-							end: '[/S]'
+							full: /\[s]|\[\/s]/gi,
+							end: '[/S]',
 						},
 						{
-							full: /\[FONT=(\d+)pt\]|\[\/FONT\]/gi,
-							end: '[/FONT]'
-						}
+							full: /\[font=(\d+)pt]|\[\/font]/gi,
+							end: '[/FONT]',
+						},
 					];
 
 					let matches = null;
 					let realPosition = this.postTextCursorPosition;
 
-					let indices = [];
+					const indices = [];
 
-					for (let key in recipients)
+					for (const key in recipients)
 					{
 						if (!recipients.hasOwnProperty(key))
 						{
@@ -1067,26 +1057,30 @@
 
 						if (
 							!Array.isArray(recipients[key])
-							|| !recipients[key].length
+							|| recipients[key].length === 0
 						)
 						{
 							continue;
 						}
 
-						regexList.forEach(regex =>
-						{
+						regexList.forEach((regex) => {
 							while ((matches = regex.full.exec(this.postText)))
 							{
 								indices.push({
 									type: (matches[0] === regex.end ? 'end' : 'start'),
 									index: matches.index,
-									length: matches[0].length
+									length: matches[0].length,
 								});
 							}
 						});
 
 						indices.sort((a, b) => {
-							if (a.index === b.index) { return 0; } return (a.index < b.index) ? -1 : 1;
+							if (a.index === b.index)
+							{
+								return 0;
+							}
+
+							return (a.index < b.index) ? -1 : 1;
 						});
 
 						indices.forEach((item) => {
@@ -1099,7 +1093,10 @@
 							}
 						});
 
-						const before = this.postText.substr(0, (keyboard ? realPosition-1 : realPosition));
+						const before = this.postText.slice(
+							0,
+							Math.max(0, (keyboard ? realPosition - 1 : realPosition)),
+						);
 						const after = this.postText.substr(realPosition, this.postText.length);
 						const entityData = recipients[key].shift();
 
@@ -1122,42 +1119,45 @@
 
 						this.setState({ dummy: true }, () => {
 							setTimeout(() => {
-								this.focusPostMessage()
+								this.focusPostMessage();
 							}, 1);
 						});
 					}
 				})
 				.catch((error) => {
-					console.error(error)
-				})
+					console.error(error);
+				});
 		}
 
-		onClickAttachmentMenuItem() {
+		onClickAttachmentMenuItem()
+		{
 			FilePicker.show({
 				callback: this.onSelectedFilePicker.bind(this),
 				moduleWebdavInstalled: BX.componentParameters.get('MODULE_WEBDAV_INSTALLED', 'N') == 'Y',
 				moduleDiskInstalled: BX.componentParameters.get('MODULE_DISK_INSTALLED', 'N') == 'Y',
-				fileAttachPath: BX.componentParameters.get('FILE_ATTACH_PATH', '')
+				fileAttachPath: BX.componentParameters.get('FILE_ATTACH_PATH', ''),
 			});
 		}
 
 		onOpenAttachmentList()
 		{
 			const {
-				attachments
+				attachments,
 			} = this.state;
 
 			PageManager.openWidget(
 				'layout',
 				{
-					title: BX.message('MOBILE_EXT_LAYOUT_POSTFORM_ATTACHMENTS_DIALOG_TITLE').replace('#NUM#', attachments.length),
+					title: BX.message('MOBILE_EXT_LAYOUT_POSTFORM_ATTACHMENTS_DIALOG_TITLE').replace(
+						'#NUM#',
+						attachments.length,
+					),
 					useLargeTitleMode: true,
 					modal: false,
 					backdrop: {
-						mediumPositionPercent: 75
+						mediumPositionPercent: 75,
 					},
-					onReady: (layoutWidget) =>
-					{
+					onReady: (layoutWidget) => {
 						this.attachmentWidget = layoutWidget;
 						this.attachmentSlider = new AttachmentComponent({
 							attachments,
@@ -1167,24 +1167,24 @@
 						});
 						layoutWidget.showComponent(this.attachmentSlider);
 					},
-					onError: error => reject(error),
-				}
+					onError: (error) => reject(error),
+				},
 			);
 		}
 
-		onSelectedFilePicker(filesMetaArray) {
-
+		onSelectedFilePicker(filesMetaArray)
+		{
 			const {
 				attachments,
 			} = this.state;
 
 			const attachmentsValue = [
 				...attachments,
-				...filesMetaArray
+				...filesMetaArray,
 			];
 
 			const state = {
-				attachments: attachmentsValue
+				attachments: attachmentsValue,
 			};
 
 			this.attachments = attachmentsValue;
@@ -1207,29 +1207,34 @@
 			this.attachments = attachments;
 
 			const newState = {
-				attachments
+				attachments,
 			};
 
 			this.setState(newState);
 			if (this.actionSheet)
 			{
-				this.actionSheet.setState(newState)
+				this.actionSheet.setState(newState);
 			}
+
 			if (this.attachmentSlider)
 			{
-				this.attachmentSlider.setState(newState)
+				this.attachmentSlider.setState(newState);
 			}
+
 			if (this.attachmentWidget)
 			{
 				this.attachmentWidget.setTitle({
-					text: BX.message('MOBILE_EXT_LAYOUT_POSTFORM_ATTACHMENTS_DIALOG_TITLE').replace('#NUM#', attachments.length),
-					largeMode:true
+					text: BX.message('MOBILE_EXT_LAYOUT_POSTFORM_ATTACHMENTS_DIALOG_TITLE').replace(
+						'#NUM#',
+						attachments.length,
+					),
+					largeMode: true,
 				});
 			}
 		}
 
-		processChangeMessageType(newStateData, params) {
-
+		processChangeMessageType(newStateData, params)
+		{
 			const {
 				voteData,
 				medal,
@@ -1240,14 +1245,12 @@
 			const action = (state, type, callback) => {
 				state.actionSheetShown = false;
 				this.setState(state, () => {
-
 					if (typeof callback === 'function')
 					{
 						callback();
 					}
 
 					setTimeout(() => {
-
 						if (
 							type === 'medal'
 							|| type === 'important'
@@ -1255,32 +1258,33 @@
 						)
 						{
 							this.scrollPostMessageToEnd({
-								type
+								type,
 							});
 						}
 						else
 						{
 							this.focusPostMessage();
 						}
-
 					}, 100);
 				});
 			};
 
-			newStateData.backgroundImage = (newStateData.backgroundImageCode ? this.getBackgroundImageFromCode(newStateData.backgroundImageCode) : null);
+			newStateData.backgroundImage = (newStateData.backgroundImageCode ? this.getBackgroundImageFromCode(
+				newStateData.backgroundImageCode,
+			) : null);
 			const newState = newStateData;
 
 			let nonEmptyVote = Array.isArray(voteData.questions);
 
 			if (nonEmptyVote)
 			{
-				const questions = voteData.questions.filter(question => {
+				const questions = voteData.questions.filter((question) => {
 					if (question.value.length > 0)
 					{
 						return true;
 					}
 
-					const answers = question.answers.filter(answer => {
+					const answers = question.answers.filter((answer) => {
 						if (answer.value.length > 0)
 						{
 							return true;
@@ -1289,7 +1293,7 @@
 
 					return (answers.length > 0);
 				});
-				nonEmptyVote = (questions.length > 0)
+				nonEmptyVote = (questions.length > 0);
 			}
 
 			if (
@@ -1301,7 +1305,7 @@
 			}
 
 			let type = null;
-			if (!!newStateData.medal)
+			if (newStateData.medal)
 			{
 				type = 'medal';
 			}
@@ -1312,14 +1316,14 @@
 			{
 				type = 'vote';
 			}
-			else if (!!newStateData.isImportant)
+			else if (newStateData.isImportant)
 			{
 				type = 'important';
 
 				const dates = Utils.getImportantDatePeriods();
 				newStateData.importantUntil = dates.oneWeek;
 			}
-			else if (!!newStateData.backgroundImageCode)
+			else if (newStateData.backgroundImageCode)
 			{
 				type = 'colored';
 			}
@@ -1393,8 +1397,8 @@
 					title,
 					[
 						BX.message('MOBILE_EXT_LAYOUT_POSTFORM_CHANGETYPE_CONFIRM_BUTTON_OK'),
-						BX.message('MOBILE_EXT_LAYOUT_POSTFORM_CHANGETYPE_CONFIRM_BUTTON_CANCEL')
-					]
+						BX.message('MOBILE_EXT_LAYOUT_POSTFORM_CHANGETYPE_CONFIRM_BUTTON_CANCEL'),
+					],
 				);
 			}
 			else
@@ -1409,7 +1413,7 @@
 					}
 				});
 			}
-		};
+		}
 
 		onClickBackgroundMenuItem()
 		{
@@ -1417,7 +1421,7 @@
 				backgroundImage,
 				medal,
 				isImportant,
-				voteData
+				voteData,
 			} = this.state;
 
 			if (
@@ -1449,24 +1453,23 @@
 					backdrop: {
 						mediumPositionHeight: backdropHeight,
 					},
-					onReady: (layoutWidget) =>
-					{
+					onReady: (layoutWidget) => {
 						this.backgroundWidget = layoutWidget;
 						const backgroundSelector = new BackgroundSelectorComponent({
-							backgroundImage: backgroundImage,
+							backgroundImage,
 							backgroundImagesData: BX.componentParameters.get('BACKGROUND_IMAGES_DATA', []),
 							heightRatio: ((backdropHeight < this.config.backdropHeight ? (backdropHeight - 50) : backdropHeight) / this.config.backdropHeight),
 							onSelectBackground: (val) => this.onSelectBackground(val),
 						});
-						layoutWidget.showComponent(backgroundSelector)
+						layoutWidget.showComponent(backgroundSelector);
 					},
-					onError: error => reject(error),
-				}
+					onError: (error) => reject(error),
+				},
 			);
 		}
 
-		onSelectBackground(backgroundImageCode) {
-
+		onSelectBackground(backgroundImageCode)
+		{
 			const backgroundImage = this.getBackgroundImageFromCode(backgroundImageCode);
 
 			if (backgroundImage === undefined)
@@ -1477,26 +1480,27 @@
 			this.backgroundWidget.close(() => {
 				this.setState({
 					backgroundImageCode,
-					backgroundImage
+					backgroundImage,
 				}, () => {
 					setTimeout(() => {
-						this.focusPostMessage()
+						this.focusPostMessage();
 					}, 1);
-				})
+				});
 			});
 		}
 
-		getBackgroundImageFromCode(backgroundImageCode) {
+		getBackgroundImageFromCode(backgroundImageCode)
+		{
 			const backgroundImagesData = BX.componentParameters.get('BACKGROUND_IMAGES_DATA', {});
 
 			let result = null;
 
 			if (
-				typeof backgroundImagesData['images'] !== 'undefined'
-				&& typeof backgroundImagesData['images'][backgroundImageCode] !== 'undefined'
+				typeof backgroundImagesData.images !== 'undefined'
+				&& typeof backgroundImagesData.images[backgroundImageCode] !== 'undefined'
 			)
 			{
-				result = currentDomain + backgroundImagesData['images'][backgroundImageCode].originalUrl
+				result = currentDomain + backgroundImagesData.images[backgroundImageCode].originalUrl;
 			}
 			else if (backgroundImageCode !== null)
 			{
@@ -1506,9 +1510,10 @@
 			return result;
 		}
 
-		onClickImportantMenuItem() {
-			const{
-				isImportant
+		onClickImportantMenuItem()
+		{
+			const {
+				isImportant,
 			} = this.state;
 
 			this.processChangeMessageType({
@@ -1519,17 +1524,20 @@
 			});
 		}
 
-		onSetImportant(value) {
-			this.setState({ isImportant: !!value });
+		onSetImportant(value)
+		{
+			this.setState({ isImportant: Boolean(value) });
 		}
 
-		onSetImportantUntil(value) {
+		onSetImportantUntil(value)
+		{
 			this.setState({ importantUntil: value });
 		}
 
-		onClickGratitudeMenuItem() {
+		onClickGratitudeMenuItem()
+		{
 			const {
-				medal
+				medal,
 			} = this.state;
 
 			this.processChangeMessageType({
@@ -1540,7 +1548,8 @@
 			});
 		}
 
-		onClickShowHideTitleItem(params) {
+		onClickShowHideTitleItem(params)
+		{
 			if (typeof params.show !== 'boolean')
 			{
 				return;
@@ -1553,7 +1562,7 @@
 			}
 
 			this.setState({
-				titleShown: params.show
+				titleShown: params.show,
 			}, () => {
 				if (params.show)
 				{
@@ -1570,15 +1579,17 @@
 			});
 		}
 
-		onSetGratitudeEmployee(value) {
+		onSetGratitudeEmployee(value)
+		{
 			this.setState({
-				gratitudeEmployees: value
+				gratitudeEmployees: value,
 			});
 		}
 
-		onSetGratitudeMedal(value) {
+		onSetGratitudeMedal(value)
+		{
 			const newState = {
-				medal: value
+				medal: value,
 			};
 
 			if (value)
@@ -1593,14 +1604,15 @@
 			});
 		}
 
-		onSetGratitudeMedalWidget(layoutWidget) {
+		onSetGratitudeMedalWidget(layoutWidget)
+		{
 			this.medalWidget = layoutWidget;
 		}
 
-		onClickVoteMenuItem() {
-
+		onClickVoteMenuItem()
+		{
 			const {
-				voteData
+				voteData,
 			} = this.state;
 
 			if (
@@ -1614,41 +1626,43 @@
 				voteDataInstance.addQuestion();
 				voteDataInstance.addAnswer(0);
 
-				this.processChangeMessageType({
-					medal: null,
-					isImportant: false,
-					voteData: voteDataInstance.get(),
-					backgroundImageCode: null,
-				},
-				{
-					onAccepted: () => {
-						if (typeof votePanelRef !== 'undefined')
-						{
-							votePanelRef.addQuestion();
-							votePanelRef.addAnswer(0);
-
-							setTimeout(() => {
-								votePanelRef.questions[0].element.focus();
-							}, 200);
-
-						}
+				this.processChangeMessageType(
+					{
+						medal: null,
+						isImportant: false,
+						voteData: voteDataInstance.get(),
+						backgroundImageCode: null,
 					},
-					onRejected: () => {
-						voteDataInstance.deleteQuestion(0);
+					{
+						onAccepted: () => {
+							if (typeof votePanelRef !== 'undefined')
+							{
+								votePanelRef.addQuestion();
+								votePanelRef.addAnswer(0);
+
+								setTimeout(() => {
+									votePanelRef.questions[0].element.focus();
+								}, 200);
+							}
+						},
+						onRejected: () => {
+							voteDataInstance.deleteQuestion(0);
+						},
 					},
-				});
+				);
 			}
 			else
 			{
 				this.addVoteQuestion({
-					actionSheetShown: false
+					actionSheetShown: false,
 				});
 			}
-		};
+		}
 
-		addVoteQuestion(options = {}) {
+		addVoteQuestion(options = {})
+		{
 			const {
-				voteData
+				voteData,
 			} = this.state;
 
 			if (!Array.isArray(voteData.questions))
@@ -1661,13 +1675,14 @@
 				}
 			}
 
-			const newState = Object.assign({
+			const newState = {
 				medal: null,
 				isImportant: false,
-				voteData: voteData,
+				voteData,
 				backgroundImage: null,
-				backgroundImageCode: null
-			}, options);
+				backgroundImageCode: null,
+				...options,
+			};
 
 			const voteDataInstance = new VoteDataStateManager(voteData);
 			voteDataInstance.addQuestion();
@@ -1683,25 +1698,26 @@
 			this.setState(newState, () => {
 				setTimeout(() => {
 					votePanelRef.questions[newState.voteData.questions.length - 1].element.focus();
-				}, 200)
+				}, 200);
 			});
-		};
+		}
 
-		onSetVoteData(value) {
+		onSetVoteData(value)
+		{
 			this.setState({
-				voteData: value
+				voteData: value,
 			});
-		};
+		}
 
-		onSetVoteQuestionMultiple(voteData, questionIndex, value) {
-
+		onSetVoteQuestionMultiple(voteData, questionIndex, value)
+		{
 			const voteDataInstance = new VoteDataStateManager(voteData);
 			voteDataInstance.setQuestionMultiSelect(questionIndex, value);
 
 			this.setState({
-				voteData: voteDataInstance.get()
+				voteData: voteDataInstance.get(),
 			});
-		};
+		}
 
 		getFormBackgroundImage()
 		{
@@ -1713,17 +1729,18 @@
 
 			const medalsList = BX.componentParameters.get('MEDALS_LIST', {});
 			const backgroundCommon = BX.componentParameters.get('BACKGROUND_COMMON', {});
-
 			if (medalsList[medal] !== undefined)
 			{
 				return {
+					backgroundColor: AppTheme.colors.accentSoftBlue2,
 					outer: {
-						backgroundImageSvgUrl: currentDomain + medalsList[medal].backgroundUrl
+						opacity: AppTheme.colors.medalSelectorOpacity,
+						backgroundImageSvgUrl: currentDomain + medalsList[medal].backgroundUrl,
 					},
 					inner: {
 						backgroundResizeMode: 'cover',
-						backgroundImage: currentDomain + backgroundCommon.url
-					}
+						backgroundImage: currentDomain + backgroundCommon.url,
+					},
 				};
 			}
 
@@ -1732,18 +1749,18 @@
 				const importantData = BX.componentParameters.get('IMPORTANT_DATA', {});
 
 				if (
-					importantData &&
-					importantData.backgroundUrl
+					importantData
+					&& importantData.backgroundUrl
 				)
 				{
 					return {
 						outer: {
-							backgroundImageSvgUrl: currentDomain + importantData.backgroundUrl
+							backgroundImageSvgUrl: currentDomain + importantData.backgroundUrl,
 						},
 						inner: {
 							backgroundResizeMode: 'cover',
-							backgroundImage: currentDomain + backgroundCommon.url
-						}
+							backgroundImage: currentDomain + backgroundCommon.url,
+						},
 					};
 				}
 			}
@@ -1756,11 +1773,9 @@
 							? backgroundImage
 							: null
 					),
-					backgroundResizeMode: 'cover'
+					backgroundResizeMode: 'cover',
 				},
-				inner: {
-
-				}
+				inner: {},
 			};
 		}
 
@@ -1780,7 +1795,7 @@
 		getColoredMessageStatus()
 		{
 			const {
-				backgroundImage
+				backgroundImage,
 			} = this.state;
 
 			return (
@@ -1791,7 +1806,7 @@
 
 		recalcBackgroundByTextLength({
 			oldText,
-			newText
+			newText,
 		})
 		{
 			const {
@@ -1805,21 +1820,20 @@
 					this.checkColoredText(oldText)
 					&& !this.checkColoredText(newText)
 				)
-				||
-				(
+				|| (
 					!this.checkColoredText(oldText)
 					&& this.checkColoredText(newText)
 				)
 			)
 			{
-				newState.backgroundImage = backgroundImage;  // to recalc background rendering forcefully
+				newState.backgroundImage = backgroundImage; // to recalc background rendering forcefully
 			}
 
 			if (Object.keys(newState).length > 0)
 			{
 				this.setState(newState, () => {
 					setTimeout(() => {
-						this.focusPostMessage()
+						this.focusPostMessage();
 					}, 1);
 				}); // to recalc background rendering forcefully
 			}
@@ -1874,12 +1888,11 @@
 				titleShown,
 			} = this.state;
 
-
 			const postTitle = this.postTitleValue;
 			const postText = this.postText;
 
-			let attachmentPanel = AttachmentPanel({
-				attachments: attachments,
+			const attachmentPanel = AttachmentPanel({
+				attachments,
 				onDeleteAttachmentItem: (itemId) => this.onDeleteAttachmentItem(itemId),
 				serverName: BX.componentParameters.get('SERVER_NAME'),
 				postFormData: BX.componentParameters.get('POST_FORM_DATA', {}),
@@ -1904,7 +1917,7 @@
 
 			return View(
 				{
-					ref: ref => {
+					ref: (ref) => {
 						this.rootRef.element = ref;
 					},
 					safeArea: {
@@ -1914,15 +1927,23 @@
 						right: true,
 					},
 					resizableByKeyboard: true,
-					style: Object.assign({
-						backgroundColor: '#ffffff',
-						backgroundResizeMode: 'cover'
-					}, (coloredMessage ? {} : backgroundData.outer)),
+					style: {
+						backgroundColor: backgroundData.backgroundColor ?? AppTheme.colors.bgContentPrimary,
+					},
 					onLayout: this.processRootViewLayoutChange.bind(this),
 				},
+				View({
+					style: {
+						backgroundResizeMode: 'cover',
+						position: 'absolute',
+						height: '100%',
+						width: '100%',
+						...(coloredMessage ? {} : backgroundData.outer),
+					},
+				}),
 				ScrollView(
 					{
-						ref: ref => {
+						ref: (ref) => {
 							this.rootScrollRef.element = ref;
 						},
 						style: {
@@ -1950,15 +1971,13 @@
 							testId: 'postTitle',
 							value: postTitle,
 							multiline: false,
-							placeholder: BX.message('MOBILE_EXT_LAYOUT_POSTFORM_TITLE_PLACEHOLDER'),
+							placeholder: BX.message('MOBILE_EXT_LAYOUT_POSTFORM_TITLE_PLACEHOLDER_MSGVER_1'),
 							placeholderTextColor: this.getStyle('placeholderTextColor'),
 							style: {
 								display: (!titleShown || coloredMessage ? 'none' : 'flex'),
 								color: this.getStyle('inputTextColor'),
 								fontSize: 20,
-								fontWeight: 'bold',
 								margin: this.config.postTitleMargin,
-								backgroundColor: '#00000000',
 								textAlign: 'left',
 								textAlignVertical: 'top',
 							},
@@ -1981,8 +2000,8 @@
 						}),
 						PostMessage({
 							actionSheetShown,
-							postText: postText,
-							backgroundImage: backgroundImage,
+							postText,
+							backgroundImage,
 							coloredMessageBackgroundData: (coloredMessage ? backgroundData.outer : {}),
 							deviceHeight: parseInt(BX.componentParameters.get('DEVICE_HEIGHT', 0)),
 							deviceRatio: BX.componentParameters.get('DEVICE_RATIO', 3),
@@ -2009,7 +2028,7 @@
 							onChangeText: (currentText) => {
 								this.recalcBackgroundByTextLength({
 									oldText: this.postText,
-									newText: currentText
+									newText: currentText,
 								});
 								this.recalcMentionHint({
 									text: currentText,
@@ -2017,7 +2036,6 @@
 								this.postText = currentText;
 							},
 							onSelectionChange: (data) => {
-
 								const isFocused = this.postMessageRef && this.postMessageRef.isFocused && this.postMessageRef.isFocused();
 								if (!isFocused || !data.selection)
 								{
@@ -2040,43 +2058,59 @@
 							onScrollViewClick: this.onScrollViewClick.bind(this),
 						}),
 						isImportant && ImportantPanel({
-							importantUntil: importantUntil,
-							onSetImportant: (value) => { this.onSetImportant(value) },
-							onSetImportantUntil: (value) => { this.onSetImportantUntil(value) },
+							importantUntil,
+							onSetImportant: (value) => {
+								this.onSetImportant(value);
+							},
+							onSetImportantUntil: (value) => {
+								this.onSetImportantUntil(value);
+							},
 							onLayout: ({ height }) => {
 								this.height.importantPanel = height;
 							},
-							menuCancelTextColor: this.getStyle('menuCancelTextColor')
+							menuCancelTextColor: this.getStyle('menuCancelTextColor'),
 						}),
 						medal && GratitudePanel({
-							onSetGratitudeEmployee: (value) => { this.onSetGratitudeEmployee(value) },
-							onSetGratitudeMedal: (value) => { this.onSetGratitudeMedal(value) },
-							onSetGratitudeMedalWidget: (layoutWidget) => { this.onSetGratitudeMedalWidget(layoutWidget) },
+							onSetGratitudeEmployee: (value) => {
+								this.onSetGratitudeEmployee(value);
+							},
+							onSetGratitudeMedal: (value) => {
+								this.onSetGratitudeMedal(value);
+							},
+							onSetGratitudeMedalWidget: (layoutWidget) => {
+								this.onSetGratitudeMedalWidget(layoutWidget);
+							},
 							onLayout: ({ height }) => {
 								this.height.gratitudePanel = height;
 							},
 							employees: gratitudeEmployees,
-							medal: medal,
+							medal,
 							menuCancelTextColor: this.getStyle('menuCancelTextColor'),
-							postFormData: postFormData,
-							medalsList: medalsList
+							postFormData,
+							medalsList,
 						}),
 						VotePanel({
-							onSetVoteData: (value) => { this.onSetVoteData(value) },
-							onAddVoteQuestion: () => { this.addVoteQuestion() },
-							onSetVoteQuestionMultiple: (voteData, questionIndex, value) => { this.onSetVoteQuestionMultiple(voteData, questionIndex, value) },
+							onSetVoteData: (value) => {
+								this.onSetVoteData(value);
+							},
+							onAddVoteQuestion: () => {
+								this.addVoteQuestion();
+							},
+							onSetVoteQuestionMultiple: (voteData, questionIndex, value) => {
+								this.onSetVoteQuestionMultiple(voteData, questionIndex, value);
+							},
 							onFocus: () => this.showKeyboardPanel(),
 							onLayout: ({ height }) => {
 								this.height.votePanel = height;
 							},
-							voteData: voteData,
+							voteData,
 							inputTextColor: this.getStyle('inputTextColor'),
 							menuCancelTextColor: this.getStyle('menuCancelTextColor'),
 							placeholderTextColor: this.getStyle('placeholderTextColor'),
-							postFormData: postFormData,
+							postFormData,
 							rootScrollRef: this.rootScrollRef.element,
 						}),
-					)
+					),
 				),
 				View(
 					{
@@ -2096,7 +2130,7 @@
 					onClickDestinationMenuItem: () => this.onClickDestinationMenuItem(),
 					onClickMentionMenuItem: () => {
 						this.onClickMentionMenuItem({
-							keyboard: false
+							keyboard: false,
 						});
 					},
 					onClickAttachmentMenuItem: () => this.onClickAttachmentMenuItem(),
@@ -2115,7 +2149,7 @@
 					onClickDestinationMenuItem: () => this.onClickDestinationMenuItem(),
 					onClickMentionMenuItem: () => {
 						this.onClickMentionMenuItem({
-							keyboard: false
+							keyboard: false,
 						});
 					},
 					onClickAttachmentMenuItem: () => this.onClickAttachmentMenuItem(),
@@ -2129,7 +2163,7 @@
 					useImportant,
 					backgroundAvailable,
 					onHide: () => this.hideActionSheet(),
-					animation: ( this.height.root === null ? {} : { duration: 0.5, delay: 0.0, }),
+					animation: (this.height.root === null ? {} : { duration: 0.5, delay: 0 }),
 				}),
 			);
 		}
@@ -2171,51 +2205,44 @@
 
 		onRecipientsLayout({
 			type,
-			height
+			height,
 		})
 		{
-			if (type === 'KeyboardPanel')
+			if (type === 'KeyboardPanel' && height > this.config.maxKeyboardRecipientsHeight && this.keyboardPanelRecipientsCountLimit > 0)
 			{
-				if (height > this.config.maxKeyboardRecipientsHeight)
-				{
-					if (this.keyboardPanelRecipientsCountLimit > 0)
-					{
-						this.keyboardPanelRecipientsCountLimit--;
+				this.keyboardPanelRecipientsCountLimit--;
 
-						this.setState({
-							recipientsStringKeyboard: renderDestinationList({
-								recipients: this.recipients,
-								useContainer: true,
-								limit: this.keyboardPanelRecipientsCountLimit,
-							})
-						});
-					}
-				}
+				this.setState({
+					recipientsStringKeyboard: renderDestinationList({
+						recipients: this.recipients,
+						useContainer: true,
+						limit: this.keyboardPanelRecipientsCountLimit,
+					}),
+				});
 			}
-/*
-			else if (type === 'ActionSheet')
-			{
-				if (height > this.config.maxActionSheetRecipientsHeight)
-				{
-					if (this.actionSheetRecipientsCountLimit > 0)
-					{
-						this.actionSheetRecipientsCountLimit--;
+			/*
+						else if (type === 'ActionSheet')
+						{
+							if (height > this.config.maxActionSheetRecipientsHeight)
+							{
+								if (this.actionSheetRecipientsCountLimit > 0)
+								{
+									this.actionSheetRecipientsCountLimit--;
 
-						this.setState({
-							recipientsStringActionSheet: renderDestinationList({
-								recipients: this.recipients,
-								limit: this.actionSheetRecipientsCountLimit,
-							})
-						});
-					}
-				}
-				else
-				{
-					this.actionSheetRecipientsCountLimit = 3;
-				}
-			}
-*/
+									this.setState({
+										recipientsStringActionSheet: renderDestinationList({
+											recipients: this.recipients,
+											limit: this.actionSheetRecipientsCountLimit,
+										})
+									});
+								}
+							}
+							else
+							{
+								this.actionSheetRecipientsCountLimit = 3;
+							}
+						}
+			*/
 		}
-	}
-
+	};
 })();

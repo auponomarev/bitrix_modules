@@ -1,10 +1,10 @@
 <?php
 
+use Bitrix\Crm\Format\PhoneNumberParser;
+use Bitrix\Crm\Integration\UI\EntitySelector\CountryProvider;
 use Bitrix\Crm\Integrity\DuplicateCommunicationCriterion;
 use Bitrix\Crm\Integrity\DuplicateVolatileCriterion;
 use Bitrix\Crm\Integrity\Volatile\FieldCategory;
-use Bitrix\Crm\Integration\UI\EntitySelector\CountryProvider;
-use Bitrix\Crm\Format\PhoneNumberParser;
 use Bitrix\Crm\Model\FieldMultiPhoneCountryTable;
 use Bitrix\Crm\Multifield;
 use Bitrix\Main;
@@ -233,8 +233,8 @@ class CCrmFieldMulti
 						'LINK' => 'https://www.instagram.com/#VALUE_URL#',
 					],
 					Multifield\Type\Im::VALUE_TYPE_BITRIX24 => [
-						'FULL' => GetMessage('CRM_FM_ENTITY_IM_BITRIX24'),
-						'SHORT' => GetMessage('CRM_FM_ENTITY_IM_BITRIX24_SHORT'),
+						'FULL' => GetMessage('CRM_FM_ENTITY_IM_BITRIX24_MSGVER_1'),
+						'SHORT' => GetMessage('CRM_FM_ENTITY_IM_BITRIX24_SHORT_MSGVER_1'),
 						'TEMPLATE' => '#VALUE_HTML#',
 						'LINK' => '#VALUE_URL#',
 					],
@@ -585,110 +585,117 @@ class CCrmFieldMulti
 			return false;
 		}
 
-		$arPreviousFieldData = array();
-		$dbResult = self::GetListEx(array('ID' => 'asc'), array('ENTITY_ID' => $entityId, 'ELEMENT_ID' => $elementId));
-
-		while($arPreviousField = $dbResult->Fetch())
+		$entityTypeId = \CCrmOwnerType::ResolveID($entityId);
+		if (!\CCrmOwnerType::IsDefined($entityTypeId) || (int)$elementId < 0)
 		{
-			$typeId = $arPreviousField['TYPE_ID'];
-			if(!isset($arPreviousFieldData[$typeId]))
-			{
-				$arPreviousFieldData[$typeId] = array();
-			}
-
-			$arPreviousFieldData[$typeId][$arPreviousField['ID']] = $arPreviousField;
+			return false;
 		}
 
-		$addItems = array();
-		$removeItems = array();
-		$updateItems = array();
+		$owner = new \Bitrix\Crm\ItemIdentifier($entityTypeId, (int)$elementId);
 
-		foreach($arPreviousFieldData as $typeId => $previousItems)
+		$storage = \Bitrix\Crm\Service\Container::getInstance()->getMultifieldStorage();
+
+		$values = $storage->get($owner);
+		Multifield\Assembler::updateCollectionByArray($values, $arFieldData);
+
+		$result = $storage->save($owner, $values);
+		if ($result->isSuccess())
 		{
-			$currentItems = isset($arFieldData[$typeId]) ? $arFieldData[$typeId] : array();
-			foreach($previousItems as $id => $previousItem)
+			// just in case, since this is a critical place.
+			// usually 'values' should be actual even after save, since they are synced with changes
+			$valuesAfterSave = $storage->get($owner);
+
+			$dbResult = self::GetListEx(
+				[],
+				[
+					'=ENTITY_ID' => $entityId,
+					'=ELEMENT_ID' => $elementId,
+				],
+				false,
+				false,
+				['ID']
+			);
+
+			$duplicateIds = [];
+			while ($row = $dbResult->Fetch())
 			{
-				if(!isset($currentItems[$id]))
+				$id = (int)($row['ID'] ?? 0);
+				if ($id <= 0)
 				{
 					continue;
 				}
 
-				$currentItem = $currentItems[$id];
-
-				$currentValue = isset($currentItem['VALUE']) ? trim($currentItem['VALUE']) : '';
-				$currentValueType = isset($currentItem['VALUE_TYPE']) ? trim($currentItem['VALUE_TYPE']) : '';
-
-				$previousValue = isset($previousItem['VALUE']) ? trim($previousItem['VALUE']) : '';
-				$previousValueType = isset($previousItem['VALUE_TYPE']) ? trim($previousItem['VALUE_TYPE']) : '';
-
-				if($currentValue === '')
+				// if Collection doesn't have this field, it means it's a duplicate of another field that's bound to this item
+				if (!$valuesAfterSave->getById($id))
 				{
-					$removeItems[$id] = true;
-				}
-				elseif($previousValue !== $currentValue || $previousValueType !== $currentValueType)
-				{
-					$updateItems[$id] = array(
-						'TYPE_ID' => $typeId,
-						'VALUE_TYPE' => $currentValueType,
-						'VALUE' => $currentValue,
-						'VALUE_COUNTRY_CODE' => static::fetchCountryCode($typeId, $currentItem),
-					);
+					$duplicateIds[$id] = $id;
 				}
 			}
-		}
 
-		foreach($arFieldData as $typeId => $arValues)
-		{
-			foreach($arValues as $id => $arValue)
+			if (!empty($duplicateIds))
 			{
-				$currentValue = isset($arValue['VALUE']) ? trim($arValue['VALUE']) : '';
-				$currentValueType = isset($arValue['VALUE_TYPE']) ? trim($arValue['VALUE_TYPE']) : '';
-
-				if(mb_substr($id, 0, 1) === 'n' && $currentValue !== '')
-				{
-					$addItems[] = array(
-						'ENTITY_ID' => $entityId,
-						'ELEMENT_ID' => $elementId,
-						'TYPE_ID' => $typeId,
-						'VALUE_TYPE' => $currentValueType,
-						'VALUE' => $currentValue,
-						'VALUE_COUNTRY_CODE' => static::fetchCountryCode($typeId, $arValue),
-					);
-				}
+				// since Collection don't allow duplicates addition, save will not cover duplicates manipulation
+				// and since we want to remove duplicates anyway, lets delete them
+				$this->saveBulk($entityId, $elementId, [], [], $duplicateIds);
 			}
 		}
 
-		$isChanged = false;
-		if(!empty($addItems))
+		return true;
+	}
+
+	/**
+	 * @internal
+	 *
+	 * @param string $entityId entityTypeName
+	 * @param int $elementId item id
+	 * @param array[] $toAdd
+	 * @param Array<int, array> $toUpdate [id => value]
+	 * @param int[] $idsToDelete
+	 *
+	 * @return Main\Result
+	 */
+	final public function saveBulk(
+		string $entityId,
+		int $elementId,
+		array $toAdd,
+		array $toUpdate,
+		array $idsToDelete,
+	): Main\Result
+	{
+		$result = new Main\Result();
+
+		$ownerInfo = ['ENTITY_ID' => $entityId, 'ELEMENT_ID' => $elementId];
+
+		foreach ($toAdd as $value)
 		{
-			foreach($addItems as $item)
+			$isSuccess = $this->Add($ownerInfo + $value, ['ENABLE_NOTIFICATION' => false]);
+			if (!$isSuccess)
 			{
-				$this->Add($item, array('ENABLE_NOTIFICATION' => false));
+				$result->addError($this->getErrorFromApplication(['valueArray' => $value]));
 			}
-			$isChanged = true;
 		}
 
-		if(!empty($removeItems))
+		foreach ($toUpdate as $id => $value)
 		{
-			foreach(array_keys($removeItems) as $id)
+			$isSuccess = $this->Update($id, $ownerInfo + $value, ['ENABLE_NOTIFICATION' => false]);
+			if (!$isSuccess)
 			{
-				$this->Delete($id, array('ENABLE_NOTIFICATION' => false));
+				$result->addError($this->getErrorFromApplication(['valueArray' => $value]));
 			}
-			$isChanged = true;
 		}
 
-		if(!empty($updateItems))
+		foreach ($idsToDelete as $id)
 		{
-			foreach($updateItems as $id => $item)
+			$isSuccess = $this->Delete($id, ['ENABLE_NOTIFICATION' => false]);
+			if (!$isSuccess)
 			{
-				$this->Update($id, $item, array('ENABLE_NOTIFICATION' => false));
+				$result->addError($this->getErrorFromApplication(['id' => $id]));
 			}
-			$isChanged = true;
 		}
 
-		if ($isChanged)
+		if (!empty($toAdd) || !empty($toUpdate) || !empty($idsToDelete))
 		{
-			$entityTypeId = CCrmOwnerType::ResolveID($entityId);
+			$entityTypeId = \CCrmOwnerType::ResolveID($entityId);
 
 			//region Register volatile duplicate criterion fields
 			DuplicateCommunicationCriterion::processMultifieldsChange($entityTypeId, $elementId);
@@ -700,7 +707,14 @@ class CCrmFieldMulti
 			//endregion Register volatile duplicate criterion fields
 		}
 
-		return true;
+		return $result;
+	}
+
+	private function getErrorFromApplication(?array $customData = null): Main\Error
+	{
+		global $APPLICATION;
+
+		return new Main\Error((string)$APPLICATION->GetException(), 0, $customData);
 	}
 
 	public static function GetList($arSort=array(), $arFilter=array())
@@ -882,7 +896,7 @@ class CCrmFieldMulti
 					}
 					else
 					{
-						$arSqlSearch[] = 'CFM.ENTITY_ID = "' . $DB->ForSql((string)$val) . '"';
+						$arSqlSearch[] = 'CFM.ENTITY_ID = \'' . $DB->ForSql((string)$val) . '\'';
 					}
 
 					break;
@@ -1027,21 +1041,23 @@ class CCrmFieldMulti
 	public static function ParseComplexName($complexName, $enableCheck = true)
 	{
 		$ary = explode('_', $complexName);
-		if(count($ary) !== 2)
+		if (count($ary) !== 2)
 		{
-			array();
+			return [];
 		}
 
-		if(!$enableCheck)
+		if (!$enableCheck)
 		{
-			return array('TYPE' => $ary[0], 'VALUE_TYPE' => $ary[1]);
+			return ['TYPE' => $ary[0] ?? '', 'VALUE_TYPE' => $ary[1] ?? ''];
 		}
 
-		$type = $ary[0];
-		$valueType = $ary[1];
+		$type = $ary[0] ?? '';
+		$valueType = $ary[1] ?? '';
 		$entityTypes = self::GetEntityTypes();
-		return isset($entityTypes[$type]) && isset($entityTypes[$type][$valueType])
-			? array('TYPE' => $type, 'VALUE_TYPE' => $valueType) : array();
+
+		return isset($entityTypes[$type], $entityTypes[$type][$valueType])
+			? ['TYPE' => $type, 'VALUE_TYPE' => $valueType]
+			: [];
 	}
 
 	public static function GetEntityTypeList($entityType = '', $bFullName = true)
@@ -1770,7 +1786,7 @@ class CCrmFieldMulti
 
 		$countryCode = isset($input['VALUE_EXTRA']['VALUE_COUNTRY_CODE'])
 			? mb_strtoupper(trim($input['VALUE_EXTRA']['VALUE_COUNTRY_CODE']))
-			: mb_strtoupper(trim($input['VALUE_COUNTRY_CODE']));
+			: mb_strtoupper(trim($input['VALUE_COUNTRY_CODE'] ?? ''));
 		if (in_array($countryCode, self::$allowedCountryCodes, true))
 		{
 			return $countryCode; // valid code

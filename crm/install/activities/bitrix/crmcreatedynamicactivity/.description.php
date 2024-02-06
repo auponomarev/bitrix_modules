@@ -18,16 +18,31 @@ $arActivityDescription = [
 		'OWN_ID' => 'crm',
 		'OWN_NAME' => 'CRM',
 	],
+	'PRESETS' => [
+		[
+			'ID' => 'dynamic',
+			'NAME' => Loc::getMessage('CRM_CDA_NAME'),
+			'DESCRIPTION' => Loc::getMessage('CRM_CDA_ROBOT_DESCRIPTION_DIGITAL_WORKPLACE'),
+			'PROPERTIES' => [
+				'OnlyDynamicEntities' => 'Y',
+			]
+		],
+	],
 	'FILTER' => [
 		'INCLUDE' => [
 			['crm'],
+			['lists'],
 		],
 	],
 	'RETURN' => [
 		'ItemId' => [
 			'NAME' => Loc::getMessage('CRM_CDA_RETURN_ITEM_ID_1'),
 			'TYPE' => 'int',
-		]
+		],
+		'ErrorMessage' => [
+			'NAME' => Loc::getMessage('CRM_CDA_RETURN_ERROR_MESSAGE'),
+			'TYPE' => 'string',
+		],
 	],
 	'ROBOT_SETTINGS' => [
 		'CATEGORY' => 'employee',

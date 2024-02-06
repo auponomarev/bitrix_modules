@@ -1,9 +1,11 @@
-import { Dom, Type, Uri, ajax as Ajax, Event, Browser, Loc } from 'main.core';
+import { Dom, Type, Uri, ajax, Event, Browser, Loc } from 'main.core';
 import { BaseEvent, EventEmitter } from 'main.core.events';
 import PostForm from './form';
 import PostFormTabs from './tabs';
 import PostFormGratSelector from './grat';
 import PostFormAutoSave from './autosave';
+import { Picker } from 'ai.picker';
+import { FileEvent, Uploader } from 'ui.uploader.core';
 
 export default class PostFormEditor extends EventEmitter
 {
@@ -588,7 +590,7 @@ export default class PostFormEditor extends EventEmitter
 			{
 				controller.deleteFile(b, {});
 				Dom.remove(document.getElementById(`wd-doc'${b}`));
-				Ajax({ method: 'GET', url: c});
+				ajax({ method: 'GET', url: c});
 			}
 			else
 			{
@@ -686,5 +688,5 @@ export default class PostFormEditor extends EventEmitter
 		{
 			setTimeout(this.reinit, 50);
 		}
-	};
+	}
 }

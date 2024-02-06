@@ -1,5 +1,4 @@
 <?php
-
 return [
 	'controllers' => [
 		'value' => [
@@ -7,6 +6,9 @@ return [
 			'restIntegration' => [
 				'enabled' => true,
 			],
+			'namespaces' => [
+				'\Bitrix\Iblock\Controller' => 'api'
+			]
 		],
 		'readonly' => true,
 	],
@@ -25,6 +27,27 @@ return [
 					'provider' => [
 						'moduleId' => 'iblock',
 						'className' => '\Bitrix\Iblock\Integration\UI\EntitySelector\SectionUserFieldProvider',
+					],
+				],
+				[
+					'entityId' => 'iblock-property-element',
+					'provider' => [
+						'moduleId' => 'iblock',
+						'className' => '\Bitrix\Iblock\Integration\UI\EntitySelector\IblockPropertyElementProvider',
+					],
+				],
+				[
+					'entityId' => 'iblock-property-element-xml',
+					'provider' => [
+						'moduleId' => 'iblock',
+						'className' => '\Bitrix\Iblock\Integration\UI\EntitySelector\IblockPropertyElementXmlProvider',
+					],
+				],
+				[
+					'entityId' => 'iblock-property-section',
+					'provider' => [
+						'moduleId' => 'iblock',
+						'className' => '\Bitrix\Iblock\Integration\UI\EntitySelector\IblockPropertySectionProvider',
 					],
 				],
 			],

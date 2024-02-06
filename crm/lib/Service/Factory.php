@@ -2,13 +2,13 @@
 
 namespace Bitrix\Crm\Service;
 
+use Bitrix\Crm\Activity\Provider\ProviderManager;
 use Bitrix\Crm\Activity\TodoCreateNotification;
 use Bitrix\Crm\Category\Entity\Category;
 use Bitrix\Crm\Cleaning\CleaningManager;
 use Bitrix\Crm\Conversion\EntityConversionConfig;
 use Bitrix\Crm\Counter\EntityCounterSettings;
 use Bitrix\Crm\Currency;
-use Bitrix\Crm\Entity\FieldContentType;
 use Bitrix\Crm\EO_Status;
 use Bitrix\Crm\EO_Status_Collection;
 use Bitrix\Crm\Field;
@@ -86,7 +86,6 @@ abstract class Factory
 			$settings += UtmTable::getUtmFieldsInfo();
 		}
 		$settings += Container::getInstance()->getParentFieldManager()->getParentFieldsInfo($this->getEntityTypeId());
-		$settings += FieldContentType::compileFieldsInfo($settings);
 
 		foreach ($settings as $name => &$field)
 		{
@@ -198,14 +197,13 @@ abstract class Factory
 		$flexibleContentTypeFields = [];
 		foreach ($this->getFieldsCollection()->getFieldsByType(Field::TYPE_TEXT) as $field)
 		{
-			$isFlexibleContentType = $field->getSettings()['isFlexibleContentType'] ?? false;
-			if ($isFlexibleContentType === true)
+			if ($field->getValueType() === Field::VALUE_TYPE_BB)
 			{
 				$flexibleContentTypeFields[] = $field;
 			}
 		}
 		$item->addImplementation(
-			new Item\FieldImplementation\ContentTypeId($item, new Field\Collection($flexibleContentTypeFields)),
+			new Item\FieldImplementation\Comments($item, $entityObject, new Field\Collection($flexibleContentTypeFields)),
 		);
 	}
 
@@ -392,7 +390,7 @@ abstract class Factory
 			unset($parameters['select'][$fmIndex]);
 		}
 
-		$isFmInSelect = $fmIndex !== false || in_array('*', $parameters['select'] ?? [], true);
+		$isFmInSelect = $fmIndex !== false;
 
 		$parameters = $this->prepareGetListParameters($parameters);
 
@@ -471,7 +469,7 @@ abstract class Factory
 		return $this->getItems($parameters);
 	}
 
-	protected function collectEntityTypesForPermissions(array $filter, ?int $userId = null): array
+	protected function collectEntityTypesForPermissions(array &$filter, ?int $userId = null): array
 	{
 		$userPermissions = Container::getInstance()->getUserPermissions($userId);
 		$entityTypes = [$userPermissions::getPermissionEntityType($this->getEntityTypeId())];
@@ -506,12 +504,37 @@ abstract class Factory
 			else
 			{
 				$categories = $this->getCategories();
+				$shouldStrictByCategories = false;
+				$availableCategoriesIds = [];
 				foreach ($categories as $category)
 				{
+					if (!$userPermissions->canReadTypeInCategory($this->getEntityTypeId(), $category->getId()))
+					{
+						$shouldStrictByCategories = true;
+					}
+					else
+					{
+						$availableCategoriesIds[] = $category->getId();
+					}
 					$entityTypes[] = $userPermissions::getPermissionEntityType(
 						$this->getEntityTypeId(),
 						$category->getId()
 					);
+				}
+
+				if ($shouldStrictByCategories && !empty($availableCategoriesIds))
+				{
+					if (mb_strtoupper($filter['LOGIC'] ?? '') === 'OR')
+					{
+						$filter = [
+							0 => $filter,
+							'@CATEGORY_ID' => $availableCategoriesIds
+						];
+					}
+					else
+					{
+						$filter['@CATEGORY_ID'] = $availableCategoriesIds;
+					}
 				}
 			}
 		}
@@ -598,6 +621,9 @@ abstract class Factory
 		$rawSelect = empty($parameters['select']) ? ['*'] : $parameters['select'];
 		$parameters['select'] = $this->prepareSelect($rawSelect);
 
+		$rawFilter = empty($parameters['filter']) ? [] : $parameters['filter'];
+		$parameters['filter'] = $this->prepareFilter($rawFilter);
+
 		return $this->replaceCommonFieldNames($parameters);
 	}
 
@@ -616,8 +642,6 @@ abstract class Factory
 
 	protected function prepareSelect(array $select): array
 	{
-		$select = array_filter($select, fn(string $fieldName) => !FieldContentType::isContentTypeIdFieldName($fieldName));
-
 		if (in_array('*', $select, true))
 		{
 			$select[] = 'UF_*';
@@ -672,6 +696,42 @@ abstract class Factory
 		return $select;
 	}
 
+	private function prepareFilter(array $filter): array
+	{
+		$processed = [];
+		foreach ($filter as $key => $value)
+		{
+			if (is_array($value))
+			{
+				$value = $this->prepareFilter($value);
+			}
+
+			if (is_string($key) && !$this->isReference($key))
+			{
+				if (mb_strpos($key, Item::FIELD_NAME_CONTACT_IDS) !== false)
+				{
+					$key = str_replace(Item::FIELD_NAME_CONTACT_IDS, Item::FIELD_NAME_CONTACT_BINDINGS . '.CONTACT_ID', $key);
+				}
+				elseif (mb_strpos($key, Item\Contact::FIELD_NAME_COMPANY_IDS) !== false)
+				{
+					$key = str_replace(
+						Item\Contact::FIELD_NAME_COMPANY_IDS,
+						Item\Contact::FIELD_NAME_COMPANY_BINDINGS . '.COMPANY_ID',
+						$key,
+					);
+				}
+				elseif (mb_strpos($key, Item::FIELD_NAME_OBSERVERS) !== false)
+				{
+					$key = str_replace(Item::FIELD_NAME_OBSERVERS, Item::FIELD_NAME_OBSERVERS . '.USER_ID', $key);
+				}
+			}
+
+			$processed[$key] = $value;
+		}
+
+		return $processed;
+	}
+
 	/**
 	 * Replaces common field names in getList parameters with entity-specific names if it's needed
 	 *
@@ -720,9 +780,7 @@ abstract class Factory
 
 	protected function replaceCommonFieldName(string $key): string
 	{
-		$isReference = (mb_strpos($key, '.') !== false);
-
-		if ($isReference)
+		if ($this->isReference($key))
 		{
 			$regex = '|^[!=%@><]*#COMMON_FIELD_NAME#\.|';
 		}
@@ -743,6 +801,11 @@ abstract class Factory
 		}
 
 		return $key;
+	}
+
+	private function isReference(string $key): bool
+	{
+		return (strpos($key, '.') !== false);
 	}
 
 	/**
@@ -1355,6 +1418,8 @@ abstract class Factory
 			$settings->disableDeferredCleaning();
 		}
 
+		$settings->setActivityProvidersToAutocomplete(ProviderManager::getCompletableProviderIdFlatList());
+
 		return $settings;
 	}
 
@@ -1936,5 +2001,10 @@ abstract class Factory
 		{
 			unset($this->itemsCategoryCache[$id]);
 		}
+	}
+
+	public function isInCustomSection(): bool
+	{
+		return false;
 	}
 }

@@ -3,7 +3,9 @@
 return [
 	'extensions' => [
 		'alert',
+		'apptheme',
 		'notify-manager',
+		'feature',
 		'rest',
 		'type',
 		'helpers/component',

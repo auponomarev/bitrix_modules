@@ -18,6 +18,7 @@ return array(
 				'\\Bitrix\\Crm\\Controller\\Ads' => 'ads',
 				'\\Bitrix\\Crm\\Controller\\Mobile' => 'mobile',
 				'\\Bitrix\\Crm\\Controller\\Mail' => 'mail',
+				'\\Bitrix\\Crm\\Controller\\Timeline' => 'timeline',
 			],
 			'restIntegration' => [
 				'enabled' => true,
@@ -109,6 +110,9 @@ return array(
 			],
 			'crm.service.converter.category' => [
 				'className' => '\\Bitrix\\Crm\\Service\\Converter\\Category',
+			],
+			'crm.service.converter.caseCache' => [
+				'className' => '\\Bitrix\\Crm\\Service\\Converter\\InMemoryCaseCache',
 			],
 			'crm.service.broker.user' => [
 				'className' => '\\Bitrix\\Crm\\Service\\Broker\\User',
@@ -260,6 +264,9 @@ return array(
 			'crm.integration.pullmanager' => [
 				'className' => '\\Bitrix\\Crm\\Integration\\PullManager',
 			],
+			'crm.integration.intranet.toolsManager' => [
+				'className' => '\\Bitrix\\Crm\\Integration\\Intranet\\ToolsManager',
+			],
 			'crm.integration.rest.eventManager' => [
 				'className' => '\\Bitrix\\Crm\\Integration\\Rest\\EventManager',
 			],
@@ -348,17 +355,18 @@ return array(
 			'crm.integration.sign' => [
 				'className' => \Bitrix\Crm\Service\Integration\Sign::class,
 			],
-			'crm.lib.filter.activity.prepareactivityfilter' => [
-				'className' => \Bitrix\Crm\Filter\Activity\PrepareActivityFilter::class,
-				'constructorParams' => static function() {
-					return [
-						\Bitrix\Main\Engine\CurrentUser::get()->getId()
-					];
-				},
-			],
 			'crm.activity.actcounterlighttimerepo' => [
 				'className' => \Bitrix\Crm\Activity\LightCounter\ActCounterLightTimeRepo::class,
-			]
+			],
+			'crm.filter.fieldsTransform.userBasedField' => [
+				'className' => \Bitrix\Crm\Filter\FieldsTransform\UserBasedField::class,
+			],
+			'crm.fieldContext.contextManager' => [
+				'className' => \Bitrix\Crm\FieldContext\ContextManager::class,
+			],
+			'crm.terminal.payment' => [
+				'className' => \Bitrix\Crm\Service\Sale\Terminal\PaymentService::class,
+			],
 		],
 		'readonly' => true,
 	],

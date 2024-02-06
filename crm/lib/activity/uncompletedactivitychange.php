@@ -32,11 +32,11 @@ class UncompletedActivityChange
 		?DateTime $newLightTime
 	): self
 	{
-		$oldDeadline = (isset($oldFields['DEADLINE']) && $oldFields['DEADLINE'] && !\CCrmDateTimeHelper::IsMaxDatabaseDate($oldFields['DEADLINE']))
+		$oldDeadline = (!empty($oldFields['DEADLINE']) && !\CCrmDateTimeHelper::IsMaxDatabaseDate($oldFields['DEADLINE']))
 			? DateTime::createFromUserTime($oldFields['DEADLINE'])
 			: null
 		;
-		$newDeadline = ($newFields['DEADLINE'] && !\CCrmDateTimeHelper::IsMaxDatabaseDate($newFields['DEADLINE']))
+		$newDeadline = (!empty($newFields['DEADLINE']) && !\CCrmDateTimeHelper::IsMaxDatabaseDate($newFields['DEADLINE']))
 			? DateTime::createFromUserTime($newFields['DEADLINE'])
 			: null
 		;
@@ -208,6 +208,11 @@ class UncompletedActivityChange
 
 	public function hasChanges(): bool
 	{
+		if ($this->isChangedAlreadyCompletedActivity())
+		{
+			return false;
+		}
+
 		return
 			$this->isIncomingChannelChanged()
 			|| $this->isDeadlineChanged()

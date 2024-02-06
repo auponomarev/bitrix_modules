@@ -14,6 +14,7 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 use Bitrix\Landing\Domain;
 use Bitrix\Landing\Domain\Register;
 use Bitrix\Landing\File;
+use Bitrix\Landing\Site;
 use Bitrix\Landing\Hook\Page\Cookies;
 use Bitrix\Landing\Manager;
 use Bitrix\Landing\Restriction;
@@ -33,26 +34,27 @@ Loc::loadMessages(__FILE__);
 
 if ($arResult['ERRORS'])
 {
+	$errorMessages = [];
 	foreach ($arResult['ERRORS'] as $errorCode => $errorMessage)
 	{
-		$errorMessage .= $component->getSettingLinkByError(
-			$errorCode
-		);
-		if ($arResult['FATAL'])
-		{
-			?>
-			<div class="landing-error-page">
-				<div class="landing-error-page-inner">
-					<div class="landing-error-page-title"><?= $errorMessage ?></div>
-					<div class="landing-error-page-img">
-						<div class="landing-error-page-img-inner"></div>
-					</div>
+		$errorMessages[] = $component->getSettingLinkByError($errorCode) ?: $errorMessage;
+	}
+
+	if (!empty($errorMessages))
+	{
+		?>
+		<div class="landing-error-page">
+			<div class="landing-error-page-inner">
+				<div class="landing-error-page-title"><?= implode('<br>', $errorMessages)?></div>
+				<div class="landing-error-page-img">
+					<div class="landing-error-page-img-inner"></div>
 				</div>
 			</div>
-			<?php
-		}
+		</div>
+		<?php
 	}
 }
+
 if ($arResult['FATAL'])
 {
 	return;
@@ -71,6 +73,7 @@ $domain = isset($arResult['DOMAINS'][$row['DOMAIN_ID']['CURRENT']])
 		: [];
 $availableOnlyForZoneRu = Manager::availableOnlyForZone('ru');
 $isAjax = $component->isAjax();
+$formEditor = $arResult['SPECIAL_TYPE'] == Site\Type::PSEUDO_SCOPE_CODE_FORMS;
 
 // title
 if ($arParams['SITE_ID'])
@@ -80,6 +83,26 @@ if ($arParams['SITE_ID'])
 else
 {
 	Manager::setPageTitle($component->getMessageType('LANDING_TPL_TITLE_ADD'));
+}
+
+// special for forms
+if ($formEditor)
+{
+	$formHooks = [
+		'B24BUTTON',
+		'YMAP',
+		'GMAP',
+	];
+
+	foreach($hooks as $code => $hook)
+	{
+		if (!in_array($code, $formHooks))
+		{
+			unset($hooks[$code]);
+		}
+	}
+
+	$arResult['TEMPLATES'] = [];
 }
 
 Extension::load([
@@ -97,6 +120,7 @@ Extension::load([
 	'ui.dialogs.messagebox',
 	'ui.forms',
 	'ui.hint',
+	'ui.icon-set.actions'
 ]);
 
 Asset::getInstance()->addCSS('/bitrix/components/bitrix/landing.site_edit/templates/.default/landing-forms.css');
@@ -137,18 +161,22 @@ $uriCookies->addParams([
 <script type="text/javascript">
 	BX.ready(function(){
 		const editComponent = new BX.Landing.EditComponent('<?= $template->getFieldId('ACTION_CLOSE') ?>');
-		top.window['landingSettingsSaved'] = false;
-		<?if ($arParams['SUCCESS_SAVE']):?>
-		top.window['landingSettingsSaved'] = true;
-		top.BX.onCustomEvent('BX.Landing.Filter:apply');
-		editComponent.actionClose();
-		if (typeof top.BX.Landing.UI !== 'undefined' && typeof top.BX.Landing.UI.Tool !== 'undefined')
-		{
-			top.BX.Landing.UI.Tool.ActionDialog.getInstance().close();
-		}
+		<?if ($arParams['SUCCESS_SAVE']): ?>
+			top.window['landingSettingsSaved'] = true;
+			top.BX.onCustomEvent('BX.Landing.Filter:apply');
+			editComponent.actionClose();
+			if (typeof top.BX.Landing.UI !== 'undefined' && typeof top.BX.Landing.UI.Tool !== 'undefined')
+			{
+				top.BX.Landing.UI.Tool.ActionDialog.getInstance().close();
+			}
+		<?php else: ?>
+			top.window['landingSettingsSaved'] = false;
 		<?endif;?>
 		BX.Landing.Env.createInstance({
-			params: {type: '<?= $arParams['TYPE'] ?>'}
+			site_id: '<?= $row['ID']['CURRENT'] ?>',
+			params: {
+				type: '<?= $arParams['TYPE'] ?>',
+			},
 		});
 	});
 </script>
@@ -164,6 +192,7 @@ if ($arParams['SUCCESS_SAVE'])
 }
 ?>
 <div class="landing-form-wrapper">
+	<?php if (!$formEditor): ?>
 	<form
 		method="post"
 		action="/bitrix/tools/landing/ajax.php?action=Site::uploadFile"
@@ -174,6 +203,7 @@ if ($arParams['SUCCESS_SAVE'])
 		<input type="file" name="picture" id="landing-form-favicon-input" style="display: none;"
 	>
 	</form>
+	<?php endif; ?>
 	<form
 		action="<?=htmlspecialcharsbx($uriSave->getUri())?>"
 		method="post"
@@ -187,7 +217,7 @@ if ($arParams['SUCCESS_SAVE'])
 
 		<!--Title-->
 		<div class="landing-form-title-block">
-			<span class="landing-editable-field" id="<?= $template->getFieldId('EDITABLE_TITLE') ?>">
+			<div class="landing-editable-field --one-row" id="<?= $template->getFieldId('EDITABLE_TITLE') ?>">
 				<label class="landing-editable-field-label landing-editable-field-label-js">
 					<?=$row['TITLE']['CURRENT']?>
 				</label>
@@ -195,9 +225,14 @@ if ($arParams['SUCCESS_SAVE'])
 					name="fields[TITLE]"
 					class="ui-input landing-editable-field-input landing-editable-field-input-js"
 					value="<?=$row['TITLE']['CURRENT']?>"
-					placeholder="<?=$row['TITLE']['TITLE']?>"/>
-				<span class="ui-title-input-btn ui-title-input-btn-js ui-editing-pen"></span>
-			</span>
+					placeholder="<?=$row['TITLE']['TITLE']?>"
+				/>
+				<div class="landing-editable-field-buttons">
+					<div class="ui-title-input-btn ui-title-input-btn-js ui-editing-pen">
+						<div class="ui-icon-set --pencil-60"></div>
+					</div>
+				</div>
+			</div>
 		</div>
 
 		<div class="ui-form ui-form-section">
@@ -230,7 +265,12 @@ if ($arParams['SUCCESS_SAVE'])
 								<?php $puny = new CBXPunycode; ?>
 								<span class="landing-domain-name">
 									<span class="landing-domain-name-value"><?= $puny->decode($domain['DOMAIN']) ?></span>
-									<a href="<?= str_replace('__tab__', '', $uriDomain->getUri()) ?>" class="ui-title-input-btn ui-editing-pen landing-frame-btn"></a>
+									<a
+										href="<?= str_replace('__tab__', '', $uriDomain->getUri()) ?>"
+										class="ui-title-input-btn ui-editing-pen landing-frame-btn"
+									>
+										<i class="ui-icon-set --pencil-60"></i>
+									</a>
 								</span>
 								<?php if (!Domain::getBitrix24Subdomain($domain['DOMAIN'])):?>
 									<?php if (Register::isDomainActive($domain['DOMAIN'])):?>
@@ -365,6 +405,7 @@ if ($arParams['SUCCESS_SAVE'])
 			<?php endif;?>
 
 			<!--Main page-->
+			<?php if (!$formEditor): ?>
 			<div class="ui-form-row ui-form-row-middle-input">
 				<div class="ui-form-label">
 					<div class="ui-ctl-label-text">
@@ -389,6 +430,7 @@ if ($arParams['SUCCESS_SAVE'])
 					</div>
 				</div>
 			</div>
+			<?php endif; ?>
 		</div>
 
 		<!--Additional labels-->
@@ -416,10 +458,12 @@ if ($arParams['SUCCESS_SAVE'])
 					<?php if ($arResult['TEMPLATES']):?>
 						<span class="landing-additional-alt-promo-text" data-landing-additional-option="layout"><?= Loc::getMessage('LANDING_TPL_ADDITIONAL_LAYOUT') ?></span>
 					<?php endif;?>
-					<?php if (!$isIntranet && !empty($arResult['LANG_CODES']) && $row['LANG']):?>
+					<?php if (!$isIntranet && !empty($arResult['LANG_CODES']) && $row['LANG'] && !$formEditor):?>
 						<span class="landing-additional-alt-promo-text" data-landing-additional-option="lang"><?= Loc::getMessage('LANDING_TPL_ADDITIONAL_LANG') ?></span>
 					<?php endif;?>
+					<?php if (!$formEditor):?>
 						<span class="landing-additional-alt-promo-text" data-landing-additional-option="404"><?= Loc::getMessage('LANDING_TPL_ADDITIONAL_404') ?></span>
+					<?php endif;?>
 					<?php if (isset($hooks['ROBOTS']) && !$isSMN):?>
 						<span class="landing-additional-alt-promo-text" data-landing-additional-option="robots"><?= Loc::getMessage('LANDING_TPL_ADDITIONAL_ROBOTS') ?></span>
 					<?php endif;?>
@@ -432,7 +476,7 @@ if ($arParams['SUCCESS_SAVE'])
 					<?php if (isset($hooks['CSSBLOCK'])):?>
 						<span class="landing-additional-alt-promo-text" data-landing-additional-option="css">CSS</span>
 					<?php endif;?>
-					<?php if (!$isIntranet):?>
+					<?php if (!$isIntranet && !$formEditor):?>
 						<span class="landing-additional-alt-promo-text" data-landing-additional-option="off"><?= Loc::getMessage('LANDING_TPL_ADDITIONAL_OFF') ?></span>
 					<?php endif;?>
 					<?php if (isset($hooks['COOKIES'])):?>
@@ -443,6 +487,9 @@ if ($arParams['SUCCESS_SAVE'])
 					<?php endif;?>
 					<?php if ($arResult['SHOW_RIGHTS']):?>
 						<span class="landing-additional-alt-promo-text" data-landing-additional-option="access"><?= Loc::getMessage('LANDING_TPL_HOOK_RIGHTS_LABEL') ?></span>
+					<?php endif;?>
+					<?php if ($arParams['TYPE'] === 'GROUP'):?>
+						<span class="landing-additional-alt-promo-text" data-landing-additional-option="knowledge_group_control"><?= Loc::getMessage('LANDING_TPL_GROUP_KB_CONTROL') ?></span>
 					<?php endif;?>
 				</span>
 			</div>
@@ -791,7 +838,7 @@ if ($arParams['SUCCESS_SAVE'])
 			<?php endif;?>
 
 			<!--Language-->
-			<?php if (!$isIntranet && !empty($arResult['LANG_CODES']) && $row['LANG']): ?>
+			<?php if (!$isIntranet && !empty($arResult['LANG_CODES']) && $row['LANG'] && !$formEditor): ?>
 				<div class="ui-form-row ui-form-row-middle-input landing-form-additional-row" data-landing-additional-detail="lang">
 					<div class="ui-form-label">
 						<div class="ui-ctl-label-text">
@@ -826,6 +873,7 @@ if ($arParams['SUCCESS_SAVE'])
 			<?php endif;?>
 
 			<!--404-->
+			<?php if (!$formEditor):?>
 			<div class="ui-form-row landing-form-additional-row" data-landing-additional-detail="404">
 				<div class="ui-form-label">
 					<div class="ui-ctl-label-text">
@@ -867,7 +915,16 @@ if ($arParams['SUCCESS_SAVE'])
 						</div>
 					</div>
 				</div>
+				<script>
+					BX.ready(function () {
+						new BX.Landing.Custom404And503(
+							BX('<?= $template->getFieldId('404-SELECT') ?>'),
+							BX('<?= $template->getFieldId('404-USE') ?>')
+						);
+					});
+				</script>
 			</div>
+			<?php endif;?>
 
 			<!--Robots-->
 			<?php if (isset($hooks['ROBOTS']) && !$isSMN): ?>
@@ -962,7 +1019,7 @@ if ($arParams['SUCCESS_SAVE'])
 			<?php endif;?>
 
 			<!--Off page-->
-			<?php if (!$isIntranet): ?>
+			<?php if (!$isIntranet && !$formEditor): ?>
 				<div class="ui-form-row landing-form-additional-row" data-landing-additional-detail="off">
 					<div class="ui-form-label">
 						<div class="ui-ctl-label-text">
@@ -1006,6 +1063,14 @@ if ($arParams['SUCCESS_SAVE'])
 							</div>
 						</div>
 					</div>
+					<script>
+						BX.ready(function () {
+							new BX.Landing.Custom404And503(
+								BX('<?= $template->getFieldId('503-SELECT') ?>'),
+								BX('<?= $template->getFieldId('503-USE') ?>')
+							);
+						});
+					</script>
 				</div>
 			<?php endif; ?>
 
@@ -1282,6 +1347,50 @@ if ($arParams['SUCCESS_SAVE'])
 					});
 				</script>
 			<?php endif;?>
+
+			<?php if ($arParams['TYPE'] === 'GROUP'): ?>
+				<div class="ui-form-row landing-form-additional-row" data-landing-additional-detail="knowledge_group_control">
+					<div class="ui-form-label">
+						<div class="ui-ctl-label-text">
+							<?= Loc::getMessage('LANDING_TPL_GROUP_KB_CONTROL') ?>
+						</div>
+					</div>
+					<div class="ui-form-content">
+						<div class="ui-form-content-item">
+							<label class="ui-ctl ui-ctl-checkbox">
+								<input
+									type="checkbox"
+									id="field-group-unbind"
+									class="ui-ctl-element"
+									name="fields[GROUP_UNBIND]"
+								>
+								<div class="ui-ctl-label-text">
+									<?= Loc::getMessage('LANDING_TPL_GROUP_KB_UNBIND') ?>
+								</div>
+							</label>
+							<span data-hint="<?= Loc::getMessage('LANDING_TPL_GROUP_KB_UNBIND_HELP') ?>" class="ui-hint">
+								<span class="ui-hint-icon"></span>
+							</span>
+						</div>
+						<div class="ui-form-content-item">
+							<label class="ui-ctl ui-ctl-checkbox">
+								<input
+									type="checkbox"
+									id="field-group-delete"
+									class="ui-ctl-element"
+									name="fields[GROUP_DELETE]"
+								>
+								<div class="ui-ctl-label-text">
+									<?= Loc::getMessage('LANDING_TPL_GROUP_KB_UNBIND_DELETE') ?>
+								</div>
+							</label>
+							<span data-hint="<?= Loc::getMessage('LANDING_TPL_GROUP_KB_UNBIND_DELETE_HELP') ?>" class="ui-hint">
+								<span class="ui-hint-icon"></span>
+							</span>
+						</div>
+					</div>
+				</div>
+			<?php endif;?>
 		</div>
 
 		<!--BUTTONS-->
@@ -1319,19 +1428,16 @@ if ($arParams['SUCCESS_SAVE'])
 
 <script type="text/javascript">
 	BX.ready(function(){
-		new BX.Landing.EditTitleForm(BX('<?= $template->getFieldId('EDITABLE_TITLE') ?>'), 600, true);
+		new BX.Landing.EditTitleForm({
+			node: BX('<?= $template->getFieldId('EDITABLE_TITLE') ?>') ,
+			additionalWidth: 600,
+			isEventTargetNode: true,
+		});
 		new BX.Landing.Favicon();
-		new BX.Landing.Custom404And503(
-			BX('<?= $template->getFieldId('404-SELECT') ?>'),
-			BX('<?= $template->getFieldId('404-USE') ?>')
-		);
-		new BX.Landing.Custom404And503(
-			BX('<?= $template->getFieldId('503-SELECT') ?>'),
-			BX('<?= $template->getFieldId('503-USE') ?>')
-		);
 		new BX.Landing.Copyright(BX('landing-site-set-form'), BX('<?= $template->getFieldId('COPYRIGHT_SHOW') ?>'));
 		new BX.Landing.ToggleAdditionalFields(BX('landing-site-set-form'));
 		new BX.UI.LayoutForm({container: BX('landing-site-set-form')});
+		BX.UI.Hint.init(BX('landing-site-set-form'));
 		<?php if (isset($hooks['COOKIES'])):?>
 		new BX.Landing.Cookies();
 		<?php endif;?>

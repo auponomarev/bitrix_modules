@@ -3,10 +3,10 @@
 namespace Bitrix\Crm\Security\Controller\QueryBuilder;
 
 use Bitrix\Crm\Security\AccessAttribute\Collection;
-use Bitrix\Main\Application;
-use Bitrix\Main\UserTable;
 use Bitrix\Crm\Security\Controller\QueryBuilder;
 use Bitrix\Crm\Security\QueryBuilder\Options;
+use Bitrix\Main\Application;
+use Bitrix\Main\UserTable;
 
 class ControllerBased extends QueryBuilder
 {
@@ -15,6 +15,7 @@ class ControllerBased extends QueryBuilder
 	/** @var string */
 	protected static $departmentRegex = '/^D(\d+)$/i';
 	protected $controller;
+	private array $progressStepsCache = [];
 
 	public function __construct(\Bitrix\Crm\Security\Controller\Base $controller)
 	{
@@ -107,6 +108,15 @@ class ControllerBased extends QueryBuilder
 					$finalSqlConditions[] = "({$categoryIdSqlConditionWithAnd}{$progressSqlCondition})";
 				}
 			}
+
+			if ($options->isReadAllAllowed() && !$hasOnlyCategoryCondition && $categoryIdSqlCondition !== '')
+			{
+				$condition = "({$categoryIdSqlConditionWithAnd}{$prefix}P.IS_ALWAYS_READABLE = 'Y')";
+				if (!in_array($condition, $finalSqlConditions, true))
+				{
+					$finalSqlConditions[] = $condition;
+				}
+			}
 		}
 
 		// / Leave for the backward compatibility. Observer access logic moved to the access_attrs table.
@@ -127,11 +137,6 @@ class ControllerBased extends QueryBuilder
 		if (empty($finalSqlConditions))
 		{
 			return '';
-		}
-
-		if ($options->isReadAllAllowed() && !$hasOnlyCategoryCondition)
-		{
-			$finalSqlConditions[] = "({$categoryIdSqlConditionWithAnd}{$prefix}P.IS_ALWAYS_READABLE = 'Y')";
 		}
 
 		$querySqlCondition = implode(' OR ', $finalSqlConditions);
@@ -337,10 +342,23 @@ class ControllerBased extends QueryBuilder
 			{
 				foreach ($restrictionData as $restrictions)
 				{
-					if (!empty($restrictions))
+					if (empty($restrictions))
 					{
-						$canSkipCategoryRestrictions = false;
-						break;
+						continue;
+					}
+					foreach ($restrictions as $restriction)
+					{
+						if (
+							!(
+								count($restriction) === 1
+								&& isset($restriction['PROGRESS_STEPS'])
+								&& empty($this->getProgressSteps($permissionEntityType, $restriction))
+							)
+						)
+						{
+							$canSkipCategoryRestrictions = false;
+							break;
+						}
 					}
 				}
 			}
@@ -364,27 +382,11 @@ class ControllerBased extends QueryBuilder
 				continue;
 			}
 
-			$allProgressSteps = $this->controller->hasProgressSteps()
-				? $this->controller->getProgressSteps($permissionEntityType) : [];
-
-			if (!empty($allProgressSteps))
-			{
-				sort($allProgressSteps, SORT_STRING);
-			}
-
 			foreach ($restrictions as $restriction)
 			{
 				$isProcessed = false;
 
-				$progressSteps = isset($restriction['PROGRESS_STEPS']) ? $restriction['PROGRESS_STEPS'] : [];
-				if (!empty($progressSteps))
-				{
-					sort($progressSteps, SORT_STRING);
-					if (empty(array_diff($allProgressSteps, $progressSteps)))
-					{
-						$progressSteps = [];
-					}
-				}
+				$progressSteps = $this->getProgressSteps($permissionEntityType, $restriction);
 
 				$userIDs = isset($restriction['USER_IDS']) ? $restriction['USER_IDS'] : [];
 				if (!empty($userIDs))
@@ -448,7 +450,8 @@ class ControllerBased extends QueryBuilder
 					}
 					$this->addTypeAndCategoryToRestrictionMap(
 						$restrictionMap[$hash],
-						$permissionEntityType
+						$permissionEntityType,
+						$canSkipCategoryRestrictions
 					);
 				}
 			}
@@ -664,5 +667,38 @@ class ControllerBased extends QueryBuilder
 		}
 
 		return $progressSqlCondition;
+	}
+
+	private function getProgressSteps(string $permissionEntityType, array $restriction): array
+	{
+		$allProgressSteps = $this->loadProgressSteps($permissionEntityType);
+		$progressSteps = isset($restriction['PROGRESS_STEPS']) ? $restriction['PROGRESS_STEPS'] : [];
+		if (!empty($progressSteps))
+		{
+			sort($progressSteps, SORT_STRING);
+			if (empty(array_diff($allProgressSteps, $progressSteps)))
+			{
+				$progressSteps = [];
+			}
+		}
+
+		return $progressSteps;
+	}
+
+	private function loadProgressSteps(string $permissionEntityType): array
+	{
+		if (!isset($this->progressStepsCache[$permissionEntityType]))
+		{
+			$this->progressStepsCache[$permissionEntityType] = $this->controller->hasProgressSteps()
+				? $this->controller->getProgressSteps($permissionEntityType)
+				: []
+			;
+			if (!empty($this->progressStepsCache[$permissionEntityType]))
+			{
+				sort($this->progressStepsCache[$permissionEntityType], SORT_STRING);
+			}
+		}
+
+		return $this->progressStepsCache[$permissionEntityType];
 	}
 }

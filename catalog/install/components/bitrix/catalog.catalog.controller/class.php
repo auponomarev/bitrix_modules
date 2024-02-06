@@ -7,9 +7,11 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 use Bitrix\Catalog\Access\AccessController;
 use Bitrix\Catalog\Access\ActionDictionary;
 use Bitrix\Main;
+use Bitrix\Main\Grid\Export\ExcelExporter;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Catalog;
+use Bitrix\Catalog\Url\InventoryBuilder;
 use Bitrix\Crm;
 use Bitrix\Iblock;
 
@@ -21,6 +23,9 @@ class CatalogCatalogControllerComponent extends CBitrixComponent implements Main
 	private const PAGE_SECTION_DETAIL = 'section_detail';
 	private const PAGE_PRODUCT_DETAIL = 'product_detail';
 	private const PAGE_ERROR = 'error';
+	private const PAGE_TOOL_DISABLED = 'tool_disabled';
+
+	private const DEFAULT_SEF_FOLDER = '/shop/documents-catalog/';
 
 	/** @var  Main\ErrorCollection */
 	protected $errorCollection;
@@ -69,7 +74,7 @@ class CatalogCatalogControllerComponent extends CBitrixComponent implements Main
 		$arParams['BUILDER_CONTEXT'] = (string)($arParams['BUILDER_CONTEXT'] ?? '');
 
 		$arParams['SEF_MODE'] = 'Y';
-		$arParams['SEF_FOLDER'] = (string)($arParams['SEF_FOLDER'] ?? '/shop/documents-catalog/');
+		$arParams['SEF_FOLDER'] = (string)($arParams['SEF_FOLDER'] ?? self::DEFAULT_SEF_FOLDER);
 		$arParams['SEF_URL_TEMPLATES'] = $arParams['SEF_URL_TEMPLATES'] ?? [];
 		$arParams['VARIABLE_ALIASES'] = $arParams['VARIABLE_ALIASES'] ?? [];
 
@@ -150,6 +155,12 @@ class CatalogCatalogControllerComponent extends CBitrixComponent implements Main
 			$this->showErrors();
 			return;
 		}
+		if (!$this->checkInventoryManagementToolAvailability())
+		{
+			$this->includeComponentTemplate(self::PAGE_TOOL_DISABLED);
+
+			return;
+		}
 		$this->checkAccess();
 		if ($this->isExistErrors())
 		{
@@ -161,23 +172,34 @@ class CatalogCatalogControllerComponent extends CBitrixComponent implements Main
 		if ($this->isExistErrors())
 		{
 			$this->showErrors();
+
 			return;
 		}
 		$this->initUrlBuilder();
 		if ($this->isExistErrors())
 		{
 			$this->showErrors();
+
 			return;
 		}
 		$this->parseComponentVariables();
 		if ($this->isExistErrors())
 		{
 			$this->showErrors();
+			
 			return;
 		}
 		$this->initUiScope();
 		$this->arResult['PAGE_DESCRIPTION'] = $this->getPageDescription();
+		$this->arResult['IBLOCK_ID'] = $this->iblockId;
+		$this->arResult['URL_BUILDER'] = $this->getUrlBuilder();
+
 		$this->includeComponentTemplate($this->pageId);
+	}
+
+	protected function getUrlBuilder(): InventoryBuilder
+	{
+		return new InventoryBuilder();
 	}
 
 	protected function checkModules(): void
@@ -190,6 +212,11 @@ class CatalogCatalogControllerComponent extends CBitrixComponent implements Main
 		{
 			$this->addErrorMessage(Loc::getMessage('CATALOG_CATALOG_CONTROLLER_ERR_IBLOCK_MODULE_ABSENT'));
 		}
+	}
+
+	protected function checkInventoryManagementToolAvailability(): bool
+	{
+		return Catalog\Restriction\ToolAvailabilityManager::getInstance()->checkInventoryManagementAvailability();
 	}
 
 	protected function checkAccess(): void
@@ -291,6 +318,7 @@ class CatalogCatalogControllerComponent extends CBitrixComponent implements Main
 					|| $this->request->getQuery('SECTION_ID') === null
 					|| $this->request->getQuery('apply_filter') === null
 				)
+				&& $this->request->getQuery(ExcelExporter::REQUEST_PARAM_NAME) !== ExcelExporter::REQUEST_PARAM_VALUE
 			)
 			{
 				$pageUrl = $this->request->getRequestUri();

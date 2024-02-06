@@ -524,6 +524,8 @@ if(typeof BX.Crm.PartialEditorDialog === "undefined")
 				this.getEditor().release();
 			}
 
+			this.clearPresetValues();
+
 			if(!this._isAccepted)
 			{
 				BX.onCustomEvent(
@@ -571,7 +573,7 @@ if(typeof BX.Crm.PartialEditorDialog === "undefined")
 				formInput = document.createElement('INPUT');
 				formInput.type = 'hidden';
 				formInput.name = inputName;
-				editor._ajaxForm._elementNode.appendChild(formInput);
+				editor._ajaxForm._elementNode.prepend(formInput);
 			}
 			formInput.value = inputValue;
 		},
@@ -600,7 +602,11 @@ if(typeof BX.Crm.PartialEditorDialog === "undefined")
 		getEditor: function()
 		{
 			return this._editor;
-		}
+		},
+		clearPresetValues: function()
+		{
+			this._presetValues = {};
+		},
 	};
 	if(typeof(BX.Crm.PartialEditorDialog.messages) == "undefined")
 	{
@@ -781,6 +787,8 @@ if(typeof BX.Crm.QuickFormPartialEditorDialog === "undefined")
 		{
 			this.getEditor().release();
 		}
+
+		this.clearPresetValues();
 
 		if(!this._isAccepted)
 		{

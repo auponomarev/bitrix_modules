@@ -10,6 +10,7 @@ use Bitrix\Main\Entity\ExpressionField;
 use Bitrix\Main\Entity\ReferenceField;
 use CCrmDateTimeHelper;
 use Bitrix\Main\Config\Option;
+use Bitrix\Main\Application;
 
 
 class ActCounterLightTimeRepo
@@ -36,11 +37,10 @@ class ActCounterLightTimeRepo
 	}
 
 
-	public function minLightTimeByItemIdentifier(ItemIdentifier $identifier): DateTime
+	public function minLightTimeByItemIdentifier(ItemIdentifier $identifier, ?int $responsibleId = null): DateTime
 	{
-		$row = ActCounterLightTimeTable::query()
-			->registerRuntimeField('', new ExpressionField('MIN_LIGHT_COUNTER_AT', 'MIN(%s)', 'LIGHT_COUNTER_AT'))
-			->addSelect('MIN_LIGHT_COUNTER_AT')
+		$query = ActCounterLightTimeTable::query()
+			->addSelect('LIGHT_COUNTER_AT')
 			->registerRuntimeField(
 				'',
 				new ReferenceField('B',
@@ -50,9 +50,24 @@ class ActCounterLightTimeRepo
 			)
 			->where('B.OWNER_ID', '=', $identifier->getEntityId())
 			->where('B.OWNER_TYPE_ID', '=', $identifier->getEntityTypeId())
-			->fetch();
+			->addOrder('LIGHT_COUNTER_AT', 'ASC')
+			->setLimit(1);
 
-		return $row['MIN_LIGHT_COUNTER_AT'] ?? CCrmDateTimeHelper::getMaxDatabaseDateObject();
+		if ($responsibleId !== null)
+		{
+			$query->registerRuntimeField(
+				'',
+				new ReferenceField('A',
+					ActivityTable::getEntity(),
+					['=ref.ID' => 'this.ACTIVITY_ID'],
+				)
+			);
+			$query->where('A.RESPONSIBLE_ID', $responsibleId);
+		}
+
+		$row = $query->fetch();
+
+		return $row['LIGHT_COUNTER_AT'] ?? CCrmDateTimeHelper::getMaxDatabaseDateObject();
 	}
 
 	/**
@@ -98,10 +113,11 @@ class ActCounterLightTimeRepo
 		// If LIGHT_COUNTER_AT not filled yet by update agent then will use activate counter before 15 minutes to deadline
 		if ($this->isTransitionalMode)
 		{
+			$almostDeadline = Application::getConnection()->getSqlHelper()->addSecondsToDateTime(-15*60, 'DEADLINE');
 			$queryBuilder
 				->registerRuntimeField(new ExpressionField(
 						'LIGHT_COUNTER_AT',
-						'COALESCE(crm_activity_lt.LIGHT_COUNTER_AT, DATE_SUB(DEADLINE, interval 15 minute))'
+						"COALESCE(crm_activity_lt.LIGHT_COUNTER_AT, $almostDeadline)"
 					)
 				)
 				->addSelect('LIGHT_COUNTER_AT');
@@ -149,6 +165,8 @@ class ActCounterLightTimeRepo
 
 	private function queryLightTimeByActivityIdsTransitional(array $activityIds): array
 	{
+		$almostDeadline = Application::getConnection()->getSqlHelper()->addSecondsToDateTime(-15*60, 'DEADLINE');
+
 		$queryBuilder = ActivityTable::query()
 			->addSelect('ID', 'ACTIVITY_ID')
 			->addSelect('LIGHT_COUNTER_AT')
@@ -163,7 +181,7 @@ class ActCounterLightTimeRepo
 			)
 			->registerRuntimeField(new ExpressionField(
 					'LIGHT_COUNTER_AT',
-					'COALESCE(crm_activity_lt.LIGHT_COUNTER_AT, DATE_SUB(DEADLINE, interval 15 minute))'
+					"COALESCE(crm_activity_lt.LIGHT_COUNTER_AT, $almostDeadline)"
 				)
 			)
 			->whereIn('ID', $activityIds);

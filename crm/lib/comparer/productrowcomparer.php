@@ -3,7 +3,7 @@ namespace Bitrix\Crm\Comparer;
 
 class ProductRowComparer extends ComparerBase
 {
-	public function areEquals(array $a, array $b)
+	public function areEquals(array $a, array $b): bool
 	{
 		return (self::areFieldsEquals($a, $b, 'PRODUCT_NAME')
 			&& self::areFieldsEquals($a, $b, 'PRODUCT_ID')
@@ -28,15 +28,12 @@ class ProductRowComparer extends ComparerBase
 		);
 	}
 
-	public static function areFieldsEquals(array $left, array $right, $name)
+	public static function areFieldsEquals(array $left, array $right, $name): bool
 	{
 		if ($name === 'TAX_RATE')
 		{
-			if ($left[$name] !== null && $right[$name] !== null)
-			{
-				$left[$name] = (float)$left[$name];
-				$right[$name] = (float)$right[$name];
-			}
+			$left[$name] = (float)($left[$name] ?? null);
+			$right[$name] = (float)($right[$name] ?? null);
 
 			return $left[$name] === $right[$name];
 		}

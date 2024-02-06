@@ -32,11 +32,6 @@ class crm extends CModule
 			$this->MODULE_VERSION = $arModuleVersion['VERSION'];
 			$this->MODULE_VERSION_DATE = $arModuleVersion['VERSION_DATE'];
 		}
-		else
-		{
-			$this->MODULE_VERSION = CRM_VERSION;
-			$this->MODULE_VERSION_DATE = CRM_VERSION_DATE;
-		}
 
 		$this->MODULE_NAME = Loc::getMessage('CRM_INSTALL_NAME');
 		$this->MODULE_DESCRIPTION = Loc::getMessage('CRM_INSTALL_DESCRIPTION');
@@ -329,15 +324,15 @@ class crm extends CModule
 	function InstallDB()
 	{
 		global $DB, $APPLICATION;
-
+		$connection = \Bitrix\Main\Application::getConnection();
 		$this->errors = false;
 
 		RegisterModule('crm');
 		\Bitrix\Main\Loader::includeModule('crm');
 
-		if (!$DB->Query("SELECT 'x' FROM b_crm_lead", true))
+		if (!$DB->TableExists('b_crm_lead'))
 		{
-			$this->errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/crm/install/db/mysql/install.sql');
+			$this->errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/crm/install/db/' . $connection->getType() . '/install.sql');
 
 			COption::SetOptionString('crm', '~crm_install_time', time());
 
@@ -677,6 +672,8 @@ class crm extends CModule
 			}
 		}
 
+		\Bitrix\Crm\Model\ItemCategoryTable::installBundledCategoriesIfNotExists();
+
 		$this->InstallUserFields();
 
 		//region BUSINESS TYPES
@@ -734,49 +731,22 @@ class crm extends CModule
 		//endregion
 
 		//region FULL TEXT INDEXES
-		if ($DB->Query("CREATE FULLTEXT INDEX IX_B_CRM_LEAD_SEARCH ON b_crm_lead(SEARCH_CONTENT)", true))
-		{
-			\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_lead", serialize(["SEARCH_CONTENT" => true]));
-		}
-
-		if ($DB->Query("CREATE FULLTEXT INDEX IX_B_CRM_DEAL_SEARCH ON b_crm_deal(SEARCH_CONTENT)", true))
-		{
-			\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_deal", serialize(["SEARCH_CONTENT" => true]));
-		}
-
-		if ($DB->Query("CREATE FULLTEXT INDEX IX_B_CRM_QUOTE_SEARCH ON b_crm_quote(SEARCH_CONTENT)", true))
-		{
-			\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_quote", serialize(["SEARCH_CONTENT" => true]));
-		}
-
-		if ($DB->Query("CREATE FULLTEXT INDEX IX_B_CRM_CONTACT_SEARCH ON b_crm_contact(SEARCH_CONTENT)", true))
-		{
-			\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_contact", serialize(["SEARCH_CONTENT" => true]));
-		}
-
-		if ($DB->Query("CREATE FULLTEXT INDEX IX_B_CRM_COMPANY_SEARCH ON b_crm_company(SEARCH_CONTENT)", true))
-		{
-			\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_company", serialize(["SEARCH_CONTENT" => true]));
-		}
-
-		if ($DB->Query("CREATE FULLTEXT INDEX IX_B_CRM_ACT_SEARCH ON b_crm_act(SEARCH_CONTENT)", true))
-		{
-			\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_act", serialize(["SEARCH_CONTENT" => true]));
-		}
-
-		if ($DB->Query("CREATE FULLTEXT INDEX IX_B_CRM_INVOICE_SEARCH ON b_crm_invoice(SEARCH_CONTENT)", true))
-		{
-			\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_invoice", serialize(["SEARCH_CONTENT" => true]));
-		}
-
-		if ($DB->Query("CREATE FULLTEXT INDEX IX_B_CRM_TIMELINE_SEARCH ON b_crm_timeline_search(SEARCH_CONTENT)", true))
-		{
-			\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_timeline_search", serialize(["SEARCH_CONTENT" => true]));
-		}
+		\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_lead", serialize(["SEARCH_CONTENT" => true]));
+		\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_deal", serialize(["SEARCH_CONTENT" => true]));
+		\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_quote", serialize(["SEARCH_CONTENT" => true]));
+		\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_contact", serialize(["SEARCH_CONTENT" => true]));
+		\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_company", serialize(["SEARCH_CONTENT" => true]));
+		\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_act", serialize(["SEARCH_CONTENT" => true]));
+		\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_invoice", serialize(["SEARCH_CONTENT" => true]));
+		\Bitrix\Main\Config\Option::set("main", "~ft_b_crm_timeline_search", serialize(["SEARCH_CONTENT" => true]));
 		//endregion
 
 		\Bitrix\Main\Config\Option::set('crm', 'enable_slider', 'Y');
 		\Bitrix\Main\Config\Option::set('crm', 'enable_order_deal_create', 'Y');
+
+		\Bitrix\Crm\Settings\Crm::setLiveFeedRecordsGenerationEnabled(false);
+		\Bitrix\Crm\Settings\LiveFeedSettings::getCurrent()->enableLiveFeedMerge(false);
+		\Bitrix\Crm\Integration\Socialnetwork\Livefeed\AvailabilityHelper::setAvailable(false);
 
 		\Bitrix\Crm\EntityRequisite::installDefaultPresets();
 
@@ -798,6 +768,28 @@ class crm extends CModule
 			COption::SetOptionString('crm', '~CRM_CONVERT_CONTACT_UF_ADDRESSES_PROGRESS', serialize($progressData));
 			unset($progressData);
 		}
+		\Bitrix\Crm\Attribute\Entity\FieldAttributeTable::add([
+			'ENTITY_TYPE_ID' => CCrmOwnerType::Contact,
+			'ENTITY_SCOPE' => '',
+			'TYPE_ID' => \Bitrix\Crm\Attribute\FieldAttributeType::REQUIRED,
+			'FIELD_NAME' => 'NAME',
+			'CREATED_TIME' => new \Bitrix\Main\Type\DateTime(),
+			'START_PHASE' => '',
+			'FINISH_PHASE' => '',
+			'PHASE_GROUP_TYPE_ID' => \Bitrix\Crm\Attribute\FieldAttributePhaseGroupType::ALL,
+			'IS_CUSTOM_FIELD' => false,
+		]);
+		\Bitrix\Crm\Attribute\Entity\FieldAttributeTable::add([
+			'ENTITY_TYPE_ID' => CCrmOwnerType::Company,
+			'ENTITY_SCOPE' => '',
+			'TYPE_ID' => \Bitrix\Crm\Attribute\FieldAttributeType::REQUIRED,
+			'FIELD_NAME' => 'TITLE',
+			'CREATED_TIME' => new \Bitrix\Main\Type\DateTime(),
+			'START_PHASE' => '',
+			'FINISH_PHASE' => '',
+			'PHASE_GROUP_TYPE_ID' => \Bitrix\Crm\Attribute\FieldAttributePhaseGroupType::ALL,
+			'IS_CUSTOM_FIELD' => false,
+		]);
 
 		if (\Bitrix\Main\Loader::includeModule('intranet'))
 		{
@@ -818,6 +810,7 @@ class crm extends CModule
 	function UnInstallDB($arParams = [])
 	{
 		global $DB, $APPLICATION, $CACHE_MANAGER, $stackCacheManager, $USER_FIELD_MANAGER;
+		$connection = \Bitrix\Main\Application::getConnection();
 		$this->errors = false;
 
 		// register types factories before deleting events.
@@ -876,6 +869,7 @@ class crm extends CModule
 
 				$tableNamesToDelete[] = $type->getTableName();
 				$tableNamesToDelete[] = $typeFactory->getItemIndexDataClass($type)::getTableName();
+				$tableNamesToDelete[] = $typeFactory->getItemFieldsContextDataClass($type)::getTableName();
 			}
 			foreach ($tableNamesToDelete as $tableName)
 			{
@@ -887,7 +881,7 @@ class crm extends CModule
 
 			\Bitrix\Crm\Service\Container::getInstance()->getDynamicTypesMap()->invalidateTypesCollectionCache();
 
-			$this->errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/crm/install/db/mysql/uninstall.sql');
+			$this->errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/crm/install/db/'.$connection->getType().'/uninstall.sql');
 
 			if (CModule::IncludeModule('socialnetwork'))
 			{
@@ -1434,6 +1428,7 @@ class crm extends CModule
 		$eventManager->registerEventHandler('sale', 'onSalePsInitiatePayError', 'crm', '\Bitrix\Crm\Order\EventsHandler\PaySystem', 'onSalePsInitiatePayError');
 
 		$eventManager->registerEventHandler('intranet', 'onBuildBindingMenu', 'crm', '\Bitrix\Crm\Integration\Intranet\BindingMenu', 'onBuildBindingMenu');
+		$eventManager->registerEventHandler('intranet', 'onBuildBindingMap', 'crm', '\Bitrix\Crm\Integration\Intranet\BindingMenu', 'onBuildBindingMap');
 
 		$eventManager->registerEventHandler('main', 'onGetUserFieldTypeFactory', $this->MODULE_ID, '\Bitrix\Crm\Service\EventHandler', 'onGetUserFieldTypeFactory', 100);
 
@@ -1531,6 +1526,22 @@ class crm extends CModule
 			'crm',
 			'\Bitrix\Crm\Integration\ImOpenLines\EventHandler',
 			'OnImOpenLineRegisteredInCrm'
+		);
+
+		$eventManager->registerEventHandler(
+			'imopenlines',
+			'OnChatFinish',
+			'crm',
+			'\Bitrix\Crm\Integration\ImOpenLines\EventHandler',
+			'OnChatFinish'
+		);
+
+		$eventManager->registerEventHandler(
+			'imopenlines',
+			'OnOperatorTransfer',
+			'crm',
+			'\Bitrix\Crm\Integration\ImOpenLines\EventHandler',
+			'OnOperatorTransfer'
 		);
 
 		$eventManager->registerEventHandler(
@@ -1663,6 +1674,14 @@ class crm extends CModule
 
 		$eventManager->registerEventHandler(
 			'catalog',
+			'onGetContractorsConverter',
+			'crm',
+			'\Bitrix\Crm\Integration\Catalog\EventHandler',
+			'onGetContractorsConverterEventHandler'
+		);
+
+		$eventManager->registerEventHandler(
+			'catalog',
 			'onAfterCatalogRolePermissionSave',
 			'crm',
 			'\CCrmSaleHelper',
@@ -1675,6 +1694,52 @@ class crm extends CModule
 			'crm',
 			'\Bitrix\Crm\Integration\Calendar\CalendarSharingTimeline',
 			'onSharedCrmActions'
+		);
+
+		$eventManager->registerEventHandler(
+			'ai',
+			'onQueueJobExecute',
+			'crm',
+			'\Bitrix\Crm\Integration\AI\EventHandler',
+			'onQueueJobExecute',
+		);
+		$eventManager->registerEventHandler(
+			'ai',
+			'onQueueJobFail',
+			'crm',
+			'\Bitrix\Crm\Integration\AI\EventHandler',
+			'onQueueJobFail',
+		);
+		$eventManager->registerEventHandler(
+			'ai',
+			'onTuningLoad',
+			'crm',
+			'\Bitrix\Crm\Integration\AI\EventHandler',
+			'onTuningLoad',
+		);
+
+		$eventManager->registerEventHandler(
+			'ui',
+			'onUIFormResetScope',
+			'crm',
+			'\\Bitrix\\Crm\\Component\\EntityDetails\\Config\\Scope',
+			'onUIFormResetScope'
+		);
+
+		$eventManager->registerEventHandler(
+			'ui',
+			'onUIFormSetScope',
+			'crm',
+			'\\Bitrix\\Crm\\Component\\EntityDetails\\Config\\Scope',
+			'onUIFormSetScope'
+		);
+
+		$eventManager->registerEventHandler(
+			'sale',
+			'onSalePsBeforeInitiatePay',
+			'crm',
+			'\Bitrix\Crm\Terminal\EventsHandler\OnSalePsBeforeInitiatePay',
+			'handle'
 		);
 	}
 
@@ -1750,6 +1815,7 @@ class crm extends CModule
 		);
 
 		CAgent::AddAgent(
+			/** @see \Bitrix\Crm\Service\Factory\SmartInvoice::createTypeIfNotExists() */
 			"\\Bitrix\\Crm\\Service\\Factory\\SmartInvoice::createTypeIfNotExists();",
 			"crm",
 			"N",
@@ -1757,6 +1823,28 @@ class crm extends CModule
 			'',
 			'Y',
 			$startTime
+		);
+
+		CAgent::AddAgent(
+			/** @see \Bitrix\Crm\Service\Factory\SmartDocument::createTypeIfNotExists() */
+			"\\Bitrix\\Crm\\Service\\Factory\\SmartDocument::createTypeIfNotExists();",
+			"crm",
+			"N",
+			3600,
+			'',
+			'Y',
+			$startTime
+		);
+
+		\CAgent::AddAgent(
+			/** @see \Bitrix\Crm\Integration\Sign\Access::installDefaultRoles() */
+			'\Bitrix\Crm\Integration\Sign\Access::installDefaultRoles();',
+			'crm',
+			'N',
+			60,
+			'',
+			'Y',
+			$startTime,
 		);
 
 		// set initial values for MOVED_BY_ID and MOVED_TIME fields in leads
@@ -1808,6 +1896,15 @@ class crm extends CModule
 			'Y',
 			\ConvertTimeStamp(time() + \CTimeZone::GetOffset() + 600, 'FULL')
 		);
+
+		\CAgent::AddAgent(
+			'Bitrix\Crm\Agent\Activity\LightCounterAgent::run();',
+			'crm',
+			'N',
+			60,
+		);
+
+		\Bitrix\Crm\Update\RemoveDuplicatingMultifieldsStepper::bindOnCrmModuleInstall();
 	}
 
 	private function uninstallEventHandlers()
@@ -2047,6 +2144,7 @@ class crm extends CModule
 		);
 
 		$eventManager->unRegisterEventHandler('intranet', 'onBuildBindingMenu', 'crm', '\Bitrix\Crm\Integration\Intranet\BindingMenu', 'onBuildBindingMenu');
+		$eventManager->unRegisterEventHandler('intranet', 'onBuildBindingMap', 'crm', '\Bitrix\Crm\Integration\Intranet\BindingMenu', 'onBuildBindingMap');
 
 		$eventManager->unRegisterEventHandler(
 			'pull',
@@ -2168,6 +2266,22 @@ class crm extends CModule
 			'crm',
 			'\Bitrix\Crm\Integration\ImOpenLines\EventHandler',
 			'OnImOpenLineRegisteredInCrm'
+		);
+
+		$eventManager->unRegisterEventHandler(
+			'imopenlines',
+			'OnChatFinish',
+			'crm',
+			'\Bitrix\Crm\Integration\ImOpenLines\EventHandler',
+			'OnChatFinish'
+		);
+
+		$eventManager->unRegisterEventHandler(
+			'imopenlines',
+			'OnOperatorTransfer',
+			'crm',
+			'\Bitrix\Crm\Integration\ImOpenLines\EventHandler',
+			'OnOperatorTransfer'
 		);
 
 		$eventManager->unRegisterEventHandler(
@@ -2300,6 +2414,14 @@ class crm extends CModule
 
 		$eventManager->unRegisterEventHandler(
 			'catalog',
+			'onGetContractorsConverter',
+			'crm',
+			'\Bitrix\Crm\Integration\Catalog\EventHandler',
+			'onGetContractorsConverterEventHandler'
+		);
+
+		$eventManager->unRegisterEventHandler(
+			'catalog',
 			'onAfterCatalogRolePermissionSave',
 			'crm',
 			'\CCrmSaleHelper',
@@ -2315,6 +2437,52 @@ class crm extends CModule
 			'crm',
 			'\Bitrix\Crm\Integration\Calendar\CalendarSharingTimeline',
 			'onSharedCrmActions'
+		);
+
+		$eventManager->unRegisterEventHandler(
+			'ai',
+			'onQueueJobExecute',
+			'crm',
+			'\Bitrix\Crm\Integration\AI\EventHandler',
+			'onQueueJobExecute',
+		);
+		$eventManager->unRegisterEventHandler(
+			'ai',
+			'onQueueJobFail',
+			'crm',
+			'\Bitrix\Crm\Integration\AI\EventHandler',
+			'onQueueJobFail',
+		);
+		$eventManager->unRegisterEventHandler(
+			'ai',
+			'onTuningLoad',
+			'crm',
+			'\Bitrix\Crm\Integration\AI\EventHandler',
+			'onTuningLoad',
+		);
+
+		$eventManager->unRegisterEventHandler(
+			'ui',
+			'onUIFormSetScope',
+			'crm',
+			'\\Bitrix\\Crm\\Component\\EntityDetails\\Config\\Scope',
+			'onUIFormSetScope'
+		);
+
+		$eventManager->unRegisterEventHandler(
+			'ui',
+			'onUIFormResetScope',
+			'crm',
+			'\\Bitrix\\Crm\\Component\\EntityDetails\\Config\\Scope',
+			'onUIFormResetScope'
+		);
+
+		$eventManager->unRegisterEventHandler(
+			'sale',
+			'onSalePsBeforeInitiatePay',
+			'crm',
+			'\Bitrix\Crm\Terminal\EventsHandler\OnSalePsBeforeInitiatePay',
+			'handle'
 		);
 	}
 

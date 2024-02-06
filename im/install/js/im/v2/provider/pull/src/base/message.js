@@ -1,31 +1,36 @@
-import {EventEmitter} from 'main.core.events';
-import {Store} from 'ui.vue3.vuex';
+import { EventEmitter } from 'main.core.events';
+import { Store } from 'ui.vue3.vuex';
 
-import {Core} from 'im.v2.application.core';
-import {Logger} from 'im.v2.lib.logger';
-import {UserManager} from 'im.v2.lib.user';
-import {UuidManager} from 'im.v2.lib.uuid';
-import {EventType, DialogScrollThreshold} from 'im.v2.const';
-import {MessageService} from 'im.v2.provider.service';
+import { Core } from 'im.v2.application.core';
+import { Logger } from 'im.v2.lib.logger';
+import { UserManager } from 'im.v2.lib.user';
+import { UuidManager } from 'im.v2.lib.uuid';
+import { WritingManager } from 'im.v2.lib.writing';
+import { EventType, DialogScrollThreshold, UserRole } from 'im.v2.const';
+import { MessageService } from 'im.v2.provider.service';
 
-import type {ImModelDialog, ImModelMessage} from 'im.v2.model';
+import type { ImModelChat, ImModelMessage } from 'im.v2.model';
 
 import type {
 	MessageAddParams,
 	MessageUpdateParams,
 	MessageDeleteParams,
+	MessageDeleteCompleteParams,
 	ReadMessageParams,
 	ReadMessageOpponentParams,
 	PinAddParams,
 	PinDeleteParams,
 	AddReactionParams,
-	DeleteReactionParams
+	DeleteReactionParams,
 } from '../types/message';
-import type {PullExtraParams, RawFile, RawUser, RawMessage} from '../types/common';
+import type { PullExtraParams, RawFile, RawUser, RawMessage } from '../types/common';
+
+type UserId = number;
 
 export class MessagePullHandler
 {
 	#store: Store;
+	#messageViews: {[messageId: string]: Set<UserId>} = {};
 
 	constructor()
 	{
@@ -38,13 +43,14 @@ export class MessagePullHandler
 		this.#setMessageChat(params);
 		this.#setUsers(params);
 		this.#setFiles(params);
+		this.#setAdditionalEntities(params);
 
 		const messageWithTemplateId = this.#store.getters['messages/isInChatCollection']({
-			messageId: params.message.templateId
+			messageId: params.message.templateId,
 		});
 
 		const messageWithRealId = this.#store.getters['messages/isInChatCollection']({
-			messageId: params.message.id
+			messageId: params.message.id,
 		});
 
 		// update message with parsed link info
@@ -53,7 +59,7 @@ export class MessagePullHandler
 			Logger.warn('New message pull handler: we already have this message', params.message);
 			this.#store.dispatch('messages/update', {
 				id: params.message.id,
-				fields: params.message
+				fields: { ...params.message, error: false },
 			});
 			this.#sendScrollEvent(params.chatId);
 		}
@@ -62,7 +68,7 @@ export class MessagePullHandler
 			Logger.warn('New message pull handler: we already have the TEMPORARY message', params.message);
 			this.#store.dispatch('messages/updateWithId', {
 				id: params.message.templateId,
-				fields: params.message
+				fields: { ...params.message, error: false },
 			});
 		}
 		// it's an opponent message or our own message from somewhere else
@@ -72,10 +78,9 @@ export class MessagePullHandler
 			this.#handleAddingMessageToModel(params);
 		}
 
-		//stop writing event
-		this.#store.dispatch('dialogues/stopWriting', {
+		WritingManager.getInstance().stopWriting({
 			dialogId: params.dialogId,
-			userId: params.message.senderId
+			userId: params.message.senderId,
 		});
 
 		this.#updateDialog(params);
@@ -84,16 +89,16 @@ export class MessagePullHandler
 	handleMessageUpdate(params: MessageUpdateParams)
 	{
 		Logger.warn('MessagePullHandler: handleMessageUpdate', params);
-		this.#store.dispatch('dialogues/stopWriting', {
+		WritingManager.getInstance().stopWriting({
 			dialogId: params.dialogId,
-			userId: params.senderId
+			userId: params.senderId,
 		});
 		this.#store.dispatch('messages/update', {
 			id: params.id,
 			fields: {
 				text: params.text,
-				params: params.params
-			}
+				params: params.params,
+			},
 		});
 		this.#sendScrollEvent(params.chatId);
 	}
@@ -101,36 +106,59 @@ export class MessagePullHandler
 	handleMessageDelete(params: MessageDeleteParams)
 	{
 		Logger.warn('MessagePullHandler: handleMessageDelete', params);
-		this.#store.dispatch('dialogues/stopWriting', {
+		WritingManager.getInstance().stopWriting({
 			dialogId: params.dialogId,
-			userId: params.senderId
+			userId: params.senderId,
 		});
 		this.#store.dispatch('messages/update', {
 			id: params.id,
 			fields: {
-				params: params.params,
-			}
+				text: '',
+				isDeleted: true,
+				files: [],
+				attach: [],
+				replyId: 0,
+			},
 		});
 	}
 
-	handleMessageDeleteComplete(params)
+	handleMessageDeleteComplete(params: MessageDeleteCompleteParams)
 	{
 		Logger.warn('MessagePullHandler: handleMessageDeleteComplete', params);
-		// this.store.dispatch('messages/delete', {
-		// 	id: params.id,
-		// 	chatId: params.chatId,
-		// });
+		WritingManager.getInstance().stopWriting({
+			dialogId: params.dialogId,
+			userId: params.senderId,
+		});
 
-		// this.store.dispatch('dialogues/stopWriting', {
-		// 	dialogId: params.dialogId,
-		// 	userId: params.senderId
-		// });
+		this.#store.dispatch('messages/delete', {
+			id: params.id,
+		});
+
+		const dialogUpdateFields = {
+			counter: params.counter,
+		};
+
+		const lastMessageWasDeleted = Boolean(params.newLastMessage);
+		if (lastMessageWasDeleted)
+		{
+			dialogUpdateFields.lastMessageId = params.newLastMessage.id;
+			dialogUpdateFields.lastMessageViews = params.lastMessageViews;
+		}
+
+		this.#store.dispatch('chats/update', {
+			dialogId: params.dialogId,
+			fields: dialogUpdateFields,
+		});
 	}
 
 	handleAddReaction(params: AddReactionParams)
 	{
 		Logger.warn('MessagePullHandler: handleAddReaction', params);
-		const {actualReactions: {reaction: actualReactionsState, usersShort}, userId, reaction} = params;
+		const {
+			actualReactions: { reaction: actualReactionsState, usersShort },
+			userId,
+			reaction,
+		} = params;
 		if (Core.getUserId() === userId)
 		{
 			actualReactionsState.ownReactions = [reaction];
@@ -145,20 +173,19 @@ export class MessagePullHandler
 	handleDeleteReaction(params: DeleteReactionParams)
 	{
 		Logger.warn('MessagePullHandler: handleDeleteReaction', params);
-		const {actualReactions: {reaction: actualReactionsState}} = params;
+		const { actualReactions: { reaction: actualReactionsState } } = params;
 		this.#store.dispatch('messages/reactions/set', [actualReactionsState]);
 	}
 
 	handleMessageParamsUpdate(params)
 	{
 		Logger.warn('MessagePullHandler: handleMessageParamsUpdate', params);
-		// this.store.dispatch('messages/update', {
-		// 	id: params.id,
-		// 	chatId: params.chatId,
-		// 	fields: {params: params.params}
-		// }).then(() => {
-		// 	EventEmitter.emit(EventType.dialog.scrollToBottom, {chatId: params.chatId, cancelIfScrollChange: true});
-		// });
+
+		this.#store.dispatch('messages/update', {
+			id: params.id,
+			chatId: params.chatId,
+			fields: { params: params.params },
+		});
 	}
 
 	handleReadMessage(params: ReadMessageParams, extra: PullExtraParams)
@@ -175,15 +202,18 @@ export class MessagePullHandler
 
 		this.#store.dispatch('messages/readMessages', {
 			chatId: params.chatId,
-			messageIds: params.viewedMessages
+			messageIds: params.viewedMessages,
 		}).then(() => {
-			this.#store.dispatch('dialogues/update', {
+			this.#store.dispatch('chats/update', {
 				dialogId: params.dialogId,
 				fields: {
 					counter: params.counter,
-					lastId: params.lastId
-				}
+					lastId: params.lastId,
+				},
 			});
+		}).catch((error) => {
+			// eslint-disable-next-line no-console
+			console.error('MessagePullHandler: error handling readMessage', error);
 		});
 	}
 
@@ -199,12 +229,12 @@ export class MessagePullHandler
 		Logger.warn('MessagePullHandler: handlePinAdd', params);
 		this.#setFiles(params);
 		this.#setUsers(params);
-		this.#store.dispatch('messages/store', params.link.message);
+		this.#store.dispatch('messages/store', params.additionalMessages);
 		this.#store.dispatch('messages/pin/add', {
-			chatId: params.link.chatId,
-			messageId: params.link.messageId
+			chatId: params.pin.chatId,
+			messageId: params.pin.messageId,
 		});
-		if (Core.getUserId() !== params.link.authorId)
+		if (Core.getUserId() !== params.pin.authorId)
 		{
 			// this.#sendScrollEvent(params.link.chatId);
 		}
@@ -215,7 +245,7 @@ export class MessagePullHandler
 		Logger.warn('MessagePullHandler: handlePinDelete', params);
 		this.#store.dispatch('messages/pin/delete', {
 			chatId: params.chatId,
-			messageId: params.messageId
+			messageId: params.messageId,
 		});
 	}
 
@@ -227,8 +257,14 @@ export class MessagePullHandler
 			return;
 		}
 
-		const chatToAdd = {...params.chat[params.chatId], dialogId: params.dialogId};
-		this.#store.dispatch('dialogues/set', chatToAdd);
+		const chatToAdd = { ...params.chat[params.chatId], dialogId: params.dialogId };
+		const dialogExists = Boolean(this.#getDialog(params.dialogId));
+		const messageWithoutNotification = !params.notify || params.message?.params?.NOTIFY === 'N';
+		if (!dialogExists && !messageWithoutNotification && !chatToAdd.role)
+		{
+			chatToAdd.role = UserRole.member;
+		}
+		this.#store.dispatch('chats/set', chatToAdd);
 	}
 
 	#setUsers(params: {users: {[userId: string]: RawUser} | []})
@@ -252,13 +288,13 @@ export class MessagePullHandler
 		const files = Object.values(params.files);
 		files.forEach((file: RawFile) => {
 			const templateFileIdExists = this.#store.getters['files/isInCollection']({
-				fileId: params.message?.templateFileId
+				fileId: params.message?.templateFileId,
 			});
 			if (templateFileIdExists)
 			{
 				this.#store.dispatch('files/updateWithId', {
 					id: params.message?.templateFileId,
-					fields: file
+					fields: file,
 				});
 			}
 			else
@@ -268,11 +304,32 @@ export class MessagePullHandler
 		});
 	}
 
+	#setAdditionalEntities(params: MessageAddParams): void
+	{
+		if (!params.message.additionalEntities)
+		{
+			return;
+		}
+
+		const {
+			additionalMessages,
+			messages,
+			files,
+			users,
+		} = params.message.additionalEntities;
+		const newMessages = [...messages, ...additionalMessages];
+		this.#store.dispatch('messages/store', newMessages);
+		this.#store.dispatch('files/set', files);
+		this.#store.dispatch('users/set', users);
+	}
+
 	#handleAddingMessageToModel(params: MessageAddParams)
 	{
 		const dialog = this.#getDialog(params.dialogId, true);
 		if (dialog.inited && dialog.hasNextPage)
 		{
+			this.#store.dispatch('messages/store', params.message);
+
 			return;
 		}
 
@@ -280,8 +337,9 @@ export class MessagePullHandler
 		const unreadMessages: ImModelMessage[] = this.#store.getters['messages/getChatUnreadMessages'](params.chatId);
 		if (!chatIsOpened && unreadMessages.length > MessageService.getMessageRequestLimit())
 		{
-			const messageService = new MessageService({chatId: params.chatId});
+			const messageService = new MessageService({ chatId: params.chatId });
 			messageService.reloadMessageList();
+
 			return;
 		}
 
@@ -291,17 +349,17 @@ export class MessagePullHandler
 
 	#addMessageToModel(message)
 	{
-		const newMessage = {...message};
-		if (message.senderId !== Core.getUserId())
+		const newMessage = { ...message };
+		if (message.senderId === Core.getUserId())
+		{
+			newMessage.unread = false;
+		}
+		else
 		{
 			newMessage.unread = true;
 			newMessage.viewed = false;
 		}
-		else
-		{
-			newMessage.unread = false;
-		}
-		this.#store.dispatch('messages/setChatCollection', {messages: [newMessage]});
+		this.#store.dispatch('messages/setChatCollection', { messages: [newMessage] });
 	}
 
 	#updateDialog(params)
@@ -313,26 +371,26 @@ export class MessagePullHandler
 		{
 			dialogFieldsToUpdate.lastMessageId = params.message.id;
 		}
+
 		if (params.message.senderId === Core.getUserId() && params.message.id > dialog.lastReadId)
 		{
 			dialogFieldsToUpdate.lastId = params.message.id;
 		}
-		else
-		{
-			dialogFieldsToUpdate.counter = params.counter;
-		}
-		this.#store.dispatch('dialogues/update', {
+
+		dialogFieldsToUpdate.counter = params.counter;
+
+		this.#store.dispatch('chats/update', {
 			dialogId: params.dialogId,
-			fields: dialogFieldsToUpdate
+			fields: dialogFieldsToUpdate,
 		});
-		this.#store.dispatch('dialogues/clearLastMessageViews', {
-			dialogId: params.dialogId
+		this.#store.dispatch('chats/clearLastMessageViews', {
+			dialogId: params.dialogId,
 		});
 	}
 
 	#updateMessageViewedByOthers(params: ReadMessageOpponentParams)
 	{
-		this.#store.dispatch('messages/setViewedByOthers', {ids: params.viewedMessages});
+		this.#store.dispatch('messages/setViewedByOthers', { ids: params.viewedMessages });
 	}
 
 	#updateChatLastMessageViews(params: ReadMessageOpponentParams)
@@ -349,34 +407,56 @@ export class MessagePullHandler
 			return;
 		}
 
-		const hasFirstViewer = !!dialog.lastMessageViews.firstViewer;
+		if (this.#checkMessageViewsRegistry(params.userId, dialog.lastMessageId))
+		{
+			return;
+		}
+
+		const hasFirstViewer = Boolean(dialog.lastMessageViews.firstViewer);
 		if (hasFirstViewer)
 		{
-			this.#store.dispatch('dialogues/incrementLastMessageViews', {
-				dialogId: params.dialogId
+			this.#store.dispatch('chats/incrementLastMessageViews', {
+				dialogId: params.dialogId,
 			});
 
 			return;
 		}
 
-		this.#store.dispatch('dialogues/setLastMessageViews', {
+		this.#store.dispatch('chats/setLastMessageViews', {
 			dialogId: params.dialogId,
 			fields: {
 				userId: params.userId,
 				userName: params.userName,
 				date: params.date,
-				messageId: dialog.lastMessageId
-			}
+				messageId: dialog.lastMessageId,
+			},
 		});
+
+		this.#updateMessageViewsRegistry(params.userId, dialog.lastMessageId);
+	}
+
+	#checkMessageViewsRegistry(userId: number, messageId: number): boolean
+	{
+		return Boolean(this.#messageViews[messageId]?.has(userId));
+	}
+
+	#updateMessageViewsRegistry(userId: number, messageId: number): void
+	{
+		if (!this.#messageViews[messageId])
+		{
+			this.#messageViews[messageId] = new Set();
+		}
+
+		this.#messageViews[messageId].add(userId);
 	}
 
 	#sendScrollEvent(chatId: number)
 	{
-		EventEmitter.emit(EventType.dialog.scrollToBottom, {chatId, threshold: DialogScrollThreshold.nearTheBottom});
+		EventEmitter.emit(EventType.dialog.scrollToBottom, { chatId, threshold: DialogScrollThreshold.nearTheBottom });
 	}
 
-	#getDialog(dialogId: string, temporary: boolean = false): ?ImModelDialog
+	#getDialog(dialogId: string, temporary: boolean = false): ?ImModelChat
 	{
-		return this.#store.getters['dialogues/get'](dialogId, temporary);
+		return this.#store.getters['chats/get'](dialogId, temporary);
 	}
 }

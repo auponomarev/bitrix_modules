@@ -1,12 +1,11 @@
-/* eslint-disable flowtype/require-return-type */
-/* eslint-disable bitrix-rules/no-bx */
-/* eslint-disable bitrix-rules/no-pseudo-private */
-
 /**
  * @module im/messenger/provider/service/classes/message/load
  */
 jn.define('im/messenger/provider/service/classes/message/load', (require, exports, module) => {
+	const { Type } = require('type');
 
+	const { core } = require('im/messenger/core');
+	const { Settings } = require('im/messenger/lib/settings');
 	const { Logger } = require('im/messenger/lib/logger');
 	const { UserManager } = require('im/messenger/lib/user-manager');
 	const { RestMethod } = require('im/messenger/const/rest');
@@ -22,20 +21,24 @@ jn.define('im/messenger/provider/service/classes/message/load', (require, export
 			return 50;
 		}
 
-		constructor({ store, chatId })
+		constructor({ chatId })
 		{
-			this.store = store;
+			this.store = core.getStore();
 			this.chatId = chatId;
+			this.messageRepository = core.getRepository().message;
+			this.tempMessageRepository = core.getRepository().tempMessage;
 
 			this.preparedHistoryMessages = [];
 			this.preparedUnreadMessages = [];
 			this.isLoading = false;
+			this.isLoadingFromDb = false;
 			this.userManager = new UserManager(this.store);
+			this.reactions = null;
 		}
 
 		loadUnread()
 		{
-			if (this.isLoading || !this._getDialog().hasNextPage)
+			if (this.isLoading || !this.getDialog().hasNextPage)
 			{
 				return Promise.resolve(false);
 			}
@@ -45,6 +48,7 @@ jn.define('im/messenger/provider/service/classes/message/load', (require, export
 			if (!lastUnreadMessageId)
 			{
 				Logger.warn('LoadService: no lastUnreadMessageId, cant load unread');
+
 				return Promise.resolve(false);
 			}
 
@@ -57,28 +61,50 @@ jn.define('im/messenger/provider/service/classes/message/load', (require, export
 				},
 				order: {
 					id: 'ASC',
-				}
+				},
 			};
 
-			return runAction(RestMethod.imV2ChatMessageTail, { data: query }).then(result => {
+			return runAction(RestMethod.imV2ChatMessageTail, { data: query }).then((result) => {
 				Logger.warn('LoadService: loadUnread result', result);
-				this.preparedUnreadMessages = result.messages;
+				this.preparedUnreadMessages = result.messages.sort((a, b) => a.id - b.id);
+				this.reactions = {
+					reactions: result.reactions,
+					usersShort: result.usersShort,
+				};
 
-				return this._updateModels(result);
+				return this.updateModels(result);
 			}).then(() => {
 				this.drawPreparedUnreadMessages();
 				this.isLoading = false;
 
 				return true;
-			}).catch(error => {
-				console.error('LoadService: loadUnread error:', error);
+			}).catch((error) => {
+				Logger.error('LoadService: loadUnread error:', error);
 				this.isLoading = false;
 			});
 		}
 
-		loadHistory()
+		async loadHistory()
 		{
-			if (this.isLoading || !this._getDialog().hasPrevPage)
+			if (Settings.isLocalStorageEnabled && this.isLoadingFromDb === false)
+			{
+				this.isLoadingFromDb = true;
+
+				try
+				{
+					await this.loadHistoryMessagesFromDb();
+				}
+				catch (error)
+				{
+					Logger.error('LoadService.loadHistoryMessagesFromDb error: ', error);
+				}
+				finally
+				{
+					this.isLoadingFromDb = false;
+				}
+			}
+
+			if (this.isLoading || !this.getDialog().hasPrevPage)
 			{
 				return Promise.resolve(false);
 			}
@@ -88,6 +114,7 @@ jn.define('im/messenger/provider/service/classes/message/load', (require, export
 			if (!lastHistoryMessageId)
 			{
 				Logger.warn('LoadService: no lastHistoryMessageId, cant load unread');
+
 				return Promise.resolve();
 			}
 
@@ -100,25 +127,76 @@ jn.define('im/messenger/provider/service/classes/message/load', (require, export
 				},
 				order: {
 					id: 'DESC',
-				}
+				},
 			};
 
-			return runAction(RestMethod.imV2ChatMessageTail, { data: query }).then(result => {
+			return runAction(RestMethod.imV2ChatMessageTail, { data: query }).then((result) => {
 				Logger.warn('LoadService: loadHistory result', result);
-				this.preparedHistoryMessages = result.messages;
-				const hasPrevPage = result.hasNextPage;
-				const rawData = {...result, hasPrevPage, hasNextPage: null};
+				this.preparedHistoryMessages = result.messages.sort((a, b) => a.id - b.id);
+				this.reactions = {
+					reactions: result.reactions,
+					usersShort: result.usersShort,
+				};
 
-				return this._updateModels(rawData);
+				const hasPrevPage = result.hasNextPage;
+				const rawData = { ...result, hasPrevPage, hasNextPage: null };
+
+				return this.updateModels(rawData);
 			}).then(() => {
 				this.drawPreparedHistoryMessages();
 				this.isLoading = false;
 
 				return true;
-			}).catch(error => {
-				console.error('LoadService: loadHistory error:', error);
+			}).catch((error) => {
+				Logger.error('LoadService: loadHistory error:', error);
 				this.isLoading = false;
 			});
+		}
+
+		async loadHistoryMessagesFromDb()
+		{
+			const lastHistoryMessageId = this.store.getters['messagesModel/getFirstId'](this.chatId);
+			const options = {
+				chatId: this.chatId,
+				limit: 51,
+				lastId: lastHistoryMessageId,
+				direction: 'top',
+			};
+
+			Logger.log('LoadService: loadHistoryMessagesFromDb', options);
+			const result = await this.messageRepository.getList(options);
+			if (Type.isArrayFilled(result.userList))
+			{
+				await this.store.dispatch('usersModel/setFromLocalDatabase', result.userList);
+			}
+
+			if (Type.isArrayFilled(result.fileList))
+			{
+				await this.store.dispatch('filesModel/set', result.fileList);
+			}
+
+			if (Type.isArrayFilled(result.reactionList))
+			{
+				await this.store.dispatch('messagesModel/reactionsModel/set', {
+					reactions: result.reactionList,
+				});
+			}
+
+			if (Type.isArrayFilled(result.messageList))
+			{
+				await this.store.dispatch('messagesModel/setChatCollection', {
+					messages: result.messageList,
+				});
+			}
+
+			const resultTemp = await this.tempMessageRepository.getList();
+
+			if (Type.isArrayFilled(resultTemp.messageList))
+			{
+				await this.store.dispatch('messagesModel/setTemporaryMessages', {
+					messages: resultTemp.messageList,
+				});
+			}
 		}
 
 		hasPreparedUnreadMessages()
@@ -138,13 +216,17 @@ jn.define('im/messenger/provider/service/classes/message/load', (require, export
 				return Promise.resolve();
 			}
 
-			return this.store.dispatch('messagesModel/setChatCollection', {
-				messages: this.preparedHistoryMessages,
-			}).then(() => {
-				this.preparedHistoryMessages = [];
+			return this.store.dispatch('messagesModel/reactionsModel/set', this.reactions)
+				.then(() => this.store.dispatch('messagesModel/setChatCollection', {
+					messages: this.preparedHistoryMessages,
+				}))
+				.then(() => {
+					this.preparedUnreadMessages = [];
+					this.reactions = null;
 
-				return true;
-			});
+					return true;
+				})
+			;
 		}
 
 		drawPreparedUnreadMessages()
@@ -154,42 +236,59 @@ jn.define('im/messenger/provider/service/classes/message/load', (require, export
 				return Promise.resolve();
 			}
 
-			return this.store.dispatch('messagesModel/setChatCollection', {
-				messages: this.preparedUnreadMessages,
-			}).then(() => {
-				this.preparedUnreadMessages = [];
+			return this.store.dispatch('messagesModel/reactionsModel/set', this.reactions)
+				.then(() => this.store.dispatch('messagesModel/setChatCollection', {
+					messages: this.preparedUnreadMessages,
+				}))
+				.then(() => {
+					this.preparedUnreadMessages = [];
+					this.reactions = null;
 
-				return true;
-			});
+					return true;
+				})
+			;
 		}
 
-		_updateModels(rawData)
+		/**
+		 * @private
+		 */
+		updateModels(rawData)
 		{
 			const {
 				files,
 				users,
+				usersShort,
 				hasPrevPage,
-				hasNextPage
+				hasNextPage,
+				additionalMessages,
 			} = rawData;
 
 			const dialogPromise = this.store.dispatch('dialoguesModel/update', {
-				dialogId: this._getDialog().dialogId,
+				dialogId: this.getDialog().dialogId,
 				fields: {
 					hasPrevPage,
-					hasNextPage
-				}
+					hasNextPage,
+				},
 			});
-			const usersPromise = this.userManager.setUsersToModel(users);
+			const usersPromise = [
+				this.userManager.setUsersToModel(users),
+				this.userManager.addShortUsersToModel(usersShort),
+			];
 			const filesPromise = this.store.dispatch('filesModel/set', files);
+			const additionalMessagesPromise = this.store.dispatch('messagesModel/store', additionalMessages.sort((a, b) => a.id - b.id));
 
 			return Promise.all([
 				dialogPromise,
+				Promise.all(usersPromise),
 				filesPromise,
-				usersPromise
+				additionalMessagesPromise,
 			]);
 		}
 
-		_getDialog()
+		/**
+		 * @private
+		 */
+		getDialog()
 		{
 			return this.store.getters['dialoguesModel/getByChatId'](this.chatId);
 		}

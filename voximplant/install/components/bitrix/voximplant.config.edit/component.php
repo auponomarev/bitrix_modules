@@ -26,7 +26,7 @@ if (!$permissions->canPerform(\Bitrix\Voximplant\Security\Permissions::ENTITY_LI
  * Input params
  ********************************************************************/
 /***************** BASE ********************************************/
-$arParams["ID"] = (int)$arParams["ID"] ?: (int)$_REQUEST["ID"];
+$arParams["ID"] = (int)($arParams["ID"] ?? $_REQUEST["ID"]);
 /********************************************************************
  * /Input params
  ********************************************************************/
@@ -50,7 +50,7 @@ $arResult = array(
 		true
 	),
 );
-$melodies = array("MELODY_WELCOME", "MELODY_WAIT", "MELODY_HOLD", "MELODY_VOICEMAIL", "WORKTIME_DAYOFF_MELODY", "MELODY_RECORDING", "MELODY_VOTE", "MELODY_VOTE_END", "MELODY_ENQUEUE");
+$melodies = ["MELODY_WELCOME", "MELODY_WAIT", "MELODY_HOLD", "MELODY_VOICEMAIL", "WORKTIME_DAYOFF_MELODY", "MELODY_RECORDING", "MELODY_VOTE", "MELODY_VOTE_END", "MELODY_ENQUEUE"];
 if ($arResult["ITEM"])
 {
 	$name = $arResult["ITEM"]["PHONE_NAME"] ?: CVoxImplantConfig::GetDefaultPhoneName($arResult["ITEM"]);
@@ -139,6 +139,64 @@ $request = \Bitrix\Main\Context::getCurrent()->getRequest();
 if ($request->isPost() && check_bitrix_sessid())
 {
 	$post = $request->getPostList()->toArray();
+
+	$post['SIP']['PHONE_NAME'] ??= null;
+	$post['SIP']['SERVER'] ??= null;
+	$post['SIP']['LOGIN'] ??= null;
+	$post['SIP']['PASSWORD'] ??= null;
+	$post['SIP']['NEED_UPDATE'] ??= null;
+	$post['SIP']['DETECT_LINE_NUMBER'] ??= null;
+	$post['SIP']['LINE_DETECT_HEADER_ORDER'] ??= null;
+	$post['SIP']['AUTH_USER'] ??= null;
+	$post['SIP']['OUTBOUND_PROXY'] ??= null;
+	$post['SIP']['LINE_DETECT_HEADER_ORDER'] ??= null;
+	$post['SIP']['LINE_DETECT_HEADER_ORDER'] ??= null;
+	$post['CAN_BE_SELECTED'] ??= null;
+	$post['TRANSCRIBE'] ??= null;
+	$post['TRANSCRIBE_LANG'] ??= null;
+	$post['TRANSCRIBE_PROVIDER'] ??= null;
+	$post['CAN_BE_SELECTED'] ??= null;
+	$post['USE_SPECIFIC_BACKUP_NUMBER'] ??= null;
+	$post['BACKUP_NUMBER'] ??= null;
+	$post['IVR_ID'] ??= null;
+	$post['IVR'] ??= null;
+	$post['DIRECT_CODE'] ??= null;
+	$post['DIRECT_CODE_RULE'] ??= null;
+	$post['CRM'] ??= null;
+	$post['CRM_RULE'] ??= null;
+	$post['CRM_CREATE'] ??= null;
+	$post['CRM_CREATE_CALL_TYPE'] ??= null;
+	$post['CRM_FORWARD'] ??= null;
+	$post['CRM_TRANSFER_CHANGE'] ??= null;
+	$post['CRM_SOURCE'] ??= null;
+	$post['TIMEMAN'] ??= null;
+	$post['QUEUE_ID'] ??= null;
+	$post['FORWARD_LINE_ENABLED'] ??= null;
+	$post['FORWARD_LINE'] ??= null;
+	$post['RECORDING'] ??= null;
+	$post['RECORDING_NOTICE'] ??= null;
+	$post['RECORDING_STEREO'] ??= null;
+	$post['VOTE'] ??= null;
+	$post['MELODY_LANG'] ??= null;
+	$post['MELODY_WELCOME_ENABLE'] ??= null;
+	$post['WORKTIME_HOLIDAYS'] ??= null;
+	$post['WORKTIME_ENABLE'] ??= null;
+	$post['WORKTIME_TIMEZONE'] ??= null;
+	$post['WORKTIME_DAYOFF'] ??= null;
+	$post['WORKTIME_FROM'] ??= null;
+	$post['WORKTIME_TO'] ??= null;
+	$post['WORKTIME_DAYOFF_RULE'] ??= null;
+	$post['WORKTIME_DAYOFF_NUMBER'] ??= null;
+	$post['WORKTIME_DAYOFF_MELODY'] ??= null;
+	$post['USE_SIP_TO'] ??= null;
+	$post['CALLBACK_REDIAL'] ??= null;
+	$post['CALLBACK_REDIAL_ATTEMPTS'] ??= null;
+	$post['CALLBACK_REDIAL_PERIOD'] ??= null;
+	$post['LINE_PREFIX'] ??= null;
+	$post['BACKUP_LINE'] ??= null;
+	$post['REDIRECT_WITH_CLIENT_NUMBER'] ??= null;
+	$post['IFRAME'] ??= null;
+	$post['LINE_ACCESS'] ??= [];
 
 	$skipSaving = false;
 	$arFieldsSip = Array();
@@ -289,6 +347,7 @@ if ($request->isPost() && check_bitrix_sessid())
 		$post["BACKUP_NUMBER"] = "";
 	}
 
+	$normalizedBackupNumber = null;
 	if ($post["BACKUP_NUMBER"] != "")
 	{
 		$normalizedBackupNumber = CVoxImplantPhone::Normalize($post["BACKUP_NUMBER"], 1);
@@ -357,7 +416,7 @@ if ($request->isPost() && check_bitrix_sessid())
 	{
 		foreach ($melodies as $melody)
 		{
-			$arFields[$melody] = $post[$melody];
+			$arFields[$melody] = $post[$melody] ?? null;
 			if (isset($post[$melody."_del"]))
 			{
 				CFile::Delete($post[$melody]);
@@ -569,7 +628,7 @@ $arResult['CONFIG_MENU']["other"] = [
 
 $arResult['CONFIG_MENU']["melodies"] = [
 	"PAGE" => "melodies",
-	"NAME" => Loc::getMessage("VOX_CONFIG_EDIT_MELODIES"),
+	"NAME" => Loc::getMessage("VOX_CONFIG_EDIT_MELODIES_MSGVER_1"),
 	"ATTRIBUTES" => [
 		"data-role" => "menu-item",
 		"data-page" => "melodies"
@@ -591,7 +650,7 @@ if($arResult["ITEM"]["PORTAL_MODE"] == CVoxImplantConfig::MODE_RENT || $arResult
 $arResult["MELODIES"] = [
 	"welcome" => [
 		"TITLE" => GetMessage("VI_CONFIG_EDIT_WELCOMING_TUNE"),
-		"TIP" => GetMessage("VI_CONFIG_EDIT_WELCOMING_TUNE_TIP"),
+		"TIP" => GetMessage("VI_CONFIG_EDIT_WELCOMING_TUNE_TIP_MSGVER_1"),
 		"MELODY" => (array_key_exists("~MELODY_WELCOME", $arResult["ITEM"]) ? $arResult["ITEM"]["~MELODY_WELCOME"]["SRC"] : str_replace("#LANG_ID#", $arResult["ITEM"]["MELODY_LANG"], $arResult["DEFAULT_MELODIES"]["MELODY_WELCOME"])),
 		"MELODY_ID" => $arResult["ITEM"]["MELODY_WELCOME"],
 		"DEFAULT_MELODY" => $arResult["DEFAULT_MELODIES"]["MELODY_WELCOME"],
@@ -600,8 +659,8 @@ $arResult["MELODIES"] = [
 		"HIDDEN" => false
 	],
 	"recording" => [
-		"TITLE" => GetMessage("VI_CONFIG_EDIT_RECORDING_TUNE"),
-		"TIP" => GetMessage("VI_CONFIG_EDIT_RECORDING_TUNE_TIP"),
+		"TITLE" => GetMessage("VI_CONFIG_EDIT_RECORDING_TUNE_MSGVER_1"),
+		"TIP" => GetMessage("VI_CONFIG_EDIT_RECORDING_TUNE_TIP_MSGVER_1"),
 		"MELODY" => (array_key_exists("~MELODY_RECORDING", $arResult["ITEM"]) ? $arResult["ITEM"]["~MELODY_RECORDING"]["SRC"] : str_replace("#LANG_ID#", $arResult["ITEM"]["MELODY_LANG"], $arResult["DEFAULT_MELODIES"]["MELODY_RECORDING"])),
 		"MELODY_ID" => $arResult["ITEM"]["MELODY_RECORDING"],
 		"DEFAULT_MELODY" => $arResult["DEFAULT_MELODIES"]["MELODY_RECORDING"],
@@ -609,8 +668,8 @@ $arResult["MELODIES"] = [
 		"HIDDEN" => true
 	],
 	"wait" => [
-		"TITLE" => GetMessage("VI_CONFIG_EDIT_WAITING_TUNE"),
-		"TIP" => GetMessage("VI_CONFIG_EDIT_WAITING_TUNE_TIP"),
+		"TITLE" => GetMessage("VI_CONFIG_EDIT_WAITING_TUNE_MSGVER_1"),
+		"TIP" => GetMessage("VI_CONFIG_EDIT_WAITING_TUNE_TIP_MSGVER_1"),
 		"MELODY" => (array_key_exists("~MELODY_WAIT", $arResult["ITEM"]) ? $arResult["ITEM"]["~MELODY_WAIT"]["SRC"] : str_replace("#LANG_ID#", $arResult["ITEM"]["MELODY_LANG"], $arResult["DEFAULT_MELODIES"]["MELODY_WAIT"])),
 		"MELODY_ID" => $arResult["ITEM"]["MELODY_WAIT"],
 		"DEFAULT_MELODY" => $arResult["DEFAULT_MELODIES"]["MELODY_WAIT"],
@@ -618,8 +677,8 @@ $arResult["MELODIES"] = [
 		"HIDDEN" => true
 	],
 	"enqueue" => [
-		"TITLE" => GetMessage("VI_CONFIG_EDIT_ENQUEUE_TUNE"),
-		"TIP" => GetMessage("VI_CONFIG_EDIT_ENQUEUE_TUNE_TIP"),
+		"TITLE" => GetMessage("VI_CONFIG_EDIT_ENQUEUE_TUNE_MSGVER_1"),
+		"TIP" => GetMessage("VI_CONFIG_EDIT_ENQUEUE_TUNE_TIP_MSGVER_1"),
 		"MELODY" => (array_key_exists("~MELODY_ENQUEUE", $arResult["ITEM"]) ? $arResult["ITEM"]["~MELODY_ENQUEUE"]["SRC"] : str_replace("#LANG_ID#", $arResult["ITEM"]["MELODY_LANG"], $arResult["DEFAULT_MELODIES"]["MELODY_ENQUEUE"])),
 		"MELODY_ID" => $arResult["ITEM"]["MELODY_ENQUEUE"],
 		"DEFAULT_MELODY" => $arResult["DEFAULT_MELODIES"]["MELODY_ENQUEUE"],
@@ -628,7 +687,7 @@ $arResult["MELODIES"] = [
 	],
 	"hold" => [
 		"TITLE" => GetMessage("VI_CONFIG_EDIT_HOLDING_TUNE"),
-		"TIP" => GetMessage("VI_CONFIG_EDIT_HOLDING_TUNE_TIP"),
+		"TIP" => GetMessage("VI_CONFIG_EDIT_HOLDING_TUNE_TIP_MSGVER_1"),
 		"MELODY" => (array_key_exists("~MELODY_HOLD", $arResult["ITEM"]) ? $arResult["ITEM"]["~MELODY_HOLD"]["SRC"] : str_replace("#LANG_ID#", $arResult["ITEM"]["MELODY_LANG"], $arResult["DEFAULT_MELODIES"]["MELODY_HOLD"])),
 		"MELODY_ID" => $arResult["ITEM"]["MELODY_HOLD"],
 		"DEFAULT_MELODY" => $arResult["DEFAULT_MELODIES"]["MELODY_HOLD"],
@@ -637,7 +696,7 @@ $arResult["MELODIES"] = [
 	],
 	"voicemail" => [
 		"TITLE" => GetMessage("VI_CONFIG_EDIT_AUTO_ANSWERING_TUNE"),
-		"TIP" => GetMessage("VI_CONFIG_EDIT_AUTO_ANSWERING_TUNE_TIP"),
+		"TIP" => GetMessage("VI_CONFIG_EDIT_AUTO_ANSWERING_TUNE_TIP_MSGVER_1"),
 		"MELODY" => (array_key_exists("~MELODY_VOICEMAIL", $arResult["ITEM"]) ? $arResult["ITEM"]["~MELODY_VOICEMAIL"]["SRC"] : str_replace("#LANG_ID#", $arResult["ITEM"]["MELODY_LANG"], $arResult["DEFAULT_MELODIES"]["MELODY_VOICEMAIL"])),
 		"MELODY_ID" => $arResult["ITEM"]["MELODY_VOICEMAIL"],
 		"DEFAULT_MELODY" => $arResult["DEFAULT_MELODIES"]["MELODY_VOICEMAIL"],
@@ -645,8 +704,8 @@ $arResult["MELODIES"] = [
 		"HIDDEN" => true
 	],
 	"vote" => [
-		"TITLE" => GetMessage("VI_CONFIG_EDIT_VOTE_TUNE"),
-		"TIP" => GetMessage("VI_CONFIG_EDIT_VOTE_TUNE_TIP"),
+		"TITLE" => GetMessage("VI_CONFIG_EDIT_VOTE_TUNE_MSGVER_1"),
+		"TIP" => GetMessage("VI_CONFIG_EDIT_VOTE_TUNE_TIP_MSGVER_1"),
 		"MELODY" => (array_key_exists("~MELODY_VOTE", $arResult["ITEM"]) ? $arResult["ITEM"]["~MELODY_VOTE"]["SRC"] : str_replace("#LANG_ID#", $arResult["ITEM"]["MELODY_LANG"], $arResult["DEFAULT_MELODIES"]["MELODY_VOTE"])),
 		"MELODY_ID" => $arResult["ITEM"]["MELODY_VOTE"],
 		"DEFAULT_MELODY" => $arResult["DEFAULT_MELODIES"]["MELODY_VOTE"],
@@ -654,8 +713,8 @@ $arResult["MELODIES"] = [
 		"HIDDEN" => true
 	],
 	"vote_end" => [
-		"TITLE" => GetMessage("VI_CONFIG_EDIT_VOTE_END_TUNE"),
-		"TIP" => GetMessage("VI_CONFIG_EDIT_VOTE_END_TUNE_TIP"),
+		"TITLE" => GetMessage("VI_CONFIG_EDIT_VOTE_END_TUNE_MSGVER_1"),
+		"TIP" => GetMessage("VI_CONFIG_EDIT_VOTE_END_TUNE_TIP_MSGVER_1"),
 		"MELODY" => (array_key_exists("~MELODY_VOTE_END", $arResult["ITEM"]) ? $arResult["ITEM"]["~MELODY_VOTE_END"]["SRC"] : str_replace("#LANG_ID#", $arResult["ITEM"]["MELODY_LANG"], $arResult["DEFAULT_MELODIES"]["MELODY_VOTE_END"])),
 		"MELODY_ID" => $arResult["ITEM"]["MELODY_VOTE_END"],
 		"DEFAULT_MELODY" => $arResult["DEFAULT_MELODIES"]["MELODY_VOTE_END"],

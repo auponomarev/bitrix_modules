@@ -1,7 +1,11 @@
 <?php
 
+use Bitrix\Crm\Activity\Mail\Message;
+use Bitrix\Crm\Activity\Provider\Email;
 use Bitrix\Main\Config;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Mail\Integration\AI;
+use Bitrix\Main\Loader;
 
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) die();
 
@@ -64,30 +68,9 @@ class CrmActivityEmailComponent extends CBitrixComponent
 		$this->arParams['USER_FULL_NAME'] = \CUser::formatName($siteNameFormat, $userFields, true, false);
 
 		$templates = array();
-		$templatesByType = array();
-		$res = \CCrmMailTemplate::getList(
-			array('SORT' => 'ASC', 'ENTITY_TYPE_ID' => 'DESC', 'TITLE'=> 'ASC'),
-			array(
-				'IS_ACTIVE' => 'Y',
-				'__INNER_FILTER_TYPE' => array(
-					'LOGIC' => 'OR',
-					'__INNER_FILTER_TYPE_1' => array('ENTITY_TYPE_ID' => $activity['OWNER_TYPE_ID']),
-					'__INNER_FILTER_TYPE_2' => array('ENTITY_TYPE_ID' => 0),
-				),
-				'__INNER_FILTER_SCOPE' => array(
-					'LOGIC' => 'OR',
-					'__INNER_FILTER_PERSONAL' => array(
-						'OWNER_ID' => $USER->getId(),
-						'SCOPE'    => \CCrmMailTemplateScope::Personal,
-					),
-					'__INNER_FILTER_COMMON' => array(
-						'SCOPE' => \CCrmMailTemplateScope::Common,
-					),
-				),
-			),
-			false, false,
-			array('TITLE', 'SCOPE', 'ENTITY_TYPE_ID', 'BODY_TYPE')
-		);
+		$templatesWithType = [];
+
+		$res = \CCrmMailTemplate::getUserAvailableTemplatesList((int)$activity['OWNER_TYPE_ID']);
 
 		while ($item = $res->fetch())
 		{
@@ -99,20 +82,20 @@ class CrmActivityEmailComponent extends CBitrixComponent
 			);
 
 			$entityType = \CCrmOwnerType::resolveName($item['ENTITY_TYPE_ID']);
-			if (empty($templatesByType[$entityType]))
-				$templatesByType[$entityType] = array();
 
-			$templatesByType[$entityType][] = array(
+			$templatesWithType[] = [
 				'id'         => $item['ID'],
 				'title'      => $item['TITLE'],
 				'scope'      => $item['SCOPE'],
 				'entityType' => $entityType,
-			);
+			];
 		}
 
 		$activity['INITIAL_OWNER_TYPE_ID'] = $activity['OWNER_TYPE_ID'];
 		$activity['INITIAL_OWNER_TYPE'] = \CCrmOwnerType::resolveName($activity['OWNER_TYPE_ID']);
 		$activity['INITIAL_OWNER_ID'] = $activity['OWNER_ID'];
+
+		$activity['CALENDAR_SHARING_URL'] = self::getCrmCalendarSharingLink($activity['INITIAL_OWNER_ID'], $activity['INITIAL_OWNER_TYPE_ID']);
 
 		$activity['BINDINGS'] = empty($activity['BINDINGS']) ? array() : (array) $activity['BINDINGS'];
 		$activity['COMMUNICATIONS'] = empty($activity['COMMUNICATIONS']) ? array() : (array) $activity['COMMUNICATIONS'];
@@ -120,22 +103,7 @@ class CrmActivityEmailComponent extends CBitrixComponent
 
 		if (empty($activity['DESCRIPTION_HTML']) && !empty($activity['DESCRIPTION']))
 		{
-			switch ($activity['DESCRIPTION_TYPE'])
-			{
-				case \CCrmContentType::BBCode:
-					$textParser = new CTextParser();
-					$activity['DESCRIPTION_HTML'] = $textParser->convertText($activity['DESCRIPTION']);
-					break;
-				case \CCrmContentType::Html:
-					$activity['DESCRIPTION_HTML'] = $activity['DESCRIPTION'];
-					break;
-				default:
-					$activity['DESCRIPTION_HTML'] = preg_replace(
-						'/[\r\n]+/'.BX_UTF_PCRE_MODIFIER,
-						'<br>',
-						htmlspecialcharsbx($activity['DESCRIPTION'])
-					);
-			}
+			$activity['DESCRIPTION_HTML'] = Email::getDescriptionHtmlByActivityFields($activity);
 		}
 
 		if (empty($activity['__parent']))
@@ -243,36 +211,7 @@ class CrmActivityEmailComponent extends CBitrixComponent
 		}
 		else
 		{
-			if (\CCrmActivityDirection::Incoming == $activity['__parent']['DIRECTION'])
-			{
-				$from = reset($activity['COMMUNICATIONS']);
-				static::prepareCommunication($from);
-				$from = $from['TITLE'];
-			}
-			else if ($USER->getId() == $activity['__parent']['AUTHOR_ID'])
-			{
-				$from = $this->arParams['USER_FULL_NAME'];
-			}
-			else
-			{
-				$authorFields = \Bitrix\Main\UserTable::getList(array(
-					'select' => array('ID', 'NAME', 'LAST_NAME', 'SECOND_NAME', 'LOGIN'),
-					'filter' => array('=ID' => $activity['__parent']['AUTHOR_ID']),
-				))->fetch();
-				$from = \CUser::formatName($siteNameFormat, $authorFields, true, false);
-			}
-
-			$activity['DESCRIPTION_HTML'] = sprintf(
-				'<br><br>%s, %s:<br><blockquote style="margin: 0 0 0 5px; padding: 5px 5px 5px 8px; border-left: 4px solid #e2e3e5; ">%s</blockquote>',
-				formatDate(
-					preg_replace('/[\/.,\s:][s]/', '', $GLOBALS['DB']->dateFormatToPhp(FORMAT_DATETIME)),
-					makeTimestamp($activity['__parent']['START_TIME']),
-					time()+\CTimeZone::getOffset()
-				),
-				htmlspecialcharsbx($from),
-				$this->arParams['~ACTIVITY']['DESCRIPTION_HTML']
-			);
-
+			$activity['DESCRIPTION_HTML'] = Email::getMessageQuote($activity['__parent'], $this->arParams['~ACTIVITY']['DESCRIPTION_HTML'] ?? '', true, true);
 			$activity['__message_type'] = !empty($activity['__message_type'])? mb_strtoupper($activity['__message_type']) : '';
 			switch ($activity['__message_type'])
 			{
@@ -431,7 +370,27 @@ class CrmActivityEmailComponent extends CBitrixComponent
 		$this->arParams['DOCS_BINDINGS'] = $docsBindings;
 		$this->arParams['DOCS_READONLY'] = (\CCrmOwnerType::Lead == $activity['OWNER_TYPE_ID'] || \CCrmOwnerType::DealRecurring == $activity['OWNER_TYPE_ID']);
 		$this->arParams['TEMPLATES'] = $templates;
-		$this->arParams['TEMPLATES_BY_TYPE'] = $templatesByType;
+		$this->arParams['TEMPLATES_WITH_TYPE'] = $templatesWithType;
+
+		$saveLastUsedTemplate = \CUserOptions::GetOption('crm', 'save_last_used_mail_template');
+		$lastUsedTemplateID = \CCrmMailTemplate::GetLastUsedTemplateID(\CCrmOwnerType::Deal);
+
+		$this->arParams['SAVE_LAST_USED_TEMPLATE'] = $saveLastUsedTemplate;
+
+		if($saveLastUsedTemplate === 'Y' && $lastUsedTemplateID > 0)
+		{
+			foreach ($templates as $template)
+			{
+				if((int)$template['id'] === $lastUsedTemplateID)
+				{
+					$this->arParams['LAST_USED_TEMPLATE_TITLE'] = $template['title'];
+					$this->arParams['LAST_USED_TEMPLATE_ID'] = $lastUsedTemplateID;
+					break;
+				}
+			}
+		}
+
+		$this->arParams['COPILOT_PARAMS'] = self::prepareCopilotParams($USER->getId());
 
 		$this->includeComponentTemplate('edit');
 
@@ -446,16 +405,26 @@ class CrmActivityEmailComponent extends CBitrixComponent
 
 		$activity = $this->arParams['~ACTIVITY'];
 		if (empty($activity))
+		{
 			return;
+		}
 
+		$authorId = Message::getAssociatedUser($activity)['id'];
 		$userId = $USER->getId();
+		//To display a photo of the current user in the form of a reply to a message
+		$authIds = [$userId];
+		if ($authorId !== 0)
+		{
+			$authIds[] = $authorId;
+		}
 
-		$pageSize = (int) $this->arParams['PAGE_SIZE'];
+		$pageSize = (int)($this->arParams['PAGE_SIZE'] ?? 0);
 		if ($pageSize < 1 || $pageSize > 100)
+		{
 			$this->arParams['PAGE_SIZE'] = ($pageSize = 5);
+		}
 
 		$actIds  = array();
-		$authIds = array($userId, $activity['AUTHOR_ID'], $activity['RESPONSIBLE_ID']);
 
 		$res = \CCrmActivity::getList(
 			array(
@@ -468,7 +437,7 @@ class CrmActivityEmailComponent extends CBitrixComponent
 				'<=START_TIME' => $activity['START_TIME'],
 			),
 			false, false,
-			array('ID', 'SUBJECT', 'START_TIME', 'DIRECTION', 'COMPLETED', 'AUTHOR_ID', 'RESPONSIBLE_ID', 'SETTINGS'),
+			array('ID', 'OWNER_TYPE_ID', 'OWNER_ID', 'SUBJECT', 'START_TIME', 'DIRECTION', 'COMPLETED', 'SETTINGS'),
 			array('QUERY_OPTIONS' => array('OFFSET' => 0, 'LIMIT' => $pageSize))
 		);
 
@@ -483,8 +452,11 @@ class CrmActivityEmailComponent extends CBitrixComponent
 			}
 			else
 			{
-				$authIds[] = $item['AUTHOR_ID'];
-				$authIds[] = $item['RESPONSIBLE_ID'];
+				$itemAuthorId = Message::getAssociatedUser($item)['id'];
+				if ($itemAuthorId !== 0)
+				{
+					$authIds[] = $itemAuthorId;
+				}
 			}
 		}
 
@@ -499,7 +471,7 @@ class CrmActivityEmailComponent extends CBitrixComponent
 				'>START_TIME' => $activity['START_TIME'],
 			),
 			false, false,
-			array('ID', 'SUBJECT', 'START_TIME', 'DIRECTION', 'COMPLETED', 'AUTHOR_ID', 'RESPONSIBLE_ID', 'SETTINGS'),
+			array('ID', 'OWNER_TYPE_ID', 'OWNER_ID', 'SUBJECT', 'START_TIME', 'DIRECTION', 'COMPLETED', 'SETTINGS'),
 			array('QUERY_OPTIONS' => array('OFFSET' => 0, 'LIMIT' => $pageSize))
 		);
 
@@ -514,8 +486,11 @@ class CrmActivityEmailComponent extends CBitrixComponent
 			}
 			else
 			{
-				$authIds[] = $item['AUTHOR_ID'];
-				$authIds[] = $item['RESPONSIBLE_ID'];
+				$itemAuthorId = Message::getAssociatedUser($item)['id'];
+				if ($itemAuthorId !== 0)
+				{
+					$authIds[] = $itemAuthorId;
+				}
 			}
 		}
 
@@ -548,7 +523,7 @@ class CrmActivityEmailComponent extends CBitrixComponent
 		));
 
 		$authors = array();
-		$nameFormat = \CSite::getNameFormat(null);
+		$nameFormat = \CSite::getNameFormat();
 		while ($item = $res->fetch())
 		{
 			$item['NAME_FORMATTED'] = \CUser::formatName($nameFormat, $item, true, false);
@@ -569,20 +544,20 @@ class CrmActivityEmailComponent extends CBitrixComponent
 				}
 				else
 				{
-					$authorId = !empty($authors[$item['AUTHOR_ID']]) ? $item['AUTHOR_ID'] : $item['RESPONSIBLE_ID'];
+					$itemAuthorId = Message::getAssociatedUser($item)['id'];
 
-					if (!empty($authors[$authorId]) && !array_key_exists('IMAGE_URL', $authors[$authorId]))
+					if (!empty($authors[$itemAuthorId]) && !array_key_exists('IMAGE_URL', $authors[$itemAuthorId]))
 					{
 						$preview = \CFile::resizeImageGet(
-							$authors[$authorId]['PERSONAL_PHOTO'], array('width' => 38, 'height' => 38),
+							$authors[$itemAuthorId]['PERSONAL_PHOTO'], array('width' => 38, 'height' => 38),
 							BX_RESIZE_IMAGE_EXACT, false
 						);
 
-						$authors[$authorId]['IMAGE_URL'] = $preview['src'];
+						$authors[$itemAuthorId]['IMAGE_URL'] = $preview['src'];
 					}
 
-					$item['LOG_TITLE'] = $authors[$authorId]['NAME_FORMATTED'] ?: $item['SETTINGS']['EMAIL_META']['__email'];
-					$item['LOG_IMAGE'] = $authors[$authorId]['IMAGE_URL'];
+					$item['LOG_TITLE'] = $authors[$itemAuthorId]['NAME_FORMATTED'] ?: $item['SETTINGS']['EMAIL_META']['__email'];
+					$item['LOG_IMAGE'] = $authors[$itemAuthorId]['IMAGE_URL'];
 				}
 
 				$item['__trackable'] = isset($item['SETTINGS']['IS_BATCH_EMAIL']) && !$item['SETTINGS']['IS_BATCH_EMAIL'];
@@ -591,8 +566,6 @@ class CrmActivityEmailComponent extends CBitrixComponent
 				$this->arResult['LOG'][$k][$i] = $item;
 			}
 		}
-
-		$authorId = !empty($authors[$activity['AUTHOR_ID']]) ? $activity['AUTHOR_ID'] : $activity['RESPONSIBLE_ID'];
 
 		foreach (array($authorId, $userId) as $uid)
 		{
@@ -609,43 +582,20 @@ class CrmActivityEmailComponent extends CBitrixComponent
 
 		$activity['__author'] = $authors[$authorId];
 
-		$templates = array();
-		$res = \CCrmMailTemplate::getList(
-			array('SORT' => 'ASC', 'ENTITY_TYPE_ID' => 'DESC', 'TITLE'=> 'ASC'),
-			array(
-				'IS_ACTIVE' => 'Y',
-				'__INNER_FILTER_TYPE' => array(
-					'LOGIC' => 'OR',
-					'__INNER_FILTER_TYPE_1' => array('ENTITY_TYPE_ID' => $activity['OWNER_TYPE_ID']),
-					'__INNER_FILTER_TYPE_2' => array('ENTITY_TYPE_ID' => 0),
-				),
-				'__INNER_FILTER_SCOPE' => array(
-					'LOGIC' => 'OR',
-					'__INNER_FILTER_PERSONAL' => array(
-						'OWNER_ID' => $USER->getId(),
-						'SCOPE'    => \CCrmMailTemplateScope::Personal,
-					),
-					'__INNER_FILTER_COMMON' => array(
-						'SCOPE' => \CCrmMailTemplateScope::Common,
-					),
-				),
-			),
-			false, false,
-			array('TITLE', 'SCOPE', 'ENTITY_TYPE_ID', 'BODY_TYPE')
-		);
+		$templates = [];
+
+		$res = \CCrmMailTemplate::getUserAvailableTemplatesList((int)$activity['OWNER_TYPE_ID']);
 
 		while ($item = $res->fetch())
 		{
 			$entityType = \CCrmOwnerType::resolveName($item['ENTITY_TYPE_ID']);
-			if (empty($templates[$entityType]))
-				$templates[$entityType] = array();
 
-			$templates[$entityType][] = array(
-				'id'         => $item['ID'],
-				'title'      => $item['TITLE'],
-				'scope'      => $item['SCOPE'],
+			$templates[] = [
+				'id' => $item['ID'],
+				'title' => $item['TITLE'],
+				'scope' => $item['SCOPE'],
 				'entityType' => $entityType,
-			);
+			];
 		}
 
 		$userFields = \Bitrix\Main\UserTable::getList(array(
@@ -997,27 +947,37 @@ class CrmActivityEmailComponent extends CBitrixComponent
 	{
 		\CCrmActivity::prepareCommunicationInfo($item);
 
-		$entityTypes = array(
+		$entityTypes = [
 			'\CCrmContact' => \CCrmOwnerType::Contact,
 			'\CCrmCompany' => \CCrmOwnerType::Company,
-		);
+		];
+
 		if ($entityClass = array_search($item['ENTITY_TYPE_ID'], $entityTypes))
 		{
 			$entity = $entityClass::getListEx(
-				array(),
-				array('ID' => $item['ENTITY_ID']),
-				false, false,
-				array('PHOTO', 'LOGO')
+				[],
+				['ID' => $item['ENTITY_ID']],
+				false,
+				false,
+				['PHOTO', 'LOGO']
 			)->fetch();
+			if (!$entity)
+			{
+				return;
+			}
 
-			if (!empty($entity) and $entity['PHOTO'] > 0 || $entity['LOGO'] > 0)
+			if (
+				(isset($entity['PHOTO']) && $entity['PHOTO'] > 0)
+				|| (isset($entity['LOGO']) && $entity['LOGO'] > 0)
+			)
 			{
 				$fileInfo = \CFile::resizeImageGet(
-					$entity['PHOTO'] ?: $entity['LOGO'],
-					array('width' => 38, 'height' => 38),
-					BX_RESIZE_IMAGE_EXACT, false
+					$entity['PHOTO'] ?? $entity['LOGO'],
+					['width' => 38, 'height' => 38],
+					BX_RESIZE_IMAGE_EXACT
 				);
-				$item['IMAGE_URL'] = !empty($fileInfo['src']) ? $fileInfo['src'] : '';
+
+				$item['IMAGE_URL'] = empty($fileInfo['src']) ? '' : $fileInfo['src'];
 			}
 		}
 	}
@@ -1075,4 +1035,47 @@ class CrmActivityEmailComponent extends CBitrixComponent
 		return $mailboxes;
 	}
 
+	public static function getCrmCalendarSharingLink(int $entityId, int $entityTypeId): string
+	{
+		if (!\Bitrix\Main\Loader::includeModule('calendar'))
+		{
+			return '';
+		}
+
+		if ($entityTypeId !== \CCrmOwnerType::Deal)
+		{
+			$sharing = new \Bitrix\Calendar\Sharing\Sharing(\Bitrix\Main\Engine\CurrentUser::get()->getId());
+			return $sharing->getActiveLinkShortUrl() ?? '';
+		}
+
+		$deal = \Bitrix\Crm\Service\Container::getInstance()
+			->getEntityBroker($entityTypeId)
+			->getById($entityId);
+
+		if (!$deal)
+		{
+			return '';
+		}
+		$ownerId = $deal->getAssignedById();
+		/** @var Link\CrmDealLink $crmDealLink  */
+		$crmDealLink = (new \Bitrix\Calendar\Sharing\Link\Factory())->getCrmDealLink($entityId, $ownerId);
+		if ($crmDealLink === null)
+		{
+			$crmDealLink = (new \Bitrix\Calendar\Sharing\Link\Factory())->createCrmDealLink($ownerId, $entityId);
+		}
+
+		return \Bitrix\Calendar\Sharing\Helper::getShortUrl($crmDealLink->getUrl());
+	}
+
+	private static function prepareCopilotParams(int $userId): array
+	{
+		if (!Loader::includeModule('mail') || !class_exists('\Bitrix\Mail\Integration\AI\Settings'))
+		{
+			return [
+				'isCopilotEnabled' => false,
+			];
+		}
+
+		return AI\Settings::instance()->getMailCrmCopilotParams(AI\Settings::MAIL_CRM_NEW_MESSAGE_CONTEXT_ID);
+	}
 }

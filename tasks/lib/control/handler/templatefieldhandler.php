@@ -6,19 +6,15 @@ use Bitrix\Main\Entity\DatetimeField;
 use Bitrix\Main\Text\Emoji;
 use Bitrix\Tasks\Control\Handler\Exception\TemplateFieldValidateException;
 use Bitrix\Tasks\Internals\Registry\TaskRegistry;
+use Bitrix\Tasks\Internals\Task\Priority;
 use Bitrix\Tasks\Internals\Task\TemplateTable;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Tasks\Replicator\Template\Option\Options;
 
 class TemplateFieldHandler
 {
-	private $fields;
-	private $templateData;
 	private $templateId;
-	private $userId;
 
-	/**
-	 *
-	 */
 	public const DEPRECATED_FIELDS = [
 		'ACCOMPLICES',
 		'AUDITORS',
@@ -27,12 +23,8 @@ class TemplateFieldHandler
 		'DEPENDS_ON',
 	];
 
-	public function __construct(int $userId, array $fields, array $templateData = null)
+	public function __construct(private int $userId, private array $fields, private ?array $templateData = null)
 	{
-		$this->userId = $userId;
-		$this->fields = $fields;
-		$this->templateData = $templateData;
-
 		$this->setTemplateId();
 	}
 
@@ -197,10 +189,10 @@ class TemplateFieldHandler
 	{
 		if (
 			isset($this->fields["PRIORITY"])
-			&& !in_array($this->fields["PRIORITY"], [\CTasks::PRIORITY_LOW, \CTasks::PRIORITY_AVERAGE, \CTasks::PRIORITY_HIGH])
+			&& !in_array((int)$this->fields["PRIORITY"], array_values(Priority::getAll()), true)
 		)
 		{
-			$this->fields["PRIORITY"] = \CTasks::PRIORITY_AVERAGE;
+			$this->fields["PRIORITY"] = Priority::AVERAGE;
 		}
 
 		return $this;
@@ -332,7 +324,7 @@ class TemplateFieldHandler
 			$this->fields['REPLICATE_PARAMS'] = \Bitrix\Tasks\Util\Type::unSerializeArray($this->fields['REPLICATE_PARAMS']);
 		}
 
-		$this->fields['REPLICATE_PARAMS'] = \CTaskTemplates::parseReplicationParams($this->fields['REPLICATE_PARAMS']);
+		$this->fields['REPLICATE_PARAMS'] = Options::validate($this->fields['REPLICATE_PARAMS']);
 
 		return $this;
 	}

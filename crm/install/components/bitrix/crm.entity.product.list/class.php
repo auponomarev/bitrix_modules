@@ -9,9 +9,12 @@ use Bitrix\Catalog\Access\AccessController;
 use Bitrix\Catalog\Access\ActionDictionary;
 use Bitrix\Catalog\Access\Permission\PermissionDictionary;
 use Bitrix\Catalog\Component\ImageInput;
+use Bitrix\Catalog\ProductTable;
 use Bitrix\Catalog\StoreProductTable;
 use Bitrix\Catalog\StoreTable;
 use Bitrix\Catalog\v2\IoC\ServiceContainer;
+use Bitrix\Catalog\v2\Product\BaseProduct;
+use Bitrix\Catalog\v2\Sku\BaseSku;
 use Bitrix\Crm;
 use Bitrix\Crm\Component\EntityDetails\ProductList;
 use Bitrix\Crm\Discount;
@@ -24,7 +27,6 @@ use Bitrix\Main;
 use Bitrix\Main\Grid\Editor\Types;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
-use Bitrix\Main\Type\Date;
 use Bitrix\Main\Web\Json;
 use Bitrix\Sale;
 use Bitrix\UI\Util;
@@ -79,7 +81,6 @@ final class CCrmEntityProductListComponent
 	protected array $productVatList = [];
 	protected array $discountTypes = [];
 	protected int $newRowCounter = 0;
-	protected ?bool $isAllowedReserve = null;
 
 	/**
 	 * Base constructor.
@@ -108,8 +109,8 @@ final class CCrmEntityProductListComponent
 	{
 		/**
 		 * GRID_ID - string - custom grid id
-		 * NAVIGATION_ID - string - custom navigation id (may be create from GRID_ID)
-		 * FORM_ID - string - custom form identifier (may be create from GRID_ID), default empty
+		 * NAVIGATION_ID - string - custom navigation id (can be created from GRID_ID)
+		 * FORM_ID - string - custom form identifier (can be created from GRID_ID), default empty
 		 * TAB_ID - string - custom product tab identifier, default empty
 		 *
 		 * AJAX_ID - string - ajax component identifier
@@ -224,18 +225,17 @@ final class CCrmEntityProductListComponent
 		}
 		unset($productRow);
 
-		$enableSaleDiscount = false;
 		$calculateOptions = [];
 		if ($this->crmSettings['ALLOW_LD_TAX'])
 		{
 			$calculateOptions['ALLOW_LD_TAX'] = 'Y';
-			$calculateOptions['LOCATION_ID'] = isset($this->arParams['LOCATION_ID']) ? $this->arParams['LOCATION_ID'] : '';
+			$calculateOptions['LOCATION_ID'] = $this->arParams['LOCATION_ID'] ?? '';
 		}
 		$result = CCrmSaleHelper::Calculate(
 			$products,
 			$currencyId,
 			$this->crmSettings['PERSON_TYPE_ID'],
-			$enableSaleDiscount,
+			false,
 			$this->getSiteId(),
 			$calculateOptions
 		);
@@ -303,7 +303,7 @@ final class CCrmEntityProductListComponent
 	/** @noinspection PhpUnused
 	 *
 	 * @param array $products
-	 * @param string currencyId
+	 * @param string $currencyId
 	 * @param array $options
 	 * @return null|array
 	 */
@@ -531,12 +531,13 @@ final class CCrmEntityProductListComponent
 			$this->setLanguageId($params['CUSTOM_LANGUAGE_ID']);
 		}
 
-		$params['CURRENCY_ID'] = isset($params['CURRENCY_ID']) && is_string($params['CURRENCY_ID'])
-			? $params['CURRENCY_ID']
-			: '';
+		$params['CURRENCY_ID'] =
+			isset($params['CURRENCY_ID']) && is_string($params['CURRENCY_ID'])
+				? $params['CURRENCY_ID']
+				: ''
+		;
 
-		$baseGroup = \CCatalogGroup::GetBaseGroup();
-		$params['BASE_PRICE_ID'] = (is_array($baseGroup) && isset($baseGroup['ID'])) ? (int)$baseGroup['ID'] : null;
+		$params['BASE_PRICE_ID'] = Crm\Product\Price::getBaseId();
 
 		$params['SET_ITEMS'] = isset($params['SET_ITEMS']) && $params['SET_ITEMS'] === 'Y';
 		$params['ALLOW_EDIT'] = isset($params['ALLOW_EDIT']) && $params['ALLOW_EDIT'] === 'Y';
@@ -552,7 +553,7 @@ final class CCrmEntityProductListComponent
 
 		$params['PREFIX'] = (isset($params['PREFIX']) && is_string($params['PREFIX']) ? trim($params['PREFIX']) : '');
 		$params['ID'] = (isset($params['ID']) && is_string($params['ID']) ? trim($params['ID']) : '');
-		$params['PRODUCT_DATA_FIELD_NAME'] = isset($params['PRODUCT_DATA_FIELD_NAME']) ? $params['PRODUCT_DATA_FIELD_NAME'] : 'PRODUCT_ROW_DATA';
+		$params['PRODUCT_DATA_FIELD_NAME'] = $params['PRODUCT_DATA_FIELD_NAME'] ?? 'PRODUCT_ROW_DATA';
 	}
 
 	/**
@@ -651,10 +652,10 @@ final class CCrmEntityProductListComponent
 		$this->defaultSettings['TAB_ID'] = '';
 		$this->defaultSettings['AJAX_ID'] = '';
 		$this->defaultSettings['PAGE_SIZES'] = [5, 10, 20, 50, 100];
-		$this->defaultSettings['NEW_ROW_POSITION'] = CUserOptions::GetOption("crm.entity.product.list", 'new.row.position', 'top');
+		$this->defaultSettings['NEW_ROW_POSITION'] = CUserOptions::GetOption('crm.entity.product.list', 'new.row.position', 'top');
+		$this->defaultSettings['SHOW_PRODUCT_IMAGES'] = CUserOptions::GetOption('crm.entity.product.list', 'show.product.images', 'Y');
 		$this->defaultSettings['ALLOW_CATALOG_PRICE_EDIT'] = true;
 		$this->defaultSettings['ALLOW_DISCOUNT_CHANGE'] = true;
-		$this->defaultSettings['ALLOW_ENTITY_RESERVE'] = false;
 		$this->defaultSettings['ALLOW_RESERVATION'] = false;
 	}
 
@@ -708,6 +709,7 @@ final class CCrmEntityProductListComponent
 				'TAB_ID',
 				'AJAX_ID',
 				'NEW_ROW_POSITION',
+				'SHOW_PRODUCT_IMAGES',
 			],
 		];
 		foreach ($paramsList as $entity => $list)
@@ -1083,12 +1085,18 @@ final class CCrmEntityProductListComponent
 					$row['TAX_RATE'] = ($row['TAX_RATE'] === '') ? null : (float)$row['TAX_RATE'];
 				}
 			}
-
-			$this->rows = ReservationService::getInstance()->fillBasketReserves($this->rows);
 		}
 		elseif ($this->entity['ID'] > 0)
 		{
 			$this->rows = CCrmProductRow::LoadRows($this->entity['TYPE_CODE'], $this->entity['ID']);
+			if ($this->isAllowedReservation())
+			{
+				foreach ($this->rows as &$row)
+				{
+					$row['INPUT_RESERVE_QUANTITY'] = $row['RESERVE_QUANTITY'];
+				}
+				unset($row);
+			}
 		}
 
 		if ($this->rows && $this->isAllowedReservation())
@@ -1098,47 +1106,21 @@ final class CCrmEntityProductListComponent
 				$this->entity['ID']
 			);
 
-			$reserveData = \Bitrix\Crm\Reservation\Internals\ProductRowReservationTable::getList([
-				'filter' => [
-					'=ROW_ID' => array_column($this->rows, 'ID'),
-				],
-				'select' => [
-					'INPUT_RESERVE_QUANTITY' => 'RESERVE_QUANTITY',
-					'DATE_RESERVE_END',
-					'ROW_ID',
-					'STORE_ID',
-				],
-			]);
-
-			$reserveRowMap = [];
-			while ($reservation = $reserveData->fetch())
-			{
-				$rowId = $reservation['ROW_ID'];
-				unset($reservation['ROW_ID']);
-
-				if ($reservation['DATE_RESERVE_END'] instanceof Date)
-				{
-					$reservation['DATE_RESERVE_END'] = $reservation['DATE_RESERVE_END']->toString();
-				}
-				$reserveRowMap[$rowId] = $reservation;
-			}
-
 			foreach ($this->rows as &$row)
 			{
 				$id = $row['ID'];
-
-				if ($reserveRowMap[$id])
-				{
-					$row = array_merge($row, $reserveRowMap[$id]);
-				}
 
 				$row['DEDUCTED_QUANTITY'] = null;
 				if ((int)$row['PRODUCT_ID'] > 0)
 				{
 					$row['DEDUCTED_QUANTITY'] = $shippedRowMap[$id] ?? 0.0;
 				}
+
+				unset($row['RESERVE_QUANTITY']); // filled after in `fillBasketReserves`
 			}
 			unset($row);
+
+			$this->rows = \Bitrix\Crm\Service\Sale\Reservation\ReservationService::getInstance()->fillBasketReserves($this->rows);
 		}
 	}
 
@@ -1219,6 +1201,8 @@ final class CCrmEntityProductListComponent
 		$this->arResult['PRODUCT_DATA_FIELD_NAME'] = $this->arParams['PRODUCT_DATA_FIELD_NAME'];
 		$this->arResult['DEFAULT_DATE_RESERVATION'] = (string)ReservationService::getInstance()->getDefaultDateReserveEnd();
 
+		$this->arResult['IS_INVENTORY_MANAGEMENT_TOOL_ENABLED'] = Catalog\Restriction\ToolAvailabilityManager::getInstance()->checkInventoryManagementAvailability();
+
 		if(
 			Bitrix\Main\Loader::includeModule('pull')
 			&& $this->entity['TYPE_NAME'] === CCrmOwnerType::DealName
@@ -1230,6 +1214,7 @@ final class CCrmEntityProductListComponent
 		}
 
 		$this->arResult['RESTRICTED_PRODUCT_TYPES'] = $this->getRestrictedProductTypes();
+		$this->arResult['IS_SHOW_PRODUCT_IMAGES'] = $this->isShowProductImages();
 	}
 
 	protected function getGridActionPanel(): array
@@ -1407,12 +1392,16 @@ final class CCrmEntityProductListComponent
 		}
 
 		$columns = $this->getGridColumnsDescription();
-		foreach (array_keys($columns) as $index)
+		foreach ($columns as $index => $column)
 		{
-			if ($defaultList || isset($userColumnsIndex[$index]))
+			$isDefault = $column['default'] ?? false;
+			if (
+				($defaultList && $isDefault)
+				|| isset($userColumnsIndex[$index])
+			)
 			{
 				$visibleColumnsMap[$index] = true;
-				$visibleColumns[$index] = $columns[$index];
+				$visibleColumns[$index] = $column;
 			}
 		}
 
@@ -1677,7 +1666,6 @@ final class CCrmEntityProductListComponent
 				'hintHtml' => true,
 				'hintInteractivity' => true,
 				'sort' => 'STORE_ID',
-				'editable' => $this->isAllowedProductReserve() ? null : false,
 				'align' => 'right',
 			];
 
@@ -1713,7 +1701,6 @@ final class CCrmEntityProductListComponent
 						'#HELPER_HTML_LINK#' => $articleLinkHtml
 					]
 				),
-				'editable' => $this->isAllowedProductReserve() ? null : false,
 				'hintHtml' => true,
 				'hintInteractivity' => true,
 				'sort' => 'INPUT_RESERVE_QUANTITY',
@@ -1915,7 +1902,7 @@ final class CCrmEntityProductListComponent
 		]);
 		while ($prop = $iterator->fetch())
 		{
-			$headerId = 'PROPERTY_' . $prop['ID'];
+			$headerId = self::getPropertyColumnId($prop['ID']);
 			$result[$headerId] = [
 				'id' => $headerId,
 				'iconUrl' => self::PRODUCT_ICON_URL,
@@ -1984,7 +1971,7 @@ final class CCrmEntityProductListComponent
 	 */
 	protected function initCrmSettings(): void
 	{
-		$this->crmSettings['HIDE_ALL_TAXES'] = isset($this->arParams['HIDE_ALL_TAXES']) ? ($this->arParams['HIDE_ALL_TAXES'] === 'Y') : false;
+		$this->crmSettings['HIDE_ALL_TAXES'] = ($this->arParams['HIDE_ALL_TAXES'] ?? '') === 'Y';
 
 		$this->crmSettings['ALLOW_TAX'] = isset($this->arParams['ALLOW_TAX']) ? ($this->arParams['ALLOW_TAX'] === 'Y') : \CCrmTax::isVatMode();
 		$this->crmSettings['ALLOW_TAX'] = $this->crmSettings['ALLOW_TAX'] && !$this->crmSettings['HIDE_ALL_TAXES'];
@@ -1992,7 +1979,7 @@ final class CCrmEntityProductListComponent
 		$this->crmSettings['ALLOW_LD_TAX'] = isset($this->arParams['ALLOW_LD_TAX']) ? ($this->arParams['ALLOW_LD_TAX'] === 'Y') : \CCrmTax::isTaxMode();
 		$this->crmSettings['ALLOW_LD_TAX'] = $this->crmSettings['ALLOW_LD_TAX'] || $this->crmSettings['HIDE_ALL_TAXES'];
 
-		$this->crmSettings['LOCATION_ID'] = isset($this->arParams['LOCATION_ID']) ? $this->arParams['LOCATION_ID'] : '';
+		$this->crmSettings['LOCATION_ID'] = $this->arParams['LOCATION_ID'] ?? '';
 
 		$this->crmSettings['PRODUCT_ROW_TAX_UNIFORM'] = (Main\Config\Option::get('crm', 'product_row_tax_uniform') === 'Y');
 
@@ -2006,7 +1993,6 @@ final class CCrmEntityProductListComponent
 		$this->crmSettings['ALLOW_CATALOG_PRICE_SAVE'] = $accessController->check(ActionDictionary::ACTION_PRICE_EDIT);
 
 		$this->crmSettings['CATALOG_ENABLE_EMPTY_PRODUCT_ERROR'] = !\Bitrix\Crm\Settings\LayoutSettings::getCurrent()->isCreationEntityCommodityItemAllowed();
-		$this->crmSettings['ALLOW_ENTITY_RESERVE'] = $this->isAllowedProductReserve();
 		$this->crmSettings['ALLOW_RESERVATION'] = $this->isAllowedReservation();
 
 		$priceNotification = \Bitrix\Crm\Config\State::getProductPriceChangingNotification();
@@ -2015,7 +2001,7 @@ final class CCrmEntityProductListComponent
 
 		$arPersonTypes = CCrmPaySystem::getPersonTypeIDs();
 		$personTypeId = 0;
-		$this->crmSettings['CLIENT_SELECTOR_ID'] = isset($this->arParams['CLIENT_SELECTOR_ID']) ? $this->arParams['CLIENT_SELECTOR_ID'] : 'CLIENT';
+		$this->crmSettings['CLIENT_SELECTOR_ID'] = $this->arParams['CLIENT_SELECTOR_ID'] ?? 'CLIENT';
 		$this->crmSettings['CLIENT_TYPE_NAME'] = "CONTACT";
 		if (isset($this->arParams['PERSON_TYPE_ID']) && isset($arPersonTypes['COMPANY']) && isset($arPersonTypes['CONTACT']))
 			$personTypeId = (int)$this->arParams['PERSON_TYPE_ID'];
@@ -2102,7 +2088,6 @@ final class CCrmEntityProductListComponent
 		$this->arResult['IS_RESERVE_EQUAL_PRODUCT_QUANTITY'] = $this->crmSettings['IS_RESERVE_EQUAL_PRODUCT_QUANTITY'];
 		$this->arResult['IS_PRODUCT_EDITABLE'] = $this->crmSettings['IS_PRODUCT_EDITABLE'];
 		$this->arResult['ALLOW_CATALOG_PRICE_EDIT'] = $this->crmSettings['ALLOW_CATALOG_PRICE_EDIT'];
-		$this->arResult['ALLOW_ENTITY_RESERVE'] = $this->crmSettings['ALLOW_ENTITY_RESERVE'];
 		$this->arResult['ALLOW_RESERVATION'] = $this->crmSettings['ALLOW_RESERVATION'];
 		$this->arResult['ALLOW_DISCOUNT_CHANGE'] = $this->crmSettings['ALLOW_DISCOUNT_CHANGE'];
 		$this->arResult['ALLOW_CATALOG_PRICE_SAVE'] = $this->crmSettings['ALLOW_CATALOG_PRICE_SAVE'];
@@ -2364,19 +2349,18 @@ final class CCrmEntityProductListComponent
 			}
 			unset($index);
 
-			$enableSaleDiscount = false;
 			$calculateOptions = [];
 			if ($this->crmSettings['ALLOW_LD_TAX'])
 			{
 				$calculateOptions['ALLOW_LD_TAX'] = 'Y';
-				$calculateOptions['LOCATION_ID'] = isset($this->arParams['LOCATION_ID']) ? $this->arParams['LOCATION_ID'] : '';
+				$calculateOptions['LOCATION_ID'] = $this->arParams['LOCATION_ID'] ?? '';
 			}
 
 			$result = CCrmSaleHelper::Calculate(
 				$this->rows,
 				$this->getCurrencyId(),
 				$this->crmSettings['PERSON_TYPE_ID'],
-				$enableSaleDiscount,
+				false,
 				$this->getSiteId(),
 				$calculateOptions
 			);
@@ -2444,15 +2428,10 @@ final class CCrmEntityProductListComponent
 	 */
 	private function isAllowedReservation(): bool
 	{
-		$categoryId = (string)($this->entity['CATEGORY_ID'] ?? 0);
-
-		return
-			$this->entity['TYPE_NAME'] === CCrmOwnerType::DealName
-			&& Catalog\Config\State::isUsedInventoryManagement()
-			&& !\CCrmSaleHelper::isWithOrdersMode()
-			&& $this->checkProductReadRights()
-			&& AccessController::getCurrent()->checkByValue(ActionDictionary::ACTION_DEAL_PRODUCT_RESERVE, $categoryId)
-		;
+		return \CCrmSaleHelper::isAllowedReservation(
+			CCrmOwnerType::ResolveID($this->entity['TYPE_NAME']),
+			isset($this->entity['CATEGORY_ID']) ? (int)$this->entity['CATEGORY_ID'] : 0
+		);
 	}
 
 	private function isAllowedDiscount()
@@ -2468,28 +2447,6 @@ final class CCrmEntityProductListComponent
 		return \CCrmSaleHelper::isShopAccess();
 	}
 
-	public function isAllowedProductReserve(): bool
-	{
-		if ($this->isAllowedReserve !== null)
-		{
-			return $this->isAllowedReserve;
-		}
-
-		if ($this->entity['TYPE_ID'] === CCrmOwnerType::Deal)
-		{
-			$this->isAllowedReserve = AccessController::getCurrent()->checkByValue(
-				ActionDictionary::ACTION_DEAL_PRODUCT_RESERVE,
-				$this->entity['CATEGORY_ID']
-			);
-		}
-		else
-		{
-			$this->isAllowedReserve = false;
-		}
-
-		return $this->isAllowedReserve;
-	}
-
 	/**
 	 * @param array $items
 	 * @return void
@@ -2500,43 +2457,53 @@ final class CCrmEntityProductListComponent
 		{
 			return;
 		}
-		$idList = array_keys($items);
-		Main\Type\Collection::normalizeArrayValuesByInt($idList, true);
-		$products = Sale\Helpers\Admin\Product::getData($idList, $this->getSiteId());
-		$repositoryFacade = ServiceContainer::getRepositoryFacade();
 
+		$isShowImage = $this->isShowProductImages();
+		$isShowStores =
+			isset($this->getVisibleColumns()['STORE_INFO'])
+			|| isset($this->getVisibleColumns()['STORE_AVAILABLE'])
+		;
+
+		$idList = array_keys($items);
+		$products = $this->getProducts($idList);
 		$basePriceId = $this->arParams['BASE_PRICE_ID'];
 
 		if (!empty($products))
 		{
 			$oldProductId = [];
 
-			$offerIds = array_unique(
-				array_column($products, 'OFFER_ID')
-			);
-
-			if ($offerIds)
+			$storeOfferMap = [];
+			if ($isShowStores)
 			{
-				$storeOfferMap = [];
-				$storeAmounts = StoreProductTable::getList([
-					'filter' => [
-						'=PRODUCT_ID' => $offerIds,
-					],
-					'select' => [
-						'AMOUNT',
-						'QUANTITY_RESERVED',
-						'STORE_ID',
-						'PRODUCT_ID',
-					]
-				]);
+				$offerIds = array_unique(
+					array_column($products, 'OFFER_ID')
+				);
 
-				while ($storeAmount = $storeAmounts->fetch())
+				if ($offerIds)
 				{
-					$storeOfferMap[$storeAmount['PRODUCT_ID']] = $storeOfferMap[$storeAmount['PRODUCT_ID']] ?? [];
-					$storeOfferMap[$storeAmount['PRODUCT_ID']][$storeAmount['STORE_ID']] = $storeAmount;
+					$storeAmounts = StoreProductTable::getList([
+						'filter' => [
+							'=PRODUCT_ID' => $offerIds,
+						],
+						'select' => [
+							'AMOUNT',
+							'QUANTITY_RESERVED',
+							'STORE_ID',
+							'PRODUCT_ID',
+						]
+					]);
+
+					while ($storeAmount = $storeAmounts->fetch())
+					{
+						$storeOfferMap[$storeAmount['PRODUCT_ID']] = $storeOfferMap[$storeAmount['PRODUCT_ID']] ?? [];
+						$storeOfferMap[$storeAmount['PRODUCT_ID']][$storeAmount['STORE_ID']] = $storeAmount;
+					}
 				}
 			}
 
+			// entities
+			$productEntities = [];
+			$variationsEntities = [];
 			foreach ($items as $id => $list)
 			{
 				if (!isset($products[$id]))
@@ -2544,40 +2511,37 @@ final class CCrmEntityProductListComponent
 					continue;
 				}
 
-				$variation = null;
+				$offerId = (int)$products[$id]['OFFER_ID'];
+				$productId = (int)$products[$id]['PRODUCT_ID'];
+
+				if ($offerId !== $productId)
+				{
+					$variationsEntities[$offerId] = null;
+				}
+				else
+				{
+					$productEntities[$productId] = null;
+				}
+			}
+
+			// products
+			foreach ($items as $id => $list)
+			{
+				if (!isset($products[$id]))
+				{
+					continue;
+				}
+
 				$data = $products[$id];
 				unset($data['NAME']);
 				$replace = [
 					'BASE_PRICE_ID' => $basePriceId,
-					'DETAIL_URL' => '',
 					'STORE_AVAILABLE' => 0,
 					'STORE_AMOUNT' => 0,
 					'COMMON_STORE_RESERVED' => 0,
 					'COMMON_STORE_AMOUNT' => 0,
 					'COMMON_STORE_AVAILABLE' => 0,
 				];
-
-				if ($repositoryFacade)
-				{
-					$variation = $repositoryFacade->loadVariation((int)$data['OFFER_ID']);
-					$replace['DETAIL_URL'] = $this->getElementDetailUrl(
-						(int)$data['IBLOCK_ID'],
-						(int)$data['PRODUCT_ID']
-					);
-				}
-
-				if (
-					$variation !== null
-					&& (int)$data['OFFER_ID'] > 0
-					&& $basePriceId
-				)
-				{
-					$price = $variation->getPriceCollection()->findByGroupId($basePriceId);
-					if ($price)
-					{
-						$replace['CATALOG_PRICE'] = $price->getPrice();
-					}
-				}
 
 				if (!empty($data['OFFERS_IBLOCK_ID']))
 				{
@@ -2599,34 +2563,26 @@ final class CCrmEntityProductListComponent
 				{
 					$replace['VAT_ID'] = $data['VAT_ID'];
 				}
-				if (!empty($data['EDIT_PAGE_URL']))
-				{
-					$replace['EDIT_PAGE_URL'] = $this->prepareAdminLink($data['EDIT_PAGE_URL']);
-				}
+
+				$replace['DETAIL_URL'] = $this->getElementDetailUrl(
+					(int)$data['IBLOCK_ID'],
+					(int)$data['PRODUCT_ID']
+				);
 
 				foreach ($list as $index)
 				{
-					$imageInfo = [];
-					if ($variation)
-					{
-						$replace['COMMON_STORE_RESERVED'] = $variation->getField('QUANTITY_RESERVED');
-						$replace['COMMON_STORE_AMOUNT'] = $variation->getField('QUANTITY');
-						$skuImageField = new ImageInput($variation);
-						$imageInfo = $skuImageField->getFormattedField();
-					}
-					$this->rows[$index]['IMAGE_INFO'] = Json::encode($imageInfo);
-
+					$this->rows[$index]['STORE_MAP'] = [];
 					$storeId = $this->rows[$index]['STORE_ID'] ?? null;
-					if (
-						(int)$data['OFFER_ID'] > 0
-						&& (int)$storeId > 0
-						&& isset($storeOfferMap[$data['OFFER_ID']][$storeId])
-						&& 	$this->isAllowedReservation()
-					)
+					if ((int)$data['OFFER_ID'] > 0 && $this->isAllowedReservation())
 					{
-						$storeInfo = $storeOfferMap[$data['OFFER_ID']][$storeId];
-						$replace['STORE_AMOUNT'] = $storeInfo['AMOUNT'];
-						$replace['STORE_AVAILABLE'] = $storeInfo['AMOUNT'] - $storeInfo['QUANTITY_RESERVED'];
+						if ((int)$storeId > 0 && isset($storeOfferMap[$data['OFFER_ID']][$storeId]))
+						{
+							$storeInfo = $storeOfferMap[$data['OFFER_ID']][$storeId];
+							$replace['STORE_AMOUNT'] = $storeInfo['AMOUNT'];
+							$replace['STORE_AVAILABLE'] = $storeInfo['AMOUNT'] - $storeInfo['QUANTITY_RESERVED'];
+						}
+
+						$this->rows[$index]['STORE_MAP'] = $storeOfferMap[$data['OFFER_ID']] ?? [];
 					}
 
 					if ($data['TYPE'] === Sale\BasketItem::TYPE_SERVICE)
@@ -2637,19 +2593,34 @@ final class CCrmEntityProductListComponent
 						$this->rows[$index]['DEDUCTED_QUANTITY'] = null;
 						$this->rows[$index]['DATE_RESERVE'] = '';
 						$this->rows[$index]['DATE_RESERVE_END'] = '';
-						$this->rows[$index]['SKY_TREE'] = [];
+						$this->rows[$index]['SKU_TREE'] = [];
 					}
 					else
 					{
-						$this->rows[$index]['INPUT_RESERVE_QUANTITY'] = (float)($this->rows[$index]['INPUT_RESERVE_QUANTITY'] ?? 0);
-						$this->rows[$index]['RESERVE_QUANTITY'] = (float)($this->rows[$index]['RESERVE_QUANTITY'] ?? 0);
-						$this->rows[$index]['ROW_RESERVED'] = (float)($this->rows[$index]['RESERVE_QUANTITY'] ?? 0);
-						$this->rows[$index]['DEDUCTED_QUANTITY'] = (float)($this->rows[$index]['DEDUCTED_QUANTITY'] ?? 0);
+						$this->rows[$index]['INPUT_RESERVE_QUANTITY'] =
+							isset($this->rows[$index]['INPUT_RESERVE_QUANTITY'])
+								? (float)$this->rows[$index]['INPUT_RESERVE_QUANTITY']
+								: null
+						;
+						$this->rows[$index]['RESERVE_QUANTITY'] =
+							isset($this->rows[$index]['RESERVE_QUANTITY'])
+								? (float)$this->rows[$index]['RESERVE_QUANTITY']
+								: null
+						;
+						$this->rows[$index]['ROW_RESERVED'] =
+							isset($this->rows[$index]['RESERVE_QUANTITY'])
+								? (float)$this->rows[$index]['RESERVE_QUANTITY']
+								: null
+						;
+						$this->rows[$index]['DEDUCTED_QUANTITY'] =
+							isset($this->rows[$index]['DEDUCTED_QUANTITY'])
+								? (float)$this->rows[$index]['DEDUCTED_QUANTITY']
+								: null
+						;
 						$this->rows[$index]['DATE_RESERVE'] = $this->rows[$index]['DATE_RESERVE'] ?? '';
 						$this->rows[$index]['DATE_RESERVE_END'] = $this->rows[$index]['DATE_RESERVE_END'] ?? '';
-						$this->rows[$index]['SKY_TREE'] = $this->rows[$index]['SKY_TREE'] ?? [];
+						$this->rows[$index]['SKU_TREE'] = $this->rows[$index]['SKU_TREE'] ?? [];
 					}
-
 
 					$oldProductId[$index] = $this->rows[$index]['PRODUCT_ID'];
 					$this->rows[$index] = array_merge($data, $this->rows[$index]);
@@ -2661,21 +2632,90 @@ final class CCrmEntityProductListComponent
 				unset($replace, $data);
 			}
 
-			$skuParams = Sale\Helpers\Admin\Blocks\OrderBasket::getOffersSkuParamsMode(
-				['ITEMS' => $this->rows],
-				//$visibleColumns,
-				[],
-				Sale\Helpers\Admin\Blocks\OrderBasket::EDIT_MODE
-			);
-
-			$this->arResult['IBLOCKS_SKU_PARAMS'] = isset($skuParams['IBLOCKS_SKU_PARAMS']) ? $skuParams['IBLOCKS_SKU_PARAMS'] : [];
-			$this->arResult['IBLOCKS_SKU_PARAMS_ORDER'] = isset($skuParams['IBLOCKS_SKU_PARAMS_ORDER']) ? $skuParams['IBLOCKS_SKU_PARAMS_ORDER'] : [];
-
-			if (is_array($skuParams['ITEMS']) && !empty($skuParams['ITEMS']))
+			// variations
+			if (!empty($variationsEntities))
 			{
-				$this->rows = $skuParams['ITEMS'];
+				$variationsEntities = $this->getVariationsEntities(array_keys($variationsEntities));
+				foreach ($items as $id => $list)
+				{
+					if (!isset($products[$id]))
+					{
+						continue;
+					}
+
+					$variationId = $products[$id]['OFFER_ID'];
+					$variation = $variationsEntities[$variationId] ?? null;
+					if ($variation === null)
+					{
+						continue;
+					}
+
+					foreach ($list as $index)
+					{
+						if ($isShowStores && $this->isAllowedReservation())
+						{
+							$storeId = $this->rows[$index]['STORE_ID'] ?? null;
+							if (
+								(int)$variationId > 0
+								&& (int)$storeId > 0
+								&& isset($storeOfferMap[$variationId][$storeId])
+							)
+							{
+								$storeInfo = $storeOfferMap[$variationId][$storeId];
+								$this->rows[$index]['STORE_AMOUNT'] = $storeInfo['AMOUNT'];
+								$this->rows[$index]['STORE_AVAILABLE'] = $storeInfo['AMOUNT'] - $storeInfo['QUANTITY_RESERVED'];
+							}
+						}
+
+						$this->rows[$index]['COMMON_STORE_RESERVED'] = $variation->getField('QUANTITY_RESERVED');
+						$this->rows[$index]['COMMON_STORE_AMOUNT'] = $variation->getField('QUANTITY');
+					}
+				}
 			}
 
+			// images
+			if ($isShowImage)
+			{
+				$productEntities = $this->getProductsEntities(array_keys($productEntities));
+				foreach ($items as $id => $list)
+				{
+					if (!isset($products[$id]))
+					{
+						continue;
+					}
+
+					$variationId = $products[$id]['OFFER_ID'];
+					if (isset($variationsEntities[$variationId]))
+					{
+						$variation = $variationsEntities[$variationId];
+					}
+					elseif (isset($productEntities[$variationId]))
+					{
+						$variation = $productEntities[$variationId]->getSkuCollection()->getFirst();
+					}
+
+					if ($variation === null)
+					{
+						continue;
+					}
+
+					foreach ($list as $index)
+					{
+						if ($variation === null)
+						{
+							$imageInfo = [];
+						}
+						else
+						{
+							$skuImageField = new ImageInput($variation);
+							$imageInfo = $skuImageField->getFormattedField();
+						}
+						$this->rows[$index]['IMAGE_INFO'] = Json::encode($imageInfo);
+					}
+				}
+			}
+
+			// ids
 			foreach ($oldProductId as $index => $productId)
 			{
 				$this->rows[$index]['PARENT_PRODUCT_ID'] = $this->rows[$index]['PRODUCT_ID'];
@@ -2689,6 +2729,12 @@ final class CCrmEntityProductListComponent
 
 	private function loadSkuTree(array $items): void
 	{
+		$isShowSelector = isset($this->getVisibleColumns()['MAIN_INFO']);
+		if (!$isShowSelector)
+		{
+			return;
+		}
+
 		$itemsByIblock = [];
 		$productIdsToOffers = [];
 
@@ -2715,8 +2761,7 @@ final class CCrmEntityProductListComponent
 
 			if (!empty($iblockProductsToOffers))
 			{
-				/** @var \Bitrix\Catalog\Component\SkuTree $skuTree */
-				$skuTree = \Bitrix\Catalog\v2\IoC\ServiceContainer::make('sku.tree', ['iblockId' => $iblockId]);
+				$skuTree = ServiceContainer::make('sku.tree', ['iblockId' => $iblockId]);
 				if ($skuTree)
 				{
 					$skuTreeItems = $skuTree->loadJsonOffers($iblockProductsToOffers);
@@ -2743,8 +2788,13 @@ final class CCrmEntityProductListComponent
 	private function loadProductProperties(array $items): void
 	{
 		$iblockId = Crm\Product\Catalog::getDefaultId();
-
 		if (!$iblockId)
+		{
+			return;
+		}
+
+		$visiblePropertiesIds = $this->getVisiblePropertiesIds();
+		if (empty($visiblePropertiesIds))
 		{
 			return;
 		}
@@ -2756,7 +2806,9 @@ final class CCrmEntityProductListComponent
 				$productId = $this->rows[$rowIndex]['PARENT_PRODUCT_ID'];
 				if ($productId)
 				{
-					$iblockProps = Catalog\UI\PropertyProduct::getIblockProperties($iblockId, $productId);
+					$iblockProps = Catalog\UI\PropertyProduct::getIblockProperties($iblockId, $productId, [
+						'ID' => $visiblePropertiesIds,
+					]);
 					$this->rows[$rowIndex]['PRODUCT_PROPERTIES'] = $iblockProps;
 					$this->rows[$rowIndex] = array_merge($this->rows[$rowIndex], $iblockProps);
 				}
@@ -2767,10 +2819,28 @@ final class CCrmEntityProductListComponent
 	private function loadSkuProperties(array $items): void
 	{
 		$iblockId = Crm\Product\Catalog::getDefaultOfferId();
-
 		if (!$iblockId)
 		{
 			return;
+		}
+
+		$visiblePropertiesIds = $this->getVisiblePropertiesIds();
+		if (empty($visiblePropertiesIds) && !$this->isVisibleSkuFields())
+		{
+			return;
+		}
+
+		if (empty($visiblePropertiesIds))
+		{
+			$propertyFilter = [
+				'ID' => -1, // skip load properties
+			];
+		}
+		else
+		{
+			$propertyFilter = [
+				'ID' => $visiblePropertiesIds,
+			];
 		}
 
 		foreach ($items as $item => $rowIndexes)
@@ -2780,7 +2850,7 @@ final class CCrmEntityProductListComponent
 				$productId = $item;
 				if ($productId)
 				{
-					$skuProps = Catalog\UI\PropertyProduct::getSkuProperties($iblockId, $productId);
+					$skuProps = Catalog\UI\PropertyProduct::getSkuProperties($iblockId, $productId, $propertyFilter);
 					$this->rows[$rowIndex]['SKU_PROPERTIES'] = $skuProps;
 					$this->rows[$rowIndex] = array_merge($this->rows[$rowIndex], $skuProps);
 				}
@@ -2825,12 +2895,6 @@ final class CCrmEntityProductListComponent
 		$measure = Crm\Measure::getDefaultMeasure();
 		$fields = [
 			'OFFERS_IBLOCK_ID' => null,
-			'PRODUCT_XML_ID' => null,
-			'CATALOG_XML_ID' => null,
-			'PRODUCT_PROPS_VALUES' => [],
-			'EDIT_PAGE_URL' => '',
-			'DIMENSIONS' => '',
-			//$row['AVAILABLE'] = $rawData['QUANTITY']; // it deprecated, fix it
 			'WEIGHT' => '',
 			'BARCODE_MULTI' => 'N',
 			'SET_ITEMS' => [],
@@ -2838,9 +2902,6 @@ final class CCrmEntityProductListComponent
 			'VAT_ID' => null,
 			'IS_SET_PARENT' => 'N',
 			'PICTURE_URL' => '',
-			'PRODUCT_PROVIDER_CLASS' => '',
-			'STORES' => [],
-			'PROPS' => null,
 			'MEASURE_TEXT' => $measure['SYMBOL'],
 			'MEASURE_CODE' => $measure['CODE'],
 			'MEASURE_RATIO' => 1,
@@ -3005,35 +3066,23 @@ final class CCrmEntityProductListComponent
 		}
 
 		$items[] = [
+			'id' => 'SHOW_PRODUCT_IMAGES',
+			'checked' =>
+				$this->defaultSettings['SHOW_PRODUCT_IMAGES'] === 'Y'
+				&& in_array('MAIN_INFO', $allUsedColumns, true)
+			,
+			'title' => Loc::getMessage('CRM_ENTITY_PRODUCT_LIST_SETTING_SHOW_PRODUCT_IMAGES_TITLE'),
+			'desc' => '',
+			'action' => 'grid',
+		];
+
+		$items[] = [
 			'id' => 'ADD_NEW_ROW_TOP',
 			'checked' => ($this->defaultSettings['NEW_ROW_POSITION'] !== 'bottom'),
 			'title' => Loc::getMessage('CRM_ENTITY_PRODUCT_LIST_SETTING_NEW_ROW_POSITION_TITLE'),
 			'desc' => '',
 			'action' => 'grid',
 		];
-
-		if (\CCrmSaleHelper::isWithOrdersMode())
-		{
-			return $items;
-		}
-
-		$isInventoryControlEnabled = \Bitrix\Catalog\Component\UseStore::isUsed();
-		$sliderPath = \CComponentEngine::makeComponentPath('bitrix:catalog.warehouse.master.clear');
-		$sliderPath = getLocalPath('components' . $sliderPath . '/slider.php');
-
-		if (AccessController::getCurrent()->check(ActionDictionary::ACTION_CATALOG_SETTINGS_ACCESS))
-		{
-			$items[] = [
-				'id' => 'SLIDER',
-				'checked' => $isInventoryControlEnabled,
-				'disabled' => $isInventoryControlEnabled,
-				'title' => Loc::getMessage('CRM_ENTITY_PRODUCT_LIST_SETTING_WAREHOUSE_TITLE'),
-				'url' => $sliderPath,
-				'desc' => '',
-				'hint' => $isInventoryControlEnabled ? Loc::getMessage('CRM_ENTITY_PRODUCT_LIST_SETTING_WAREHOUSE_HINT') : '',
-				'action' => 'grid',
-			];
-		}
 
 		return $items;
 	}
@@ -3050,6 +3099,7 @@ final class CCrmEntityProductListComponent
 		}
 
 		$headers = [];
+		$isTrue = $selected === 'true';
 
 		if ($settingId === 'TAXES')
 		{
@@ -3061,8 +3111,16 @@ final class CCrmEntityProductListComponent
 		}
 		elseif ($settingId === 'ADD_NEW_ROW_TOP')
 		{
-			$direction = ($selected === 'true') ? 'top' : 'bottom';
-			\CUserOptions::SetOption("crm.entity.product.list", 'new.row.position', $direction);
+			$direction = $isTrue ? 'top' : 'bottom';
+			\CUserOptions::SetOption('crm.entity.product.list', 'new.row.position', $direction);
+		}
+		elseif ($settingId === 'SHOW_PRODUCT_IMAGES')
+		{
+			\CUserOptions::SetOption('crm.entity.product.list', 'show.product.images', $isTrue ? 'Y' : 'N');
+			if ($isTrue)
+			{
+				$headers = ['MAIN_INFO'];
+			}
 		}
 		elseif ($settingId === 'WAREHOUSE')
 		{
@@ -3075,7 +3133,7 @@ final class CCrmEntityProductListComponent
 
 		if (!empty($headers))
 		{
-			if ($selected === 'true')
+			if ($isTrue)
 			{
 				ProductList::addGridHeaders($headers);
 			}
@@ -3093,5 +3151,215 @@ final class CCrmEntityProductListComponent
 		return [
 			\Bitrix\Catalog\ProductTable::TYPE_SET,
 		];
+	}
+
+	/**
+	 * @param int[] $ids
+	 *
+	 * @return BaseSku[] in format `[id => sku]`
+	 */
+	private function getVariationsEntities(array $ids): array
+	{
+		$result = [];
+
+		if (empty($ids))
+		{
+			return $result;
+		}
+
+		$items =
+			ServiceContainer::getSkuRepository(
+				Crm\Product\Catalog::getDefaultOfferId()
+			)
+			->getEntitiesBy([
+				'filter' => [
+					'ID' => $ids,
+				],
+			])
+		;
+		foreach ($items as $item)
+		{
+			/**
+			 * @var BaseSku $item
+			 */
+			$result[$item->getId()] = $item;
+		}
+
+		return $result;
+	}
+
+	/**
+	 * @param int[] $ids
+	 *
+	 * @return BaseProduct[]
+	 */
+	private function getProductsEntities(array $ids): array
+	{
+		$result = [];
+
+		if (empty($ids))
+		{
+			return $result;
+		}
+
+		$items =
+			ServiceContainer::getProductRepository(
+				Crm\Product\Catalog::getDefaultId()
+			)
+			->getEntitiesBy([
+				'filter' => [
+					'ID' => $ids,
+				],
+			])
+		;
+		foreach ($items as $item)
+		{
+			/**
+			 * @var BaseProduct $item
+			 */
+			$result[$item->getId()] = $item;
+		}
+
+		return $result;
+	}
+
+	/**
+	 * @param int[] $ids
+	 *
+	 * @return array[]
+	 */
+	private function getProducts(array $ids): array
+	{
+		$result = [];
+
+		if (empty($ids))
+		{
+			return $result;
+		}
+
+		$measures = ProductTable::getCurrentRatioWithMeasure($ids);
+		$offersToProduct = CCatalogSku::getProductList($ids);
+
+		$select = [
+			// iblock
+			'NAME' => 'IBLOCK_ELEMENT.NAME',
+			'IBLOCK_ID' => 'IBLOCK_ELEMENT.IBLOCK_ID',
+			// product
+			'PRODUCT_ID' => 'ID',
+			'TYPE',
+			'AVAILABLE',
+			'WEIGHT',
+			'BARCODE_MULTI',
+			'VAT_ID',
+			'MEASURE',
+		];
+		$rows = ProductTable::getList([
+			'select' => $select,
+			'filter' => [
+				'=ID' => $ids,
+			],
+		]);
+		foreach ($rows as $row)
+		{
+			$productId = (int)$row['PRODUCT_ID'];
+
+			#region prepare offer
+			$offer = $offersToProduct[$productId] ?? null;
+			if ($offer === null)
+			{
+				$row['OFFER_ID'] = $productId; // for non-offers - correct!
+				$row['OFFERS_IBLOCK_ID'] = 0;
+			}
+			else
+			{
+				$row['PRODUCT_ID'] = $offer['ID'];
+				$row['IBLOCK_ID'] = $offer['IBLOCK_ID'];
+				$row['OFFER_ID'] = $productId;
+				$row['OFFERS_IBLOCK_ID'] = $offer['OFFER_IBLOCK_ID'];
+			}
+			#endregion prepare offer
+
+			#region prepare measure
+			$measure = $measures[$productId] ?? null;
+			if ($measure === null)
+			{
+				$row['MEASURE_TEXT'] = null;
+				$row['MEASURE_CODE'] = null;
+				$row['MEASURE_RATIO'] = null;
+			}
+			else
+			{
+				$row['MEASURE_TEXT'] = $measure['MEASURE']['MEASURE_TITLE'];
+				$row['MEASURE_CODE'] = $measure['MEASURE']['CODE'];
+				$row['MEASURE_RATIO'] = $measure['RATIO'];
+			}
+			#endregion prepare measure
+
+			// TODO: prepare sets
+			/*
+			SET_ITEMS
+			IS_SET_ITEM
+			IS_SET_PARENT
+			*/
+
+			// clear ORM system fields
+			$row = array_filter($row, static fn(string $key) => strpos($key, 'UALIAS_') !== 0, ARRAY_FILTER_USE_KEY);
+
+			$result[$productId] = $row;
+		}
+
+		return $result;
+	}
+
+	private static function getPropertyColumnId(int $propertyId): string
+	{
+		return 'PROPERTY_' . $propertyId;
+	}
+
+	private static function parsePropertyIdByColumnId(string $columnId): ?int
+	{
+		$re = '/^PROPERTY_(\d+)$/';
+		if (preg_match($re, $columnId, $m))
+		{
+			return (int)$m[1];
+		}
+
+		return null;
+	}
+
+	protected function isVisibleSkuFields(): bool
+	{
+		$columns = $this->getVisibleColumns();
+
+		return
+			isset($columns['SKU_NAME'])
+			|| isset($columns['SKU_DESCRIPTION'])
+			|| isset($columns['ID'])
+		;
+	}
+
+	/**
+	 * @return int[]
+	 */
+	protected function getVisiblePropertiesIds(): array
+	{
+		$result = [];
+
+		$columns = $this->getVisibleColumns();
+		foreach ($columns as $column)
+		{
+			$propertyId = self::parsePropertyIdByColumnId($column['id']);
+			if ($propertyId !== null)
+			{
+				$result[] = $propertyId;
+			}
+		}
+
+		return $result;
+	}
+
+	protected function isShowProductImages(): bool
+	{
+		return $this->getStorageItem(self::STORAGE_GRID, 'SHOW_PRODUCT_IMAGES') === 'Y';
 	}
 }

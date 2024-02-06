@@ -3,9 +3,14 @@
 return [
 	'extensions' => [
 		'alert',
+		'loc',
 		'notify',
 		'crm:type',
-		'crm:timeline/scheduler',
+		'apptheme',
+		'layout/ui/item-selector',
+		'layout/ui/menu',
+		'layout/ui/empty-screen',
+		'crm:entity-chat-opener',
 	],
 	'bundle' => [
 		'./entities/base',
@@ -15,6 +20,8 @@ return [
 		'./entities/company',
 		'./entities/smart-invoice',
 		'./entities/quote',
+		'./entities/dynamic',
 		'./traits/exclude-item',
+		'./traits/open-chat',
 	],
 ];

@@ -2,8 +2,8 @@
  * @module crm/mail/message/elements/contact/card
  */
 jn.define('crm/mail/message/elements/contact/card', (require, exports, module) => {
+	const AppTheme = require('apptheme');
 	const { PureComponent } = require('layout/pure-component');
-	const { EntityDetailOpener } = require('crm/entity-detail/opener');
 	const { ProfileView } = require('user/profile');
 
 	function Email(props)
@@ -22,11 +22,11 @@ jn.define('crm/mail/message/elements/contact/card', (require, exports, module) =
 		const styles = {
 			little: {
 				fontSize: 13,
-				color: '#525C69',
+				color: AppTheme.colors.base2,
 			},
 			big: {
 				fontSize: 15,
-				color: '#5b5b5b',
+				color: AppTheme.colors.base2,
 			},
 		};
 
@@ -57,7 +57,7 @@ jn.define('crm/mail/message/elements/contact/card', (require, exports, module) =
 			little: {
 				fontSize: 13,
 				fontWeight: '400',
-				color: '#525C69',
+				color: AppTheme.colors.base2,
 			},
 			big: {
 				fontSize: 15,
@@ -137,11 +137,13 @@ jn.define('crm/mail/message/elements/contact/card', (require, exports, module) =
 				value: email,
 			});
 		}
+
 		return View(
 			{
 				style: {
 					alignItems: 'center',
 					flexDirection: 'row',
+					paddingRight: 3,
 				},
 			},
 			contactFiled,
@@ -163,7 +165,7 @@ jn.define('crm/mail/message/elements/contact/card', (require, exports, module) =
 		}).then((list) => ProfileView.open({ userId, isBackdrop: true }, list));
 	}
 
-	function openDetail(id, typeNameId, isUser)
+	async function openDetail(id, typeNameId, isUser)
 	{
 		if (isUser)
 		{
@@ -171,6 +173,8 @@ jn.define('crm/mail/message/elements/contact/card', (require, exports, module) =
 		}
 		else
 		{
+			const { EntityDetailOpener } = await requireLazy('crm:entity-detail/opener');
+
 			EntityDetailOpener.open({ entityTypeId: typeNameId, entityId: id });
 		}
 	}
@@ -205,7 +209,7 @@ jn.define('crm/mail/message/elements/contact/card', (require, exports, module) =
 					name,
 					email,
 					format,
-					clickable: !!id,
+					clickable: Boolean(id),
 				}),
 			);
 		}
@@ -213,14 +217,10 @@ jn.define('crm/mail/message/elements/contact/card', (require, exports, module) =
 
 	const svgImages = {
 		showArrowBig: {
-			content: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path fill-rule="evenodd" clip-rule="evenodd" d="M5.44031 4.22908L8.45834 7.24711L9.24006 8.00002L8.45834 8.75338L5.44031 11.7714L6.50529 12.8364L11.3414 8.00029L6.50529 3.16418L5.44031 4.22908Z" fill="#A8ADB4"/>
-			</svg>`,
+			content: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.44031 4.22908L8.45834 7.24711L9.24006 8.00002L8.45834 8.75338L5.44031 11.7714L6.50529 12.8364L11.3414 8.00029L6.50529 3.16418L5.44031 4.22908Z" fill="#A8ADB4"/></svg>',
 		},
 		showArrowSmall: {
-			content: `<svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path fill-rule="evenodd" clip-rule="evenodd" d="M4.42023 3.43615L6.87238 5.8883L7.50753 6.50004L6.87238 7.11215L4.42023 9.5643L5.28552 10.4296L9.21486 6.50026L5.28552 2.57092L4.42023 3.43615Z" fill="#A8ADB4"/>
-			</svg>`,
+			content: '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M4.42023 3.43615L6.87238 5.8883L7.50753 6.50004L6.87238 7.11215L4.42023 9.5643L5.28552 10.4296L9.21486 6.50026L5.28552 2.57092L4.42023 3.43615Z" fill="#A8ADB4"/></svg>',
 		},
 	};
 

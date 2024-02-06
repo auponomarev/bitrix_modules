@@ -13,10 +13,10 @@ use Bitrix\Crm\Controller\Action\Entity\SearchAction;
 use Bitrix\Crm\Conversion\LeadConversionWizard;
 use Bitrix\Crm\EntityAddress;
 use Bitrix\Crm\Format\AddressFormatter;
+use Bitrix\Crm\Restriction\RestrictionManager;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Service\ParentFieldManager;
 use Bitrix\Crm\Tracking;
-use Bitrix\Crm\UserField\Router;
 use Bitrix\Crm\UtmTable;
 use Bitrix\Main;
 use Bitrix\Main\Localization\Loc;
@@ -42,6 +42,7 @@ class CCrmContactDetailsComponent
 	use Traits\InitializeGuid;
 	use Traits\InitializeMode;
 	use Traits\InitializeUFConfig;
+	use Traits\InitializeAdditionalFieldsData;
 	use Crm\Entity\Traits\VisibilityConfig;
 
 	/** @var string */
@@ -324,9 +325,10 @@ class CCrmContactDetailsComponent
 						]
 					]
 				];
-				$this->arResult['TABS'][] = [
+
+				$tabQuote = [
 					'id' => 'tab_quote',
-					'name' => Loc::getMessage('CRM_CONTACT_TAB_QUOTE'),
+					'name' => Loc::getMessage('CRM_CONTACT_TAB_QUOTE_MSGVER_1'),
 					'loader' => [
 						'serviceUrl' => '/bitrix/components/bitrix/crm.quote.list/lazyload.ajax.php?&site'
 							. SITE_ID
@@ -345,19 +347,36 @@ class CCrmContactDetailsComponent
 								'NAME_TEMPLATE' => $this->arResult['NAME_TEMPLATE'] ?? '',
 								'ENABLE_TOOLBAR' => true,
 								'PRESERVE_HISTORY' => true,
-								'ADD_EVENT_NAME' => 'CrmCreateQuoteFromContact'
-							], 'crm.quote.list')
-						]
-					]
+								'ADD_EVENT_NAME' => 'CrmCreateQuoteFromContact',
+							], 'crm.quote.list'),
+						],
+					],
 				];
+
+				$toolsManager = \Bitrix\Crm\Service\Container::getInstance()->getIntranetToolsManager();
+				if (!$toolsManager->checkEntityTypeAvailability(\CCrmOwnerType::Quote))
+				{
+					$availabilityLock = \Bitrix\Crm\Restriction\AvailabilityManager::getInstance()
+						->getEntityTypeAvailabilityLock(\CCrmOwnerType::Quote)
+					;
+					$tabQuote['availabilityLock'] = $availabilityLock;
+				}
+				$this->arResult['TABS'][] = $tabQuote;
 			}
-			if (Crm\Settings\InvoiceSettings::getCurrent()->isOldInvoicesEnabled() && !$this->arResult['CATEGORY_ID'])
+
+			if (
+				!$this->arResult['CATEGORY_ID']
+				&& Crm\Settings\InvoiceSettings::getCurrent()->isOldInvoicesEnabled()
+			)
 			{
-				$this->arResult['TABS'][] = [
+				$tabInvoice = [
 					'id' => 'tab_invoice',
 					'name' => \CCrmOwnerType::GetCategoryCaption(\CCrmOwnerType::Invoice),
 					'loader' => [
-						'serviceUrl' => '/bitrix/components/bitrix/crm.invoice.list/lazyload.ajax.php?&site'.SITE_ID.'&'.bitrix_sessid_get(),
+						'serviceUrl' => '/bitrix/components/bitrix/crm.invoice.list/lazyload.ajax.php?&site'
+							.SITE_ID
+							.'&'
+							.bitrix_sessid_get(),
 						'componentData' => [
 							'template' => '',
 							'signedParameters' => \CCrmInstantEditorHelper::signComponentParams([
@@ -375,12 +394,23 @@ class CCrmContactDetailsComponent
 								'NAME_TEMPLATE' => $this->arResult['NAME_TEMPLATE'] ?? '',
 								'ENABLE_TOOLBAR' => 'Y',
 								'PRESERVE_HISTORY' => true,
-								'ADD_EVENT_NAME' => 'CrmCreateInvoiceFromContact'
-							], 'crm.invoice.list')
-						]
-					]
+								'ADD_EVENT_NAME' => 'CrmCreateInvoiceFromContact',
+							], 'crm.invoice.list'),
+						],
+					],
 				];
+
+				$toolsManager = \Bitrix\Crm\Service\Container::getInstance()->getIntranetToolsManager();
+				if (!$toolsManager->checkEntityTypeAvailability(\CCrmOwnerType::Invoice))
+				{
+					$availabilityLock = \Bitrix\Crm\Restriction\AvailabilityManager::getInstance()
+						->getEntityTypeAvailabilityLock(\CCrmOwnerType::Invoice)
+					;
+					$tabInvoice['availabilityLock'] = $availabilityLock;
+				}
+				$this->arResult['TABS'][] = $tabInvoice;
 			}
+
 			if (
 				CModule::IncludeModule('sale')
 				&& CCrmSaleHelper::isWithOrdersMode()
@@ -391,7 +421,7 @@ class CCrmContactDetailsComponent
 					'id' => 'tab_order',
 					'name' => Loc::getMessage('CRM_CONTACT_TAB_ORDERS'),
 					'loader' => array(
-						'serviceUrl' => '/bitrix/components/bitrix/crm.order.list/lazyload.ajax.php?&site'.SITE_ID.'&'.bitrix_sessid_get(),
+						'serviceUrl' => '/bitrix/components/bitrix/crm.order.list/lazyload.ajax.php?&site='.SITE_ID.'&'.bitrix_sessid_get(),
 						'componentData' => array(
 							'template' => '',
 							'signedParameters' => \CCrmInstantEditorHelper::signComponentParams([
@@ -409,7 +439,8 @@ class CCrmContactDetailsComponent
 								'NAME_TEMPLATE' => $this->arResult['NAME_TEMPLATE'] ?? '',
 								'ENABLE_TOOLBAR' => 'Y',
 								'PRESERVE_HISTORY' => true,
-								'ADD_EVENT_NAME' => 'CrmCreateOrderFromContact'
+								'ADD_EVENT_NAME' => 'CrmCreateOrderFromContact',
+								'BUILDER_CONTEXT' => Crm\Product\Url\ProductBuilder::TYPE_ID,
 							], 'crm.order.list')
 						)
 					)
@@ -519,7 +550,7 @@ class CCrmContactDetailsComponent
 				];
 				$this->arResult['TABS'][] = [
 					'id' => 'tab_quote',
-					'name' => Loc::getMessage('CRM_CONTACT_TAB_QUOTE'),
+					'name' => Loc::getMessage('CRM_CONTACT_TAB_QUOTE_MSGVER_1'),
 					'enabled' => false
 				];
 				$this->arResult['TABS'][] = [
@@ -652,6 +683,7 @@ class CCrmContactDetailsComponent
 							array('name' => 'OPENED'),
 							array('name' => 'EXPORT'),
 							array('name' => 'ASSIGNED_BY_ID'),
+							array('name' => 'OBSERVER'),
 							array('name' => 'COMMENTS'),
 							array('name' => self::UTM_FIELD_CODE),
 						),
@@ -755,6 +787,8 @@ class CCrmContactDetailsComponent
 
 		$dateFormat = Main\Type\Date::convertFormatToPhp(Main\Application::getInstance()->getContext()->getCulture()->getDateFormat());
 
+		$observersRestriction = RestrictionManager::getObserversRestriction();
+
 		$fakeValue = '';
 		$categoryParams = CCrmComponentHelper::getEntityClientFieldCategoryParams(
 			CCrmOwnerType::Contact,
@@ -840,7 +874,7 @@ class CCrmContactDetailsComponent
 				'type' => 'text',
 				'editable' => true
 			),
-			Crm\Entity\FieldContentType::compileFieldDescriptionForDetails(\CCrmOwnerType::Contact, $this->entityID, 'COMMENTS'),
+			Crm\Entity\CommentsHelper::compileFieldDescriptionForDetails(\CCrmOwnerType::Contact, 'COMMENTS'),
 			array(
 				'name' => 'ASSIGNED_BY_ID',
 				'title' => Loc::getMessage('CRM_CONTACT_FIELD_ASSIGNED_BY_ID'),
@@ -855,6 +889,23 @@ class CCrmContactDetailsComponent
 					'pathToProfile' => $this->arResult['PATH_TO_USER_PROFILE']
 				),
 				'enableAttributes' => false
+			),
+			array(
+				'name' => 'OBSERVER',
+				'title' => Loc::getMessage('CRM_TYPE_ITEM_FIELD_OBSERVERS'),
+				'type' => 'multiple_user',
+				'editable' => true,
+				'data' => array(
+					'enableEditInView' => true,
+					'map' => array('data' => 'OBSERVER_IDS'),
+					'infos' => 'OBSERVER_INFOS',
+					'pathToProfile' => $this->arResult['PATH_TO_USER_PROFILE'] ?? null,
+					'messages' => array('addObserver' => Loc::getMessage('CRM_COMMON_ACTION_ADD_OBSERVER')),
+					'restriction' => [
+						'isRestricted' => !$observersRestriction->hasPermission(),
+						'action' => $observersRestriction->prepareInfoHelperScript(),
+					],
+				)
 			),
 			array(
 				'name' => 'OPENED',
@@ -925,6 +976,7 @@ class CCrmContactDetailsComponent
 				'type' => 'client_light',
 				'editable' => true,
 				'data' => array(
+					'affectedFields' => ['CLIENT_INFO'],
 					'compound' => array(
 						array(
 							'name' => 'COMPANY_IDS',
@@ -950,7 +1002,10 @@ class CCrmContactDetailsComponent
 					),
 					'clientEditorFieldsParams' => CCrmComponentHelper::prepareClientEditorFieldsParams(
 						['categoryParams' => $categoryParams]
-					)
+					),
+					'duplicateControl' => CCrmComponentHelper::prepareClientEditorDuplicateControlParams(
+						['entityTypes' => [CCrmOwnerType::Company, CCrmOwnerType::Contact]]
+					),
 				)
 			),
 			array(
@@ -1352,6 +1407,7 @@ class CCrmContactDetailsComponent
 					'TYPE_ID',                           // list
 					'SOURCE_ID',                         // list
 					'SOURCE_DESCRIPTION',                // text
+					'OBSERVER',                          // multiple_user
 					'COMMENTS'                           // html or bb
 				];
 				if (in_array($fieldName, $fieldsToCheck, true))
@@ -1402,6 +1458,19 @@ class CCrmContactDetailsComponent
 								if (is_array($this->entityData['CLIENT_INFO'])
 									&& (!is_array($this->entityData['CLIENT_INFO']['COMPANY_DATA'])
 										|| empty($this->entityData['CLIENT_INFO']['COMPANY_DATA'])))
+								{
+									$result = true;
+									$isResultReady = true;
+								}
+							}
+							break;
+						case 'multiple_user':
+							if ($fieldName === 'OBSERVER')
+							{
+								$dataFieldName = 'OBSERVER_IDS';
+								if (array_key_exists($dataFieldName, $this->entityData)
+									&& (!is_array($this->entityData[$dataFieldName])
+										|| empty($this->entityData[$dataFieldName])))
 								{
 									$result = true;
 									$isResultReady = true;
@@ -1583,7 +1652,14 @@ class CCrmContactDetailsComponent
 				unset($this->entityData['PHOTO']);
 			}
 
-			$this->entityData = Crm\Entity\FieldContentType::prepareFieldsFromDetailsToView(
+			//region Observers
+			$this->entityData['OBSERVER_IDS'] = Crm\Observer\ObserverManager::getEntityObserverIDs(
+				CCrmOwnerType::Contact,
+				$this->entityID
+			);
+			//endregion
+
+			$this->entityData = Crm\Entity\CommentsHelper::prepareFieldsFromDetailsToView(
 				\CCrmOwnerType::Contact,
 				$this->entityID,
 				$this->entityData,
@@ -1724,6 +1800,26 @@ class CCrmContactDetailsComponent
 				$this->arResult['PATH_TO_USER_PROFILE'],
 				array('user_id' => $assignedByID)
 			);
+		}
+		//endregion
+		//region Observers
+		if (isset($this->entityData['OBSERVER_IDS']) && !empty($this->entityData['OBSERVER_IDS']))
+		{
+			$userBroker = Container::getInstance()->getUserBroker();
+
+			$users = $userBroker->getBunchByIds($this->entityData['OBSERVER_IDS']);
+
+			$this->entityData['OBSERVER_INFOS'] = [];
+			foreach ($users as $singleUser)
+			{
+				$this->entityData['OBSERVER_INFOS'][] = [
+					'ID' => $singleUser['ID'],
+					'FORMATTED_NAME' => $singleUser['FORMATTED_NAME'],
+					'WORK_POSITION' => $singleUser['WORK_POSITION'] ?? '',
+					'SHOW_URL' => (string)$singleUser['SHOW_URL'],
+					'PHOTO_URL' => $singleUser['PHOTO_URL'],
+				];
+			}
 		}
 		//endregion
 		//region Company Data & Multifield Data
@@ -1964,7 +2060,7 @@ class CCrmContactDetailsComponent
 				$this->arResult['READ_ONLY'] = false;
 			}
 		}
-		elseif (\CCrmContact::CheckCreatePermission($this->userPermissions))
+		elseif (\CCrmContact::CheckCreatePermission($this->userPermissions, $this->arResult['CATEGORY_ID']))
 		{
 			$this->arResult['READ_ONLY'] = false;
 		}
@@ -2000,13 +2096,11 @@ class CCrmContactDetailsComponent
 
 	private function initializeDuplicateControl(): void
 	{
-		$this->enableDupControl = (
-			!$this->isEditMode
-			&& Crm\Integrity\DuplicateControl::isControlEnabledFor(CCrmOwnerType::Contact)
-		);
+		$this->enableDupControl = (Crm\Integrity\DuplicateControl::isControlEnabledFor(CCrmOwnerType::Contact));
 
 		$this->arResult['DUPLICATE_CONTROL'] = [
 			'enabled' => $this->enableDupControl,
+			'isSingleMode' => $this->isEditMode,
 		];
 
 		if ($this->enableDupControl)
@@ -2031,9 +2125,16 @@ class CCrmContactDetailsComponent
 				],
 			];
 
-			if (!$this->entityID)
+			$this->arResult['DUPLICATE_CONTROL']['ignoredItems'] = [];
+			if ($this->entityID)
 			{
-				$this->arResult['DUPLICATE_CONTROL']['ignoredItems'] = [];
+				$this->arResult['DUPLICATE_CONTROL']['ignoredItems'][] = [
+					'ENTITY_TYPE_ID' => CCrmOwnerType::Contact,
+					'ENTITY_ID' => $this->entityID,
+				];
+			}
+			else
+			{
 				$this->arResult['DUPLICATE_CONTROL']['ignoredItems'][] = [
 					'ENTITY_TYPE_ID' => CCrmOwnerType::Lead,
 					'ENTITY_ID' => $this->leadID,
@@ -2138,7 +2239,8 @@ class CCrmContactDetailsComponent
 		return [
 			'ENTITY_ID' => $this->getEntityID(),
 			'ENTITY_DATA' => $this->prepareEntityData(),
-			'ENTITY_INFO' => $this->prepareEntityInfo()
+			'ENTITY_INFO' => $this->prepareEntityInfo(),
+			'ADDITIONAL_FIELDS_DATA' => $this->getAdditionalFieldsData(),
 		];
 	}
 

@@ -1,14 +1,26 @@
 <?php
 
+use Bitrix\Main\Engine\Contract\Controllerable;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Web\Uri;
+use Bitrix\Main\Engine\CurrentUser;
+use Bitrix\Main\Loader;
+use Bitrix\Calendar;
+use Bitrix\Crm;
 
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) die();
 
 Loc::loadMessages(__FILE__);
 
-class MainMailFormComponent extends CBitrixComponent
+class MainMailFormComponent extends CBitrixComponent implements Controllerable
 {
+	/**
+	 * Cache for compatibility
+	 *
+	 * @var array
+	 */
+	private array $signatures;
+
 	/**
 	 * @param array $params
 	 * @return array
@@ -20,6 +32,11 @@ class MainMailFormComponent extends CBitrixComponent
 		if(!isset($params['USE_SIGNATURES']) || $params['USE_SIGNATURES'] !== true)
 		{
 			$params['USE_SIGNATURES'] = false;
+		}
+
+		if(!isset($params['USE_CALENDAR_SHARING']) || $params['USE_CALENDAR_SHARING'] !== true)
+		{
+			$params['USE_CALENDAR_SHARING'] = false;
 		}
 
 		$params['VERSION'] = (isset($params['VERSION']) && intval($params['VERSION']) > 0 ? intval($params['VERSION']) : 1);
@@ -93,6 +110,11 @@ class MainMailFormComponent extends CBitrixComponent
 			}
 		}
 
+		$params['USER_CALENDAR_PATH'] = $this->getUserCalendarPath();
+		$params['CALENDAR_SHARING_TOUR_ID'] = $this->getSharingCalendarTourId();
+
+		$params['POST_FORM_BUTTONS'] = ['UploadImage', 'UploadFile', 'Copilot'];
+
 		return $params;
 	}
 
@@ -118,6 +140,7 @@ class MainMailFormComponent extends CBitrixComponent
 		$this->prepareFields();
 		$this->prepareEditor();
 		$this->prepareButtons();
+		$this->prepareCopilotParams($this->arParams['COPILOT_PARAMS'] ?? null);
 
 		$this->includeComponentTemplate();
 	}
@@ -284,7 +307,13 @@ class MainMailFormComponent extends CBitrixComponent
 
 				if($this->arParams['USE_SIGNATURES'])
 				{
-					$field['signatures'] = $this->loadSignatures($field['mailboxes']);
+					$field = array_merge($field, $this->getSignaturesParams($field['mailboxes']));
+				}
+
+				if($this->arParams['USE_CALENDAR_SHARING'] && Loader::includeModule('calendar'))
+				{
+					$field['showCalendarSharingButton']  = true;
+					$field['showCalendarSharingTour'] = $this->isSharingCalendarTourAvailable();
 				}
 
 				$defaultMailbox = reset($field['mailboxes']);
@@ -359,11 +388,16 @@ class MainMailFormComponent extends CBitrixComponent
 			{
 				if (array_key_exists($fileId, $objects))
 				{
+					$uri = (new Uri($diskUrlManager->getUrlUfController(
+						'show',
+						['attachedId' => $fileId]
+					)))
+						->addParams(['__bxacid' => $fileId])
+						->getUri();
+
 					$editor['value'] = preg_replace(
 						sprintf('/bxacid:%u/', $fileId),
-						(new Uri($diskUrlManager->getUrlForShowFile($objects[$fileId])))
-							->addParams(['__bxacid' => $fileId])
-							->getUri(),
+						$uri,
 						$editor['value']
 					);
 				}
@@ -430,26 +464,226 @@ class MainMailFormComponent extends CBitrixComponent
 	 */
 	protected function loadSignatures(array $mailboxes)
 	{
-		$signatures = [];
-
-		if(!empty($mailboxes) && \Bitrix\Main\Loader::includeModule('mail') && class_exists('\\Bitrix\\Mail\\Internals\\UserSignatureTable'))
+		if (!empty($mailboxes))
 		{
-			$signatureList = \Bitrix\Mail\Internals\UserSignatureTable::getList([
-				'order' => ['ID' => 'desc'],
-				'select' => ['SIGNATURE', 'SENDER'],
-				'filter' => [
-					'USER_ID' => \Bitrix\Main\Engine\CurrentUser::get()->getId(),
-				]
-			]);
-			while($signature = $signatureList->fetch())
+			$onlyFirst = [];
+			foreach ($this->getSignaturesFromDb() as $sender => $signatureFields)
 			{
-				if(!isset($signatures[$signature['SENDER']]))
+				if (!isset($onlyFirst[$sender]))
 				{
-					$signatures[$signature['SENDER']] = $signature['SIGNATURE'];
+					$onlyFirst[$sender] = $signatureFields;
 				}
 			}
+			return $onlyFirst;
 		}
 
-		return $signatures;
+		return [];
+	}
+
+	/**
+	 * Get signatures from database
+	 *
+	 * @return array [sender => [signature,...],...]
+	 * @throws \Bitrix\Main\ArgumentException
+	 * @throws \Bitrix\Main\LoaderException
+	 * @throws \Bitrix\Main\ObjectPropertyException
+	 * @throws \Bitrix\Main\SystemException
+	 */
+	private function getSignaturesFromDb(): array
+	{
+		if (!isset($this->signatures))
+		{
+			$signatures = [];
+			if (
+				\Bitrix\Main\Loader::includeModule('mail')
+				&& class_exists('\\Bitrix\\Mail\\Internals\\UserSignatureTable')
+			)
+			{
+				$signatureList = \Bitrix\Mail\Internals\UserSignatureTable::getList([
+					'order' => ['ID' => 'desc'],
+					'select' => ['SIGNATURE', 'SENDER'],
+					'filter' => [
+						'USER_ID' => \Bitrix\Main\Engine\CurrentUser::get()->getId(),
+					],
+				]);
+				while ($signature = $signatureList->fetch())
+				{
+					$signatures[$signature['SENDER']][] = [
+						"list" => $this->getPreparedForTitleSignature((string)$signature['SIGNATURE']),
+						"full" => $signature['SIGNATURE'],
+					];
+				}
+			}
+			$this->signatures = $signatures;
+		}
+		return $this->signatures;
+	}
+
+	/**
+	 * Prepare string for correct display in title tag
+	 *
+	 * @param string $signature User signature text with html
+	 *
+	 * @return string
+	 */
+	private function getPreparedForTitleSignature(string $signature): string
+	{
+		$signature = mb_substr(strip_tags($signature), 0, 500);
+		$signature = preg_replace("#\t#u", " ", $signature);
+		$signature = preg_replace("#\n+#u", "\n", $signature);
+		$signature = preg_replace("# +#u", " ", $signature);
+		$signature = trim($signature);
+		$encoding = (defined("BX_UTF") ? "UTF-8" : "ISO-8859-1");
+		return html_entity_decode($signature, ENT_COMPAT, $encoding);
+	}
+
+	/**
+	 * Get signatures related field params
+	 *
+	 * @param array $mailboxes Mailboxes array
+	 *
+	 * @return array
+	 */
+	private function getSignaturesParams(array $mailboxes): array
+	{
+		$signaturesUrl = (string)($this->arParams['PATH_TO_MAIL_SIGNATURES'] ?? '');
+		$signaturesUrl = strpos($signaturesUrl, '/') === 0 ? $signaturesUrl : '/mail/signatures';
+		$params = [
+			'signatures' => $this->loadSignatures($mailboxes), // compatibility
+		];
+
+		if (\Bitrix\Main\Loader::includeModule('mail'))
+		{
+			$params['allUserSignatures'] = empty($mailboxes) ? [] : $this->getSignaturesFromDb();
+			$params['signatureSelectTitle'] = Loc::getMessage('MAIN_MAIL_FORM_EDITOR_SIGNATURE_SELECT');
+			$params['signatureConfigureTitle'] = Loc::getMessage('MAIN_MAIL_FORM_EDITOR_SIGNATURE_CONFIGURE');
+			$params['pathToMailSignatures'] = $signaturesUrl;
+		}
+
+		return $params;
+	}
+
+	/**
+	 * Interface Controllable requirement
+	 *
+	 * @return array
+	 */
+	public function configureActions(): array
+	{
+		return [];
+	}
+
+	/**
+	 * Get current user signatures from ajax action
+	 *
+	 * @return array
+	 */
+	public function signaturesAction(): array
+	{
+		return [
+			'signatures' => $this->getSignaturesFromDb(),
+		];
+	}
+
+	/**
+	 * Get current user sharing link from ajax action
+	 *
+	 * @return array{isSharingFeatureEnabled: bool, sharingUrl?: string}
+	 */
+	public function getCalendarSharingLinkAction(string $entityType = null, int $entityId = null): array
+	{
+		if (!Loader::includeModule('calendar'))
+		{
+			return ['isSharingFeatureEnabled' => 'false'];
+		}
+
+		if (!Loader::includeModule('crm') || \CCrmOwnerType::DealName !== $entityType)
+		{
+			$sharing = new Calendar\Sharing\Sharing(CurrentUser::get()->getId());
+			return [
+				'isSharingFeatureEnabled' => $sharing->isEnabled(),
+				'sharingUrl' => $sharing->getActiveLinkShortUrl(),
+			];
+		}
+
+		$broker = Crm\Service\Container::getInstance()->getEntityBroker(\CCrmOwnerType::Deal);
+		if (!$broker)
+		{
+			return ['isSharingFeatureEnabled' => false];
+		}
+
+		$deal = $broker->getById($entityId);
+		if (!$deal)
+		{
+			return ['isSharingFeatureEnabled' => false];
+		}
+
+		$ownerId = $deal->getAssignedById();
+		$crmDealLink = (new Calendar\Sharing\Link\Factory())->getCrmDealLink($entityId, $ownerId);
+		if ($crmDealLink === null)
+		{
+			$crmDealLink = (new Calendar\Sharing\Link\Factory())->createCrmDealLink($ownerId, $entityId);
+		}
+
+		return [
+			'isSharingFeatureEnabled' => true,
+			'sharingUrl' => Calendar\Sharing\Helper::getShortUrl($crmDealLink->getUrl()),
+		];
+	}
+
+	private function getSharingCalendarTourId(): string
+	{
+		return 'mail-start-calendar-sharing-tour';
+	}
+
+	private function isSharingCalendarTourAvailable(): bool
+	{
+		if (Loader::includeModule('calendar'))
+		{
+			return $this->isSharingCalendarTourAlreadySeen();
+		}
+		return false;
+	}
+
+	private function isSharingCalendarTourAlreadySeen(): bool
+	{
+		return \CUserOptions::GetOption('ui-tour', 'view_date_' . $this->getSharingCalendarTourId(), null) === null;
+	}
+
+	private function getUserCalendarPath(): string
+	{
+		if (Loader::includeModule('calendar'))
+		{
+			return \CCalendar::GetPathForCalendarEx(CurrentUser::get()->getId());
+		}
+		return '/';
+	}
+
+	/**
+	 * @param array|null $copilotParams
+	 * Array can contain fields: ['isCopilotEnabled', 'moduleId', 'contextId', 'category', 'invitationLineMode', 'contextParameters', 'isCopilotImageEnabled', 'isCopilotTextEnabled']
+	 */
+	private function prepareCopilotParams(?array $copilotParams = null): void
+	{
+		if (!$copilotParams || !isset($copilotParams['isCopilotEnabled']))
+		{
+			$this->arParams['IS_COPILOT_ENABLED'] = false;
+			$this->arParams['IS_COPILOT_IMAGE_ENABLED'] = false;
+			$this->arParams['IS_COPILOT_TEXT_ENABLED'] = false;
+
+			return;
+		}
+
+		$this->arParams['IS_COPILOT_ENABLED'] = $copilotParams['isCopilotEnabled'];
+		$this->arParams['COPILOT_PARAMS'] = [
+			'moduleId' => $copilotParams['moduleId'] ?? 'main',
+			'contextId' => $copilotParams['contextId'] ?? 'bxhtmled_copilot',
+			'category' => $copilotParams['category'] ?? null,
+			'invitationLineMode' => $copilotParams['invitationLineMode'] ?? 'eachLine',
+			'contextParameters' => $copilotParams['contextParameters'] ?? [],
+		];
+
+		$this->arParams['IS_COPILOT_IMAGE_ENABLED'] = $copilotParams['isCopilotImageEnabled'] ?? false;
+		$this->arParams['IS_COPILOT_TEXT_ENABLED'] = $copilotParams['isCopilotTextEnabled'] ?? false;
 	}
 }

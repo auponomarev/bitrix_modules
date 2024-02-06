@@ -1,3 +1,4 @@
+/* eslint-disable */
 BX.namespace('BX.Tasks.Grid');
 
 BX.Tasks.GridActions = {
@@ -1472,51 +1473,32 @@ BX(function() {
 			}
 		},
 
-		placeToNearTasks: function(taskId, taskData, parameters, repository) {
-			var queryParams = {
-				taskId: taskId,
-				navigation: {
-					pageNumber: this.getPageNumber(),
-					pageSize: this.getPageSize(),
-				},
-				arParams: this.arParams,
-			};
+		placeToNearTasks: function(taskId, taskData, parameters, repository)
+		{
+			var item = repository.collectionNear.get(BX.Text.toNumber(taskId));
 
-			BX.ajax.runComponentAction('bitrix:tasks.task.list', 'getNearTasks', {
-				mode: 'class',
-				data: queryParams,
-			}).then(
-				function(response) {
-					if (response.data)
-					{
-						var before = response.data.before;
-						var after = response.data.after;
+			if (item[taskId])
+			{
+				var rowData = item[taskId];
+				var before = rowData.before;
+				var after = rowData.after;
 
-						if ((before && this.isRowExist(before)) || (after && this.isRowExist(after)))
-						{
-							var params = {
-								before: before,
-								after: after,
-							};
-							Object.keys(parameters).forEach(function(key) {
-								params[key] = parameters[key];
-							});
-							this.updateItem(taskId, taskData, params, repository);
-						}
-						else
-						{
-							this.removeItem(taskId);
-						}
-					}
-				}.bind(this),
-			).catch(
-				function(response) {
-					if (response.errors)
-					{
-						BX.Tasks.alert(response.errors);
-					}
-				}.bind(this),
-			);
+				if ((before && this.isRowExist(before)) || (after && this.isRowExist(after)))
+				{
+					var params = {
+						before: before,
+						after: after,
+					};
+					Object.keys(parameters).forEach(function(key) {
+						params[key] = parameters[key];
+					});
+					this.updateItem(taskId, taskData, params, repository);
+				}
+				else
+				{
+					this.removeItem(taskId);
+				}
+			}
 		},
 
 		checkComment: function(data) {
@@ -1622,7 +1604,7 @@ BX(function() {
 			{
 				if (parameters.action === this.actions.taskUpdate)
 				{
-					this.placeToNearTasks(taskId, taskData, parameters);
+					this.placeToNearTasks(taskId, taskData, parameters, repository);
 				}
 				else
 				{
@@ -1716,7 +1698,7 @@ BX(function() {
 					this.getGrid().getRows().reset();
 
 					var moveRows = this.getGridMoveRows(rowId, parameters);
-					this.moveRow(rowId, moveRows.rowAfter, moveRows.rowBefore);
+					this.moveRow(rowId, moveRows.rowAfter);
 				}
 				this.highlightGridRow(rowId).then(function() {
 					this.colorPinnedRows();
@@ -1768,14 +1750,15 @@ BX(function() {
 			};
 		},
 
-		moveRow: function(rowId, after, before) {
+		moveRow: function(rowId, after) {
 			if (after)
 			{
 				this.getGrid().getRows().insertAfter(rowId, after);
 			}
-			else if (before)
+			else
 			{
-				this.getGrid().getRows().insertBefore(rowId, before);
+				const firstRow = this.getGrid().getRows().getBodyFirstChild();
+				this.getGrid().getRows().insertBefore(rowId, firstRow.getId());
 			}
 		},
 
@@ -2827,6 +2810,7 @@ this.BX = this.BX || {};
 	    _classPrivateFieldInitSpec$1(this, _repository, {
 	      writable: true,
 	      value: {
+	        collectionNear: new Map(),
 	        collectionGrid: new Map(),
 	        collection: new tasks_taskModel.TaskCollection(),
 	        collectionSiftThroughFilter: new tasks_taskModel.TaskCollection()
@@ -2890,6 +2874,14 @@ this.BX = this.BX || {};
 	        id: fields.id
 	      },
 	      params: params.arParams
+	    },
+	    collectionNear: {
+	      cmd: 'tasks.task.getNearTasks',
+	      filter: {
+	        id: fields.id
+	      },
+	      navigation: params.navigation,
+	      params: params.arParams
 	    }
 	  };
 	  Object.keys(items).forEach(function (type) {
@@ -2903,10 +2895,12 @@ this.BX = this.BX || {};
 	        };
 	        break;
 	      case 'collectionGrid':
+	      case 'collectionNear':
 	        result[type] = {
 	          cmd: item.cmd,
 	          param: {
 	            taskIds: main_core.Type.isArrayFilled(item.filter.id) ? item.filter.id : [item.filter.id],
+	            navigation: main_core.Type.isUndefined(item === null || item === void 0 ? void 0 : item.navigation) ? null : item.navigation,
 	            arParams: item.params
 	          }
 	        };
@@ -2931,6 +2925,7 @@ this.BX = this.BX || {};
 	      case 'collectionSiftThroughFilter':
 	        babelHelpers.classPrivateFieldGet(this, _repository)[type].init(items.tasks);
 	        break;
+	      case 'collectionNear':
 	      case 'collectionGrid':
 	        Object.keys(items).forEach(function (id) {
 	          if (id > 0) {
@@ -2962,7 +2957,11 @@ this.BX = this.BX || {};
 	            groupId: context.groupId
 	          }
 	        }, {
-	          arParams: context.arParams
+	          arParams: context.arParams,
+	          navigation: {
+	            pageNumber: context.getPageNumber(),
+	            pageSize: context.getPageSize()
+	          }
 	        }).then(function () {
 	          var repository = taskRepository.get();
 	          main_core_events.EventEmitter.emit('BX.Tasks.ControllerTask:onGetRepository', {
@@ -3010,15 +3009,45 @@ this.BX = this.BX || {};
 	      return result;
 	    }
 	  }, {
+	    key: "getItemsByType",
+	    value: function getItemsByType(poolItems, type) {
+	      var result = [];
+	      Object.keys(poolItems).forEach(function (key) {
+	        var poolItem = poolItems[key];
+	        if (Object.keys(poolItem)[0] === type) {
+	          result.push(poolItem[type].fields);
+	        }
+	      });
+	      return result;
+	    }
+	  }, {
+	    key: "sortedById",
+	    value: function sortedById(items) {
+	      items.sort(function (l, r) {
+	        return l.id > r.id ? 1 : r.id < r.id ? -1 : 0;
+	      });
+	      return items;
+	    }
+	  }, {
 	    key: "prepareByPoolToEmit",
 	    value: function prepareByPoolToEmit(items) {
 	      var result = [];
+	      var action = Action.USER_OPTION_CHANGED;
 	      Object.keys(items).forEach(function (key) {
 	        var item = items[key];
 	        var poolItems = item['default'].fields.params.items;
 	        var repository = item['default'].fields.params.repository;
+	        var poolItem = {};
+	        var sortedItems = ControllerTask.sortedById(ControllerTask.getItemsByType(poolItems, action));
 	        Object.keys(poolItems).forEach(function (key) {
-	          var poolItem = poolItems[key];
+	          if (Object.keys(poolItems[key])[0] === action) {
+	            // ORDER actions user_option_changed BY ASC
+	            poolItem = babelHelpers.defineProperty({}, action, {
+	              fields: sortedItems.shift()
+	            });
+	          } else {
+	            poolItem = poolItems[key];
+	          }
 	          result.push({
 	            poolItem: poolItem,
 	            repository: repository

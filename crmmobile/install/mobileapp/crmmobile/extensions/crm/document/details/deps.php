@@ -4,8 +4,9 @@ return [
 	'extensions' => [
 		'rest',
 		'loc',
-		'notify',
 		'alert',
+		'notify',
+		'apptheme',
 		'utils/date',
 		'utils/url',
 		'utils/color',
@@ -26,7 +27,6 @@ return [
 	'bundle' => [
 		'./src/download-link',
 		'./src/loading-screen',
-		'./src/title-bar',
 		'./src/error-panel',
 		'./src/bottom-toolbar',
 		'./src/pdf-view',

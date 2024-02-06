@@ -1,5 +1,5 @@
 <?php
-$MESS["SP_SALESCENTER_MODULE_ERROR"] = "Модуль \"Продажи в чате\" не установлен";
+$MESS["SP_SALESCENTER_MODULE_ERROR_MSGVER_1"] = "Модуль \"Продажи в чате\" не установлен";
 $MESS['SP_SEO_MODULE_ERROR'] = "Модуль \"Поисковая оптимизация (seo)\" не установлен";
 $MESS["SP_SALESCENTER_SALE_ACCESS_DENIED"] = "Доступ запрещен.";
 $MESS["SP_MENU_ITEM_PARAMS"] = "Параметры";
@@ -13,9 +13,13 @@ $MESS["SP_RP_CONFIRM_DEL_MESSAGE"] = "Вы уверены, что хотите �
 $MESS["SP_PAYMENT_SUB_TITLE"] = "(оплата через #SUB_TITLE#)";
 $MESS['SALESCENTER_SP_CASHBOX_COMMON_SETTINGS'] = 'Параметры кассы';
 $MESS['SALESCENTER_SP_CASHBOX_COMMON_SETTINGS_CASHBOXROBOKASSA'] = 'Настройка Робочеков';
+$MESS['SALESCENTER_SP_CASHBOX_COMMON_SETTINGS_CASHBOXYOOKASSA'] = 'Настройка чеков ЮКassa';
 $MESS['SALESCENTER_SP_CASHBOX_EMAIL_HINT'] = 'В случае возникновения ошибок при печати чеков на данный email будут отправляться уведомления';
 $MESS['SALESCENTER_SP_CASHBOX_VAT_ATTENTION'] = 'Обратите внимание, если вы не являетесь плательщиком НДС, то значение ставки "Без НДС [0%]" должно совпадать со значением "Без НДС [по умолчанию]"';
 $MESS['SALESCENTER_SP_CASHBOX_OFD_SETTINGS'] = 'Настройки ОФД';
 $MESS['SALESCENTER_SP_CASHBOX_OFD_TITLE'] = 'ОФД';
 $MESS['SALESCENTER_SP_CASHBOX_OFD_OPTION_OTHER'] = 'Другой';
 $MESS['SALESCENTER_SP_CASHBOX_ERROR_NO_HANDLER_EXIST'] = 'Неверный обработчик кассы';
+$MESS['SALESCENTER_SP_CASHBOX_VAT_HINT'] = 'Значение налоговой ставки передается в кассовый чек для информирования покупателей';
+$MESS['SALESCENTER_SP_CASHBOX_MEASURE_HINT'] = 'Единица измерения передается в кассовый чек для информирования покупателей';
+$MESS["SALESCENTER_SP_PAYSYSTEM_NAME_TEMPLATE"] = "#PAYSYSTEMS_NAME#. Оплата через #HANDLERS_NAME#";

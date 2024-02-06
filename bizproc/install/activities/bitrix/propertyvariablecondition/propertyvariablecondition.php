@@ -54,7 +54,7 @@ class CBPPropertyVariableCondition extends CBPActivityCondition
 				'operator' => $type ? $cond[1] : 'empty',
 				'valueToCheck' => $valueToCheck,
 				'fieldType' => $this->getFieldTypeObject($rootActivity, ['Type' => $type ?? 'string']),
-				'value' => $type ? $rootActivity->parseValue($cond[2], $type) : null,
+				'value' => $type ? $rootActivity->parseValue($cond[2] ?? null, $type) : null,
 				'fieldName' => ($property && $property['Name']) ?? $cond[0],
 			];
 		}
@@ -143,7 +143,7 @@ class CBPPropertyVariableCondition extends CBPActivityCondition
 					$arCurrentValues["variable_condition_field_" . $i] = $value[0];
 					$arCurrentValues["variable_condition_condition_" . $i] = $value[1];
 					$arCurrentValues["variable_condition_value_" . $i] = $value[2];
-					$arCurrentValues["variable_condition_joiner_" . $i] = $value[3];
+					$arCurrentValues["variable_condition_joiner_" . $i] = $value[3] ?? null;
 
 					$i++;
 				}

@@ -1,19 +1,26 @@
-import {Event, ZIndexManager, Runtime, Extension, Loc, Type} from 'main.core';
-import {EventEmitter} from 'main.core.events';
+import { DesktopApi } from 'im.v2.lib.desktop-api';
+import { Event, ZIndexManager, Runtime, Extension } from 'main.core';
+import { EventEmitter } from 'main.core.events';
 
-import {EventType, Layout} from 'im.v2.const';
-import {Logger} from 'im.v2.lib.logger';
-import {Launch} from 'im.v2.application.launch';
-import {CallManager} from 'im.v2.lib.call';
-import {Utils} from 'im.v2.lib.utils';
+import { Core } from 'im.v2.application.core';
+import { EventType, Layout, GetParameter } from 'im.v2.const';
+import { Logger } from 'im.v2.lib.logger';
+import { Launch } from 'im.v2.application.launch';
+import { CallManager } from 'im.v2.lib.call';
+import { PhoneManager } from 'im.v2.lib.phone';
+import { Utils } from 'im.v2.lib.utils';
+import { DesktopManager } from 'im.v2.lib.desktop';
+import { LayoutManager } from 'im.v2.lib.layout';
+import { LinesService } from 'im.v2.provider.service';
 
 import 'ui.notification';
+
+import type { Store } from 'ui.vue3.vuex';
 
 const SLIDER_PREFIX = 'im:slider';
 const BASE_STACK_INDEX = 1200;
 const SLIDER_CONTAINER_CLASS = 'bx-im-messenger__slider';
 const LOADER_CHATS_PATH = '/bitrix/js/im/v2/lib/slider/src/images/loader-chats.svg?v2';
-const LOADER_NOTIFICATIONS_PATH = '/bitrix/js/im/v2/lib/slider/src/images/loader-notifications.svg';
 
 export class MessengerSlider
 {
@@ -22,6 +29,7 @@ export class MessengerSlider
 	instances: Object = {};
 	sidePanelManager: Object = BX.SidePanel.Instance;
 	v2enabled: boolean = false;
+	store: Store;
 
 	static init()
 	{
@@ -45,70 +53,132 @@ export class MessengerSlider
 		Logger.warn('Slider: class created');
 		this.initSettings();
 		this.bindEvents();
+		this.store = Core.getStore();
 	}
 
-	openChat(dialogId: string | number = '', text: string = ''): Promise
+	async openChat(dialogId: string | number = ''): Promise
 	{
-		if (Type.isNumber(dialogId))
+		const preparedDialogId = dialogId.toString();
+		if (Utils.dialog.isLinesExternalId(preparedDialogId))
 		{
-			dialogId = dialogId.toString();
+			return this.openLines(preparedDialogId);
 		}
 
-		return this.openSlider().then(() => {
-			this.store.dispatch('application/setLayout', {
-				layoutName: Layout.chat.name,
-				entityId: dialogId
-			}).then(() => {
-				EventEmitter.emit(EventType.layout.onOpenChat, {dialogId});
-			});
+		await this.openSlider();
+
+		await LayoutManager.getInstance().setLayout({
+			name: Layout.chat.name,
+			entityId: preparedDialogId,
+		});
+		EventEmitter.emit(EventType.layout.onOpenChat, { dialogId: preparedDialogId });
+
+		return Promise.resolve();
+	}
+
+	async openLines(dialogId: string = ''): Promise
+	{
+		let preparedDialogId = dialogId.toString();
+		if (Utils.dialog.isLinesExternalId(preparedDialogId))
+		{
+			const linesService = new LinesService();
+			preparedDialogId = await linesService.getDialogIdByUserCode(preparedDialogId);
+		}
+
+		await this.openSlider();
+
+		return LayoutManager.getInstance().setLayout({
+			name: Layout.openlines.name,
+			entityId: preparedDialogId,
 		});
 	}
 
-	openLines(): Promise
+	async openCopilot(dialogId: string = ''): Promise
 	{
-		return new Promise((resolve, reject) => {
-			BX.UI.Notification.Center.notify({
-				content: Loc.getMessage('IM_LIB_SLIDER_LINES_NOT_IMPLEMENTED'),
-				position: "top-right",
-				autoHideDelay: 10000,
-			});
-			reject('Messenger: lines is not implemented yet');
+		const preparedDialogId = dialogId.toString();
+		await this.openSlider();
+
+		return LayoutManager.getInstance().setLayout({
+			name: Layout.copilot.name,
+			entityId: preparedDialogId,
 		});
 	}
 
-	openNotifications(): Promise
+	openHistory(dialogId: string | number = ''): Promise
 	{
-		return this.openSlider().then(() => {
-			this.store.dispatch('application/setLayout', {
-				layoutName: Layout.notification.name
-			}).then(() => {
-				EventEmitter.emit(EventType.layout.onOpenNotifications);
-			});
+		if (Utils.dialog.isDialogId(dialogId))
+		{
+			return this.openChat(dialogId);
+		}
+
+		if (!this.#checkHistoryDialogId(dialogId))
+		{
+			return Promise.reject();
+		}
+
+		const sliderLink = this.#prepareHistorySliderLink(dialogId);
+		BX.SidePanel.Instance.open(sliderLink, {
+			width: Utils.dialog.isLinesExternalId(dialogId) ? 700 : 1000,
+			allowChangeHistory: false,
+			allowChangeTitle: false,
+			cacheable: false,
 		});
+
+		return Promise.resolve();
 	}
 
-	openRecentSearch(): Promise
+	async openNotifications(): Promise
 	{
-		return this.openSlider().then(() => {
-			this.store.dispatch('application/setLayout', {
-				layoutName: Layout.chat.name
-			});
-		}).then(() => {
-			EventEmitter.emit(EventType.recent.openSearch);
+		await this.openSlider();
+		await LayoutManager.getInstance().setLayout({
+			name: Layout.notification.name,
 		});
+
+		EventEmitter.emit(EventType.layout.onOpenNotifications);
+
+		return Promise.resolve();
 	}
 
-	openSettings(selected: ?string = '', section: ?string = ''): Promise
+	async openRecentSearch(): Promise
 	{
-		Logger.warn('Slider: onOpenSettings', selected, section);
+		await this.openSlider();
+		await LayoutManager.getInstance().setLayout({
+			name: Layout.chat.name,
+		});
 
-		return new Promise((resolve, reject) => {
-			BX.UI.Notification.Center.notify({
-				content: Loc.getMessage('IM_LIB_SLIDER_SETTINGS_NOT_IMPLEMENTED'),
-				position: "top-right",
-				autoHideDelay: 10000,
+		EventEmitter.emit(EventType.recent.openSearch);
+
+		return Promise.resolve();
+	}
+
+	async openSettings(sectionName: string): Promise
+	{
+		Logger.warn('Slider: openSettings', sectionName);
+		await this.openSlider();
+
+		await LayoutManager.getInstance().setLayout({
+			name: Layout.settings.name,
+			entityId: sectionName,
+		});
+
+		return Promise.resolve();
+	}
+
+	openConference(code: string = ''): Promise
+	{
+		Logger.warn('Slider: openConference', code);
+
+		if (!Utils.conference.isValidCode(code))
+		{
+			return new Promise((resolve, reject) => {
+				reject();
 			});
-			reject('Messenger: settings is not implemented yet');
+		}
+
+		const url = Utils.conference.getUrlByCode(code);
+		Utils.browser.openLink(url, Utils.conference.getWindowNameByCode(code));
+
+		return new Promise((resolve) => {
+			resolve();
 		});
 	}
 
@@ -118,13 +188,41 @@ export class MessengerSlider
 		if (!Utils.dialog.isDialogId(dialogId))
 		{
 			Logger.error('Slider: onStartVideoCall - dialogId is not correct', dialogId);
+
 			return false;
 		}
 
-		return new Promise((resolve) => {
-			CallManager.getInstance().startCall(dialogId, withVideo);
-			resolve();
-		});
+		CallManager.getInstance().startCall(dialogId, withVideo);
+
+		return Promise.resolve();
+	}
+
+	startPhoneCall(number: string, params: Object<any, string>): Promise
+	{
+		Logger.warn('Slider: startPhoneCall', number, params);
+		void PhoneManager.getInstance().startCall(number, params);
+
+		return Promise.resolve();
+	}
+
+	startCallList(callListId: number, params: Object<string, any>): Promise
+	{
+		Logger.warn('Slider: startCallList', callListId, params);
+		PhoneManager.getInstance().startCallList(callListId, params);
+
+		return Promise.resolve();
+	}
+
+	openNewTab(path)
+	{
+		if (DesktopApi.getApiVersion() >= 75 && DesktopApi.isChatTab())
+		{
+			DesktopApi.createImTab(`${path}&${GetParameter.desktopChatTabMode}=Y`);
+		}
+		else
+		{
+			Utils.browser.openLink(path);
+		}
 	}
 
 	bindEvents(): boolean
@@ -132,6 +230,7 @@ export class MessengerSlider
 		if (!this.v2enabled)
 		{
 			Logger.warn('Slider: v2 is not enabled');
+
 			return false;
 		}
 
@@ -152,18 +251,34 @@ export class MessengerSlider
 
 	openSlider(): Promise
 	{
-		this.launchMessengerApplication();
+		if (DesktopManager.isChatWindow())
+		{
+			this.sidePanelManager.closeAll(true);
+
+			return Promise.resolve();
+		}
+
+		if (this.isOpened())
+		{
+			ZIndexManager.bringToFront(this.getCurrent().getOverlay());
+
+			return Promise.resolve();
+		}
+
+		void this.launchMessengerApplication();
 
 		return new Promise((resolve) => {
 			if (this.isFocused())
 			{
-				return resolve();
+				resolve();
+
+				return;
 			}
 
 			const nextId = this.getNextId();
 
 			this.sidePanelManager.open(`${SLIDER_PREFIX}:${nextId}`, {
-				data: {rightBoundary: 0},
+				data: { rightBoundary: 0 },
 				cacheable: false,
 				animationDuration: 100,
 				hideControls: true,
@@ -177,13 +292,13 @@ export class MessengerSlider
 					onLoad: (event) => {
 						event.slider.showLoader();
 					},
-					onOpenComplete: (event) => {
-						this.initMessengerComponent().then(() => {
-							event.slider.closeLoader();
-							return resolve();
-						});
-					}
-				}
+					onOpenComplete: async (event) => {
+						await this.initMessengerComponent();
+						event.slider.closeLoader();
+
+						return resolve();
+					},
+				},
 			});
 
 			this.instances[nextId] = this.sidePanelManager.getSlider(`${SLIDER_PREFIX}:${nextId}`);
@@ -201,21 +316,18 @@ export class MessengerSlider
 			return Launch('messenger');
 		}).then((application) => {
 			Logger.warn('Slider: Messenger application launched', application);
+
 			return application;
 		});
 
 		return this.applicationPromise;
 	}
 
-	initMessengerComponent(): Promise
+	async initMessengerComponent(): Promise
 	{
-		return this.applicationPromise.then((application) => {
-			this.application = application;
-			this.store = this.application.controller.store;
-			this.store.dispatch('application/setLayout', {layoutName: Layout.chat.name, entityId: ''});
+		const application = await this.applicationPromise;
 
-			return application.initComponent(`.${SLIDER_CONTAINER_CLASS}`);
-		});
+		return application.initComponent(`.${SLIDER_CONTAINER_CLASS}`);
 	}
 
 	onDialogOpen(event)
@@ -223,7 +335,7 @@ export class MessengerSlider
 		Logger.warn('Slider: onDialogOpen', event.data.dialogId);
 	}
 
-	onClose({data: event})
+	onClose({ data: event })
 	{
 		[event] = event;
 		const sliderId = event.getSlider().getUrl().toString();
@@ -235,6 +347,7 @@ export class MessengerSlider
 		if (!this.canClose())
 		{
 			event.denyAction();
+
 			return;
 		}
 
@@ -243,16 +356,20 @@ export class MessengerSlider
 		const id = this.getIdFromSliderId(sliderId);
 		delete this.instances[id];
 
-		this.openChat();
+		EventEmitter.emit(EventType.slider.onClose);
+
+		LayoutManager.getInstance().setLayout({
+			name: Layout.chat.name,
+		});
 	}
 
-	onCloseByEsc({data: event})
+	onCloseByEsc({ data: event })
 	{
 		[event] = event;
 		const sliderId = event.getSlider().getUrl().toString();
 		if (!sliderId.startsWith(SLIDER_PREFIX))
 		{
-			return false;
+			return;
 		}
 
 		if (!this.canCloseByEsc())
@@ -261,13 +378,13 @@ export class MessengerSlider
 		}
 	}
 
-	onDestroy({data: event})
+	onDestroy({ data: event })
 	{
 		[event] = event;
 		const sliderId = event.getSlider().getUrl().toString();
 		if (!sliderId.startsWith(SLIDER_PREFIX))
 		{
-			return false;
+			return;
 		}
 
 		const id = this.getIdFromSliderId(sliderId);
@@ -309,7 +426,7 @@ export class MessengerSlider
 			return false;
 		}
 
-		return !!slider.getUrl().toString().startsWith(SLIDER_PREFIX);
+		return slider.getUrl().toString().startsWith(SLIDER_PREFIX);
 	}
 
 	canClose(): boolean
@@ -340,5 +457,23 @@ export class MessengerSlider
 	getIdFromSliderId(sliderId: string): number
 	{
 		return Number.parseInt(sliderId.slice(SLIDER_PREFIX.length + 1), 10);
+	}
+
+	#checkHistoryDialogId(dialogId: string): boolean
+	{
+		return (
+			Utils.dialog.isLinesHistoryId(dialogId)
+			|| Utils.dialog.isLinesExternalId(dialogId)
+		);
+	}
+
+	#prepareHistorySliderLink(dialogId: string): string
+	{
+		const getParams = new URLSearchParams({
+			[GetParameter.openHistory]: dialogId,
+			[GetParameter.backgroundType]: 'light',
+		});
+
+		return `/desktop_app/history.php?${getParams.toString()}`;
 	}
 }

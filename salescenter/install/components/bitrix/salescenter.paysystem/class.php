@@ -88,7 +88,7 @@ class SalesCenterPaySystemComponent extends CBitrixComponent implements Main\Eng
 	{
 		if(!Loader::includeModule('salescenter'))
 		{
-			$this->showError(Loc::getMessage('SP_SALESCENTER_MODULE_ERROR'));
+			$this->showError(Loc::getMessage('SP_SALESCENTER_MODULE_ERROR_MSGVER_1'));
 			return;
 		}
 
@@ -364,6 +364,7 @@ class SalesCenterPaySystemComponent extends CBitrixComponent implements Main\Eng
 			'NAME' => '',
 			'MODE_NAME' => '',
 			'DESCRIPTION' => '',
+			'PUBLIC_DESCRIPTION' => '',
 			'LOGO' => '',
 		];
 
@@ -392,22 +393,29 @@ class SalesCenterPaySystemComponent extends CBitrixComponent implements Main\Eng
 			}
 		}
 
+		$paySystemDescription['DESCRIPTION'] = $data['DESCRIPTION'] ?? '';
+		$paySystemDescription['PUBLIC_DESCRIPTION'] = $data['PUBLIC_DESCRIPTION'] ?? '';
+
 		if ($psMode)
 		{
+			$paySystemDescription['DESCRIPTION'] = $data['HANDLER_MODE_DESCRIPTION_LIST'][$psMode]['MAIN'] ?? '';
+			$paySystemDescription['PUBLIC_DESCRIPTION'] = $data['HANDLER_MODE_DESCRIPTION_LIST'][$psMode]['PUBLIC'] ?? '';
+
 			$psModeName = $this->getHandlerModeName($handler, $psMode);
 			if ($psModeName)
 			{
 				$paySystemDescription['MODE_NAME'] = $psModeName;
-				$paySystemDescription["FULL_NAME"] = $paySystemDescription["NAME"].' '.Loc::getMessage(
-					'SP_PAYMENT_SUB_TITLE',
+				$paySystemDescription["FULL_NAME"] = Loc::getMessage(
+					'SALESCENTER_SP_PAYSYSTEM_NAME_TEMPLATE',
 					[
-						'#SUB_TITLE#' => $psModeName
+						'#PAYSYSTEMS_NAME#' => $psModeName,
+						'#HANDLERS_NAME#' => $paySystemDescription["NAME"],
 					]
 				);
 			}
 		}
 
-		if (isset($description))
+		if (isset($description) && !$paySystemDescription['DESCRIPTION'])
 		{
 			if (is_array($description))
 			{
@@ -505,10 +513,7 @@ class SalesCenterPaySystemComponent extends CBitrixComponent implements Main\Eng
 		/** @var Cashbox\CashboxPaySystem $cashboxHandler */
 		$cashboxHandler = $service->getCashboxClass();
 
-		$supportedKkmModels = BusinessValue::getValuesByCode(
-			$service->getConsumerName(),
-			$cashboxHandler::getPaySystemCodeForKkm()
-		);
+		$supportedKkmModels = $cashboxHandler::getKkmValue($service);
 		$result['SUPPORTED_KKM_MODELS'] = $supportedKkmModels;
 
 		if (!$kkmId && $supportedKkmModels)
@@ -527,6 +532,7 @@ class SalesCenterPaySystemComponent extends CBitrixComponent implements Main\Eng
 			'filter' => [
 				'=HANDLER' => $cashboxHandler,
 				'=KKM_ID' => $kkmId,
+				'=ACTIVE' => 'Y',
 			],
 		])->fetch();
 		if (!$cashbox)
@@ -539,9 +545,11 @@ class SalesCenterPaySystemComponent extends CBitrixComponent implements Main\Eng
 			];
 		}
 
+		$cashboxDocCode = $this->getHelpdeskDocumentationCashboxCode($cashboxHandler);
+
 		$result['CASHBOX'] = $this->getCashboxSettings($cashbox);
 		$result['CASHBOX']['code'] = mb_strtoupper($cashboxHandler::getCode());
-		$result['CASHBOX']['documentationCode'] = $this->getHelpdeskDocumentationCashboxCode($cashboxHandler);
+		$result['CASHBOX']['documentationCode'] = $cashboxDocCode;
 
 		return $result;
 	}
@@ -618,6 +626,7 @@ class SalesCenterPaySystemComponent extends CBitrixComponent implements Main\Eng
 	{
 		$helpdeskCodeMap = [
 			'\\'.Cashbox\CashboxRobokassa::class => '12849128',
+			'\\'.Cashbox\CashboxYooKassa::class => '17776800',
 		];
 
 		return $helpdeskCodeMap[$cashboxHandler] ?? null;
@@ -666,15 +675,24 @@ class SalesCenterPaySystemComponent extends CBitrixComponent implements Main\Eng
 				foreach ($settings as $group => $block)
 				{
 					$warning = '';
+					$hint = '';
 					if ($group === 'VAT')
 					{
 						$warning = Loc::getMessage('SALESCENTER_SP_CASHBOX_VAT_ATTENTION');
+						$hint = Loc::getMessage('SALESCENTER_SP_CASHBOX_VAT_HINT');
+					}
+
+					if ($group === 'MEASURE')
+					{
+						$hint = Loc::getMessage('SALESCENTER_SP_CASHBOX_MEASURE_HINT');
 					}
 
 					$result['section'][$group] = [
 						'title' => htmlspecialcharsbx($block['LABEL']),
 						'type' => 'cashboxSettings',
 						'warning' => $warning,
+						'collapsed' => $block['COLLAPSED'],
+						'hint' => $hint,
 					];
 
 					foreach ($block['ITEMS'] as $code => $item)

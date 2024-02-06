@@ -4,19 +4,19 @@ namespace Bitrix\Crm\Integration\Main\UISelector;
 
 use Bitrix\Crm\Filter\ItemDataProvider;
 use Bitrix\Crm\Filter\ItemSettings;
+use Bitrix\Crm\Item;
 use Bitrix\Crm\Item\Dynamic;
 use Bitrix\Crm\Service\Container;
-use Bitrix\Main\DB;
 use Bitrix\Main\Text\HtmlFilter;
 use CCrmOwnerType;
 use CCrmOwnerTypeAbbr;
-use CDBResult;
 
 class CrmDynamics extends CrmEntity
 {
 	public const PREFIX_FULL = 'CRMDYNAMIC-';
+	public const LIMIT_SEARCH = 50;
 
-	protected static function getHandlerType()
+	protected static function getHandlerType(): string
 	{
 		return Handler::ENTITY_TYPE_CRMDYNAMICS;
 	}
@@ -34,7 +34,7 @@ class CrmDynamics extends CrmEntity
 		return $prefix . '_';
 	}
 
-	protected static function prepareEntity(Dynamic $item, ?array $options = [])
+	protected static function prepareEntity(Dynamic $item, ?array $options = []): array
 	{
 		$prefix = static::getPrefix($options);
 		$result = [
@@ -58,7 +58,7 @@ class CrmDynamics extends CrmEntity
 		return $result;
 	}
 
-	public function getData($params = [])
+	public function getData($params = []): array
 	{
 		if (empty($params['options']['title']))
 		{
@@ -131,6 +131,11 @@ class CrmDynamics extends CrmEntity
 			$parameters = [
 				'order' => ['ID' => 'DESC'],
 				'limit' => 10,
+				'select' => [
+					Item::FIELD_NAME_ID,
+					Item::FIELD_NAME_TITLE,
+					Item::FIELD_NAME_CREATED_TIME,
+				]
 			];
 			if (!empty($itemIds))
 			{
@@ -156,7 +161,7 @@ class CrmDynamics extends CrmEntity
 		return $result;
 	}
 
-	public function getTabList($params = [])
+	public function getTabList($params = []): array
 	{
 		$result = [];
 
@@ -181,7 +186,7 @@ class CrmDynamics extends CrmEntity
 		return $result;
 	}
 
-	public function search($params = [])
+	public function search($params = []): array
 	{
 		$result = [
 			'ITEMS' => [],
@@ -210,7 +215,7 @@ class CrmDynamics extends CrmEntity
 				[
 					'order' => $this->getSearchOrder(),
 					'select' => $this->getSearchSelect(),
-					'limit' => 20,
+					'limit' => static::LIMIT_SEARCH,
 					'filter' => $filter,
 				]
 			);

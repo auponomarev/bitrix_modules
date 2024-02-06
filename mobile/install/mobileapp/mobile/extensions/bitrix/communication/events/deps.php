@@ -2,8 +2,8 @@
 
 return [
 	'extensions' => [
+		'require-lazy',
 		'communication/connection',
-		'communication/email-menu',
 		'communication/phone-menu',
 		'in-app-url',
 		'notify-manager',
@@ -11,7 +11,6 @@ return [
 		'utils/string',
 		'utils/url',
 		'utils/object',
-		'crm:mail/opener',
 		'im:messenger/api/dialog-opener',
 	],
 	'bundle' => [

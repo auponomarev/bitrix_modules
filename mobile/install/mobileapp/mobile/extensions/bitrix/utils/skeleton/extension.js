@@ -2,9 +2,12 @@
  * @module utils/skeleton
  */
 jn.define('utils/skeleton', (require, exports, module) => {
+	const AppTheme = require('apptheme');
 	const { ShimmerView } = require('layout/polyfill');
 
-	function line(width, height, marginTop = 0, marginBottom = 0)
+	const DEFAULT_BG = AppTheme.colors.base6;
+
+	function Line(width, height, marginTop = 0, marginBottom = 0, borderRadius = null)
 	{
 		const viewStyles = {
 			width,
@@ -21,11 +24,16 @@ jn.define('utils/skeleton', (require, exports, module) => {
 			viewStyles.marginBottom = marginBottom;
 		}
 
+		if (borderRadius === null)
+		{
+			borderRadius = height / 2;
+		}
+
 		const lineStyles = {
 			width,
 			height,
-			borderRadius: height / 2,
-			backgroundColor: '#dfe0e3',
+			borderRadius,
+			backgroundColor: DEFAULT_BG,
 		};
 
 		return View(
@@ -37,7 +45,22 @@ jn.define('utils/skeleton', (require, exports, module) => {
 		);
 	}
 
+	const Circle = (size = 24) => ShimmerView(
+		{ animating: true },
+		View(
+			{
+				style: {
+					width: size,
+					height: size,
+					borderRadius: Math.ceil(size / 2),
+					backgroundColor: DEFAULT_BG,
+				},
+			},
+		),
+	);
+
 	module.exports = {
-		line,
+		Line,
+		Circle,
 	};
 });

@@ -1,14 +1,14 @@
 <?php
+
 /**
  * Bitrix Framework
  * @package bitrix
  * @subpackage main
- * @copyright 2001-2022 Bitrix
+ * @copyright 2001-2023 Bitrix
  */
+
 namespace Bitrix\Main;
 
-use Bitrix\Main\Config;
-use Bitrix\Main\Type;
 use Bitrix\Main\Web\HttpHeaders;
 
 /**
@@ -22,37 +22,30 @@ class HttpRequest extends Request
 	 * @var Type\ParameterDictionary
 	 */
 	protected $queryString;
-
 	/**
 	 * @var Type\ParameterDictionary
 	 */
 	protected $postData;
-
 	/**
 	 * @var Type\ParameterDictionary
 	 */
 	protected $files;
-
 	/**
 	 * @var Type\ParameterDictionary
 	 */
 	protected $cookies;
-
 	/**
 	 * @var Type\ParameterDictionary
 	 */
 	protected $cookiesRaw;
-
 	/**
 	 * @var Type\ParameterDictionary
 	 */
 	protected $jsonData;
-
 	/**
 	 * @var HttpHeaders
 	 */
 	protected $headers;
-
 	protected $httpHost;
 	protected $acceptedLanguages;
 
@@ -97,11 +90,12 @@ class HttpRequest extends Request
 	 */
 	public function addFilter(Type\IRequestFilter $filter)
 	{
+		parent::addFilter($filter);
+
 		$filteredValues = $filter->filter([
 			'get' => $this->queryString->values,
 			'post' => $this->postData->values,
 			'files' => $this->files->values,
-			'headers' => $this->headers,
 			'cookie' => $this->cookiesRaw->values,
 			'json' => $this->jsonData->values,
 		]);
@@ -118,10 +112,6 @@ class HttpRequest extends Request
 		{
 			$this->files->setValuesNoDemand($filteredValues['files']);
 		}
-		if (isset($filteredValues['headers']) && ($this->headers instanceof HttpHeaders))
-		{
-			$this->headers = $filteredValues['headers'];
-		}
 		if (isset($filteredValues['cookie']))
 		{
 			$this->cookiesRaw->setValuesNoDemand($filteredValues['cookie']);
@@ -134,7 +124,7 @@ class HttpRequest extends Request
 
 		if (isset($filteredValues['get']) || isset($filteredValues['post']))
 		{
-			$this->values = array_merge($this->queryString->values, $this->postData->values);
+			$this->setValuesNoDemand(array_merge($this->queryString->values, $this->postData->values));
 		}
 	}
 
@@ -324,13 +314,13 @@ class HttpRequest extends Request
 	{
 		if ($this->requestedPage === null)
 		{
-			if(($uri = $this->getRequestUri()) == '')
+			if (($uri = $this->getRequestUri()) == '')
 			{
 				$this->requestedPage = parent::getRequestedPage();
 			}
 			else
 			{
-				$parsedUri = new Web\Uri("http://".$this->server->getHttpHost().$uri);
+				$parsedUri = new Web\Uri("http://" . $this->server->getHttpHost() . $uri);
 				$this->requestedPage = static::normalize(static::decode($parsedUri->getPath()));
 			}
 		}
@@ -344,13 +334,13 @@ class HttpRequest extends Request
 	 */
 	public function getDecodedUri()
 	{
-		$parsedUri = new Web\Uri("http://".$this->server->getHttpHost().$this->getRequestUri());
+		$parsedUri = new Web\Uri("http://" . $this->server->getHttpHost() . $this->getRequestUri());
 
 		$uri = static::decode($parsedUri->getPath());
 
-		if(($query = $parsedUri->getQuery()) <> '')
+		if (($query = $parsedUri->getQuery()) != '')
 		{
-			$uri .= "?".$query;
+			$uri .= "?" . $query;
 		}
 
 		return $uri;
@@ -370,7 +360,7 @@ class HttpRequest extends Request
 		if ($this->httpHost === null)
 		{
 			//scheme can be anything, it's used only for parsing
-			$url = new Web\Uri("http://".$this->server->getHttpHost());
+			$url = new Web\Uri("http://" . $this->server->getHttpHost());
 			$host = $url->getHost();
 			$host = trim($host, "\t\r\n\0 .");
 
@@ -382,13 +372,13 @@ class HttpRequest extends Request
 
 	public function isHttps()
 	{
-		if($this->server->get("SERVER_PORT") == 443)
+		if ($this->server->get("SERVER_PORT") == 443)
 		{
 			return true;
 		}
 
 		$https = $this->server->get("HTTPS");
-		if($https <> '' && mb_strtolower($https) <> "off")
+		if ($https != '' && strtolower($https) != "off")
 		{
 			//From the PHP manual: Set to a non-empty value if the script was queried through the HTTPS protocol.
 			//Note that when using ISAPI with IIS, the value will be off if the request was not made through the HTTPS protocol.
@@ -400,7 +390,7 @@ class HttpRequest extends Request
 
 	public function modifyByQueryString($queryString)
 	{
-		if ($queryString != "")
+		if ($queryString != '')
 		{
 			parse_str($queryString, $vars);
 
@@ -417,7 +407,9 @@ class HttpRequest extends Request
 	{
 		static $cookiePrefix = null;
 		if ($cookiePrefix === null)
-			$cookiePrefix = Config\Option::get("main", "cookie_name", "BITRIX_SM")."_";
+		{
+			$cookiePrefix = Config\Option::get("main", "cookie_name", "BITRIX_SM") . "_";
+		}
 
 		$cookiePrefixLength = mb_strlen($cookiePrefix);
 
@@ -426,7 +418,9 @@ class HttpRequest extends Request
 		foreach ($cookies as $name => $value)
 		{
 			if (mb_strpos($name, $cookiePrefix) !== 0)
+			{
 				continue;
+			}
 
 			$name = mb_substr($name, $cookiePrefixLength);
 			if (is_string($value) && $cookiesCrypter->shouldDecrypt($name, $value))
@@ -452,7 +446,7 @@ class HttpRequest extends Request
 		$headers = [];
 		foreach ($server as $name => $value)
 		{
-			if (strpos($name, 'HTTP_') === 0)
+			if (str_starts_with($name, 'HTTP_'))
 			{
 				$headerName = substr($name, 5);
 				$headers[$headerName] = $value;
@@ -480,7 +474,7 @@ class HttpRequest extends Request
 
 	protected static function normalize($path)
 	{
-		if (substr($path, -1, 1) === "/")
+		if (str_ends_with($path, "/"))
 		{
 			$path .= "index.php";
 		}
@@ -498,9 +492,9 @@ class HttpRequest extends Request
 	public function getScriptFile()
 	{
 		$scriptName = $this->getScriptName();
-		if($scriptName == "/bitrix/routing_index.php" || $scriptName == "/bitrix/urlrewrite.php" || $scriptName == "/404.php" || $scriptName == "/bitrix/virtual_file_system.php")
+		if ($scriptName == "/bitrix/routing_index.php" || $scriptName == "/bitrix/urlrewrite.php" || $scriptName == "/404.php" || $scriptName == "/bitrix/virtual_file_system.php")
 		{
-			if(($v = $this->server->get("REAL_FILE_PATH")) != null)
+			if (($v = $this->server->get("REAL_FILE_PATH")) != null)
 			{
 				$scriptName = $v;
 			}
@@ -514,7 +508,7 @@ class HttpRequest extends Request
 	 */
 	public static function getSystemParameters()
 	{
-		static $params = array(
+		static $params = [
 			"login",
 			"login_form",
 			"logout",
@@ -532,7 +526,7 @@ class HttpRequest extends Request
 			"show_cache_stat",
 			"show_link_stat",
 			"sessid",
-		);
+		];
 		return $params;
 	}
 
@@ -566,7 +560,7 @@ class HttpRequest extends Request
 			return true;
 		}
 
-		return strpos($contentType, '+json') !== false;
+		return str_contains($contentType, '+json');
 	}
 
 	/**
@@ -584,7 +578,7 @@ class HttpRequest extends Request
 					$this->jsonData = new Type\ParameterDictionary($json);
 				}
 			}
-			catch (ArgumentException $exception)
+			catch (ArgumentException)
 			{
 			}
 		}

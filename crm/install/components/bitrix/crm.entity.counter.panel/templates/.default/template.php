@@ -53,8 +53,6 @@ $phrases = Loc::loadLanguageFile(__FILE__);
 $phrases['NEW_CRM_COUNTER_TYPE_CURRENT'] = $phrases['NEW_CRM_COUNTER_TYPE_CURRENT2'];
 unset($phrases['NEW_CRM_COUNTER_TYPE_CURRENT2']);
 
-echo (Tour\AhaMomentCounterLightTime::getInstance())->build();
-
 $lockedCallback = '';
 $activityFieldRestrictionManager = new ActivityFieldRestrictionManager();
 if ($activityFieldRestrictionManager->hasRestrictions())
@@ -84,7 +82,8 @@ if ($activityFieldRestrictionManager->hasRestrictions())
 			withExcludeUsers: <?= $arResult['WITH_EXCLUDE_USERS'] ? 'true' : 'false' ?>,
 			filterLastPresetId: "<?= $filterLastPresetId ?>",
 			filterLastPresetData: <?= CUtil::PhpToJSObject($filterLastPreset) ?>,
-			lockedCallback: <?= CUtil::PhpToJSObject($lockedCallback) ?>
+			lockedCallback: <?= CUtil::PhpToJSObject($lockedCallback) ?>,
+			filterResponsibleFiledName: "<?= CUtil::JSEscape($arResult['FILTER_RESPONSIBLE_FILED_NAME']) ?>"
 		})).init();
 	});
 </script>

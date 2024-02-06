@@ -31,13 +31,14 @@ jn.define('layout/ui/fields', (require, exports, module) => {
 	const { CombinedType, CombinedField } = require('layout/ui/fields/combined');
 	const { CombinedV2Type, CombinedV2Field } = require('layout/ui/fields/combined-v2');
 	const { MultipleCombinedType, MultipleCombinedField } = require('layout/ui/fields/multiple-combined');
+	const { ShipmentExtraServicesType, ShipmentExtraServicesField } = require('layout/ui/fields/shipment-extra-services');
 
-	let CrmElementType;
-	let CrmElementField;
-	let ClientType;
-	let ClientField;
-	let CrmStageType;
-	let CrmStageField;
+	let CrmElementType = null;
+	let CrmElementField = null;
+	let ClientType = null;
+	let ClientField = null;
+	let CrmStageSelector = null;
+	let CrmStageSelectorType = null;
 
 	try
 	{
@@ -45,8 +46,8 @@ jn.define('layout/ui/fields', (require, exports, module) => {
 		CrmElementField = require('layout/ui/fields/crm-element').CrmElementField;
 		ClientType = require('layout/ui/fields/client').ClientType;
 		ClientField = require('layout/ui/fields/client').ClientField;
-		CrmStageType = require('layout/ui/fields/crm-stage').CrmStageType;
-		CrmStageField = require('layout/ui/fields/crm-stage').CrmStageField;
+		CrmStageSelector = require('crm/stage-selector').CrmStageSelector;
+		CrmStageSelectorType = require('crm/stage-selector').CrmStageSelectorType;
 	}
 	catch (e)
 	{
@@ -77,13 +78,14 @@ jn.define('layout/ui/fields', (require, exports, module) => {
 		EmailType,
 		WebType,
 		ClientType,
-		CrmStageType,
+		CrmStageSelectorType,
 		CrmElementType,
 		RequisiteType,
 		RequisiteAddressType,
 		CombinedType,
 		CombinedV2Type,
 		MultipleCombinedType,
+		ShipmentExtraServicesType,
 	];
 
 	const ALIAS_TYPES = {
@@ -160,6 +162,7 @@ jn.define('layout/ui/fields', (require, exports, module) => {
 				return MultipleField({ ...data, renderField });
 			}
 
+			// eslint-disable-next-line default-case
 			switch (fieldType)
 			{
 				case StringType:
@@ -242,11 +245,14 @@ jn.define('layout/ui/fields', (require, exports, module) => {
 
 				case MultipleCombinedType:
 					return MultipleCombinedField({ ...data, renderField });
+
+				case ShipmentExtraServicesType:
+					return ShipmentExtraServicesField(data);
 			}
 
-			if (fieldType === CrmStageType && CrmStageField)
+			if (fieldType === CrmStageSelectorType && CrmStageSelector)
 			{
-				return CrmStageField(data);
+				return CrmStageSelector(data);
 			}
 
 			if (fieldType === ClientType && ClientField)
@@ -259,7 +265,7 @@ jn.define('layout/ui/fields', (require, exports, module) => {
 				return CrmElementField(data);
 			}
 
-			console.warn('Type ' + type + ' not found. Trying to render the field as a StringInput.');
+			console.warn(`Type ${type} not found. Trying to render the field as a StringInput.`);
 
 			return null;
 		}
@@ -290,13 +296,13 @@ jn.define('layout/ui/fields', (require, exports, module) => {
 		EmailType,
 		WebType,
 		ClientType,
-		CrmStageType,
+		CrmStageSelectorType,
 		CrmElementType,
 		RequisiteType,
 		RequisiteAddressType,
 		CombinedType,
 		CombinedV2Type,
 		MultipleCombinedType,
+		ShipmentExtraServicesType,
 	};
-
 });

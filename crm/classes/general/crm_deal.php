@@ -9,11 +9,13 @@ use Bitrix\Crm\Category\DealCategoryChangeError;
 use Bitrix\Crm\CustomerType;
 use Bitrix\Crm\Entity\Traits\EntityFieldsNormalizer;
 use Bitrix\Crm\Entity\Traits\UserFieldPreparer;
+use Bitrix\Crm\FieldContext\EntityFactory;
+use Bitrix\Crm\FieldContext\ValueFiller;
+use Bitrix\Crm\Format\TextHelper;
 use Bitrix\Crm\History\DealStageHistoryEntry;
 use Bitrix\Crm\Integration\Channel\DealChannelBinding;
 use Bitrix\Crm\Integration\PullManager;
 use Bitrix\Crm\Kanban\ViewMode;
-use Bitrix\Crm\Reservation\Compatibility\ProductRowReserves;
 use Bitrix\Crm\Settings\DealSettings;
 use Bitrix\Crm\Settings\HistorySettings;
 use Bitrix\Crm\Statistics\DealActivityStatisticEntry;
@@ -49,7 +51,7 @@ class CAllCrmDeal
 	private static $FIELD_INFOS = null;
 
 	private static ?Crm\Entity\Compatibility\Adapter $lastActivityAdapter = null;
-	private static ?Crm\Entity\Compatibility\Adapter $contentTypeIdAdapter = null;
+	private static ?Crm\Entity\Compatibility\Adapter $commentsAdapter = null;
 
 	/** @var \Bitrix\Crm\Entity\Compatibility\Adapter */
 	private $compatibilityAdapter;
@@ -146,20 +148,24 @@ class CAllCrmDeal
 		return self::$lastActivityAdapter;
 	}
 
-	private static function getContentTypeIdAdapter(): Crm\Entity\Compatibility\Adapter\ContentTypeId
+	private static function getCommentsAdapter(): Crm\Entity\Compatibility\Adapter\Comments
 	{
-		if (!self::$contentTypeIdAdapter)
+		if (!self::$commentsAdapter)
 		{
-			self::$contentTypeIdAdapter = new Crm\Entity\Compatibility\Adapter\ContentTypeId(\CCrmOwnerType::Deal);
+			self::$commentsAdapter = new Crm\Entity\Compatibility\Adapter\Comments(\CCrmOwnerType::Deal);
 		}
 
-		return self::$contentTypeIdAdapter;
+		return self::$commentsAdapter;
 	}
 
 	// Service -->
 	public static function GetFieldCaption($fieldName)
 	{
 		$result = GetMessage("CRM_DEAL_FIELD_{$fieldName}");
+		if (!(is_string($result) && $result !== ''))
+		{
+			$result = GetMessage("CRM_DEAL_FIELD_{$fieldName}_MSGVER_1");
+		}
 
 		if (!(is_string($result) && $result !== '')
 			&& Crm\Tracking\UI\Details::isTrackingField($fieldName))
@@ -448,7 +454,8 @@ class CAllCrmDeal
 			// Obsolete
 			'EVENT_ID' => array('FIELD' => 'L.EVENT_ID', 'TYPE' => 'string'),
 			'EVENT_DATE' => array('FIELD' => 'L.EVENT_DATE', 'TYPE' => 'datetime'),
-			'EVENT_DESCRIPTION' => array('FIELD' => 'L.EVENT_DESCRIPTION', 'TYPE' => 'string')
+			'EVENT_DESCRIPTION' => array('FIELD' => 'L.EVENT_DESCRIPTION', 'TYPE' => 'string'),
+			'LAST_ACTIVITY_TIME' => array('FIELD' => 'L.LAST_ACTIVITY_TIME', 'TYPE' => 'datetime')
 		);
 
 		// Creation of field aliases
@@ -844,20 +851,14 @@ class CAllCrmDeal
 		if (isset($arFilter['OBSERVER_IDS']))
 		{
 			$observerIds = is_array($arFilter['OBSERVER_IDS']) ? $arFilter['OBSERVER_IDS'] : [];
-			if (!empty($observerIds))
+			$observersFilter = CCrmEntityHelper::prepareObserversFieldFilter(
+				CCrmOwnerType::Deal,
+				$sender->GetTableAlias(),
+				$observerIds
+			);
+			if (!empty($observersFilter))
 			{
-				$tableAlias = $sender->GetTableAlias();
-				$entityTypeId = CCrmOwnerType::Deal;
-				\Bitrix\Main\Type\Collection::normalizeArrayValuesByInt($observerIds);
-				if (!empty($observerIds))
-				{
-					$observerIds = implode(',', $observerIds);
-					$sqlData['WHERE'][] = "{$tableAlias}.ID IN (
-						SELECT obr.entity_id
-						FROM b_crm_observer obr
-						WHERE obr.entity_type_id = {$entityTypeId} and obr.user_id IN ({$observerIds})
-					)";
-				}
+				$sqlData['WHERE'][] = $observersFilter;
 			}
 		}
 
@@ -1773,6 +1774,7 @@ class CAllCrmDeal
 			}
 
 			self::getLastActivityAdapter()->performAdd($arFields, $options);
+			self::getCommentsAdapter()->normalizeFields(null, $arFields);
 
 			//region Category
 			$categoryID = isset($arFields['CATEGORY_ID']) ? max((int)$arFields['CATEGORY_ID'], 0) : 0;
@@ -2060,7 +2062,7 @@ class CAllCrmDeal
 			if(!empty($contactBindings))
 			{
 				DealContactTable::bindContacts($ID, $contactBindings);
-				if (isset($GLOBALS['USER']))
+				if (isset($GLOBALS['USER']) && !empty($contactIDs))
 				{
 					CUserOptions::SetOption(
 						'crm',
@@ -2155,7 +2157,7 @@ class CAllCrmDeal
 			)->build($ID, ['checkExist' => true]);
 			//endregion
 
-			self::getContentTypeIdAdapter()->performAdd($arFields, $options);
+			self::getCommentsAdapter()->performAdd($arFields, $options);
 
 			if(isset($options['REGISTER_SONET_EVENT']) && $options['REGISTER_SONET_EVENT'] === true)
 			{
@@ -2699,7 +2701,7 @@ class CAllCrmDeal
 				elseif($contactID > 0)
 				{
 					$connection->queryExecute(
-						"UPDATE b_crm_deal SET IS_RETURN_CUSTOMER = 'Y', IS_REPEATED_APPROACH = 'N' WHERE IS_RETURN_CUSTOMER = 'N' AND CONTACT_ID = {$contactID} AND IFNULL(COMPANY_ID, 0) = 0"
+						"UPDATE b_crm_deal SET IS_RETURN_CUSTOMER = 'Y', IS_REPEATED_APPROACH = 'N' WHERE IS_RETURN_CUSTOMER = 'N' AND CONTACT_ID = {$contactID} AND coalesce(COMPANY_ID, 0) = 0"
 					);
 				}
 				$connection->queryExecute("UPDATE b_crm_deal SET IS_RETURN_CUSTOMER = 'N' WHERE ID = {$primaryID}");
@@ -2990,6 +2992,10 @@ class CAllCrmDeal
 			//endregion
 
 			self::getLastActivityAdapter()->performUpdate((int)$ID, $arFields, $options);
+			self::getCommentsAdapter()
+				->setPreviousFields((int)$ID, $arRow)
+				->normalizeFields((int)$ID, $arFields)
+			;
 
 			$sonetEventData = array();
 			if ($bCompare)
@@ -3321,7 +3327,7 @@ class CAllCrmDeal
 			}
 			//endregion
 
-			self::getContentTypeIdAdapter()
+			self::getCommentsAdapter()
 				->setPreviousFields((int)$ID, $arRow)
 				->performUpdate((int)$ID, $arFields, $options)
 			;
@@ -3590,6 +3596,13 @@ class CAllCrmDeal
 				}
 			}
 
+			if ($bResult)
+			{
+				$scope = \Bitrix\Crm\Service\Container::getInstance()->getContext()->getScope();
+				$filler = new ValueFiller(CCrmOwnerType::Deal, $ID, $scope);
+				$filler->fill($options['CURRENT_FIELDS'], $arFields);
+			}
+
 			if ($bResult && !$syncStageSemantics)
 			{
 				$item = Crm\Kanban\Entity::getInstance(self::$TYPE_NAME)
@@ -3602,6 +3615,7 @@ class CAllCrmDeal
 						'CATEGORY_ID' => \CCrmDeal::GetCategoryID($ID),
 						'SKIP_CURRENT_USER' => ($userID !== 0),
 						'IGNORE_DELAY' => \CCrmBizProcHelper::isActiveDebugEntity(\CCrmOwnerType::Deal, $ID),
+						'EVENT_ID' => ($options['eventId'] ?? null),
 					]
 				);
 			}
@@ -3652,7 +3666,8 @@ class CAllCrmDeal
 
 		$hasDeletePerm = \Bitrix\Crm\Service\Container::getInstance()
 			->getUserPermissions($iUserId)
-			->checkDeletePermissions(CCrmOwnerType::Deal, $ID);
+			->checkDeletePermissions(CCrmOwnerType::Deal, $ID, $categoryID)
+		;
 
 		if (
 			$this->bCheckPermission
@@ -3772,7 +3787,7 @@ class CAllCrmDeal
 				\Bitrix\Crm\Observer\ObserverManager::deleteByOwner(CCrmOwnerType::Deal, $ID);
 				\Bitrix\Crm\Ml\Scoring::onEntityDelete(CCrmOwnerType::Deal, $ID);
 
-				self::getContentTypeIdAdapter()->performDelete((int)$ID, $arOptions);
+				self::getCommentsAdapter()->performDelete((int)$ID, $arOptions);
 
 				Crm\Integration\Im\Chat::deleteChat(
 					array(
@@ -3823,6 +3838,12 @@ class CAllCrmDeal
 			while ($arEvent = $afterEvents->Fetch())
 			{
 				ExecuteModuleEventEx($arEvent, array($ID));
+			}
+
+			$fieldsContextEntity = EntityFactory::getInstance()->getEntity(CCrmOwnerType::Deal);
+			if ($fieldsContextEntity)
+			{
+				$fieldsContextEntity::deleteByItemId($ID);
 			}
 
 			$item = Crm\Kanban\Entity::getInstance(self::$TYPE_NAME)
@@ -4018,8 +4039,8 @@ class CAllCrmDeal
 			$arMsg[] = Array(
 				'ENTITY_FIELD' => 'COMMENTS',
 				'EVENT_NAME' => GetMessage('CRM_FIELD_COMPARE_COMMENTS'),
-				'EVENT_TEXT_1' => !empty($arFieldsOrig['COMMENTS'])? $arFieldsOrig['COMMENTS']: GetMessage('CRM_FIELD_COMPARE_EMPTY'),
-				'EVENT_TEXT_2' => !empty($arFieldsModif['COMMENTS'])? $arFieldsModif['COMMENTS']: GetMessage('CRM_FIELD_COMPARE_EMPTY'),
+				'EVENT_TEXT_1' => !empty($arFieldsOrig['COMMENTS'])? TextHelper::convertBbCodeToHtml($arFieldsOrig['COMMENTS']): GetMessage('CRM_FIELD_COMPARE_EMPTY'),
+				'EVENT_TEXT_2' => !empty($arFieldsModif['COMMENTS'])? TextHelper::convertBbCodeToHtml($arFieldsModif['COMMENTS']): GetMessage('CRM_FIELD_COMPARE_EMPTY'),
 			);
 
 		$arCurrency = CCrmCurrencyHelper::PrepareListItems();
@@ -4036,21 +4057,25 @@ class CAllCrmDeal
 			);
 		}
 
-		if (isset($arFieldsOrig['OPPORTUNITY'])
+		if (
+			isset($arFieldsOrig['OPPORTUNITY'])
 			&& isset($arFieldsModif['OPPORTUNITY'])
-			&& $arFieldsOrig['OPPORTUNITY'] != $arFieldsModif['OPPORTUNITY'])
+			&& $arFieldsOrig['OPPORTUNITY'] != $arFieldsModif['OPPORTUNITY']
+		)
 		{
 			$arMsg[] = Array(
 				'ENTITY_FIELD' => 'OPPORTUNITY',
 				'EVENT_NAME' => GetMessage('CRM_FIELD_COMPARE_OPPORTUNITY'),
-				'EVENT_TEXT_1' => floatval($arFieldsOrig['OPPORTUNITY']).(($val = CrmCompareFieldsList($arCurrency, $arFieldsOrig['CURRENCY_ID'], '')) != '' ? ' ('.$val.')' : ''),
-				'EVENT_TEXT_2' => floatval($arFieldsModif['OPPORTUNITY']).(($val = CrmCompareFieldsList($arCurrency, $arFieldsModif['CURRENCY_ID'], '')) != '' ? ' ('.$val.')' : '')
+				'EVENT_TEXT_1' => floatval($arFieldsOrig['OPPORTUNITY']).(($val = CrmCompareFieldsList($arCurrency, ($arFieldsOrig['CURRENCY_ID'] ?? null), '')) != '' ? ' ('.$val.')' : ''),
+				'EVENT_TEXT_2' => floatval($arFieldsModif['OPPORTUNITY']).(($val = CrmCompareFieldsList($arCurrency, ($arFieldsModif['CURRENCY_ID'] ?? null), '')) != '' ? ' ('.$val.')' : '')
 			);
 		}
 
-		if (isset($arFieldsOrig['IS_MANUAL_OPPORTUNITY'])
+		if (
+			isset($arFieldsOrig['IS_MANUAL_OPPORTUNITY'])
 			&& isset($arFieldsModif['IS_MANUAL_OPPORTUNITY'])
-			&& $arFieldsOrig['IS_MANUAL_OPPORTUNITY'] != $arFieldsModif['IS_MANUAL_OPPORTUNITY'])
+			&& $arFieldsOrig['IS_MANUAL_OPPORTUNITY'] != $arFieldsModif['IS_MANUAL_OPPORTUNITY']
+		)
 		{
 			$arMsg[] = Array(
 				'ENTITY_FIELD' => 'IS_MANUAL_OPPORTUNITY',
@@ -4233,45 +4258,7 @@ class CAllCrmDeal
 
 	public static function LoadProductRows($ID)
 	{
-		$result = [];
-
-		$factory = Crm\Service\Container::getInstance()->getFactory(\CCrmOwnerType::Deal);
-		if ($factory && $factory->isInventoryManagementEnabled())
-		{
-			$items = $factory->getItems([
-				'select' => [Crm\Item::FIELD_NAME_PRODUCTS],
-				'filter' => [
-					'=' . Crm\Item::FIELD_NAME_ID => $ID,
-				]
-			]);
-			if ($items)
-			{
-				foreach ($items as $item)
-				{
-					$productRows = $item->getProductRows();
-					if ($productRows)
-					{
-						foreach ($productRows as $productRow)
-						{
-							$row = $productRow->toArray();
-							$productReservation = $productRow->getProductRowReservation();
-							if ($productReservation)
-							{
-								$row += $productReservation->toArray();
-							}
-
-							$result[] = $row;
-						}
-					}
-				}
-			}
-		}
-		else
-		{
-			$result = CCrmProductRow::LoadRows(\CCrmOwnerTypeAbbr::Deal, $ID);
-		}
-
-		return $result;
+		return CCrmProductRow::LoadRows(\CCrmOwnerTypeAbbr::Deal, $ID);
 	}
 
 	/**

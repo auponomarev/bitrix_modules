@@ -2,7 +2,6 @@
  * @module im/messenger/controller/dialog-selector
  */
 jn.define('im/messenger/controller/dialog-selector', (require, exports, module) => {
-
 	const { Type } = require('type');
 	const { Loc } = require('loc');
 	const { clone } = require('utils/object');
@@ -19,6 +18,13 @@ jn.define('im/messenger/controller/dialog-selector', (require, exports, module) 
 	 */
 	class DialogSelector
 	{
+		/**
+		 *
+		 * @param {object} options
+		 * @param {SelectorDialogListAdapter} options.view
+		 * @param {Array<object>} [options.entities]
+		 * @param {Function} [options.onRecentResult]
+		 */
 		constructor(options = {})
 		{
 			if (options.view)
@@ -38,10 +44,28 @@ jn.define('im/messenger/controller/dialog-selector', (require, exports, module) 
 			}
 			this.onRecentResult = options.onRecentResult;
 
-			this.view.on(EventType.recent.scopeSelected, this.view.onScopeSelected.bind(this.view));
-			this.view.on(EventType.recent.userTypeText, this.view.onUserTypeText.bind(this.view));
-			this.view.on(EventType.recent.searchItemSelected, this.view.onSearchItemSelected.bind(this.view));
-			this.view.on(EventType.recent.searchSectionButtonClick, this.view.searchSectionButtonClick.bind(this.view));
+			this.onScopeSelectedHandler = this.view.onScopeSelected.bind(this.view);
+			this.onUserTypeTextHandler = this.view.onUserTypeText.bind(this.view);
+			this.onSearchItemSelectedHandler = this.view.onSearchItemSelected.bind(this.view);
+			this.onSearchSectionButtonClickHandler = this.view.searchSectionButtonClick.bind(this.view);
+
+			this.subscribeEvents();
+		}
+
+		subscribeEvents()
+		{
+			this.view.on(EventType.recent.scopeSelected, this.onScopeSelectedHandler);
+			this.view.on(EventType.recent.userTypeText, this.onUserTypeTextHandler);
+			this.view.on(EventType.recent.searchItemSelected, this.onSearchItemSelectedHandler);
+			this.view.on(EventType.recent.searchSectionButtonClick, this.onSearchSectionButtonClickHandler);
+		}
+
+		unsubscribeEvents()
+		{
+			this.view.off(EventType.recent.scopeSelected, this.onScopeSelectedHandler);
+			this.view.off(EventType.recent.userTypeText, this.onUserTypeTextHandler);
+			this.view.off(EventType.recent.searchItemSelected, this.onSearchItemSelectedHandler);
+			this.view.off(EventType.recent.searchSectionButtonClick, this.onSearchSectionButtonClickHandler);
 		}
 
 		open()
@@ -50,7 +74,7 @@ jn.define('im/messenger/controller/dialog-selector', (require, exports, module) 
 				context: 'IM_CHAT_SEARCH',
 				ui: this.view,
 				providerOptions: {
-					minSearchSize : MessengerParams.get('MIN_SEARCH_SIZE', 3),
+					minSearchSize: MessengerParams.get('MIN_SEARCH_SIZE', 3),
 				},
 				entities: this.entities,
 				isNetworkSearchAvailable: MessengerParams.get('IS_NETWORK_SEARCH_AVAILABLE', false),
@@ -73,8 +97,8 @@ jn.define('im/messenger/controller/dialog-selector', (require, exports, module) 
 				.open()
 			;
 
-			//hack to work on old android clients
-			this.selector.onResult = chat => {
+			// hack to work on old android clients
+			this.selector.onResult = (chat) => {
 				this.selector.resolve(chat);
 
 				Logger.info('Chat selected', chat);
@@ -85,19 +109,19 @@ jn.define('im/messenger/controller/dialog-selector', (require, exports, module) 
 						description: chat.description,
 						avatar: chat.avatar,
 						color: chat.color,
-					}
+					},
 				};
 
-				if (chat.customData['imChat'])
+				if (chat.customData.imChat)
 				{
-					data.dialogTitleParams.chatType = chat.customData['imChat'].TYPE;
+					data.dialogTitleParams.chatType = chat.customData.imChat.TYPE;
 
 					// TODO: delete when the mobile chat learns about open lines, call chats and others.
 					if (data.dialogTitleParams.chatType === 'lines')
 					{
 						data.dialogTitleParams.description = Loc.getMessage('MOBILE_EXT_CHAT_SELECTOR_LINES_SUBTITLE');
 					}
-					else if (chat.customData['imChat'].TYPE === 'open')
+					else if (chat.customData.imChat.TYPE === 'open')
 					{
 						data.dialogTitleParams.description = Loc.getMessage('MOBILE_EXT_CHAT_SELECTOR_CHANNEL_SUBTITLE');
 					}
@@ -108,19 +132,23 @@ jn.define('im/messenger/controller/dialog-selector', (require, exports, module) 
 				}
 
 				MessengerEmitter.emit(EventType.messenger.openDialog, data);
-			}
+			};
 		}
 
+		/**
+		 * @return {RecentUserCarouselItem}
+		 */
 		getUserCarouselItem()
 		{
-			const recentUserList = clone(this.store.getters['recentModel/getUserList']);
+			const recentUserList = clone(this.store.getters['recentModel/getUserList']());
 			const recentUserListIndex = {};
 			const recentUserListRemoveIndex = {};
 
+			/** @type {Array<RecentCarouselItem>} */
 			const userItems = [];
 			if (Type.isArrayFilled(recentUserList))
 			{
-				recentUserList.forEach(recentUserChat => {
+				recentUserList.forEach((recentUserChat) => {
 					if (
 						recentUserChat.user.id === MessengerParams.getUserId()
 						|| recentUserChat.user.bot
@@ -138,7 +166,7 @@ jn.define('im/messenger/controller/dialog-selector', (require, exports, module) 
 				});
 			}
 
-			const colleaguesList = clone(this.store.getters['usersModel/getUserList']);
+			const colleaguesList = clone(this.store.getters['usersModel/getList']());
 			if (Type.isArrayFilled(colleaguesList))
 			{
 				colleaguesList.forEach((user) => {
@@ -162,6 +190,11 @@ jn.define('im/messenger/controller/dialog-selector', (require, exports, module) 
 				childItems: userItems,
 				hideBottomLine: true,
 			};
+		}
+
+		close()
+		{
+			// stub for reverse dependence with RecentSelector;
 		}
 	}
 

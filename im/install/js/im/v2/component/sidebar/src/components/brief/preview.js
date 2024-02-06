@@ -4,7 +4,7 @@ import {DetailEmptyState} from '../detail-empty-state';
 import {BriefItem} from './brief-item';
 import '../../css/brief/preview.css';
 
-import type {ImModelDialog, ImModelSidebarFileItem} from 'im.v2.model';
+import type {ImModelChat, ImModelSidebarFileItem} from 'im.v2.model';
 
 // @vue/component
 export const BriefPreview = {
@@ -29,26 +29,18 @@ export const BriefPreview = {
 	computed:
 	{
 		SidebarDetailBlock: () => SidebarDetailBlock,
-		dialog(): ImModelDialog
+		dialog(): ImModelChat
 		{
-			return this.$store.getters['dialogues/get'](this.dialogId, true);
+			return this.$store.getters['chats/get'](this.dialogId, true);
 		},
 		chatId(): number
 		{
 			return this.dialog.chatId;
 		},
-		dialogInited()
-		{
-			return this.dialog.inited;
-		},
 		firstBrief(): ?ImModelSidebarFileItem
 		{
 			return this.$store.getters['sidebar/files/get'](this.chatId, SidebarFileTypes.brief)[0];
 		},
-		isLoadingState(): boolean
-		{
-			return !this.dialogInited || this.isLoading;
-		}
 	},
 	created()
 	{
@@ -81,7 +73,7 @@ export const BriefPreview = {
 	},
 	template: `
 		<div class="bx-im-sidebar-brief-preview__scope">
-			<div v-if="isLoadingState" class="bx-im-sidebar-brief-preview__skeleton"></div>
+			<div v-if="isLoading" class="bx-im-sidebar-brief-preview__skeleton"></div>
 			<div v-else class="bx-im-sidebar-brief-preview__container">
 				<div 
 					class="bx-im-sidebar-brief-preview__header_container" 

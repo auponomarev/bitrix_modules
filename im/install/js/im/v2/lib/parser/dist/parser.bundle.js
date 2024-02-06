@@ -1,7 +1,8 @@
+/* eslint-disable */
 this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
-(function (exports,main_core_events,main_core) {
+(function (exports,main_core_events,im_public,main_core) {
 	'use strict';
 
 	const ParserSlashCommand = {
@@ -25,9 +26,103 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	};
 
-	const isDesktop = main_core.Type.isObject(window.BXDesktopSystem);
+	const ParserRecursionPrevention = {
+	  _tagsReplacement: [],
+	  _putReplacement: [],
+	  _sendReplacement: [],
+	  _codeReplacement: [],
+	  clean() {
+	    this._tagsReplacement = [];
+	    this._putReplacement = [];
+	    this._sendReplacement = [];
+	    this._codeReplacement = [];
+	  },
+	  cutTags(text) {
+	    text = text.replaceAll(/\[(.+?)](.*?)\[\/(.+?)]/gi, tag => {
+	      const id = this._tagsReplacement.length;
+	      this._tagsReplacement.push(tag);
+	      return '####REPLACEMENT_TAG_' + id + '####';
+	    });
+	    return text;
+	  },
+	  recoverTags(text) {
+	    this._tagsReplacement.forEach((tag, index) => {
+	      text = text.replace('####REPLACEMENT_TAG_' + index + '####', tag);
+	    });
+	    return text;
+	  },
+	  cutPutTag(text) {
+	    text = text.replace(/\[PUT(?:=(.+?))?](.+?)?\[\/PUT]/gi, whole => {
+	      const id = this._putReplacement.length;
+	      this._putReplacement.push(whole);
+	      return '####REPLACEMENT_PUT_' + id + '####';
+	    });
+	    return text;
+	  },
+	  recoverPutTag(text) {
+	    this._putReplacement.forEach((value, index) => {
+	      text = text.replace('####REPLACEMENT_PUT_' + index + '####', value);
+	    });
+	    return text;
+	  },
+	  cutSendTag(text) {
+	    text = text.replace(/\[SEND(?:=(.+?))?](.+?)?\[\/SEND]/gi, whole => {
+	      const id = this._sendReplacement.length;
+	      this._sendReplacement.push(whole);
+	      return '####REPLACEMENT_SEND_' + id + '####';
+	    });
+	    return text;
+	  },
+	  recoverSendTag(text) {
+	    this._sendReplacement.forEach((value, index) => {
+	      text = text.replace('####REPLACEMENT_SEND_' + index + '####', value);
+	    });
+	    return text;
+	  },
+	  cutCodeTag(text) {
+	    text = text.replace(/\[CODE](<br \/>)?(.*?)\[\/CODE]/sig, whole => {
+	      const id = this._codeReplacement.length;
+	      this._codeReplacement.push(whole);
+	      return '####REPLACEMENT_CODE_' + id + '####';
+	    });
+	    return text;
+	  },
+	  recoverCodeTag(text) {
+	    this._codeReplacement.forEach((value, index) => {
+	      text = text.replace('####REPLACEMENT_CODE_' + index + '####', value);
+	    });
+	    if (this._sendReplacement.length > 0) {
+	      do {
+	        this._sendReplacement.forEach((value, index) => {
+	          text = text.replace('####REPLACEMENT_SEND_' + index + '####', value);
+	        });
+	      } while (text.includes('####REPLACEMENT_SEND_'));
+	    }
+	    return text;
+	  },
+	  recoverRecursionTag(text) {
+	    if (this._sendReplacement.length > 0) {
+	      do {
+	        this._sendReplacement.forEach((value, index) => {
+	          text = text.replace('####REPLACEMENT_SEND_' + index + '####', value);
+	        });
+	      } while (text.includes('####REPLACEMENT_SEND_'));
+	    }
+	    text = text.split('####REPLACEMENT_SP_').join('####REPLACEMENT_PUT_');
+	    if (this._putReplacement.length > 0) {
+	      do {
+	        this._putReplacement.forEach((value, index) => {
+	          text = text.replace('####REPLACEMENT_PUT_' + index + '####', value);
+	        });
+	      } while (text.includes('####REPLACEMENT_PUT_'));
+	    }
+	    return text;
+	  }
+	};
+
+	// const isDesktop = Type.isObject(window.BXDesktopSystem);
 	const settings = main_core.Extension.getSettings('im.v2.lib.parser');
-	const v2 = settings.get('v2') && !isDesktop;
+	const v2 = settings.get('v2');
 	const getCore = () => {
 	  return v2 ? BX.Messenger.v2.Application.Core : BX.Messenger.Embedding.Application.Core;
 	};
@@ -45,7 +140,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	};
 	const getBigSmileOption = () => {
 	  if (v2) {
-	    const settingName = BX.Messenger.v2.Const.Settings.dialog.bigSmiles;
+	    const settingName = BX.Messenger.v2.Const.Settings.message.bigSmiles;
 	    return getCore().getStore().getters['application/settings/get'](settingName);
 	  }
 	  return getCore().getStore().getters['application/getOption']('bigSmileEnable');
@@ -123,9 +218,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      attach,
 	      files
 	    } = config;
-	    if (main_core.Type.isArray(files) && files.length > 0) {
+	    if (main_core.Type.isArrayFilled(files) || files === true) {
 	      text = this.getTextForFile(text, files);
-	    } else if (attach === true || main_core.Type.isArray(attach) && attach.length > 0 || main_core.Type.isStringFilled(attach)) {
+	    } else if (attach === true || main_core.Type.isArrayFilled(attach) || main_core.Type.isStringFilled(attach)) {
 	      text = this.getTextForAttach(text, attach);
 	    }
 	    return text.trim();
@@ -158,27 +253,28 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    }
 	    return `[${main_core.Loc.getMessage('IM_PARSER_ICON_TYPE_FILE')}]`;
 	  },
-	  getTextForFile(text, files) {
+	  getTextForFile(rawText, files) {
+	    let preparedText = rawText;
 	    if (main_core.Type.isArray(files) && files.length > 0) {
 	      const [firstFile] = files;
-	      text = this.getIconTextForFile(text, firstFile);
+	      preparedText = this.getIconTextForFile(rawText, firstFile);
 	    } else if (files === true) {
-	      text = this.getIconTextForFileType(text, FileIconType.file);
+	      preparedText = this.getIconTextForFileType(rawText, FileIconType.file);
 	    }
-	    return text;
+	    return preparedText;
 	  },
 	  getTextForAttach(text, attach) {
 	    let attachDescription = '';
 	    if (main_core.Type.isArray(attach) && attach.length > 0) {
 	      const [firstAttach] = attach;
-	      if (main_core.Type.isStringFilled(firstAttach.DESCRIPTION)) {
-	        attachDescription = firstAttach.DESCRIPTION;
+	      if (main_core.Type.isStringFilled(firstAttach.description)) {
+	        attachDescription = firstAttach.description;
 	      }
 	    } else if (main_core.Type.isStringFilled(attach)) {
 	      attachDescription = attach;
 	    }
 	    if (main_core.Type.isStringFilled(attachDescription)) {
-	      if (attachDescription === AttachDescription.SKIP_MESSAGE) {
+	      if (attachDescription === AttachDescription.skipMessage) {
 	        attachDescription = '';
 	      } else {
 	        attachDescription = Parser.purifyText(attachDescription, {
@@ -275,6 +371,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    return text;
 	  },
 	  decodeQuote(text) {
+	    text = ParserRecursionPrevention.cutTags(text);
 	    text = text.replace(/-{54}(<br \/>(.*?)\[(.*?)]( #(?:chat\d+|\d+:\d+)\/\d+)?)?<br \/>(.*?)-{54}(<br \/>)?/gs, (whole, userBlock, userName, timeTag, contextTag, text) => {
 	      const skipUserBlock = !userName || !timeTag;
 	      if (skipUserBlock && !text)
@@ -311,6 +408,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 				`), quoteBaseClass, contextTag, userContainer, text);
 	      return layout.outerHTML;
 	    });
+	    text = ParserRecursionPrevention.recoverTags(text);
 	    return text;
 	  },
 	  purifyQuote(text, spaceLetter = ' ') {
@@ -348,15 +446,15 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 
 	const ParserImage = {
 	  decodeLink(text) {
-	    text = text.replace(/(.)?((https|http):\/\/(\S+)\.(jpg|jpeg|png|gif|webp)(\?\S+)?)/gi, function (whole, letter, url) {
-	      url = main_core.Text.decode(url);
-	      if (letter && !['>', ']'].includes(letter) || !url.match(/(\.(jpg|jpeg|png|gif|webp)\?|\.(jpg|jpeg|png|gif|webp)$)/i) || url.toLowerCase().indexOf("/docs/pub/") > 0 || url.toLowerCase().indexOf("logout=yes") > 0) {
+	    return text.replaceAll(/>((https|http):\/\/(\S+)\.(jpg|jpeg|png|gif|webp)(\?\S+[^<])?)<\/a>/gi, (whole, urlParsed) => {
+	      const url = main_core.Text.decode(urlParsed);
+	      if (!/(\.(jpg|jpeg|png|gif|webp)\?|\.(jpg|jpeg|png|gif|webp)$)/i.test(url) || url.toLowerCase().indexOf('/docs/pub/') > 0 || url.toLowerCase().indexOf('logout=yes') > 0) {
 	        return whole;
 	      }
 	      if (!getUtils().text.checkUrl(url)) {
 	        return whole;
 	      }
-	      return (letter ? letter : '') + main_core.Dom.create({
+	      const result = main_core.Dom.create({
 	        tag: 'span',
 	        attrs: {
 	          className: 'bx-im-message-image'
@@ -368,14 +466,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	            src: url
 	          },
 	          events: {
-	            error: () => {
-	              ParserImage._hideErrorImage(this);
+	            error() {
+	              ParserImage.hideErrorImage(this);
 	            }
 	          }
 	        })]
 	      }).outerHTML;
+	      return `>${result}</a>`;
 	    });
-	    return text;
 	  },
 	  purifyLink(text) {
 	    text = text.replace(/(.)?((https|http):\/\/(\S+)\.(jpg|jpeg|png|gif|webp)(\?\S+)?)/gi, function (whole, letter, url) {
@@ -387,14 +485,15 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    });
 	    return text;
 	  },
+	  // eslint-disable-next-line max-lines-per-function,sonarjs/cognitive-complexity
 	  decodeIcon(text) {
 	    let textElementSize = 0;
 	    const enableBigSmile = getBigSmileOption();
 	    if (enableBigSmile) {
-	      textElementSize = text.replace(/\[icon=([^\]]*)]/gi, '').trim().length;
+	      textElementSize = text.replaceAll(/\[icon=([^\]]*)]/gi, '').trim().length;
 	    }
-	    text = text.replace(/\[icon=([^\]]*)]/gi, whole => {
-	      let url = whole.match(/icon=(\S+[^\s.,> )\];'"!?])/i);
+	    return text.replaceAll(/\[icon=([^\]]*)]/gi, whole => {
+	      let url = whole.match(/icon=(\S+[^\s!"'),.;>?\]])/i);
 	      if (url && url[1]) {
 	        url = url[1];
 	      } else {
@@ -404,52 +503,52 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        return whole;
 	      }
 	      const attrs = {
-	        'src': url,
-	        'border': 0
+	        src: url,
+	        border: 0
 	      };
 	      const size = whole.match(/size=(\d+)/i);
 	      if (size && size[1]) {
-	        attrs['width'] = size[1];
-	        attrs['height'] = size[1];
+	        attrs.width = size[1];
+	        attrs.height = size[1];
 	      } else {
 	        const width = whole.match(/width=(\d+)/i);
 	        if (width && width[1]) {
-	          attrs['width'] = width[1];
+	          attrs.width = width[1];
 	        }
 	        const height = whole.match(/height=(\d+)/i);
 	        if (height && height[1]) {
-	          attrs['height'] = height[1];
+	          attrs.height = height[1];
 	        }
-	        if (attrs['width'] && !attrs['height']) {
-	          attrs['height'] = attrs['width'];
-	        } else if (attrs['height'] && !attrs['width']) {
-	          attrs['width'] = attrs['height'];
-	        } else if (attrs['height'] && attrs['width']) ; else {
-	          attrs['width'] = 20;
-	          attrs['height'] = 20;
+	        if (attrs.width && !attrs.height) {
+	          attrs.height = attrs.width;
+	        } else if (attrs.height && !attrs.width) {
+	          attrs.width = attrs.height;
+	        } else if (attrs.height && attrs.width) ; else {
+	          attrs.width = 20;
+	          attrs.height = 20;
 	        }
 	      }
-	      attrs['width'] = attrs['width'] > 100 ? 100 : attrs['width'];
-	      attrs['height'] = attrs['height'] > 100 ? 100 : attrs['height'];
-	      if (enableBigSmile && textElementSize === 0 && attrs['width'] === attrs['height'] && attrs['width'] === 20) {
-	        attrs['width'] = 40;
-	        attrs['height'] = 40;
+	      attrs.width = attrs.width > 100 ? 100 : attrs.width;
+	      attrs.height = attrs.height > 100 ? 100 : attrs.height;
+	      if (enableBigSmile && textElementSize === 0 && attrs.width === attrs.height && attrs.width === 20) {
+	        attrs.width = 40;
+	        attrs.height = 40;
 	      }
 	      let title = whole.match(/title=(.*[^\s\]])/i);
 	      if (title && title[1]) {
 	        title = title[1];
-	        if (title.indexOf('width=') > -1) {
-	          title = title.substr(0, title.indexOf('width='));
+	        if (title.includes('width=')) {
+	          title = title.slice(0, Math.max(0, title.indexOf('width=')));
 	        }
-	        if (title.indexOf('height=') > -1) {
-	          title = title.substr(0, title.indexOf('height='));
+	        if (title.includes('height=')) {
+	          title = title.slice(0, Math.max(0, title.indexOf('height=')));
 	        }
-	        if (title.indexOf('size=') > -1) {
-	          title = title.substr(0, title.indexOf('size='));
+	        if (title.includes('size=')) {
+	          title = title.slice(0, Math.max(0, title.indexOf('size=')));
 	        }
 	        if (title) {
-	          attrs['title'] = main_core.Text.decode(title).trim();
-	          attrs['alt'] = attrs['title'];
+	          attrs.title = main_core.Text.decode(title).trim();
+	          attrs.alt = attrs.title;
 	        }
 	      }
 	      return main_core.Dom.create({
@@ -460,35 +559,34 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        }
 	      }).outerHTML;
 	    });
-	    return text;
 	  },
 	  purifyIcon(text) {
-	    text = text.replace(/\[icon=([^\]]*)]/gi, whole => {
+	    return text.replaceAll(/\[icon=([^\]]*)]/gi, whole => {
 	      let title = whole.match(/title=(.*[^\s\]])/i);
 	      if (title && title[1]) {
 	        title = title[1];
-	        if (title.indexOf('width=') > -1) {
-	          title = title.substr(0, title.indexOf('width='));
+	        if (title.includes('width=')) {
+	          title = title.slice(0, Math.max(0, title.indexOf('width=')));
 	        }
-	        if (title.indexOf('height=') > -1) {
-	          title = title.substr(0, title.indexOf('height='));
+	        if (title.includes('height=')) {
+	          title = title.slice(0, Math.max(0, title.indexOf('height=')));
 	        }
-	        if (title.indexOf('size=') > -1) {
-	          title = title.substr(0, title.indexOf('size='));
+	        if (title.includes('size=')) {
+	          title = title.slice(0, Math.max(0, title.indexOf('size=')));
 	        }
 	        if (title) {
-	          title = '(' + title.trim() + ')';
+	          title = `(${title.trim()})`;
 	        }
 	      } else {
-	        title = '(' + main_core.Loc.getMessage('IM_PARSER_IMAGE_ICON') + ')';
+	        title = `(${main_core.Loc.getMessage('IM_PARSER_IMAGE_ICON')})`;
 	      }
 	      return title;
 	    });
-	    return text;
 	  },
-	  _hideErrorImage(element) {
-	    if (element.parentNode) {
-	      element.parentNode.innerHTML = '<a href="' + encodeURI(element.src) + '" target="_blank">' + element.src + '</a>';
+	  hideErrorImage(element) {
+	    const result = element;
+	    if (result && result.parentNode) {
+	      result.parentNode.innerHTML = `<a href="${encodeURI(element.src)}" target="_blank">${element.src}</a>`;
 	    }
 	  }
 	};
@@ -502,7 +600,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	const getSmileRatio = (text, pattern, config = RatioConfig) => {
 	  const replacedText = text.replaceAll(new RegExp(pattern, 'g'), '');
 	  const hasOnlySmiles = replacedText.trim().length === 0;
-	  const matchOnlySmiles = new RegExp(`(?:(?:${pattern})\\s*){3,}`);
+	  const matchOnlySmiles = new RegExp(`(?:(?:${pattern})\\s*){4,}`);
 	  if (hasOnlySmiles && !matchOnlySmiles.test(text)) {
 	    return config.Big;
 	  }
@@ -527,6 +625,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 				alt="${0}"
 				class="bx-smile bx-im-message-base__text_smile"
 				style="width: ${0}px; height: ${0}px;"
+				draggable="false"
 			/>
 		`), image, typing, definition, name != null ? name : typing, typing, width, height);
 	    return {
@@ -549,6 +648,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    var _smileManager$smileLi, _smileManager$smileLi2;
 	    const smileManager = getSmileManager().getInstance();
 	    const smiles = (_smileManager$smileLi = (_smileManager$smileLi2 = smileManager.smileList) == null ? void 0 : _smileManager$smileLi2.smiles) != null ? _smileManager$smileLi : [];
+	    if (smiles.length === 0) {
+	      return;
+	    }
 	    const sortedSmiles = [...smiles].sort((a, b) => {
 	      return b.typing.localeCompare(a.typing);
 	    });
@@ -708,27 +810,42 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	};
 
+	let _$2 = t => t,
+	  _t$2;
 	const ParserLines = {
 	  decode(text) {
-	    text = text.replace(/\[LIKE]/gi, `<span style="color: #004d00">${main_core.Loc.getMessage('IM_PARSER_LINES_RATING_LIKE')}</span>`);
-	    text = text.replace(/\[DISLIKE]/gi, `<span style="color: #cc0000">${main_core.Loc.getMessage('IM_PARSER_LINES_RATING_DISLIKE')}</span>`);
-	    text = text.replace(/\[RATING=([1-5])]/gi, (rating, group) => {
-	      rating = parseInt(group);
-	      return `<span class="bx-smile bx-im-smile-rating bx-im-smile-rating-'+rating+'">${main_core.Loc.getMessage('IM_PARSER_LINES_RATING')} - ${rating}</span>`;
+	    let result = text;
+	    result = result.replaceAll(/\[like]/gi, `<span class="bx-im-lines-vote-like" title="${main_core.Loc.getMessage('IM_PARSER_LINES_RATING_LIKE')}"></span>`);
+	    result = result.replaceAll(/\[dislike]/gi, `<span class="bx-im-lines-vote-dislike" title="${main_core.Loc.getMessage('IM_PARSER_LINES_RATING_DISLIKE')}"></span>`);
+	    result = result.replaceAll(/\[rating=([1-5])]/gi, (whole, rating) => {
+	      const tag = main_core.Tag.render(_t$2 || (_t$2 = _$2`
+				<span class="bx-im-lines-rating" title="${0} - ${0}">
+					<span class="bx-im-lines-rating-selected" style="width: ${0}%"></span>
+				</span>
+			`), main_core.Loc.getMessage('IM_PARSER_LINES_RATING'), rating, rating * 20);
+	      return tag.outerHTML;
 	    });
-	    return text;
+	    return result;
 	  },
 	  purify(text) {
-	    text = text.replace(/\[LIKE]/gi, main_core.Loc.getMessage('IM_PARSER_LINES_RATING_LIKE'));
-	    text = text.replace(/\[DISLIKE]/gi, main_core.Loc.getMessage('IM_PARSER_LINES_RATING_DISLIKE'));
-	    text = text.replace(/\[RATING=([1-5])]/gi, () => {
-	      return '[' + main_core.Loc.getMessage('IM_PARSER_LINES_RATING') + '] ';
+	    let result = text;
+	    result = result.replaceAll(/\[like]/gi, main_core.Loc.getMessage('IM_PARSER_LINES_RATING_LIKE'));
+	    result = result.replaceAll(/\[dislike]/gi, main_core.Loc.getMessage('IM_PARSER_LINES_RATING_DISLIKE'));
+	    result = result.replaceAll(/\[rating=([1-5])]/gi, () => {
+	      return `[${main_core.Loc.getMessage('IM_PARSER_LINES_RATING')}] `;
 	    });
-	    return text;
+	    return result;
 	  }
 	};
 
+	const {
+	  EventType: EventType$1
+	} = getConst();
 	const atomRegExpPart = '\\d{4}-\\d{2}-\\d{2}T[0-2]\\d:[0-5]\\d:[0-5]\\d[+-][0-2]\\d:[0-5]\\d';
+	const ActionType = {
+	  put: 'put',
+	  send: 'send'
+	};
 	const ParserAction = {
 	  decodePut(text) {
 	    text = text.replace(/\[PUT(?:=(?:.+?))?](?:.+?)?\[\/PUT]/gi, match => {
@@ -817,46 +934,80 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        text: data
 	      })]
 	    }).outerHTML;
-	  }
-	};
-
-	const ParserCall = {
-	  decode(text) {
-	    text = text.replace(/\[CALL(?:=([-+\d()./# ]+))?](.+?)\[\/CALL]/gi, (whole, number, text) => {
-	      if (!text) {
-	        return whole;
-	      }
-	      if (!number) {
-	        if (text.match(/^([-+\d()./# ]+)$/)) {
-	          number = text;
-	        } else {
-	          return whole;
-	        }
-	      }
-	      text = main_core.Text.decode(text);
-	      return main_core.Dom.create({
-	        tag: 'span',
-	        attrs: {
-	          className: 'bx-im-mention',
-	          'data-type': 'CALL',
-	          'data-value': number
-	        },
-	        text
-	      }).outerHTML;
-	    });
-	    text = text.replace(/\[PCH=([0-9]+)](.*?)\[\/PCH]/gi, (whole, historyId, text) => text);
-	    return text;
 	  },
-	  purify(text) {
-	    text = text.replace(/\[CALL(?:=([-+\d()./# ]+))?](.+?)\[\/CALL]/gi, (whole, number, text) => text ? text : number);
-	    text = text.replace(/\[PCH=([0-9]+)](.*?)\[\/PCH]/gi, (whole, historyId, text) => text);
-	    return text;
+	  executeClickEvent(event) {
+	    if (!main_core.Dom.hasClass(event.target, 'bx-im-message-command')) {
+	      return;
+	    }
+	    const element = event.target;
+	    if (element.dataset.entity === ActionType.put) {
+	      const {
+	        innerText: textToInsert = ''
+	      } = element.parentElement.querySelector('.bx-im-message-command-data');
+	      if (!textToInsert) {
+	        return;
+	      }
+	      main_core_events.EventEmitter.emit(EventType$1.textarea.insertText, {
+	        text: textToInsert
+	      });
+	    } else if (element.dataset.entity === ActionType.send) {
+	      const {
+	        innerText: textToSend = ''
+	      } = element.parentElement.querySelector('.bx-im-message-command-data');
+	      if (!textToSend) {
+	        return;
+	      }
+	      main_core_events.EventEmitter.emit(EventType$1.textarea.sendMessage, {
+	        text: textToSend
+	      });
+	    }
 	  }
 	};
 
 	const {
-	  EventType: EventType$1,
 	  MessageMentionType
+	} = getConst();
+	const ParserCall = {
+	  decode(text) {
+	    let result = text;
+	    result = result.replaceAll(/\[call(?:=([\d #()+./-]+))?](.+?)\[\/call]/gi, (whole, number, text) => {
+	      if (!text) {
+	        return whole;
+	      }
+	      let destination = '';
+	      if (number) {
+	        destination = number;
+	      } else if (getUtils.call.isNumber(text)) {
+	        destination = text;
+	      } else {
+	        return whole;
+	      }
+	      return main_core.Dom.create({
+	        tag: 'span',
+	        attrs: {
+	          className: 'bx-im-mention',
+	          'data-type': MessageMentionType.call,
+	          'data-destination': destination
+	        },
+	        text: main_core.Text.decode(text)
+	      }).outerHTML;
+	    });
+	    result = result.replaceAll(/\[pch=(\d+)](.*?)\[\/pch]/gi, (whole, historyId, text) => '');
+	    return result;
+	  },
+	  purify(text) {
+	    let result = text;
+	    result = result.replaceAll(/\[call(?:=([\d #()+./-]+))?](.+?)\[\/call]/gi, (whole, number, text) => {
+	      return text || number;
+	    });
+	    result = result.replaceAll(/\[pch=(\d+)](.*?)\[\/pch]/gi, (whole, historyId, text) => text);
+	    return result;
+	  }
+	};
+
+	const {
+	  EventType: EventType$2,
+	  MessageMentionType: MessageMentionType$1
 	} = getConst();
 	const ParserMention = {
 	  decode(text) {
@@ -876,33 +1027,37 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      if (!userName) {
 	        userName = `User ${userId}`;
 	      }
+	      let className = 'bx-im-mention';
+	      if (getCore().getUserId() === userId) {
+	        className += ' --highlight';
+	      }
 	      return main_core.Dom.create({
 	        tag: 'span',
 	        attrs: {
-	          className: 'bx-im-mention',
-	          'data-type': 'USER',
+	          className,
+	          'data-type': MessageMentionType$1.user,
 	          'data-value': userId
 	        },
 	        text: userName
 	      }).outerHTML;
 	    });
-	    text = text.replace(/\[chat=(imol\|)?(\d+)](.*?)\[\/chat]/gi, (whole, openlines, chatId, chatName) => {
-	      chatId = Number.parseInt(chatId, 10);
-	      if (!main_core.Type.isNumber(chatId) || chatId === 0 || openlines) {
-	        return chatName;
+	    text = text.replace(/\[chat=(imol\|)?(\d+)](.*?)\[\/chat]/gi, (whole, isLines, chatId, chatNameParsed) => {
+	      if (chatId === 0) {
+	        return chatNameParsed;
 	      }
+	      let chatName = chatNameParsed;
 	      if (chatName) {
 	        chatName = main_core.Text.decode(chatName);
 	      } else {
-	        const dialog = getCore().store.getters['dialogues/get']('chat' + chatId);
-	        chatName = dialog ? dialog.name : 'Chat ' + chatId;
+	        const dialog = getCore().store.getters['chats/get'](`chat${chatId}`);
+	        chatName = dialog ? dialog.name : `Chat ${chatId}`;
 	      }
 	      return main_core.Dom.create({
 	        tag: 'span',
 	        attrs: {
 	          className: 'bx-im-mention',
-	          'data-type': 'CHAT',
-	          'data-value': 'chat' + chatId
+	          'data-type': isLines ? MessageMentionType$1.lines : MessageMentionType$1.chat,
+	          'data-value': isLines ? `imol|${chatId}` : `chat${chatId}`
 	        },
 	        text: chatName
 	      }).outerHTML;
@@ -936,7 +1091,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        tag: 'span',
 	        attrs: {
 	          className: 'bx-im-mention',
-	          'data-type': 'CONTEXT',
+	          'data-type': MessageMentionType$1.context,
 	          'data-dialog-id': dialogId,
 	          'data-message-id': messageId,
 	          title
@@ -968,14 +1123,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    text = text.replace(/\[CHAT=(imol\|)?(\d+)](.*?)\[\/CHAT]/gi, (whole, openlines, chatId, chatName) => {
 	      chatId = Number.parseInt(chatId, 10);
 	      if (!chatName) {
-	        const dialog = getCore().store.getters['dialogues/get']('chat' + chatId);
+	        const dialog = getCore().store.getters['chats/get']('chat' + chatId);
 	        chatName = dialog ? dialog.name : 'Chat ' + chatId;
 	      }
 	      return chatName;
 	    });
 	    text = text.replace(/\[context=(chat\d+|\d+:\d+)\/(\d+)](.*?)\[\/context]/gis, (whole, dialogId, messageId, text) => {
 	      if (!text) {
-	        const dialog = getCore().store.getters['dialogues/get'](dialogId);
+	        const dialog = getCore().store.getters['chats/get'](dialogId);
 	        text = dialog ? dialog.name : 'Dialog ' + dialogId;
 	      }
 	      return text;
@@ -986,16 +1141,24 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    if (!main_core.Dom.hasClass(event.target, 'bx-im-mention')) {
 	      return;
 	    }
-	    if (event.target.dataset.type === MessageMentionType.user || event.target.dataset.type === MessageMentionType.chat) {
-	      main_core_events.EventEmitter.emit(EventType$1.mention.openChatInfo, {
-	        event,
-	        dialogId: event.target.dataset.value
-	      });
-	    } else if (event.target.dataset.type === MessageMentionType.context) {
-	      main_core_events.EventEmitter.emit(EventType$1.dialog.goToMessageContext, {
+	    if (event.target.dataset.type === MessageMentionType$1.user || event.target.dataset.type === MessageMentionType$1.chat) {
+	      void im_public.Messenger.openChat(event.target.dataset.value);
+	    } else if (event.target.dataset.type === MessageMentionType$1.lines) {
+	      const dialogId = event.target.dataset.value;
+	      if (getUtils().dialog.isLinesHistoryId(dialogId)) {
+	        void im_public.Messenger.openLinesHistory(dialogId);
+	      } else if (getUtils().dialog.isLinesExternalId(dialogId)) {
+	        void im_public.Messenger.openLines(dialogId);
+	      }
+	    } else if (event.target.dataset.type === MessageMentionType$1.context) {
+	      main_core_events.EventEmitter.emit(EventType$2.dialog.goToMessageContext, {
 	        messageId: Number.parseInt(event.target.dataset.messageId, 10),
 	        dialogId: event.target.dataset.dialogId.toString()
 	      });
+	    } else if (event.target.dataset.type === MessageMentionType$1.call) {
+	      if (getUtils().call.isNumber(event.target.dataset.destination)) {
+	        void im_public.Messenger.startPhoneCall(event.target.dataset.destination);
+	      }
 	    }
 	  }
 	};
@@ -1046,124 +1209,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	};
 
-	const ParserRecursionPrevention = {
-	  _startTagReplacement: [],
-	  _putReplacement: [],
-	  _sendReplacement: [],
-	  _codeReplacement: [],
-	  clean() {
-	    this._startTagReplacement = [];
-	    this._putReplacement = [];
-	    this._sendReplacement = [];
-	    this._codeReplacement = [];
-	  },
-	  cutStartTag(text) {
-	    text = text.replace(/\[(.+?)]/gi, tag => {
-	      if (tag.startsWith('/')) {
-	        return tag;
-	      }
-	      const id = this._startTagReplacement.length;
-	      this._startTagReplacement.push(tag);
-	      return '####REPLACEMENT_TAG_' + id + '####';
-	    });
-	    return text;
-	  },
-	  recoverStartTag(text) {
-	    this._startTagReplacement.forEach((tag, index) => {
-	      text = text.replace('####REPLACEMENT_TAG_' + index + '####', tag);
-	    });
-	    return text;
-	  },
-	  cutPutTag(text) {
-	    text = text.replace(/\[PUT(?:=(.+?))?](.+?)?\[\/PUT]/gi, whole => {
-	      const id = this._putReplacement.length;
-	      this._putReplacement.push(whole);
-	      return '####REPLACEMENT_PUT_' + id + '####';
-	    });
-	    return text;
-	  },
-	  recoverPutTag(text) {
-	    this._putReplacement.forEach((value, index) => {
-	      text = text.replace('####REPLACEMENT_PUT_' + index + '####', value);
-	    });
-	    return text;
-	  },
-	  cutSendTag(text) {
-	    text = text.replace(/\[SEND(?:=(.+?))?](.+?)?\[\/SEND]/gi, whole => {
-	      const id = this._sendReplacement.length;
-	      this._sendReplacement.push(whole);
-	      return '####REPLACEMENT_SEND_' + id + '####';
-	    });
-	    return text;
-	  },
-	  recoverSendTag(text) {
-	    this._sendReplacement.forEach((value, index) => {
-	      text = text.replace('####REPLACEMENT_SEND_' + index + '####', value);
-	    });
-	    return text;
-	  },
-	  cutCodeTag(text) {
-	    text = text.replace(/\[CODE](<br \/>)?(.*?)\[\/CODE]/sig, whole => {
-	      const id = this._codeReplacement.length;
-	      this._codeReplacement.push(whole);
-	      return '####REPLACEMENT_CODE_' + id + '####';
-	    });
-	    return text;
-	  },
-	  recoverCodeTag(text) {
-	    this._codeReplacement.forEach((value, index) => {
-	      text = text.replace('####REPLACEMENT_CODE_' + index + '####', value);
-	    });
-	    if (this._sendReplacement.length > 0) {
-	      do {
-	        this._sendReplacement.forEach((value, index) => {
-	          text = text.replace('####REPLACEMENT_SEND_' + index + '####', value);
-	        });
-	      } while (text.includes('####REPLACEMENT_SEND_'));
-	    }
-	    return text;
-	  },
-	  recoverRecursionTag(text) {
-	    if (this._sendReplacement.length > 0) {
-	      do {
-	        this._sendReplacement.forEach((value, index) => {
-	          text = text.replace('####REPLACEMENT_SEND_' + index + '####', value);
-	        });
-	      } while (text.includes('####REPLACEMENT_SEND_'));
-	    }
-	    text = text.split('####REPLACEMENT_SP_').join('####REPLACEMENT_PUT_');
-	    if (this._putReplacement.length > 0) {
-	      do {
-	        this._putReplacement.forEach((value, index) => {
-	          text = text.replace('####REPLACEMENT_PUT_' + index + '####', value);
-	        });
-	      } while (text.includes('####REPLACEMENT_PUT_'));
-	    }
-	    return text;
-	  }
-	};
-
-	const ParserReplace = {
-	  decode(text, replace = []) {
-	    if (replace.length === 0) {
-	      return text;
-	    }
-	    const replacedText = replace.reduce((replacedText, item) => {
-	      return this.replaceDate(replacedText, item);
-	    }, text);
-	    return replacedText;
-	  },
-	  replaceDate(text, item) {
-	    const originalText = text.substring(item.start, item.end);
-	    if (originalText !== item.text) {
-	      return text;
-	    }
-	    const left = text.substring(0, item.start);
-	    const right = text.substring(item.end);
-	    return left + '[DATE=' + item.value + ']' + originalText + '[/DATE]' + right;
-	  }
-	};
-
 	const {
 	  FileIconType: FileIconType$1
 	} = getConst();
@@ -1199,7 +1244,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    var _notification$params$;
 	    return this.decode({
 	      text: notification.text,
-	      attach: (_notification$params$ = notification.params.ATTACH) != null ? _notification$params$ : false,
+	      attach: (_notification$params$ = notification.params.attach) != null ? _notification$params$ : false,
 	      replaces: notification.replaces,
 	      showIconIfEmptyText: false,
 	      showImageFromLink: false,
@@ -1216,12 +1261,18 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      text
 	    });
 	  },
+	  decodeSmile(text, options) {
+	    return ParserSmile.decodeSmile(text, options);
+	  },
 	  decodeSmileForLegacyCore(text, options) {
-	    options.ratioConfig = Object.freeze({
+	    const legacyConfig = {
+	      ...options
+	    };
+	    legacyConfig.ratioConfig = Object.freeze({
 	      Default: 1,
 	      Big: 1.6
 	    });
-	    return ParserSmile.decodeSmile(text, options);
+	    return ParserSmile.decodeSmile(text, legacyConfig);
 	  },
 	  decode(config) {
 	    if (!main_core.Type.isPlainObject(config)) {
@@ -1234,7 +1285,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    const {
 	      attach = false,
 	      files = false,
-	      replaces = [],
 	      removeLinks = false,
 	      showIconIfEmptyText = true,
 	      showImageFromLink = true,
@@ -1256,7 +1306,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      }
 	      return text.trim();
 	    }
-	    text = ParserReplace.decode(text, replaces);
 	    text = main_core.Text.encode(text.trim());
 	    text = ParserCommon.decodeNewLine(text);
 	    text = ParserCommon.decodeTabulation(text);
@@ -1265,8 +1314,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    text = ParserRecursionPrevention.cutCodeTag(text);
 	    text = ParserSmile.decodeSmile(text);
 	    text = ParserSlashCommand.decode(text);
-	    text = ParserQuote.decodeArrowQuote(text);
-	    text = ParserQuote.decodeQuote(text);
 	    text = ParserUrl.decode(text, {
 	      urlTarget,
 	      removeLinks
@@ -1281,8 +1328,8 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    }
 	    text = ParserDisk.decode(text);
 	    text = ParserAction.decodeDate(text);
-	    text = ParserRecursionPrevention.cutStartTag(text);
-	    text = ParserRecursionPrevention.recoverStartTag(text);
+	    text = ParserQuote.decodeArrowQuote(text);
+	    text = ParserQuote.decodeQuote(text);
 	    text = ParserRecursionPrevention.recoverSendTag(text);
 	    text = ParserAction.decodeSend(text);
 	    text = ParserRecursionPrevention.recoverPutTag(text);
@@ -1307,7 +1354,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    const messageFiles = getCore().store.getters['messages/getMessageFiles'](notification.id);
 	    return this.purify({
 	      text: notification.text,
-	      attach: (_notification$params$2 = notification.params.ATTACH) != null ? _notification$params$2 : false,
+	      attach: (_notification$params$2 = notification.params.attach) != null ? _notification$params$2 : false,
 	      files: messageFiles
 	    });
 	  },
@@ -1339,8 +1386,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    const {
 	      attach = false,
 	      files = false,
-	      replaces = [],
-	      showIconIfEmptyText = true,
 	      showPhraseMessageWasDeleted = true
 	    } = config;
 	    if (!main_core.Type.isString(text)) {
@@ -1366,9 +1411,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    text = ParserFont.purify(text);
 	    text = ParserLines.purify(text);
 	    text = ParserCall.purify(text);
+	    text = ParserUrl.purify(text);
 	    text = ParserImage.purifyLink(text);
 	    text = ParserImage.purifyIcon(text);
-	    text = ParserUrl.purify(text);
 	    text = ParserDisk.purify(text);
 	    text = ParserCommon.purifyNewLine(text);
 	    text = ParserIcon.addIconToShortText({
@@ -1383,14 +1428,12 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    }
 	    return text.trim();
 	  },
-	  prepareQuote(message) {
+	  prepareQuote(message, quoteText = '') {
 	    const {
 	      id,
 	      attach
 	    } = message;
-	    let {
-	      text
-	    } = message;
+	    let text = quoteText === '' ? message.text : quoteText;
 	    const files = getCore().store.getters['messages/getMessageFiles'](id);
 	    text = main_core.Text.encode(text.trim());
 	    text = ParserMention.purify(text);
@@ -1402,16 +1445,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    text = ParserQuote.purifyCode(text, ' ');
 	    text = ParserQuote.purifyQuote(text, ' ');
 	    text = ParserQuote.purifyArrowQuote(text, ' ');
-	    text = ParserIcon.addIconToShortText({
-	      text,
-	      attach,
-	      files
-	    });
-	    if (text.length > 0) {
-	      text = main_core.Text.decode(text);
-	    } else {
-	      text = main_core.Loc.getMessage('IM_PARSER_MESSAGE_DELETED');
+	    if (quoteText === '') {
+	      text = ParserIcon.addIconToShortText({
+	        text,
+	        attach,
+	        files
+	      });
 	    }
+	    text = text.length > 0 ? main_core.Text.decode(text) : main_core.Loc.getMessage('IM_PARSER_MESSAGE_DELETED');
 	    return text.trim();
 	  },
 	  prepareEdit(message) {
@@ -1422,17 +1463,20 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    return text.trim();
 	  },
 	  prepareCopy(message) {
-	    const {
-	      id
-	    } = message;
 	    let {
 	      text
+	    } = message;
+	    text = ParserUrl.removeSimpleUrlTag(text);
+	    return text.trim();
+	  },
+	  prepareCopyFile(message) {
+	    const {
+	      id
 	    } = message;
 	    const files = getCore().store.getters['messages/getMessageFiles'](id).map(file => {
 	      return `[DISK=${file.id}]\n`;
 	    });
-	    text = files.join('\n') + text;
-	    return text.trim();
+	    return files.join('\n').trim();
 	  },
 	  prepareConfigForRecent(recentMessage) {
 	    let files = false;
@@ -1457,10 +1501,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  executeClickEvent(event) {
 	    ParserMention.executeClickEvent(event);
 	    ParserQuote.executeClickEvent(event);
+	    ParserAction.executeClickEvent(event);
+	  },
+	  getContextCodeFromForwardId(forwardId) {
+	    return ParserUtils.getFinalContextTag(forwardId);
 	  }
 	};
 
 	exports.Parser = Parser;
 
-}((this.BX.Messenger.v2.Lib = this.BX.Messenger.v2.Lib || {}),BX.Event,BX));
+}((this.BX.Messenger.v2.Lib = this.BX.Messenger.v2.Lib || {}),BX.Event,BX.Messenger.v2.Lib,BX));
 //# sourceMappingURL=parser.bundle.js.map

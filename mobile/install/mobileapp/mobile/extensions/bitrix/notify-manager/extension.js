@@ -2,7 +2,6 @@
  * @module notify-manager
  */
 jn.define('notify-manager', (require, exports, module) => {
-
 	const { Haptics } = require('haptics');
 
 	let loadingIndicatorIsShown = false;
@@ -37,10 +36,9 @@ jn.define('notify-manager', (require, exports, module) => {
 			errors = Array.isArray(errors) ? errors : [];
 			errors.forEach((error) => errorsSet.add(error.message));
 
-			const text =
-				errorsSet.size
-					? Array.from(errorsSet).join('\n')
-					: BX.message('DETAIL_CARD_DEFAULT_ERROR2')
+			const text = errorsSet.size > 0
+				? [...errorsSet].join('\n')
+				: BX.message('DETAIL_CARD_DEFAULT_ERROR2')
 			;
 
 			if (loadingIndicatorIsShown)
@@ -63,30 +61,34 @@ jn.define('notify-manager', (require, exports, module) => {
 
 		static showLoadingIndicator(dismissKeyboard = true)
 		{
-			const showIndicator = () => {
-				if (loadingTimeout !== null)
+			return new Promise((resolve) => {
+				const showIndicator = () => {
+					if (loadingTimeout !== null)
+					{
+						clearTimeout(loadingTimeout);
+						loadingTimeout = null;
+					}
+
+					if (!loadingIndicatorIsShown)
+					{
+						Notify.showIndicatorLoading().then(() => {
+							resolve(true);
+						});
+					}
+
+					loadingIndicatorIsShown = true;
+				};
+
+				if (dismissKeyboard)
 				{
-					clearTimeout(loadingTimeout);
-					loadingTimeout = null;
+					Keyboard.dismiss();
+					loadingTimeout = setTimeout(() => showIndicator(), 50);
 				}
-
-				if (!loadingIndicatorIsShown)
+				else
 				{
-					Notify.showIndicatorLoading();
+					showIndicator();
 				}
-
-				loadingIndicatorIsShown = true;
-			};
-
-			if (dismissKeyboard)
-			{
-				Keyboard.dismiss();
-				loadingTimeout = setTimeout(() => showIndicator(), 50);
-			}
-			else
-			{
-				showIndicator();
-			}
+			});
 		}
 
 		static hideLoadingIndicatorWithoutFallback()

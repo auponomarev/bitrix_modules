@@ -2,19 +2,42 @@
 if(!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true)die();
 
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\UI\Extension;
 use Bitrix\Tasks\Helper\RestrictionUrl;
 use Bitrix\Tasks\Integration\Bitrix24;
 use Bitrix\Tasks\Integration\Bitrix24\User;
+use Bitrix\Tasks\Integration\CRM\Fields\EmulationData;
+use Bitrix\Tasks\Integration\CRM\Fields\Emulator;
+use Bitrix\Tasks\Internals\Task\Priority;
+use Bitrix\Tasks\Internals\Task\TimeUnitType;
 use Bitrix\Tasks\Manager;
+use Bitrix\Tasks\Replicator\Template\Replicators\RegularTaskReplicator;
 use Bitrix\Tasks\Util;
 use Bitrix\Tasks\Util\Type;
 use Bitrix\Tasks\Component\Task\TasksTaskFormState;
 
 Loc::loadMessages(__FILE__);
 
-\Bitrix\Main\UI\Extension::load(["ui.design-tokens", "ui.fonts.opensans", "ui.alerts"]);
+Extension::load([
+	'main.core',
+	'ui.design-tokens',
+	'ui.fonts.opensans',
+	'ui.alerts',
+	'ai.picker',
+]);
 
 $APPLICATION->SetAdditionalCSS("/bitrix/js/intranet/intranet-common.css");
+
+/** intranet-settings-support */
+if (($arResult['IS_TOOL_AVAILABLE'] ?? null) === false)
+{
+	$APPLICATION->IncludeComponent("bitrix:tasks.error", "limit", [
+		'LIMIT_CODE' => RestrictionUrl::TASK_LIMIT_OFF_SLIDER_URL,
+		'SOURCE' => 'task',
+	]);
+
+	return;
+}
 
 if (!empty($arResult['ERROR']))
 {
@@ -221,11 +244,11 @@ if ($taskLimitExceeded || $taskRecurrentRestrict)
 		<div class="task-info">
 			<div class="task-info-panel">
 				<div class="task-info-panel-important">
-					<input data-bx-id="task-edit-priority-cb" type="checkbox" id="tasks-task-priority-cb" <?=($taskData['PRIORITY'] == CTasks::PRIORITY_HIGH ? 'checked' : '')?>>
+					<input data-bx-id="task-edit-priority-cb" type="checkbox" id="tasks-task-priority-cb" <?=((int)$taskData['PRIORITY'] === Priority::HIGH ? 'checked' : '')?>>
 					<label for="tasks-task-priority-cb"><?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_PRIORITY')?></label>
 					<input data-bx-id="task-edit-priority" type="hidden" name="<?=htmlspecialcharsbx($inputPrefix)?>[PRIORITY]" value="<?=intval($taskData['PRIORITY'])?>" />
 				</div>
-				<div class="task-info-panel-title"><input data-bx-id="task-edit-title" type="text" name="<?=htmlspecialcharsbx($inputPrefix)?>[TITLE]" value="<?=htmlspecialcharsbx($taskData['TITLE'] ?? null)?>" placeholder="<?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_WHAT_TO_BE_DONE')?>"/></div>
+				<div class="task-info-panel-title"><input data-bx-id="task-edit-title" type="text" name="<?=htmlspecialcharsbx($inputPrefix)?>[TITLE]" value="<?=htmlspecialcharsbx($taskData['TITLE'] ?? null)?>" placeholder="<?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_WHAT_TO_BE_DONE_MSGVER_1')?>"/></div>
 			</div>
 			<div data-bx-id="task-edit-editor-container" class="task-info-editor">
 				<?php $APPLICATION->IncludeComponent(
@@ -496,7 +519,7 @@ if ($taskLimitExceeded || $taskRecurrentRestrict)
 										<input data-bx-id="dateplanmanager-duration" type="text" class="task-options-inp" value="">
 									</span>
 									<span class="task-dashed-link">
-										<span data-bx-id="dateplanmanager-unit-setter" data-unit="<?=CTasks::TIME_UNIT_TYPE_DAY?>" class="task-dashed-link-inner"><?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_OF_DAYS')?></span><span data-bx-id="dateplanmanager-unit-setter" data-unit="<?=CTasks::TIME_UNIT_TYPE_HOUR?>" class="task-dashed-link-inner"><?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_OF_HOURS')?></span><span data-bx-id="dateplanmanager-unit-setter" data-unit="<?=CTasks::TIME_UNIT_TYPE_MINUTE?>" class="task-dashed-link-inner"><?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_OF_MINUTES')?></span>
+										<span data-bx-id="dateplanmanager-unit-setter" data-unit="<?= TimeUnitType::DAY ?>" class="task-dashed-link-inner"><?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_OF_DAYS')?></span><span data-bx-id="dateplanmanager-unit-setter" data-unit="<?= TimeUnitType::HOUR ?>" class="task-dashed-link-inner"><?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_OF_HOURS')?></span><span data-bx-id="dateplanmanager-unit-setter" data-unit="<?= TimeUnitType::MINUTE ?>" class="task-dashed-link-inner"><?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_OF_MINUTES')?></span>
 										<input data-bx-id="dateplanmanager-duration-type-value" type="hidden" name="<?=htmlspecialcharsbx($inputPrefix)?>[DURATION_TYPE]" value="<?=htmlspecialcharsbx($taskData['DURATION_TYPE'])?>" <?=$disabled?> />
 									</span>
 									<div class="tasks-disabling-overlay-form" title="<?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_PLAN_DATES_DISABLED')?>"></div>
@@ -728,7 +751,35 @@ if ($taskLimitExceeded || $taskRecurrentRestrict)
 									);?>
 								</div>
 							</div>
+						<?php elseif($blockName === 'REGULAR' && RegularTaskReplicator::isEnabled()):?>
+							<?php
+							$isRegular = $taskData['IS_REGULAR'] === 'Y';
+							$checked = $isRegular ? 'checked' : '';
+							?>
 
+							<div data-bx-id="task-edit-regular-block" class="task-options-item-open-inner">
+								<label class="task-field-label task-field-label-repeat-regular <?= $taskLimitExceeded || $taskRecurrentRestrict ? 'tasks-btn-restricted' : ''?>">
+									<input data-bx-id="task-edit-flag task-edit-flag-regular" data-target="regular" data-flag-name="REGULAR" class="task-options-checkbox" type="checkbox" <?= $checked?>><?= '(NEW) ' . Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_MAKE_REPLICABLE')?>
+									<input data-bx-id="task-edit-regular" type="hidden" name="<?=htmlspecialcharsbx($inputPrefix)?>[IS_REGULAR]" value="<?= $taskData['IS_REGULAR']?>" />
+								</label>
+								<div data-bx-id="task-edit-regular-panel" class="task-options-repeat-regular task-openable-block<?=($isRegular ? '' : ' invisible')?>">
+
+									<?php
+									$APPLICATION->IncludeComponent(
+										'bitrix:tasks.widget.replication',
+										'regular',
+										[
+											'TEMPLATE_CONTROLLER_ID' => 'regular-' . $templateId,
+											'INPUT_PREFIX' => $inputPrefix . '[REGULAR_PARAMS]',
+											'COMPANY_WORKTIME' => $arResult['AUX_DATA']['COMPANY_WORKTIME'],
+											'DATA' => ($arResult['DATA']['TASK'][$blockName]['REGULAR_PARAMS'] ?? null),
+											'TEMPLATE_CREATED_BY' => null,
+										],
+										false,
+										["HIDE_ICONS" => "Y", "ACTIVE_COMPONENT" => "Y"]
+									); ?>
+								</div>
+							</div>
 						<?php elseif($blockName == Manager\Task::SE_PREFIX.'TEMPLATE'):?>
 
 							<?php
@@ -741,7 +792,7 @@ if ($taskLimitExceeded || $taskRecurrentRestrict)
 							$replicationOn = ($taskData['REPLICATE'] === 'Y');
 							?>
 
-							<div data-bx-id="task-edit-replication-block" class="task-options-item-open-inner <?/*=($replicationOn ? '' : 'mode-replication-off')*/?>">
+							<div data-bx-id="task-edit-replication-block" class="task-options-item-open-inner">
 								<label class="task-field-label task-field-label-repeat <?= $taskLimitExceeded || $taskRecurrentRestrict ? 'tasks-btn-restricted' : ''?>">
 									<input data-bx-id="task-edit-flag task-edit-flag-replication" data-target="replication" data-flag-name="REPLICATE" class="task-options-checkbox" type="checkbox" <?=($taskData['REPLICATE'] == 'Y' ? 'checked' : '')?>><?=Loc::getMessage('TASKS_TASK_COMPONENT_TEMPLATE_MAKE_REPLICABLE')?>
 									<input data-bx-id="task-edit-replication" type="hidden" name="<?=htmlspecialcharsbx($inputPrefix)?>[REPLICATE]" value="<?=htmlspecialcharsbx($taskData['REPLICATE'])?>" />
@@ -810,8 +861,16 @@ if ($taskLimitExceeded || $taskRecurrentRestrict)
 								<?php
 								$crmUf = $arResult['AUX_DATA']["USER_FIELDS"][$blockName] ?? [];
 								$crmUf['FIELD_NAME'] = $inputPrefix.'['.$blockName.']';
+								$handler = $editMode ? 'BX.Tasks.handleEditCrmDialog' : 'BX.Tasks.handleAddCrmDialog';
+								$crmParameters['CALLBACK_BEFORE'] = [
+									'openDialog' => $handler,
+									'context' => 'BX.Tasks',
+								];
 
-								\Bitrix\Tasks\Util\UserField\UI::showEdit($crmUf);
+								\Bitrix\Tasks\Util\UserField\UI::showEdit($crmUf, $crmParameters);
+
+								$emulator = new Emulator(new EmulationData($crmUf));
+								$emulator->render();
 								?>
 							</div>
 
@@ -1165,7 +1224,8 @@ if ($taskLimitExceeded || $taskRecurrentRestrict)
 		),
 		'componentId' => $arResult['COMPONENT_DATA']['ID'],
 		'doInit' => !$arResult['TEMPLATE_DATA']['SHOW_SUCCESS_MESSAGE'],
-		'cancelActionIsEvent' => !!$arParams['CANCEL_ACTION_IS_EVENT'],
+		'cancelActionIsEvent' => (bool)$arParams['CANCEL_ACTION_IS_EVENT'],
+		'canUseAIChecklistButton' => $arResult['CAN_USE_AI_CHECKLIST_BUTTON'] ?? true,
 	))?>;
 
 	<?php /*

@@ -82,6 +82,7 @@ class Template
 		$disabled = $params['disabled'] ?? false;
 		$readonly = $params['readonly'] ?? false;
 		$needWrapper = $params['needWrapper'] ?? false;
+		$buttons = $params['buttons'] ?? [];
 
 		$isTitle = (bool)($params['title'] ?? null);
 		$title = $field->getLabel();
@@ -143,6 +144,11 @@ class Template
 						<span class="ui-hint-icon"></span>
 					</span>
 				<?php endif; ?>
+			<?php endif; ?>
+			<?php if (in_array('copilot', $buttons, true)): ?>
+				<div class="landing-editable-field-buttons">
+					<div class="landing-editable-field-button --copilot"></div>
+				</div>
 			<?php endif; ?>
 		</<?= $fieldWrapperTag ?>>
 		<?php if ($help && $isHelpLink) : ?>
@@ -243,9 +249,9 @@ class Template
 	{
 		$imgId = $field->getValue();
 		$code = mb_strtolower($field->getCode());
-		// $code = preg_replace('/[^a-z]+/', '', $code);
 		$codeWrapper = $code . '_form';
-		$codeEdit = (isset($params['imgEdit']) && $params['imgEdit']) ? $code . '_edit' : null;
+		$codeHoverEdit = (isset($params['imgEdit']) && $params['imgEdit']) ? $code . '_edit' : null;
+		$codeHoverEditWrapper = $codeHoverEdit ? ($codeHoverEdit . '_wrapper') : null;
 		?>
 		<script type="text/javascript">
 			BX.ready(function()
@@ -259,29 +265,32 @@ class Template
 						id: '<?= $this->getFieldId($code, true) ?>',
 						disableLink: true,
                         disableAltField: true,
-						compactMode: true,
-                        allowClear: true
+						compactMode: <?= $codeHoverEdit ? 'false' : 'true' ?>,
+                        allowClear: true,
+						isAiImageAvailable: <?= \CUtil::PhpToJSObject($this->result['AI_IMAGE_AVAILABLE']) ?>,
+						isAiImageActive: <?= \CUtil::PhpToJSObject($this->result['AI_IMAGE_ACTIVE']) ?>,
+						aiUnactiveInfoCode: <?= \CUtil::PhpToJSObject($this->result['AI_UNACTIVE_INFO_CODE']) ?>,
 						<?php if ($imgId):?>
-						,content: {
-							src: '<?= \CUtil::jsEscape(str_replace(' ', '%20', \htmlspecialcharsbx((int) $imgId > 0 ? File::getFilePath($imgId) : $imgId))) ?>',
-							id : <?= (int)$imgId ?>,
-							alt : ''
-						}
+							content: {
+								src: '<?= \CUtil::jsEscape(str_replace(' ', '%20', \htmlspecialcharsbx((int) $imgId > 0 ? File::getFilePath($imgId) : $imgId))) ?>',
+								id : <?= (int)$imgId ?>,
+								alt : ''
+							},
 						<?php else:?>
-						,content: {
-							src: '<?= \CUtil::jsEscape(str_replace(' ', '%20', \htmlspecialcharsbx($imgPath))) ?>',
-							id : -1,
-							alt : ''
-						}
+							content: {
+								src: '<?= \CUtil::jsEscape(str_replace(' ', '%20', \htmlspecialcharsbx($imgPath))) ?>',
+								id : -1,
+								alt : ''
+							},
 						<?php endif;?>
 						<?if (isset($params['width'], $params['height'])):?>
-						,dimensions: {
-							maxWidth: <?= (int)$params['width']?>,
-							maxHeight: <?= (int)$params['height']?>
-						}
+							dimensions: {
+								maxWidth: <?= (int)$params['width']?>,
+								maxHeight: <?= (int)$params['height']?>
+							},
 						<?php endif;?>
 						<?php if (isset($params['uploadParams']) && !empty($params['uploadParams'])):?>
-						,uploadParams: <?= \CUtil::phpToJsObject($params['uploadParams']) ?>
+							uploadParams: <?= \CUtil::phpToJsObject($params['uploadParams']) ?>,
 						<?php endif;?>
 					});
 
@@ -294,15 +303,23 @@ class Template
 							{
 								const img = imageField.getValue();
 								imageFieldInput.value = parseInt(img.id) > 0
-													? img.id
-													: img.src;
+									? img.id
+									: img.src;
 								BX.onCustomEvent('BX.Landing.UI.Field.Image:onChangeImage');
 							});
 						}
-						<?php if ($codeEdit):?>
-							BX.bind(BX('<?= $this->getFieldId($codeEdit) ?>'), 'click', function (event) {
+
+						<?php if ($codeHoverEdit && $codeHoverEditWrapper):?>
+							BX.bind(BX('<?= $this->getFieldId($codeHoverEdit) ?>'), 'click', function (event) {
 								imageField.onUploadClick(event);
 							});
+
+							const hoverWrapper = BX('<?= $this->getFieldId($codeHoverEditWrapper) ?>');
+							const aiImageButton = imageField.getAiButton();
+							if (hoverWrapper && aiImageButton)
+							{
+								hoverWrapper.appendChild(aiImageButton.layout);
+							}
 						<?php endif;?>
 					}
 					this.image = imageField;
@@ -311,12 +328,19 @@ class Template
 		</script>
 		<div
 			id="<?= $this->getFieldId($codeWrapper) ?>"
-			class="<?= $this->getFieldClass($codeWrapper) ?> ui-ctl-w100">
+			class="<?= $this->getFieldClass($codeWrapper) ?> ui-ctl-w100"
+		>
 		</div>
-		<?php if ($codeEdit):?>
+		<?php if ($codeHoverEdit && $codeHoverEditWrapper):?>
 			<div
-				id="<?= $this->getFieldId($codeEdit) ?>"
-				class="landing-form-social-img-edit">
+				id="<?= $this->getFieldId($codeHoverEditWrapper) ?>"
+				class="landing-form-social-img-hover-edit"
+			>
+				<div
+					id="<?= $this->getFieldId($codeHoverEdit) ?>"
+					class="landing-form-social-img-edit"
+				>
+				</div>
 			</div>
 		<?php endif; ?>
 		<?php
@@ -344,7 +368,7 @@ class Template
 			}
 			case 'text':
 			{
-				$css = 'ui-ctl ui-ctl-textbox ui-ctl-w100';
+				$css = 'ui-ctl ui-ctl-textbox ui-ctl-w100 ui-ctl-row';
 				break;
 			}
 			case 'checkbox':
@@ -354,7 +378,7 @@ class Template
 			}
 			case 'textarea':
 			{
-				$css = 'ui-ctl ui-ctl-textarea ui-ctl-resize-x';
+				$css = 'ui-ctl ui-ctl-textarea ui-ctl-resize-x ui-ctl-row';
 				break;
 			}
 		}

@@ -1,12 +1,12 @@
 <?php
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED!==true)die();
 
+use Bitrix\Main\Application;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Loader;
-use Bitrix\Main\ModuleManager;
-use Bitrix\Main\Error;
 use Bitrix\Main\Config\Option;
 use Bitrix\Bitrix24\Util;
+use Bitrix\Intranet;
 
 Loc::loadMessages(__FILE__);
 
@@ -118,26 +118,11 @@ class CIntranetInviteDialogComponent extends \CBitrixComponent
 
 	private function prepareLinkRegisterData(): void
 	{
-		$registerSettings = array();
-		if(Loader::includeModule("socialservices"))
-		{
-			$registerSettings = \Bitrix\Socialservices\Network::getRegisterSettings();
-		}
+		$this->arResult["REGISTER_SETTINGS"] = Intranet\Invitation::getRegisterSettings();
+		$registerUri = Intranet\Invitation::getRegisterUri();
 
-		$this->arResult["REGISTER_SETTINGS"] = $registerSettings;
-
-		$request = \Bitrix\Main\Context::getCurrent()->getRequest();
-		$this->arResult["REGISTER_URL_BASE"] = ($request->isHttps() ? "https://" : "http://").
-			(defined('BX24_HOST_NAME') ? BX24_HOST_NAME : SITE_SERVER_NAME)."/?secret=";
-
-		if(strlen($this->arResult["REGISTER_SETTINGS"]["REGISTER_SECRET"]) > 0)
-		{
-			$this->arResult["REGISTER_URL"] = $this->arResult["REGISTER_URL_BASE"].urlencode($this->arResult["REGISTER_SETTINGS"]["REGISTER_SECRET"]);
-		}
-		else
-		{
-			$this->arResult["REGISTER_URL"] = $this->arResult["REGISTER_URL_BASE"]."yes";
-		}
+		$this->arResult["REGISTER_URL"] = $registerUri?->getUri();
+		$this->arResult["REGISTER_URL_BASE"] = $registerUri?->addParams(['secret' => ''])->getUri();
 	}
 
 	private function prepareUserData(): void
@@ -149,14 +134,14 @@ class CIntranetInviteDialogComponent extends \CBitrixComponent
 
 		if (\CBitrix24BusinessTools::isAvailable())
 		{
-			$this->arResult["USER_MAX_COUNT"] = intval(COption::GetOptionString("main", "PARAM_MAX_USERS"));
+			$this->arResult["USER_MAX_COUNT"] = Application::getInstance()->getLicense()->getMaxUsers();
 		}
 		else
 		{
-			$this->arResult["USER_MAX_COUNT"] = \CBitrix24::getMaxBitrix24UsersCount();
+			$this->arResult["USER_MAX_COUNT"] = CBitrix24::getMaxBitrix24UsersCount();
 		}
 
-		$this->arResult["USER_CURRENT_COUNT"] = \Bitrix\Bitrix24\Util::getCurrentUserCount();
+		$this->arResult["USER_CURRENT_COUNT"] = Util::getCurrentUserCount();
 	}
 
 	public function executeComponent()
@@ -164,7 +149,7 @@ class CIntranetInviteDialogComponent extends \CBitrixComponent
 		$this->arResult["IS_CLOUD"] = Loader::includeModule("bitrix24");
 		if ($this->arResult["IS_CLOUD"])
 		{
-			$this->arResult["LICENSE_ZONE"] = \CBitrix24::getLicensePrefix();
+			$this->arResult["LICENSE_ZONE"] = CBitrix24::getLicensePrefix();
 		}
 
 		$this->arResult["IS_EXTRANET_INSTALLED"] = Loader::includeModule("extranet");

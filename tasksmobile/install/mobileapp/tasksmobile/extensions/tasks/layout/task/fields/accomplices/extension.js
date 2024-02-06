@@ -2,9 +2,9 @@
  * @module tasks/layout/task/fields/accomplices
  */
 jn.define('tasks/layout/task/fields/accomplices', (require, exports, module) => {
-	const {Loc} = require('loc');
-	const {Type} = require('type');
-	const {UserField, UserFieldMode} = require('layout/ui/fields/user');
+	const { Loc } = require('loc');
+	const { Type } = require('type');
+	const { UserField, UserFieldMode } = require('layout/ui/fields/user');
 
 	class Accomplices extends LayoutComponent
 	{
@@ -16,7 +16,7 @@ jn.define('tasks/layout/task/fields/accomplices', (require, exports, module) => 
 				readOnly: props.readOnly,
 				accomplices: props.accomplices,
 			};
-			props.checkList.on('accompliceAdd', (user) => {
+			props.checkList?.on('accompliceAdd', (user) => {
 				if (!Object.keys(this.state.accomplices).includes(user.id.toString()))
 				{
 					const accomplices = {
@@ -27,10 +27,12 @@ jn.define('tasks/layout/task/fields/accomplices', (require, exports, module) => 
 							icon: user.avatar,
 						},
 					};
-					this.setState({accomplices});
+					this.setState({ accomplices });
 					this.props.onChange(accomplices);
 				}
 			});
+
+			this.handleOnChange = this.handleOnChange.bind(this);
 		}
 
 		componentWillReceiveProps(props)
@@ -49,11 +51,41 @@ jn.define('tasks/layout/task/fields/accomplices', (require, exports, module) => 
 			});
 		}
 
+		handleOnChange(accomplicesIds, accomplicesData)
+		{
+			const accomplices = accomplicesData.reduce((accumulator, user) => {
+				const result = accumulator;
+				result[user.id] = {
+					id: user.id,
+					name: user.title,
+					icon: user.imageUrl,
+					workPosition: user.customData.position,
+				};
+
+				return result;
+			}, {});
+			const newAccomplices = Object.keys(accomplices);
+			const oldAccomplices = Object.keys(this.state.accomplices);
+			const difference = [
+				...newAccomplices.filter((id) => !oldAccomplices.includes(id)),
+				...oldAccomplices.filter((id) => !newAccomplices.includes(id)),
+			];
+			const { onChange } = this.props;
+			if (difference.length > 0)
+			{
+				this.setState({ accomplices });
+				if (onChange)
+				{
+					onChange(accomplices);
+				}
+			}
+		}
+
 		render()
 		{
 			return View(
 				{
-					style: (this.props.style || {})
+					style: (this.props.style || {}),
 				},
 				UserField({
 					readOnly: this.state.readOnly,
@@ -63,6 +95,7 @@ jn.define('tasks/layout/task/fields/accomplices', (require, exports, module) => 
 					value: Object.keys(this.state.accomplices),
 					config: {
 						mode: UserFieldMode.ICONS,
+						useLettersForEmptyAvatar: true,
 						deepMergeStyles: this.props.deepMergeStyles,
 						provider: {
 							context: 'TASKS_MEMBER_SELECTOR_EDIT_accomplice',
@@ -73,7 +106,7 @@ jn.define('tasks/layout/task/fields/accomplices', (require, exports, module) => 
 							imageUrl: (
 								!Type.isString(user.icon)
 								|| !Type.isStringFilled(user.icon)
-								|| user.icon.indexOf('default_avatar.png') >= 0
+								|| user.icon.includes('default_avatar.png')
 									? null
 									: user.icon
 							),
@@ -81,37 +114,16 @@ jn.define('tasks/layout/task/fields/accomplices', (require, exports, module) => 
 								position: user.workPosition,
 							},
 						})),
+						selectorTitle: Loc.getMessage('TASKSMOBILE_LAYOUT_TASK_FIELDS_ACCOMPLICES'),
 						reloadEntityListFromProps: true,
 						parentWidget: this.props.parentWidget,
 					},
 					testId: 'accomplices',
-					onChange: (accomplicesIds, accomplicesData) => {
-						const accomplices = accomplicesData.reduce((result, user) => {
-							result[user.id] = {
-								id: user.id,
-								name: user.title,
-								icon: user.imageUrl,
-								workPosition: user.customData.position,
-							};
-							return result;
-						}, {});
-						const newAccomplices = Object.keys(accomplices);
-						const oldAccomplices = Object.keys(this.state.accomplices);
-						const difference =
-							newAccomplices
-								.filter(id => !oldAccomplices.includes(id))
-								.concat(oldAccomplices.filter(id => !newAccomplices.includes(id)))
-						;
-						if (difference.length)
-						{
-							this.setState({accomplices});
-							this.props.onChange(accomplices);
-						}
-					},
+					onChange: this.handleOnChange,
 				}),
 			);
 		}
 	}
 
-	module.exports = {Accomplices};
+	module.exports = { Accomplices };
 });

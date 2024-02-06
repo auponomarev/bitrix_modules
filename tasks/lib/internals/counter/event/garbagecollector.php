@@ -8,12 +8,13 @@ use Bitrix\Tasks\Internals\Counter\CounterController;
 use Bitrix\Tasks\Internals\Counter\CounterDictionary;
 use Bitrix\Tasks\Internals\Counter\CounterTable;
 use Bitrix\Tasks\Internals\Counter\Push\PushSender;
+use Bitrix\Tasks\Internals\Counter;
 use Bitrix\Tasks\Util\Type\DateTime;
 
 class GarbageCollector
 {
 	private const STEP_LIMIT = 1000;
-	private const TTL = 30;
+	private const TTL = 45;
 
 	/** @var DateTime $viewedTime */
 	private $viewedTime;
@@ -58,8 +59,8 @@ class GarbageCollector
 
 			$processed[$userId] = $userId;
 
-			$this->readProjectComments($userId);
 			$this->setClearMarker($userId);
+			$this->readProjectComments($userId);
 		}
 
 		(new PushSender())->sendUserCounters($processed);
@@ -83,10 +84,12 @@ class GarbageCollector
 
 		$sql = "
 			INSERT INTO ". CounterTable::getTableName() ."
-			(`USER_ID`, `TASK_ID`, `GROUP_ID`, `TYPE`, `VALUE`)
+			(USER_ID, TASK_ID, GROUP_ID, TYPE, VALUE)
 			VALUES ({$userId}, 0, 0, '". CounterDictionary::COUNTER_FLAG_CLEARED ."', {$date})
 		";
 		Application::getConnection()->query($sql);
+
+		Counter\State\Factory::getState($userId)->resetCache();
 	}
 
 	/**
@@ -106,32 +109,27 @@ class GarbageCollector
 	 */
 	private function readProjectComments(int $userId)
 	{
+		$sqlHelper = Application::getConnection()->getSqlHelper();
+		$viewedTime = $this->viewedTime;
+		$viewedTime = $sqlHelper->convertToDbDateTime($viewedTime);
+
 		$sql = "
 			SELECT 
 			    ts.TASK_ID,
-			    t.FORUM_TOPIC_ID as TOPIC_ID
+			    t.FORUM_TOPIC_ID
 			FROM b_tasks_scorer ts
-			LEFT JOIN b_tasks t 
+			LEFT JOIN b_tasks_viewed tv
+				ON tv.TASK_ID = ts.TASK_ID
+				AND tv.USER_ID = ts.USER_ID
+			LEFT JOIN b_tasks t
 				ON t.ID = ts.TASK_ID
-			WHERE 
+			WHERE
 				ts.USER_ID = ".$userId."
 				AND ts.TYPE = '".CounterDictionary::COUNTER_GROUP_COMMENTS."'
-				AND ts.TASK_ID NOT IN (
-					SELECT TASK_ID
-					FROM b_tasks_scorer
-					WHERE 
-						USER_ID = ".$userId."
-						AND TYPE IN (
-							'".CounterDictionary::COUNTER_MY_NEW_COMMENTS."', 
-							'".CounterDictionary::COUNTER_AUDITOR_NEW_COMMENTS."', 
-							'".CounterDictionary::COUNTER_ORIGINATOR_NEW_COMMENTS."', 
-							'".CounterDictionary::COUNTER_ORIGINATOR_MUTED_NEW_COMMENTS."', 
-							'".CounterDictionary::COUNTER_AUDITOR_MUTED_NEW_COMMENTS."', 
-							'".CounterDictionary::COUNTER_MY_MUTED_NEW_COMMENTS."', 
-							'".CounterDictionary::COUNTER_ACCOMPLICES_NEW_COMMENTS."', 
-							'".CounterDictionary::COUNTER_ACCOMPLICES_MUTED_NEW_COMMENTS."'
-						)
-						AND group_id > 0 AND TASK_ID = ts.TASK_ID
+				AND
+				(
+					tv.VIEWED_DATE < ".$viewedTime."
+					or tv.VIEWED_DATE is null
 				)
 			ORDER BY ts.TASK_ID
 			LIMIT ". self::STEP_LIMIT ."
@@ -146,7 +144,7 @@ class GarbageCollector
 		}
 
 		$taskIds = array_column($rows, 'TASK_ID');
-		$topicIds = array_column($rows, 'TOPIC_ID');
+		$topicIds = array_column($rows, 'FORUM_TOPIC_ID');
 
 		$this->readTasks($userId, $taskIds);
 		$this->readTopics($userId, $topicIds);

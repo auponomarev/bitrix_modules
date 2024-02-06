@@ -4,6 +4,7 @@ use Bitrix\Main\Error;
 use Bitrix\Main\ErrorCollection;
 use Bitrix\Main\Grid\Options as GridOptions;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\UI\Extension;
 use Bitrix\Main\UI\Filter\Options as FilterOptions;
 use Bitrix\Sender\Access\ActionDictionary;
 use Bitrix\Sender\ContactTable;
@@ -125,7 +126,6 @@ class ContactRecipientSenderComponent extends Bitrix\Sender\Internals\CommonSend
 		/* Set title */
 		if ($this->arParams['SET_TITLE'])
 		{
-			/**@var CAllMain*/
 			$GLOBALS['APPLICATION']->SetTitle(
 				$this->arParams['CONTACT_ID']
 					?
@@ -612,6 +612,8 @@ class ContactRecipientSenderComponent extends Bitrix\Sender\Internals\CommonSend
 
 	protected function printErrors()
 	{
+		// temporary include main popup extension on show error
+		Extension::load(["main.popup"]);
 		foreach ($this->errors as $error)
 		{
 			ShowError($error);

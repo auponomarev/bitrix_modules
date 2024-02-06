@@ -110,6 +110,11 @@ class SenderLetterEditComponent extends Bitrix\Sender\Internals\CommonSenderComp
 				? (bool) $this->arParams['SHOW_SEGMENTS']
 				: true
 		;
+		if ($this->arParams['SHOW_SEGMENTS'] &&
+			!$this->getAccessController()->check(ActionDictionary::ACTION_SEGMENT_VIEW))
+		{
+			$this->arParams['SHOW_SEGMENTS'] = false;
+		}
 		$this->arParams['GOTO_URI_AFTER_SAVE'] = isset($this->arParams['GOTO_URI_AFTER_SAVE'])
 			?
 			$this->arParams['GOTO_URI_AFTER_SAVE']
@@ -252,7 +257,7 @@ class SenderLetterEditComponent extends Bitrix\Sender\Internals\CommonSenderComp
 			return;
 		}
 
-		if ($templateType && $templateType)
+		if ($templateType)
 		{
 			$template = Templates\Selector::create()
 				->withMessageCode($this->letter->getMessage()->getCode())
@@ -606,6 +611,20 @@ class SenderLetterEditComponent extends Bitrix\Sender\Internals\CommonSenderComp
 		if ($this->arParams['SHOW_SEGMENTS'])
 		{
 			$this->arParams['SHOW_SEGMENTS'] = $this->needShowSegmentsByMessageCode($this->arResult['MESSAGE_CODE']);
+		}
+
+		$this->arResult['HAS_BOTTOM_TEXTAREA_PANEL'] = false;
+		$userId = Security\User::current()->getId();
+		$this->arResult['AITextContextId'] = 'sender_marketing_sms_message_text_' . $userId;
+
+		$this->arResult['isAITextAvailable'] = Integration\AI\Controller::isAvailable(
+			Integration\AI\Controller::TEXT_CATEGORY,
+			$this->arResult['AITextContextId']
+		);
+
+		if ($this->arResult['isAITextAvailable'])
+		{
+			$this->arResult['HAS_BOTTOM_TEXTAREA_PANEL'] = true;
 		}
 
 		return true;

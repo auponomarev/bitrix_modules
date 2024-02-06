@@ -8,21 +8,63 @@ use	Bitrix\Sale;
 
 class CAllCatalogProduct
 {
-	const TYPE_PRODUCT = Catalog\ProductTable::TYPE_PRODUCT;
-	const TYPE_SET = Catalog\ProductTable::TYPE_SET;
-	const TYPE_SKU = Catalog\ProductTable::TYPE_SKU;
-	const TYPE_OFFER = Catalog\ProductTable::TYPE_OFFER;
-	const TYPE_FREE_OFFER = Catalog\ProductTable::TYPE_FREE_OFFER;
-	const TYPE_EMPTY_SKU = Catalog\ProductTable::TYPE_EMPTY_SKU;
+	/**
+	 * @deprecated
+	 */
+	public const TYPE_PRODUCT = Catalog\ProductTable::TYPE_PRODUCT;
+	/**
+	 * @deprecated
+	 */
+	public const TYPE_SET = Catalog\ProductTable::TYPE_SET;
+	/**
+	 * @deprecated
+	 */
+	public const TYPE_SKU = Catalog\ProductTable::TYPE_SKU;
+	/**
+	 * @deprecated
+	 */
+	public const TYPE_OFFER = Catalog\ProductTable::TYPE_OFFER;
+	/**
+	 * @deprecated
+	 */
+	public const TYPE_FREE_OFFER = Catalog\ProductTable::TYPE_FREE_OFFER;
+	/**
+	 * @deprecated
+	 */
+	public const TYPE_EMPTY_SKU = Catalog\ProductTable::TYPE_EMPTY_SKU;
 
-	const TIME_PERIOD_HOUR = Catalog\ProductTable::PAYMENT_PERIOD_HOUR;
-	const TIME_PERIOD_DAY = Catalog\ProductTable::PAYMENT_PERIOD_DAY;
-	const TIME_PERIOD_WEEK = Catalog\ProductTable::PAYMENT_PERIOD_WEEK;
-	const TIME_PERIOD_MONTH = Catalog\ProductTable::PAYMENT_PERIOD_MONTH;
-	const TIME_PERIOD_QUART = Catalog\ProductTable::PAYMENT_PERIOD_QUART;
-	const TIME_PERIOD_SEMIYEAR = Catalog\ProductTable::PAYMENT_PERIOD_SEMIYEAR;
-	const TIME_PERIOD_YEAR = Catalog\ProductTable::PAYMENT_PERIOD_YEAR;
-	const TIME_PERIOD_DOUBLE_YEAR = Catalog\ProductTable::PAYMENT_PERIOD_DOUBLE_YEAR;
+	/**
+	 * @deprecated
+	 */
+	public const TIME_PERIOD_HOUR = Catalog\ProductTable::PAYMENT_PERIOD_HOUR;
+	/**
+	 * @deprecated
+	 */
+	public const TIME_PERIOD_DAY = Catalog\ProductTable::PAYMENT_PERIOD_DAY;
+	/**
+	 * @deprecated
+	 */
+	public const TIME_PERIOD_WEEK = Catalog\ProductTable::PAYMENT_PERIOD_WEEK;
+	/**
+	 * @deprecated
+	 */
+	public const TIME_PERIOD_MONTH = Catalog\ProductTable::PAYMENT_PERIOD_MONTH;
+	/**
+	 * @deprecated
+	 */
+	public const TIME_PERIOD_QUART = Catalog\ProductTable::PAYMENT_PERIOD_QUART;
+	/**
+	 * @deprecated
+	 */
+	public const TIME_PERIOD_SEMIYEAR = Catalog\ProductTable::PAYMENT_PERIOD_SEMIYEAR;
+	/**
+	 * @deprecated
+	 */
+	public const TIME_PERIOD_YEAR = Catalog\ProductTable::PAYMENT_PERIOD_YEAR;
+	/**
+	 * @deprecated
+	 */
+	public const TIME_PERIOD_DOUBLE_YEAR = Catalog\ProductTable::PAYMENT_PERIOD_DOUBLE_YEAR;
 
 	/** @deprecated deprecated since catalog 17.6.3 */
 	protected static $arProductCache = array();
@@ -2699,7 +2741,7 @@ class CAllCatalogProduct
 	 * @param array $userGroups
 	 * @return array
 	 */
-	private static function getAllowedPriceTypes(array $userGroups)
+	private static function getAllowedPriceTypes(array $userGroups): array
 	{
 		static $priceTypeCache = array();
 
@@ -2728,13 +2770,15 @@ class CAllCatalogProduct
 		return $priceTypeCache[$cacheKey];
 	}
 
-	private static function convertErrors(Main\Entity\Result $result)
+	private static function convertErrors(Main\Entity\Result $result): void
 	{
 		global $APPLICATION;
 
-		$oldMessages = array();
+		$oldMessages = [];
 		foreach ($result->getErrorMessages() as $errorText)
-			$oldMessages[] = array('text' => $errorText);
+		{
+			$oldMessages[] = ['text' => $errorText];
+		}
 		unset($errorText);
 
 		if (!empty($oldMessages))
@@ -2746,13 +2790,19 @@ class CAllCatalogProduct
 		unset($oldMessages);
 	}
 
-	private static function normalizeFields(array &$fields)
+	private static function normalizeFields(array &$fields): void
 	{
-		if (isset($fields['QUANTITY']) && is_string($fields['QUANTITY']) && $fields['QUANTITY'] === '')
+		if (isset($fields['QUANTITY']) && $fields['QUANTITY'] === '')
+		{
 			$fields['QUANTITY'] = 0;
-		if (isset($fields['QUANTITY_RESERVED']) && is_string($fields['QUANTITY_RESERVED']) && $fields['QUANTITY_RESERVED'] === '')
+		}
+		if (isset($fields['QUANTITY_RESERVED']) && $fields['QUANTITY_RESERVED'] === '')
+		{
 			$fields['QUANTITY_RESERVED'] = 0;
-		if (isset($fields['WEIGHT']) && is_string($fields['WEIGHT']) && $fields['WEIGHT'] === '')
+		}
+		if (isset($fields['WEIGHT']) && $fields['WEIGHT'] === '')
+		{
 			$fields['WEIGHT'] = 0;
+		}
 	}
 }

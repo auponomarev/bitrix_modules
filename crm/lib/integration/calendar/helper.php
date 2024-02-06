@@ -4,49 +4,55 @@ namespace Bitrix\Crm\Integration\Calendar;
 
 use Bitrix\Calendar\Core\Event\Tools\Dictionary;
 use Bitrix\Calendar\Sharing\Link\CrmDealLink;
+use Bitrix\Calendar\Sharing\Link\CrmDealLinkMapper;
 use Bitrix\Calendar\Sharing\Link\EventLink;
 use Bitrix\Calendar\Sharing\Link\Factory;
 use Bitrix\Calendar\Sharing\SharingConference;
+use Bitrix\Calendar\Sharing;
 use Bitrix\Crm\Integration\SmsManager;
+use Bitrix\Crm\ItemIdentifier;
+use Bitrix\Crm\MessageSender\Channel\ChannelRepository;
 use Bitrix\Crm\Service\Container;
-use Bitrix\Main\Application;
-use Bitrix\Main\Config\Option;
+use Bitrix\Main\ArgumentException;
 use Bitrix\Main\Error;
 use Bitrix\Main\Loader;
+use Bitrix\Main\LoaderException;
+use Bitrix\Main\ObjectPropertyException;
 use Bitrix\Main\Result;
-use Bitrix\Main\Security\Sign\Signer;
+use Bitrix\Main\SystemException;
 
 class Helper
 {
 	private static ?Factory $linkFactory = null;
 	private static ?self $instance = null;
-	private static ?string $region = null;
-	public const IS_SHARING_CRM_FEATURE_ENABLE = 'isSharingCrmFeatureEnable';
 
 	public static function isSharingCrmAvaible(): bool
 	{
-		if (!Loader::includeModule('bitrix24'))
-		{
-			return false;
-		}
-
-		$regions = ['ru', 'kz', 'by'];
-
-		if (!self::$region)
-		{
-			self::$region = Application::getInstance()->getLicense()->getRegion();
-		}
-
-		return in_array(self::$region, $regions, true);
+		return true;
 	}
 
 	/**
 	 * sends crm deal calendar sharing link to client
+	 *
 	 * @param int $entityId
-	 * @param string $signedContactId
+	 * @param int $contactId
+	 * @param int $contactTypeId
+	 * @param string $channelId
+	 * @param string $senderId
 	 * @return Result
+	 * @throws LoaderException
+	 * @throws ArgumentException
+	 * @throws ObjectPropertyException
+	 * @throws SystemException
 	 */
-	public function sendLinkToClient(int $entityId, int $contactId, int $contactTypeId): Result
+	public function sendLinkToClient(
+		int $entityId,
+		int $contactId,
+		int $contactTypeId,
+		string $channelId,
+		string $senderId,
+		array $ruleArray
+	): Result
 	{
 		$result = new Result();
 		if (!$this->isAvailable())
@@ -95,24 +101,50 @@ class Helper
 		$crmDealLink = $factory->getCrmDealLink($entityId, $ownerId, $contactId, $contactType);
 		if (!$crmDealLink)
 		{
-			$crmDealLink = $factory->createCrmDealLink($ownerId, $entityId, $contactId, $contactType);
+			$crmDealLink = $factory->createCrmDealLink($ownerId, $entityId, $contactId, $contactType, $channelId, $senderId);
+		}
+
+		$linkObjectRule = (new Sharing\Link\Rule\Factory())->getLinkObjectRuleByLink($crmDealLink);
+		if (!is_null($linkObjectRule))
+		{
+			$sharingRuleMapper = new Sharing\Link\Rule\Mapper();
+			$rule = $sharingRuleMapper->buildRuleFromArray($ruleArray);
+			$sharingRuleMapper->saveForLinkObject($rule, $linkObjectRule);
+			$crmDealLink->setSharingRule($rule);
+		}
+
+		if ($crmDealLink->getSenderId() !== $senderId || $crmDealLink->getChannelId() !== $channelId)
+		{
+			$crmDealLink
+				->setSenderId($senderId)
+				->setChannelId($channelId)
+			;
+
+			(new CrmDealLinkMapper())->update($crmDealLink);
 		}
 
 		$result->setData(['linkHash' => $crmDealLink->getHash()]);
 
-		(new Notification\NotificationService())
+		Notification\Manager::getSenderInstance($crmDealLink)
 			->setCrmDealLink($crmDealLink)
 			->sendCrmSharingInvited()
 		;
+
+		Sharing\Analytics::getInstance()->sendLinkSent($crmDealLink);
 
 		return $result;
 	}
 
 	/**
 	 * adds new calendar sharing entry in timeline
+	 *
 	 * @param string $linkHash
 	 * @param string $eventType
 	 * @return bool
+	 * @throws \Bitrix\Main\ArgumentException
+	 * @throws \Bitrix\Main\LoaderException
+	 * @throws \Bitrix\Main\ObjectPropertyException
+	 * @throws \Bitrix\Main\SystemException
 	 */
 	public function addTimelineEntry(string $linkHash, string $eventType): bool
 	{
@@ -144,6 +176,18 @@ class Helper
 			{
 				$eventData->setContactCommunication($contactCommunications['phones'][0]['valueFormatted']);
 			}
+
+			if ($crmDealLink->getChannelId())
+			{
+				$entity = new ItemIdentifier(\CCrmOwnerType::Deal, $crmDealLink->getEntityId());
+				$repo = ChannelRepository::create($entity);
+				$channel = $repo->getById(SmsManager::getSenderCode(), $crmDealLink->getChannelId());
+
+				if ($channel)
+				{
+					$eventData->setChannelName($channel->getName());
+				}
+			}
 		}
 
 		CalendarSharingTimeline::createTimelineEntry($eventData);
@@ -153,9 +197,11 @@ class Helper
 
 	/**
 	 * gets phone communication of contact in entity
+	 *
 	 * @param int $entityId
 	 * @param int $entityTypeId
 	 * @param int $contactId
+	 * @param int $contactTypeId
 	 * @return mixed|null
 	 */
 	public function getContactPhoneCommunications(int $entityId, int $entityTypeId, int $contactId, int $contactTypeId)
@@ -175,8 +221,13 @@ class Helper
 
 	/**
 	 * gets chat id of sharing conference by event id
+	 *
 	 * @param int $eventId
 	 * @return array|null
+	 * @throws \Bitrix\Main\ArgumentException
+	 * @throws \Bitrix\Main\LoaderException
+	 * @throws \Bitrix\Main\ObjectPropertyException
+	 * @throws \Bitrix\Main\SystemException
 	 */
 	public function getConferenceChatId(int $eventId): ?array
 	{
@@ -207,8 +258,10 @@ class Helper
 
 	/**
 	 * cancels event participation
+	 *
 	 * @param int $eventId
 	 * @return bool
+	 * @throws LoaderException
 	 */
 	public function cancelMeeting(int $eventId): bool
 	{
@@ -217,45 +270,28 @@ class Helper
 			return false;
 		}
 
-		$event = \CCalendarEvent::GetList([
-			'arFilter' => [
-				'ID' => $eventId,
-			],
-			'fetchAttendees' => true,
-			'checkPermissions' => false,
-		]);
-
-		$event = $event[0] ?? false;
-		if (!$event || ($event['EVENT_TYPE'] ?? null) !== Dictionary::EVENT_TYPE['shared_crm'])
+		/** @var \Bitrix\Calendar\Core\Event\Event $event */
+		$event = (new \Bitrix\Calendar\Core\Mappers\Event())->getById($eventId);
+		if (!$event instanceof \Bitrix\Calendar\Core\Event\Event || $event->getSpecialLabel() !== Dictionary::EVENT_TYPE['shared_crm'])
 		{
 			return false;
 		}
 
-		$attendees = $event['ATTENDEE_LIST'] ?? [];
-		foreach ($attendees as $attendee)
-		{
-			if (($attendee['status'] ?? null) === Dictionary::MEETING_STATUS['Yes'])
-			{
-				\CCalendarEvent::SetMeetingStatus([
-					'eventId' => $eventId,
-					'userId' => $attendee['id'] ?? 0,
-					'status' => 'N'
-				]);
-			}
-		}
+		(new \Bitrix\Calendar\Core\Mappers\Event())->delete($event);
 
 		return true;
 	}
 
 	/**
 	 * completes crm deal calendar sharing activity
+	 *
 	 * @param int $activityId
 	 * @param int $ownerTypeId
 	 * @param int $ownerId
 	 * @param string $status
 	 * @return bool
 	 */
-	public function completeActivityWithStatus(int $activityId, int $ownerTypeId, int $ownerId, string $status)
+	public function completeActivityWithStatus(int $activityId, int $ownerTypeId, int $ownerId, string $status): bool
 	{
 		$activity = $this->loadActivity($activityId, $ownerTypeId, $ownerId);
 		if (!$activity)

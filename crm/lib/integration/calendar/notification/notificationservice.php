@@ -2,71 +2,75 @@
 
 namespace Bitrix\Crm\Integration\Calendar\Notification;
 
-use Bitrix\Calendar\Core\Event\Event;
+use Bitrix\Calendar\Core\Managers\Duration\DurationManager;
+use Bitrix\Crm\Integration\NotificationsManager;
+use Bitrix\Crm\MessageSender;
 use Bitrix\Calendar\Sharing;
-use Bitrix\Calendar\Sharing\Link\EventLink;
-use Bitrix\Calendar\Sharing\Link\CrmDealLink;
-use Bitrix\Crm;
+use Bitrix\Crm\ItemIdentifier;
+use Bitrix\Main\Localization\Loc;
+use Bitrix\Calendar\Core\Event;
+use Bitrix\Calendar\Core;
 
-class NotificationService
+class NotificationService extends AbstractService
 {
-	private const TEMPLATE_SHARING_EVENT_INVITATION = 'SHARING_EVENT_INVITATION';
-	private const TEMPLATE_SHARING_EVENT_AUTO_ACCEPTED = 'SHARING_EVENT_ACCEPTED_2';
-	private const TEMPLATE_SHARING_EVENT_CANCELLED_LINK_ACTIVE = 'SHARING_EVENT_CANCELLED_1';
-	private const TEMPLATE_SHARING_EVENT_CANCELLED = 'SHARING_EVENT_CANCELLED_2';
-
-	protected CrmDealLink $crmDealLink;
-	protected Event $event;
-	protected EventLink $eventLink;
+	public const TEMPLATE_SHARING_EVENT_INVITATION = 'SHARING_EVENT_INVITATION';
+	public const TEMPLATE_SHARING_EVENT_AUTO_ACCEPTED = 'SHARING_EVENT_ACCEPTED_2';
+	public const TEMPLATE_SHARING_EVENT_CANCELLED_LINK_ACTIVE = 'SHARING_EVENT_CANCELLED_1';
+	public const TEMPLATE_SHARING_EVENT_CANCELLED = 'SHARING_EVENT_CANCELLED_2';
+	public const TEMPLATE_SHARING_EVENT_EDITED = 'SHARING_EVENT_EDITED';
 
 	/**
-	 * @param Crm\ItemIdentifier $entity
+	 * @param ItemIdentifier $entity
 	 * @return bool
 	 */
-	public static function canSendMessage(Crm\ItemIdentifier $entity): bool
+	public static function canSendMessage(ItemIdentifier $entity): bool
 	{
-		$repo = Crm\MessageSender\Channel\ChannelRepository::create($entity);
-		$channel = $repo->getDefaultForSender(Crm\Integration\NotificationsManager::getSenderCode());
+		$repo = MessageSender\Channel\ChannelRepository::create($entity);
+
+		$channel = $repo->getDefaultForSender(NotificationsManager::getSenderCode());
 		if (is_null($channel))
 		{
 			return false;
 		}
 
-		return $channel->checkChannel()->isSuccess();
+		return NotificationsManager::canUse();
 	}
 
-	/**
-	 * @param CrmDealLink $crmDealLink
-	 * @return $this
-	 */
-	public function setCrmDealLink(CrmDealLink $crmDealLink): self
-	{
-		$this->crmDealLink = $crmDealLink;
-		return $this;
-	}
 
 	/**
-	 * @param EventLink $eventLink
-	 * @return $this
+	 * @param string $template
+	 * @param array $placeholders
+	 * @return bool
+	 * @throws \Bitrix\Main\ArgumentException
 	 */
-	public function setEventLink(Eventlink $eventLink): self
+	protected function sendMessage(string $template, array $placeholders): bool
 	{
-		$this->eventLink = $eventLink;
-		return $this;
-	}
+		$entity = new ItemIdentifier(\CCrmOwnerType::Deal, $this->crmDealLink->getEntityId());
+		$channel = $this->getEntityChannel($entity);
+		if (is_null($channel))
+		{
+			return false;
+		}
 
-	/**
-	 * @param Event $event
-	 * @return $this
-	 */
-	public function setEvent(Event $event): self
-	{
-		$this->event = $event;
-		return $this;
+		$to = $this->getToEntity($channel, $this->crmDealLink->getContactId(), $this->crmDealLink->getContactType());
+		if (!$to)
+		{
+			return false;
+		}
+
+		return (new MessageSender\SendFacilitator\Notifications($channel))
+			->setTo($to)
+			->setPlaceholders($placeholders)
+			->setTemplateCode($template)
+			->setLanguageId('ru')
+			->send()
+			->isSuccess()
+		;
 	}
 
 	/**
 	 * @return bool
+	 * @throws \Bitrix\Main\ArgumentException
 	 */
 	public function sendCrmSharingInvited(): bool
 	{
@@ -82,6 +86,7 @@ class NotificationService
 
 	/**
 	 * @return bool
+	 * @throws \Bitrix\Main\ArgumentException
 	 */
 	public function sendCrmSharingAutoAccepted(): bool
 	{
@@ -92,7 +97,6 @@ class NotificationService
 			'DATE' => Sharing\Helper::formatDate($this->event->getStart()),
 			'EVENT_URL' => Sharing\Helper::getShortUrl($this->eventLink->getUrl()),
 			'VIDEOCONFERENCE_URL' => Sharing\Helper::getShortUrl($this->eventLink->getUrl() . Sharing\Helper::ACTION_CONFERENCE),
-
 			'EVENT_NAME' => Sharing\SharingEventManager::getSharingEventNameByUserName($fullName), // for title
 		];
 
@@ -101,11 +105,11 @@ class NotificationService
 
 	/**
 	 * @return bool
+	 * @throws \Bitrix\Main\ArgumentException
 	 */
 	public function sendCrmSharingCancelled(): bool
 	{
 		$manager = Sharing\Helper::getOwnerInfo($this->crmDealLink->getOwnerId());
-
 		$template = self::TEMPLATE_SHARING_EVENT_CANCELLED;
 		$placeholders = [
 			'NAME' => Sharing\Helper::getPersonFullNameLoc($manager['name'], $manager['lastName']),
@@ -123,45 +127,50 @@ class NotificationService
 	}
 
 	/**
-	 * @param string $template
-	 * @param array $placeholders
 	 * @return bool
 	 * @throws \Bitrix\Main\ArgumentException
 	 */
-	protected function sendMessage(string $template, array $placeholders): bool
+	public function sendCrmSharingEdited(): bool
 	{
-		$channel = $this->getEntityChannel(\CCrmOwnerType::Deal, $this->crmDealLink->getEntityId());
-		if (is_null($channel))
+		$manager = Sharing\Helper::getOwnerInfo($this->crmDealLink->getOwnerId());
+
+		$locEdited = Loc::getMessage('CRM_CALENDAR_SHARING_EVENT_EDITED_ACTION');
+		if ($manager['gender'] === 'M')
 		{
-			return false;
+			$locEdited = Loc::getMessage('CRM_CALENDAR_SHARING_EVENT_EDITED_ACTION_M');
+		}
+		else if ($manager['gender'] === 'F')
+		{
+			$locEdited = Loc::getMessage('CRM_CALENDAR_SHARING_EVENT_EDITED_ACTION_F');
 		}
 
-		$to = $this->getToEntity($channel, $this->crmDealLink->getContactId(), $this->crmDealLink->getContactType());
-		if (!$to)
-		{
-			return false;
-		}
+		$oldEvent = $this->oldEvent;
+		$newEvent = $this->event;
+		$durationManager = new DurationManager($newEvent->getStart(), $newEvent->getEnd());
+		$hasDurationChanged = !$durationManager->areDurationsEqual($oldEvent->getStart(), $oldEvent->getEnd());
+		$oldDate = $this->formatEditedEventDate($oldEvent, $hasDurationChanged);
+		$newDate = $this->formatEditedEventDate($newEvent, $hasDurationChanged);
 
-		return (new Crm\MessageSender\SendFacilitator\Notifications($channel))
-			->setTo($to)
-			->setPlaceholders($placeholders)
-			->setTemplateCode($template)
-			->setLanguageId('ru')
-			->send()
-			->isSuccess()
-		;
+		$placeholders = [
+			'NAME' => Sharing\Helper::getPersonFullNameLoc($manager['name'], $manager['lastName']),
+			'EVENT_URL' => Sharing\Helper::getShortUrl($this->eventLink->getUrl()),
+			'VIDEOCONFERENCE_URL' => Sharing\Helper::getShortUrl($this->eventLink->getUrl() . Sharing\Helper::ACTION_CONFERENCE),
+			'LOC_EDITED' => $locEdited,
+			'OLD_DATE' => $oldDate,
+			'NEW_DATE' => $newDate,
+		];
+
+		return $this->sendMessage(self::TEMPLATE_SHARING_EVENT_EDITED, $placeholders);
 	}
 
 	/**
-	 * @param int $entityTypeId
-	 * @param int $entityId
-	 * @return Crm\MessageSender\Channel|null
+	 * @param ItemIdentifier $entity
+	 * @return MessageSender\Channel|null
 	 */
-	private function getEntityChannel(int $entityTypeId, int $entityId): ?Crm\MessageSender\Channel
+	protected function getEntityChannel(ItemIdentifier $entity): ?MessageSender\Channel
 	{
-		$entity = new Crm\ItemIdentifier($entityTypeId, $entityId);
-		$repo = Crm\MessageSender\Channel\ChannelRepository::create($entity);
-		$channel = $repo->getDefaultForSender(Crm\Integration\NotificationsManager::getSenderCode());
+		$repo = MessageSender\Channel\ChannelRepository::create($entity);
+		$channel = $repo->getDefaultForSender(NotificationsManager::getSenderCode());
 		if (is_null($channel))
 		{
 			return null;
@@ -170,15 +179,28 @@ class NotificationService
 		return $channel;
 	}
 
-	/**
-	 * @param Crm\MessageSender\Channel $channel
-	 * @param int $contactId
-	 * @return false|mixed
-	 */
-	private function getToEntity(Crm\MessageSender\Channel $channel, int $contactId, int $contactTypeId)
+	protected function formatEditedEventDate(Event\Event $event, $hasDurationChanged): string
 	{
-		return current(array_filter($channel->getToList(), static function ($to) use ($contactId, $contactTypeId) {
-			return $to->getAddressSource()->getEntityId() === $contactId && $to->getAddressSource()->getEntityTypeId() === $contactTypeId;
-		}));
+		if ($event->isFullDayEvent())
+		{
+			$result = Loc::getMessage(
+				'CRM_CALENDAR_SHARING_EVENT_FULL_DAY_INFO',
+				['#EVENT_DATE#' => Sharing\Helper::formatDateWithoutTime($event->getStart())]
+			);
+		}
+		else if ($hasDurationChanged)
+		{
+			$durationManager = new DurationManager($event->getStart(), $event->getEnd());
+			$formattedDate = Sharing\Helper::formatDate($event->getStart());
+			$formattedDuration = $durationManager->getFormattedDuration();
+
+			$result = "{$formattedDate} ({$formattedDuration})";
+		}
+		else
+		{
+			$result = Sharing\Helper::formatDate($event->getStart());
+		}
+
+		return $result;
 	}
 }

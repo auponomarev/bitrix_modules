@@ -25,6 +25,8 @@ type Settings = {}
 const MODE_EDIT = 'EDIT';
 const MODE_SET = 'SET';
 
+const enableImageInputCache = new Map();
+
 export class Row
 {
 	static CATALOG_PRICE_CHANGING_DISABLED = 'CATALOG_PRICE_CHANGING_DISABLED';
@@ -45,7 +47,6 @@ export class Row
 	handleMainSelectorClear = Runtime.debounce(this.#onMainSelectorClear.bind(this), 500, this);
 	handleStoreFieldChange = Runtime.debounce(this.#onStoreFieldChange.bind(this), 500, this);
 	handleStoreFieldClear = Runtime.debounce(this.#onStoreFieldClear.bind(this), 500, this);
-	handleOnGridUpdated = this.#onGridUpdated.bind(this);
 
 	cache = new Cache.MemoryCache();
 	modeChanges = {
@@ -69,7 +70,8 @@ export class Row
 		this.modifyBasePriceInput();
 		this.modifyQuantityInput();
 		this.refreshFieldsLayout();
-
+		this.updateUiStoreAmountData();
+		this.initHandlersForSelectors();
 		requestAnimationFrame(this.initHandlers.bind(this));
 	}
 
@@ -318,6 +320,8 @@ export class Row
 	#initSelector()
 	{
 		const id = 'crm_grid_' + this.getId();
+		const enableImageInput = this.editor.getSettingValue('enableSelectProductImageInput', true);
+
 		this.mainSelector = ProductSelector.getById(id);
 		if (!this.mainSelector)
 		{
@@ -329,7 +333,7 @@ export class Row
 				config: {
 					ENABLE_SEARCH: true,
 					IS_ALLOWED_CREATION_PRODUCT: true,
-					ENABLE_IMAGE_INPUT: true,
+					ENABLE_IMAGE_INPUT: enableImageInput,
 					ROLLBACK_INPUT_AFTER_CANCEL: true,
 					ENABLE_INPUT_DETAIL_LINK: true,
 					ROW_ID: this.getId(),
@@ -347,7 +351,18 @@ export class Row
 		else
 		{
 			this.mainSelector.subscribeEvents();
+
+			if (enableImageInput !== enableImageInputCache[id])
+			{
+				this.mainSelector.setConfig('ENABLE_IMAGE_INPUT', enableImageInput);
+				if (enableImageInput)
+				{
+					this.mainSelector.layoutImage();
+				}
+			}
 		}
+
+		enableImageInputCache[id] = enableImageInput;
 
 		if (this.isRestrictedStoreInfo())
 		{
@@ -371,7 +386,14 @@ export class Row
 			}
 
 			this.mainSelector.skuTreeInstance = null;
-			this.mainSelector.renderTo(selectorWrapper);
+			if (this.editor.isVisible())
+			{
+				this.mainSelector.renderTo(selectorWrapper);
+			}
+			else
+			{
+				this.mainSelector.wrapper = selectorWrapper;
+			}
 		}
 
 		EventEmitter.subscribe(
@@ -444,6 +466,10 @@ export class Row
 				{
 					this.#applyStoreSelectorRestrictionTweaks();
 				}
+				else if (!this.isInventoryManagementToolEnabled())
+				{
+					this.#applyStoreSelectorToolAvailabilityTweaks();
+				}
 			}
 		}
 	}
@@ -461,12 +487,6 @@ export class Row
 			model: this.getModel(),
 			node: storeAvaiableNode,
 		});
-
-		// runs once because after grid update, row re-created.
-		EventEmitter.subscribeOnce(
-			'Grid::updated',
-			this.handleOnGridUpdated
-		);
 	}
 
 	#applyStoreSelectorRestrictionTweaks()
@@ -482,7 +502,30 @@ export class Row
 		Dom.addClass(storeSearchInput.getNameInput(), 'crm-entity-product-list-locked-field');
 		if (this.storeSelector.getWrapper())
 		{
-			this.storeSelector.getWrapper().onclick = () => this.editor.openIntegrationLimitSlider();
+			Dom.addClass(this.storeSelector.getWrapper(), 'crm-entity-product-list-locked-field-wrapper');
+			Event.bind(this.storeSelector.getWrapper(), 'click', () => {
+				this.editor.openIntegrationLimitSlider();
+			});
+		}
+	}
+
+	#applyStoreSelectorToolAvailabilityTweaks()
+	{
+		const storeSearchInput = this.storeSelector.searchInput;
+		if (!storeSearchInput || !storeSearchInput.getNameInput())
+		{
+			return;
+		}
+
+		storeSearchInput.toggleIcon(this.storeSelector.searchInput.getSearchIcon(), 'none');
+		storeSearchInput.getNameInput().disabled = true;
+		Dom.addClass(storeSearchInput.getNameInput(), 'crm-entity-product-list-locked-field');
+		if (this.storeSelector.getWrapper())
+		{
+			Dom.addClass(this.storeSelector.getWrapper(), 'crm-entity-product-list-locked-field-wrapper');
+			Event.bind(this.storeSelector.getWrapper(), 'click', () => {
+				this.editor.openInventoryManagementToolDisabledSlider();
+			});
 		}
 	}
 
@@ -495,6 +538,7 @@ export class Row
 				row: this,
 				isReserveEqualProductQuantity: this.#isReserveEqualProductQuantity(),
 				defaultDateReservation: this.editor.getSettingValue('defaultDateReservation'),
+				isInventoryManagementToolEnabled: this.isInventoryManagementToolEnabled(),
 				isBlocked: this.isReserveBlocked(),
 				measureName: this.#getMeasureName(),
 			});
@@ -503,7 +547,14 @@ export class Row
 				this.reserveControl,
 				'onNodeClick',
 				() => {
-					this.editor.openIntegrationLimitSlider();
+					if (this.isReserveBlocked())
+					{
+						this.editor.openIntegrationLimitSlider();
+					}
+					else if (!this.isInventoryManagementToolEnabled())
+					{
+						this.editor.openInventoryManagementToolDisabledSlider();
+					}
 				}
 			);
 
@@ -1133,6 +1184,7 @@ export class Row
 		this.updateUiStoreAmountData();
 		this.layoutReserveControl();
 		this.addActionProductChange();
+		this.initHandlersForSelectors();
 	}
 
 	#onChangeStoreData()
@@ -1186,13 +1238,10 @@ export class Row
 
 		if (!this.getModel().isCatalogExisted() || this.isRestrictedStoreInfo() || this.getModel().isService())
 		{
-			//do nothing
-		}
-		else
-		{
-			amountWithMeasure = amount + ' ' + this.#getMeasureName();
+			return;
 		}
 
+		amountWithMeasure = amount + ' ' + this.#getMeasureName();
 		availableWrapper.innerHTML =
 			amount > 0
 				? amountWithMeasure
@@ -1339,22 +1388,23 @@ export class Row
 				basePriceId: fields['BASE_PRICE_ID'],
 				isSimpleModel: Text.toInteger(fields['PRODUCT_ID']) <= 0 && Type.isStringFilled(fields['NAME']),
 				skuTree: Type.isStringFilled(fields['SKU_TREE']) ? JSON.parse(fields['SKU_TREE']) : null,
+				storeMap: fields['STORE_MAP'] ?? {},
 				fields,
 			});
-
-			const imageInfo = Type.isStringFilled(fields['IMAGE_INFO']) ? JSON.parse(fields['IMAGE_INFO']) : null
-
-			if (Type.isObject(imageInfo))
-			{
-				this.model.getImageCollection().setPreview(imageInfo['preview']);
-				this.model.getImageCollection().setEditInput(imageInfo['input']);
-				this.model.getImageCollection().setMorePhotoValues(imageInfo['values']);
-			}
 
 			if (!Type.isNil(fields['DETAIL_URL']))
 			{
 				this.model.setDetailPath(fields['DETAIL_URL']);
 			}
+		}
+
+		// fill after change setting show pictures.
+		const imageInfo = Type.isStringFilled(fields['IMAGE_INFO']) ? JSON.parse(fields['IMAGE_INFO']) : null
+		if (Type.isObject(imageInfo))
+		{
+			this.model.getImageCollection().setPreview(imageInfo['preview']);
+			this.model.getImageCollection().setEditInput(imageInfo['input']);
+			this.model.getImageCollection().setMorePhotoValues(imageInfo['values']);
 		}
 
 		if (this.#isReserveEqualProductQuantity())
@@ -2127,6 +2177,11 @@ export class Row
 		return this.getSettingValue('isReserveBlocked', false);
 	}
 
+	isInventoryManagementToolEnabled(): boolean
+	{
+		return this.getSettingValue('isInventoryManagementToolEnabled', true);
+	}
+
 	isRestrictedStoreInfo(): boolean
 	{
 		if (!this.editor.getSettingValue('allowReservation', true))
@@ -2144,9 +2199,7 @@ export class Row
 			return false;
 		}
 
-		return !this.#getAllowedStores().includes(storeId)
-			|| !this.editor.getSettingValue('allowEntityReserve', true)
-		;
+		return !this.#getAllowedStores().includes(storeId);
 	}
 
 	#getAllowedStores(): Array
@@ -2178,14 +2231,6 @@ export class Row
 	#getNodesChild(): NodeList
 	{
 		return this.getNode().querySelectorAll(`span[data-name]`);
-	}
-
-	#onGridUpdated(): void
-	{
-		if (this.storeAvailablePopup)
-		{
-			this.storeAvailablePopup.refreshStoreInfo();
-		}
 	}
 
 	setType(value)

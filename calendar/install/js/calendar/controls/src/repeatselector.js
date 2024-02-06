@@ -1,5 +1,6 @@
 import { Util } from 'calendar.util';
 import { DateTimeControl } from "calendar.controls";
+import {Type, Dom} from "main.core";
 
 export class RepeatSelector
 {
@@ -22,6 +23,7 @@ export class RepeatSelector
 			count: formElements['EVENT_RRULE[COUNT]'],
 			until: formElements['EVENT_RRULE[UNTIL]'],
 		};
+		this.viewMode = false;
 
 		this.create();
 	}
@@ -73,6 +75,11 @@ export class RepeatSelector
 
 	setValue(rrule = {})
 	{
+		if (Type.isNil(rrule))
+		{
+			rrule = {};
+		}
+
 		this.changeType(rrule.FREQ);
 		this.DOM.interval.value = rrule.INTERVAL || 1;
 		if (rrule.COUNT)
@@ -102,5 +109,16 @@ export class RepeatSelector
 	getType()
 	{
 		return this.DOM.rruleType.value.toLowerCase();
+	}
+
+	setViewMode(description: string)
+	{
+		if (!Type.isStringFilled(description))
+		{
+			description = this.DOM.rruleType.options[this.DOM.rruleType.options.selectedIndex].innerText;
+		}
+		Dom.clean(this.DOM.wrap);
+		this.DOM.wrap.innerText = description.toLowerCase();
+		Dom.addClass(this.DOM.wrap, 'calendar-field calendar-repeat-selector-readonly');
 	}
 }

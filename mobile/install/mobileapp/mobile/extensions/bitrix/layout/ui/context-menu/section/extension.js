@@ -1,9 +1,10 @@
 (() => {
+	const AppTheme = jn.require('apptheme');
 	const SECTION_DEFAULT = 'default';
 	const SECTION_SERVICE = 'service';
 	const svgIcons = {
-		['add']: {
-			content: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.73364 3.75H8.25V8.25H3.75V9.71066H8.25V14.2423H9.73364V9.71066H14.2813V8.25H9.73364V3.75Z" fill="#2066B0"/></svg>`,
+		add: {
+			content: '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.73364 3.75H8.25V8.25H3.75V9.71066H8.25V14.2423H9.73364V9.71066H14.2813V8.25H9.73364V3.75Z" fill="#2066B0"/></svg>',
 		},
 	};
 
@@ -80,7 +81,7 @@
 						marginLeft: navigationBarLeftMargin,
 						flexDirection: 'row',
 						borderBottomWidth: this.showTitleBorder ? 1 : 0,
-						borderBottomColor: '#edeef0',
+						borderBottomColor: AppTheme.colors.bgSeparatorPrimary,
 						justifyContent: 'space-between',
 					},
 				},
@@ -145,7 +146,7 @@
 				Text({
 					style: {
 						fontSize: 14,
-						color: '#0065A3',
+						color: AppTheme.colors.accentMainLinks,
 						flexShrink: 2,
 					},
 					numberOfLines: 1,
@@ -169,8 +170,7 @@
 				promise = Promise.resolve();
 			}
 
-			promise.then(({ closeMenu = true, closeCallback} = {}) => {
-
+			promise.then(({ closeMenu = true, closeCallback } = {}) => {
 				if (closeMenu)
 				{
 					this.closeMenuHandler(closeCallback);
@@ -189,7 +189,7 @@
 			const hasIcons = this.actions.some((action) => {
 				if (action.data)
 				{
-					return action.data.svgIcon || action.data.imgUri;
+					return action.data.svgIcon || action.data.svgUri || action.data.imgUri;
 				}
 
 				return false;
@@ -216,13 +216,13 @@
 	}
 
 	const styles = {
-		sectionView: (isService) => ({
-			backgroundColor: isService ? '#fbfbfc' : '#ffffff',
+		sectionView: () => ({
+			backgroundColor: AppTheme.colors.bgContentPrimary,
 			fontSize: 18,
 			borderRadius: 12,
 		}),
 		title: {
-			color: '#525c69',
+			color: AppTheme.colors.base2,
 			fontSize: 13,
 		},
 	};

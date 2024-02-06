@@ -8,6 +8,7 @@ use Bitrix\Im\Notify;
 use Bitrix\Im\V2\Bot\BotService;
 use Bitrix\Im\V2\Chat;
 use Bitrix\Im\V2\Entity\User\NullUser;
+use Bitrix\Im\V2\Entity\User\UserPopupItem;
 use Bitrix\Im\V2\Link\Url\UrlService;
 use Bitrix\Im\V2\Message;
 use Bitrix\Im\V2\Message\Params;
@@ -19,14 +20,19 @@ use Bitrix\Im\V2\Message\Send\SendingConfig;
 use Bitrix\Im\V2\Message\Send\SendingService;
 use Bitrix\Im\V2\MessageCollection;
 use Bitrix\Im\V2\Relation;
+use Bitrix\Im\V2\Rest\PopupData;
+use Bitrix\Im\V2\Rest\PopupDataAggregatable;
 use Bitrix\Im\V2\Result;
 use Bitrix\Im\V2\Service\Context;
 use Bitrix\Im\V2\Service\Locator;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Type\DateTime;
+use Bitrix\Pull\Event;
 
-class PrivateChat extends Chat
+class PrivateChat extends Chat implements PopupDataAggregatable
 {
+	protected const EXTRANET_CAN_SEE_HISTORY = true;
+
 	protected function getDefaultType(): string
 	{
 		return self::IM_TYPE_PRIVATE;
@@ -44,6 +50,31 @@ class PrivateChat extends Chat
 	public function allowMention(): bool
 	{
 		return false;
+	}
+
+	public function setManageSettings(string $manageSettings): Chat
+	{
+		return $this;
+	}
+
+	public function setManageUsersAdd(string $manageUsersAdd): Chat
+	{
+		return $this;
+	}
+
+	public function setManageUsersDelete(string $manageUsersDelete): Chat
+	{
+		return $this;
+	}
+
+	public function setManageUI(string $manageUI): Chat
+	{
+		return $this;
+	}
+
+	public function setCanPost(string $canPost): Chat
+	{
+		return $this;
 	}
 
 	public function getDialogId(): ?string
@@ -66,6 +97,28 @@ class PrivateChat extends Chat
 	public function getStartId(?int $userId = null): int
 	{
 		return 0;
+	}
+
+	/**
+	 * @return int
+	 */
+	public function getOpponentId(): int
+	{
+		/** @var Relation $relation */
+		$opponentUserId = 0;
+		foreach ($this->getRelations() as $relation)
+		{
+			if (
+				User::getInstance($relation->getUserId())->isActive()
+				&& $this->getAuthorId() != $relation->getUserId()
+			)
+			{
+				$opponentUserId = $relation->getUserId();
+				break;
+			}
+		}
+
+		return $opponentUserId;
 	}
 
 	/**
@@ -128,7 +181,7 @@ class PrivateChat extends Chat
 		return new NullUser();
 	}
 
-	public function getTitle(): ?string
+	public function getDisplayedTitle(): ?string
 	{
 		return Loc::getMessage(
 			'IM_PRIVATE_CHAT_TITLE',
@@ -138,6 +191,29 @@ class PrivateChat extends Chat
 				'#CHAT_MEMBER_NAME_2#' => $this->getCompanion()->getName(),
 			]
 		);
+	}
+
+	public function addUsers(array $userIds, array $managerIds = [], ?bool $hideHistory = null, bool $withMessage = true, bool $skipRecent = false): Chat
+	{
+		return $this;
+	}
+
+	public function sendPushUpdateMessage(Message $message): void
+	{
+		$pushFormat = new Message\PushFormat();
+		$push = $pushFormat->formatMessageUpdate($message);
+		$authorId = $message->getAuthorId();
+		$opponentId = $this->getCompanion($authorId)->getId();
+
+		$push['params']['dialogId'] = $authorId;
+		$push['params']['fromUserId'] = $authorId;
+		$push['params']['toUserId'] = $opponentId;
+		Event::add($opponentId, $push);
+
+		$push['params']['dialogId'] = $opponentId;
+		$push['params']['fromUserId'] = $opponentId;
+		$push['params']['toUserId'] = $authorId;
+		Event::add($authorId, $push);
 	}
 
 	protected function sendPushReadSelf(MessageCollection $messages, int $lastId, int $counter): void
@@ -207,24 +283,6 @@ class PrivateChat extends Chat
 		]);
 	}
 
-	protected function sendPushUnreadOpponent(string $chatMessageStatus, int $unreadTo, ?array $lastMessageStatuses = null): void
-	{
-		$pushMessage = [
-			'module_id' => 'im',
-			'command' => 'unreadMessageOpponent',
-			'expiry' => 3600,
-			'params' => [
-				'dialogId' => $this->getContext()->getUserId(),
-				'chatId' => $this->chatId,
-				'userId' =>$this->getContext()->getUserId(),
-				'chatMessageStatus' => $chatMessageStatus,
-				'unreadTo' => $unreadTo,
-			],
-			'extra' => \Bitrix\Im\Common::getPullExtra()
-		];
-		\Bitrix\Pull\Event::add($this->getDialogId(), $pushMessage);
-	}
-
 	protected function sendEventRead(int $startId, int $endId, int $counter, bool $byEvent): void
 	{
 		foreach(GetModuleEvents("im", "OnAfterUserRead", true) as $arEvent)
@@ -259,7 +317,11 @@ class PrivateChat extends Chat
 			return $result->addError(new ChatError(ChatError::WRONG_TARGET_CHAT));
 		}
 
-		if (!$message instanceof Message)
+		if (is_string($message))
+		{
+			$message = (new Message)->setMessage($message);
+		}
+		elseif (!$message instanceof Message)
 		{
 			$message = new Message($message);
 		}
@@ -550,7 +612,12 @@ class PrivateChat extends Chat
 		");
 		if ($row = $res->fetch())
 		{
-			$result->setResult($row);
+			$result->setResult([
+				'ID' => (int)$row['ID'],
+				'TYPE' => $row['TYPE'],
+				'ENTITY_TYPE' => $row['ENTITY_TYPE'],
+				'ENTITY_ID' => $row['ENTITY_ID'],
+			]);
 		}
 
 		return $result;
@@ -589,7 +656,7 @@ class PrivateChat extends Chat
 			]);
 		}
 
-		$chat = new PrivateChat($params);
+		$chat = new static($params);
 		$chat->save();
 
 		if ($chat->getChatId() <= 0)
@@ -637,8 +704,6 @@ class PrivateChat extends Chat
 			\Bitrix\Im\Bot::onJoinChat($params['TO_USER_ID'], $botJoinFields);
 		}
 
-		$chat->updateIndex();
-
 		return $result->setResult([
 			'CHAT_ID' => $chat->getChatId(),
 			'CHAT' => $chat,
@@ -675,5 +740,22 @@ class PrivateChat extends Chat
 		$result->setResult($params);
 
 		return $result;
+	}
+
+	protected function addIndex(): Chat
+	{
+		return $this;
+	}
+
+	protected function updateIndex(): Chat
+	{
+		return $this;
+	}
+
+	public function getPopupData(array $excludedList = []): PopupData
+	{
+		$userIds = [$this->getContext()->getUserId(), $this->getCompanion()->getId()];
+
+		return new PopupData([new UserPopupItem($userIds)], $excludedList);
 	}
 }

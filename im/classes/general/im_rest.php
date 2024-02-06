@@ -149,9 +149,6 @@ class CIMRestService extends IRestService
 
 				'im.desktop.status.get' => array('callback' => array(__CLASS__, 'desktopStatusGet'), 'options' => array('private' => true)),
 				'im.desktop.page.open' => array('callback' => array(__CLASS__, 'desktopPageOpen'), 'options' => array('private' => true)),
-
-				'im.version.v2.enable' => array('callback' => array(__CLASS__, 'enableV2Version'), 'options' => array('private' => true)),
-				'im.version.v2.disable' => array('callback' => array(__CLASS__, 'disableV2Version'), 'options' => array('private' => true)),
 			),
 			'imbot' => Array(
 				'imbot.register' => array(__CLASS__, 'botRegister'),
@@ -159,6 +156,7 @@ class CIMRestService extends IRestService
 				'imbot.update' => array(__CLASS__, 'botUpdate'),
 
 				'imbot.dialog.get' => array(__CLASS__, 'dialogGet'),
+				'imbot.dialog.vote' => array(__CLASS__, 'dialogVote'),
 
 				'imbot.chat.add' => array(__CLASS__, 'chatCreate'),
 				'imbot.chat.get' => array(__CLASS__, 'chatGet'),
@@ -572,7 +570,7 @@ class CIMRestService extends IRestService
 		$range = (int)$arParams['RANGE'];
 		$range = ($range <= 50 && $range >= 0) ? $range : 50;
 
-		$result = (new \Bitrix\Im\V2\Message\MessageService())->getMessageContext($message, $range);
+		$result = (new \Bitrix\Im\V2\Message\MessageService($message))->getMessageContext($range);
 		if (!$result->isSuccess())
 		{
 			$error = $result->getErrors()[0];
@@ -842,13 +840,13 @@ class CIMRestService extends IRestService
 	{
 		$arParams = array_change_key_case($arParams, CASE_UPPER);
 
-		if (!isset($arParams['FIND']))
+		if (!isset($arParams['FIND']) && !isset($arParams['FIND_LINES']))
 		{
 			throw new Bitrix\Rest\RestException("Too short a search phrase.", "FIND_SHORT", CRestServer::STATUS_WRONG_REQUEST);
 		}
 
 		$params = Array(
-			'FILTER' => Array('SEARCH' => $arParams['FIND']),
+			'FILTER' => Array('SEARCH' => $arParams['FIND'] ?? null, 'SEARCH_OL' => $arParams['FIND_LINES'] ?? null),
 			'JSON' => 'Y'
 		);
 
@@ -943,6 +941,7 @@ class CIMRestService extends IRestService
 		}
 		else
 		{
+			$config['FORCE_OPENLINES'] = 'Y';
 			if ($arParams['SKIP_OPENLINES'] === 'Y')
 			{
 				$config['SKIP_OPENLINES'] = 'Y';
@@ -985,6 +984,10 @@ class CIMRestService extends IRestService
 		if ($arParams['SKIP_OPENLINES'] === 'Y')
 		{
 			$config['SKIP_OPENLINES'] = 'Y';
+		}
+		if (isset($arParams['ONLY_COPILOT']) && $arParams['ONLY_COPILOT'] === 'Y')
+		{
+			$config['ONLY_COPILOT'] = 'Y';
 		}
 		if ($skipChatParam === 'Y')
 		{
@@ -1644,6 +1647,14 @@ class CIMRestService extends IRestService
 			throw new Bitrix\Rest\RestException("Chat ID can't be empty", "CHAT_ID_EMPTY", CRestServer::STATUS_WRONG_REQUEST);
 		}
 
+		$chat = \Bitrix\Im\Model\ChatTable::getById($arParams['CHAT_ID'])->fetch();
+		$chatRelation = \CIMChat::GetRelationById($arParams['CHAT_ID'], false, true, false);
+
+		if (!CIMChat::canDo($chat, $chatRelation, \Bitrix\Im\V2\Chat\Permission::ACTION_CHANGE_AVATAR))
+		{
+			throw new Bitrix\Rest\RestException("Access denied", "ACCESS_DENIED", CRestServer::STATUS_WRONG_REQUEST);
+		}
+
 		$userId = $USER->GetId();
 		if ($server->getMethod() == mb_strtolower("imbot.chat.updateAvatar"))
 		{
@@ -2086,7 +2097,7 @@ class CIMRestService extends IRestService
 
 		if (isset($filter['SUBTYPE']))
 		{
-			$filter['SUBTYPE'] = \Bitrix\Im\V2\Entity\File\FileItem::getSubtypeFromJsonFormat($filter['SUBTYPE']);
+			$filter['SUBTYPE'] = \Bitrix\Im\V2\Link\File\FileItem::getSubtypeFromJsonFormat($filter['SUBTYPE']);
 		}
 
 		$startId = $chat->getStartId();
@@ -2130,7 +2141,7 @@ class CIMRestService extends IRestService
 
 		$files = new \Bitrix\Im\V2\Link\File\FileCollection();
 
-		foreach (\Bitrix\Im\V2\Entity\File\FileItem::ALLOWED_SUBTYPE as $subtype)
+		foreach (\Bitrix\Im\V2\Link\File\FileItem::ALLOWED_SUBTYPE as $subtype)
 		{
 			$filter['SUBTYPE'] = $subtype;
 
@@ -2957,6 +2968,7 @@ class CIMRestService extends IRestService
 		global $USER;
 
 		$arParams = array_change_key_case($arParams, CASE_UPPER);
+		$arParams['MESSAGE'] = self::getRawParam('MESSAGE') ?? $arParams['MESSAGE'] ?? null;
 
 		if (isset($arParams['MESSAGE']))
 		{
@@ -3171,6 +3183,19 @@ class CIMRestService extends IRestService
 		{
 			$arMessageFields['TEMPLATE_ID'] = mb_substr((string)$arParams['TEMPLATE_ID'], 0, 255);
 		}
+		if (isset($arParams['REPLY_ID']) && (int)$arParams['REPLY_ID'] > 0)
+		{
+			$message = new \Bitrix\Im\V2\Message((int)$arParams['REPLY_ID']);
+			if (!$message->hasAccess())
+			{
+				throw new Bitrix\Rest\RestException("Action unavailable", "REPLY_ACCESS_ERROR", CRestServer::STATUS_FORBIDDEN);
+			}
+			if ($message->getChat()->getDialogId() !== (string)$arMessageFields['DIALOG_ID'])
+			{
+				throw new Bitrix\Rest\RestException("You can only reply to a message within the same chat", "REPLY_FROM_OTHER_CHAT_ERROR", CRestServer::STATUS_FORBIDDEN);
+			}
+			$arMessageFields['PARAMS']['REPLY_ID'] = $message->getId();
+		}
 
 		$id = CIMMessenger::Add($arMessageFields);
 		if (!$id)
@@ -3209,6 +3234,7 @@ class CIMRestService extends IRestService
 	public static function messageUpdate($arParams, $n, CRestServer $server)
 	{
 		$arParams = array_change_key_case($arParams, CASE_UPPER);
+		$arParams['MESSAGE'] = self::getRawParam('MESSAGE') ?? $arParams['MESSAGE'] ?? null;
 
 		if (isset($arParams['MESSAGE_ID']))
 		{
@@ -4157,6 +4183,7 @@ class CIMRestService extends IRestService
 			'TEMPLATE_ID' => $arParams['TEMPLATE_ID']?:'',
 			'FILE_TEMPLATE_ID' => $arParams['FILE_TEMPLATE_ID']?:'',
 			'SYMLINK' => $arParams['SYMLINK']?:false,
+			'AS_FILE' => $arParams['AS_FILE'] ?? 'N',
 		]);
 		if (!$result)
 		{
@@ -5415,6 +5442,40 @@ class CIMRestService extends IRestService
 		}
 
 		\Bitrix\Im\Bot::startWriting(Array('BOT_ID' => $arParams['BOT_ID']), $arParams['DIALOG_ID']);
+
+		return true;
+	}
+
+	public static function dialogVote($arParams, $offset, CRestServer $server)
+	{
+		$arParams = array_change_key_case($arParams, CASE_UPPER);
+
+		if (!isset($arParams['MESSAGE_ID']))
+		{
+			throw new Bitrix\Rest\RestException("Message ID can't be empty", "MESSAGE_ID_EMPTY", CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		if (!isset($arParams['DIALOG_ID']) || !\Bitrix\Im\Common::isDialogId($arParams['DIALOG_ID']))
+		{
+			throw new Bitrix\Rest\RestException("Dialog ID can't be empty", "DIALOG_ID_EMPTY", CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		if (!\Bitrix\Im\Dialog::hasAccess($arParams['DIALOG_ID']))
+		{
+			throw new Bitrix\Rest\RestException("You do not have access to the specified dialog", "ACCESS_ERROR", CRestServer::STATUS_FORBIDDEN);
+		}
+
+		if (!isset($arParams['RATING']))
+		{
+			$arParams['RATING'] = 'like';
+		}
+
+		$arParams['RATING'] = $arParams['RATING'] == 'dislike' ? 'dislike': 'like';
+
+		if (!\CIMMessenger::LinesSessionVote($arParams['DIALOG_ID'], $arParams['MESSAGE_ID'], $arParams['RATING']))
+		{
+			throw new Bitrix\Rest\RestException("Action completed without changes", "WITHOUT_CHANGES", CRestServer::STATUS_WRONG_REQUEST);
+		}
 
 		return true;
 	}
@@ -7282,16 +7343,6 @@ class CIMRestService extends IRestService
 		return true;
 	}
 
-	public static function enableV2Version($params, $n, \CRestServer $server)
-	{
-		CUserOptions::SetOption('im', 'v2_enabled', 'Y');
-	}
-
-	public static function disableV2Version($params, $n, \CRestServer $server)
-	{
-		CUserOptions::SetOption('im', 'v2_enabled', 'N');
-	}
-
 	private static function getBotId($arParams, \CRestServer $server)
 	{
 		$arParams = array_change_key_case($arParams, CASE_UPPER);
@@ -7379,6 +7430,23 @@ class CIMRestService extends IRestService
 		}
 
 		return (int)$options['OFFSET'];
+	}
+
+	private static function getRawParam(string $paramName)
+	{
+		$context = \Bitrix\Main\Context::getCurrent();
+
+		if ($context === null)
+		{
+			return null;
+		}
+
+		$paramName = mb_strtoupper($paramName);
+		$request = $context->getRequest();
+		$postRawData = array_change_key_case($request->getPostList()->toArrayRaw() ?? [], CASE_UPPER);
+		$getRawData = array_change_key_case($request->getQueryList()->toArrayRaw() ?? [], CASE_UPPER);
+
+		return $postRawData[$paramName] ?? $getRawData[$paramName] ?? null;
 	}
 
 	/* Utils */

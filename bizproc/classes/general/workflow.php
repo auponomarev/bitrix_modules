@@ -1,5 +1,8 @@
 <?php
 
+use Bitrix\Bizproc;
+use Bitrix\Bizproc\Workflow\Entity\WorkflowUserTable;
+
 /**
 * Workflow instance.
 */
@@ -44,6 +47,7 @@ class CBPWorkflow
 	{
 		$this->rootActivity->SetWorkflowStatus($newStatus);
 		$this->GetRuntime()->onWorkflowStatusChanged($this->GetInstanceId(), $newStatus);
+		$this->syncStatus($newStatus);
 	}
 
 	public function getService($name)
@@ -54,6 +58,13 @@ class CBPWorkflow
 	public function getDocumentId()
 	{
 		return $this->rootActivity->GetDocumentId();
+	}
+
+	public function getStartedBy(): ?int
+	{
+		$startedBy = (int)CBPHelper::stripUserPrefix($this->rootActivity->{\CBPDocument::PARAM_TAGRET_USER});
+
+		return $startedBy ?: null;
 	}
 
 	public function getPersister(): CBPWorkflowPersister
@@ -201,7 +212,7 @@ class CBPWorkflow
 			throw new Exception("CanNotStartInstanceTwice");
 
 		$this->isNew = true;
-		$this->SetWorkflowStatus(CBPWorkflowStatus::Running);
+		$this->setWorkflowStatus(CBPWorkflowStatus::Running);
 
 		$this->rootActivity->setReadOnlyData(
 			$this->rootActivity->pullProperties()
@@ -504,40 +515,56 @@ class CBPWorkflow
 			{
 				try
 				{
-					$trackingService = $this->GetService("TrackingService");
-					$trackingService->Write($this->GetInstanceId(), CBPTrackingType::ExecuteActivity, $activity->GetName(), $activity->executionStatus, $activity->executionResult, ($activity->IsPropertyExists("Title") ? $activity->Title : ""), "");
-					$newStatus = $activity->Execute();
-
-					//analyse robots - Temporary, it is prototype
-					if ($trackingService->isForcedMode($this->GetInstanceId()))
+					$newStatus = CBPActivityExecutionStatus::Closed;
+					if ($activity->isActivated())
 					{
-						$activityType = mb_substr(get_class($activity), 3);
-						if (!in_array($activityType, [
-							'SequentialWorkflowActivity',
-							'ParallelActivity',
-							'SequenceActivity',
-							'DelayActivity',
-							'IfElseActivity',
-							'IfElseBranchActivity'
-						]))
+						$trackingService = $this->getService('TrackingService');
+						$trackingService->write(
+							$this->getInstanceId(),
+							CBPTrackingType::ExecuteActivity,
+							$activity->getName(),
+							$activity->executionStatus,
+							$activity->executionResult,
+							$activity->getTitle(),
+							''
+						);
+						$newStatus = $activity->Execute();
+
+						//analyse robots - Temporary, it is prototype
+						if ($trackingService->isForcedMode($this->GetInstanceId()))
 						{
-							/** @var \Bitrix\Bizproc\Service\Analytics $analyticsService */
-							$analyticsService = $this->GetService("AnalyticsService");
-							if ($analyticsService->isEnabled())
+							$activityType = mb_substr(get_class($activity), 3);
+							if (!in_array($activityType, [
+								'SequentialWorkflowActivity',
+								'ParallelActivity',
+								'SequenceActivity',
+								'DelayActivity',
+								'IfElseActivity',
+								'IfElseBranchActivity'
+							]))
 							{
-								$analyticsService->write(
-									$activity->GetDocumentId(),
-									'robot_run',
-									$activityType
-								);
+								/** @var \Bitrix\Bizproc\Service\Analytics $analyticsService */
+								$analyticsService = $this->GetService("AnalyticsService");
+								if ($analyticsService->isEnabled())
+								{
+									$analyticsService->write(
+										$activity->GetDocumentId(),
+										'robot_run',
+										$activityType
+									);
+								}
 							}
 						}
 					}
 
 					if ($newStatus == CBPActivityExecutionStatus::Closed)
+					{
 						$this->CloseActivity($activity);
+					}
 					elseif ($newStatus != CBPActivityExecutionStatus::Executing)
-						throw new Exception("InvalidExecutionStatus");
+					{
+						throw new Exception('InvalidExecutionStatus');
+					}
 				}
 				catch (Exception $e)
 				{
@@ -687,6 +714,16 @@ class CBPWorkflow
 		}
 	}
 
+	private function syncStatus(int $status): void
+	{
+		if ($status < CBPWorkflowStatus::Completed) // skip Created and Running
+		{
+			return;
+		}
+
+		WorkflowUserTable::syncOnWorkflowUpdated($this, $status);
+	}
+
 	/**
 	* Add new event handler to the specified event.
 	*
@@ -731,12 +768,6 @@ class CBPWorkflow
 			unset($this->rootActivity->arEventsMap[$eventName]);
 	}
 
-	/*******************  UTILITIES  ***************************************************************/
-
-	/**
-	* Returns available events for current state of state machine workflow activity.
-	*
-	*/
 	public function getAvailableStateEvents()
 	{
 		if (!is_a($this->rootActivity, "CBPStateMachineWorkflowActivity"))

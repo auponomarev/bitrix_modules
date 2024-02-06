@@ -6,25 +6,17 @@ use Bitrix\ImOpenLines\Session;
 use Bitrix\Main\Application;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\ImConnector\Model\DeliveryMarkTable;
 
-/**
- * Class Agent
- *
- * @package Bitrix\ImConnector
- */
+
 class Agent
 {
 	/**
 	 * @param int $step
 	 * @param int $line
 	 * @return string
-	 * @throws \Bitrix\Main\ArgumentException
-	 * @throws \Bitrix\Main\ArgumentNullException
-	 * @throws \Bitrix\Main\ArgumentOutOfRangeException
-	 * @throws \Bitrix\Main\ObjectPropertyException
-	 * @throws \Bitrix\Main\SystemException
 	 */
-	public static function agentDisconnectConnectorVK($step = 0, $line = 0)
+	public static function agentDisconnectConnectorVK($step = 0, $line = 0): string
 	{
 		$connector = 'vkgroup';
 		$statuses = array();
@@ -70,8 +62,10 @@ class Agent
 				$step++;
 			}
 
-			return '\\Bitrix\\ImConnector\\Agent::agentDisconnectConnectorVK(' . $step . ', ' . $line . ');';
+			return __METHOD__ . '(' . $step . ', ' . $line . ');';
 		}
+
+		return '';
 	}
 
 	/**
@@ -79,12 +73,16 @@ class Agent
 	 */
 	public static function notifyUndelivered(): string
 	{
-		if (!Loader::includeModule('imopenlines'))
+		if (
+			!Loader::includeModule('imopenlines')
+			|| !Loader::includeModule('imconnector')
+		)
 		{
 			return __METHOD__ . '();';
 		}
 
 		$connection = Application::getInstance()->getConnection();
+		$helper = $connection->getSqlHelper();
 
 		$query = '
 			SELECT s.*
@@ -92,7 +90,7 @@ class Agent
 			INNER JOIN (
 				SELECT MAX(MESSAGE_ID), CHAT_ID 
 				FROM b_imconnectors_delivery_mark
-				WHERE DATE_CREATE < DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+				WHERE DATE_CREATE < ' . $helper->addSecondsToDateTime(-300) . '
 				GROUP BY CHAT_ID 
 			) m ON m.CHAT_ID = s.CHAT_ID
 			WHERE s.STATUS = ' . Session::STATUS_OPERATOR . '
@@ -111,7 +109,7 @@ class Agent
 			{
 				$sessionObj->update(['STATUS' => Session::STATUS_CLIENT]);
 
-				$connection->query('DELETE FROM b_imconnectors_delivery_mark WHERE CHAT_ID=' . (int)$session['CHAT_ID']);
+				DeliveryMarkTable::deleteByFilter(['=CHAT_ID' => (int)$session['CHAT_ID']]);
 
 				Im::addMessage([
 					'TO_CHAT_ID' => $session['CHAT_ID'],
@@ -119,7 +117,6 @@ class Agent
 					'SYSTEM' => 'Y',
 				]);
 			}
-
 		}
 
 		return __METHOD__ . '();';

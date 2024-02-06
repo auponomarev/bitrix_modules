@@ -1,3 +1,5 @@
+import { BotType } from 'im.v2.const';
+
 export type User = {
 	id: number,
 	name: string,
@@ -7,6 +9,7 @@ export type User = {
 	color: string,
 	workPosition: string,
 	gender: 'M' | 'F',
+	isAdmin: boolean,
 	extranet: boolean,
 	network: boolean,
 	bot: boolean,
@@ -22,11 +25,19 @@ export type User = {
 	isBirthday: boolean,
 	absent: string,
 	isAbsent: boolean,
-	departments: Array,
+	departments: number[],
 	phones: {
-		workPhone: string,
 		personalMobile: string,
-		personalPhone: string,
+		workPhone: string,
 		innerPhone: string,
 	}
+};
+
+export type Bot = {
+	code: string,
+	type: $Values<typeof BotType>,
+	appId: string,
+	isHidden: boolean,
+	isSupportOpenline: boolean,
+	isHuman: boolean,
 };

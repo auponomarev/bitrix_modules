@@ -2,35 +2,68 @@
 
 namespace Bitrix\Crm\Counter;
 
+use Bitrix\Crm\ActivityBindingTable;
+use Bitrix\Crm\ActivityTable;
 use Bitrix\Crm\Counter\Monitor\ActivitiesChangesCollection;
 use Bitrix\Crm\Counter\Monitor\ActivityChange;
 use Bitrix\Crm\Counter\Monitor\CountableActivitySynchronizer;
 use Bitrix\Crm\Counter\Monitor\EntitiesChangesCollection;
 use Bitrix\Crm\Counter\Monitor\EntityChange;
+use Bitrix\Crm\Counter\Monitor\MonitorByActResponsible;
+use Bitrix\Crm\Counter\Monitor\MonitorByEntityResponsible;
 use Bitrix\Crm\Item;
 use Bitrix\Crm\ItemIdentifier;
 use Bitrix\Crm\Service\Container;
+use Bitrix\Crm\Settings\CounterSettings;
 use Bitrix\Main\Application;
 use Bitrix\Crm\Traits;
+use Bitrix\Main\DI\ServiceLocator;
+use Bitrix\Main\Entity\ReferenceField;
+use Bitrix\Main\ORM\Query\Filter\ConditionTree;
+use Bitrix\Main\ORM\Query\Join;
 use Bitrix\Main\Type\DateTime;
 
-final class Monitor
+abstract class Monitor
 {
 	use Traits\Singleton;
 
-	private array $activitiesBindingsChanges = [];
-	private array $activitiesIdsWithBindingsChanges = [];
-	private ActivitiesChangesCollection $activitiesChangesCollection;
-	private EntitiesChangesCollection $entitiesChangesCollection;
+	protected array $activitiesBindingsChanges = [];
+	protected ActivitiesChangesCollection $activitiesChangesCollection;
+	protected EntitiesChangesCollection $entitiesChangesCollection;
 	private array $loadedEntitiesData = [];
+	private bool $needProcessChangesInBackground = true;
 
 	private function __construct()
 	{
-		$this->activitiesChangesCollection = new ActivitiesChangesCollection();
-		$this->entitiesChangesCollection = new EntitiesChangesCollection();
+		$this->clearChangesCollections();
 
-		Application::getInstance()->addBackgroundJob(fn() => $this->processChanges());
+		Application::getInstance()->addBackgroundJob(fn() => $this->processChangesInBackground());
 	}
+
+	abstract protected function processActivitiesChanges(): void;
+
+	abstract protected function processEntitiesChanges(): void;
+
+	abstract protected function processActivityBindingsChanges(): void;
+
+	public static function getInstance(): self
+	{
+		$code = Container::getIdentifierByClassName(Monitor::class);
+		$serviceLocator = ServiceLocator::getInstance();
+		if (!$serviceLocator->has($code))
+		{
+			$isUseActivityResponsible = CounterSettings::getInstance()->useActivityResponsible();
+
+			$instance = $isUseActivityResponsible
+				? new MonitorByActResponsible()
+				: new MonitorByEntityResponsible()
+			;
+
+			$serviceLocator->addInstance($code, $instance);
+		}
+
+		return $serviceLocator->get($code);
+	 }
 
 	public function onActivityAdd(
 		array $activityFields,
@@ -49,6 +82,8 @@ final class Monitor
 		);
 		$this->synchronizeEntityCountableTableByActivityChange($activityChange);
 		$this->activitiesChangesCollection->add($activityChange);
+
+		$this->processChangesIfNeed();
 	}
 
 	public function onActivityUpdate(
@@ -74,6 +109,8 @@ final class Monitor
 			$this->synchronizeEntityCountableTableByActivityChange($activityChange);
 		}
 		$this->activitiesChangesCollection->add($activityChange);
+
+		$this->processChangesIfNeed();
 	}
 
 	public function onActivityDelete(array $activityFields, array $activityBindings, ?DateTime $oldLightTimeDate): void
@@ -89,6 +126,8 @@ final class Monitor
 		);
 		$this->synchronizeEntityCountableTableByActivityChange($activityChange);
 		$this->activitiesChangesCollection->add($activityChange);
+
+		$this->processChangesIfNeed();
 	}
 
 	public function onChangeActivityBindings(int $activityId, array $oldActivityBindings, array $newActivityBindings): void
@@ -106,8 +145,11 @@ final class Monitor
 		if (count($changedBindings))
 		{
 			CountableActivitySynchronizer::synchronizeByActivityId($activityId);
+
+			$this->processChangesIfNeed();
 		}
 	}
+
 	public function onChangeActivitySingleBinding(int $activityId, array $oldActivityBinding, array $newActivityBinding): void
 	{
 		$this->onChangeActivityBindings($activityId, [$oldActivityBinding], [$newActivityBinding]);
@@ -125,6 +167,8 @@ final class Monitor
 		{
 			$this->entitiesChangesCollection->add($change);
 			CountableActivitySynchronizer::synchronizeByEntityChange($change);
+
+			$this->processChangesIfNeed();
 		}
 	}
 
@@ -140,6 +184,8 @@ final class Monitor
 		{
 			$this->entitiesChangesCollection->add($change);
 			CountableActivitySynchronizer::synchronizeByEntityChange($change);
+
+			$this->processChangesIfNeed();
 		}
 	}
 
@@ -155,6 +201,8 @@ final class Monitor
 		{
 			$this->entitiesChangesCollection->add($change);
 			CountableActivitySynchronizer::synchronizeByEntityChange($change);
+
+			$this->processChangesIfNeed();
 		}
 	}
 
@@ -163,113 +211,85 @@ final class Monitor
 		$this->processActivitiesChanges();
 		$this->processEntitiesChanges();
 		$this->processActivityBindingsChanges();
+		$this->clearChangesCollections();
 	}
 
-	private function processActivitiesChanges(): void
+	private function processChangesInBackground(): void
 	{
-		$changedActivities = $this->activitiesChangesCollection->getSignificantlyChangedActivities();
-		$affectedBindings = $changedActivities->getAffectedBindings();
-		$entitiesData = $this->loadEntitiesDataForBindings($affectedBindings);
-		/** @var $changedActivity ActivityChange */
-		foreach ($changedActivities->getValues() as $changedActivity)
-		{
-			$affectedTypeIds = $changedActivity->getAffectedCounterTypes();
+		$this->processChanges();
+		$this->needProcessChangesInBackground = false;
+	}
 
-			/** @var $binding ItemIdentifier */
-			foreach ($changedActivity->getAffectedBindings() as $binding)
-			{
-				$entityData = $entitiesData[$binding->getEntityTypeId()][$binding->getEntityId()] ?? [];
-				$this->resetCounters(
-					$binding->getEntityTypeId(),
-					$affectedTypeIds,
-					$entityData['assignedBy'] ?? null,
-					$entityData['categoryId'] ?? null,
-				);
-			}
+	private function processChangesIfNeed(): void
+	{
+		if (!$this->needProcessChangesInBackground)
+		{
+			$this->processChanges();
 		}
 	}
 
-	private function processEntitiesChanges(): void
+	private function clearChangesCollections(): void
 	{
-		$changedEntities = $this->entitiesChangesCollection->getSignificantlyChangedEntities();
-		/** @var $changedEntity EntityChange */
-		foreach ($changedEntities->getValues() as $changedEntity)
-		{
-			$entityTypeId = $changedEntity->getIdentifier()->getEntityTypeId();
-			if ($changedEntity->wasEntityAdded())
-			{
-				$factory = Container::getInstance()->getFactory($entityTypeId);
-				// if entity was added, it only affects the idle counter
-				if (
-					$factory && $factory
-					->getCountersSettings()
-					->isIdleCounterEnabled()
-				)
-				{
-					$this->resetCounters(
-						$entityTypeId,
-						[
-							EntityCounterType::IDLE,
-							EntityCounterType::ALL,
-						],
-						$changedEntity->getActualAssignedById(),
-						$changedEntity->getActualCategoryId()
-					);
-				}
-			}
-			else
-			{
-				$affectedResponsibleIds = [];
-				if ($changedEntity->getNewAssignedById() > 0)
-				{
-					$affectedResponsibleIds[] = $changedEntity->getNewAssignedById();
-				}
-				if ($changedEntity->isAssignedByChanged() && $changedEntity->getOldAssignedById() > 0)
-				{
-					$affectedResponsibleIds[] = $changedEntity->getOldAssignedById();
-				}
-
-				$categoryWasChanged = $changedEntity->isCategoryIdChanged() && !is_null($changedEntity->getOldCategoryId());
-				foreach ($affectedResponsibleIds as $responsibleId)
-				{
-					$this->resetCounters(
-						$entityTypeId,
-						EntityCounterType::getAll(true),
-						$responsibleId,
-						$changedEntity->getActualCategoryId(),
-					);
-
-					if ($categoryWasChanged)
-					{
-						$this->resetCounters(
-							$entityTypeId,
-							EntityCounterType::getAll(true),
-							$responsibleId,
-							$changedEntity->getOldCategoryId(),
-						);
-					}
-				}
-			}
-		}
+		$this->activitiesChangesCollection = new ActivitiesChangesCollection();
+		$this->entitiesChangesCollection = new EntitiesChangesCollection();
+		$this->activitiesBindingsChanges = [];
 	}
 
-	private function processActivityBindingsChanges(): void
+	/**
+	 * Load activity responsibility ids for specified identifiers
+	 * @param ItemIdentifier[] $identifiers
+	 * @return array<string, int[]> key is an ItemIdentifier hash, values is a responsible ids.
+	 */
+	protected function loadActivityResponsibleIds(array $identifiers): array
 	{
-		$affectedBindings = array_values($this->activitiesBindingsChanges);
-		$entitiesData = $this->loadEntitiesDataForBindings($affectedBindings);
-		foreach ($affectedBindings as $binding)
+		if (empty($identifiers))
 		{
-			$entityData = $entitiesData[$binding->getEntityTypeId()][$binding->getEntityId()] ?? [];
-			$this->resetCounters(
-				$binding->getEntityTypeId(),
-				EntityCounterType::getAll(true),
-				$entityData['assignedBy'] ?? null,
-				$entityData['categoryId'] ?? null,
-			);
+			return [];
 		}
+		$bindQuery = ActivityBindingTable::query()
+			->registerRuntimeField(
+				'',
+				new ReferenceField('A',
+					ActivityTable::getEntity(),
+					['=ref.ID' => 'this.ACTIVITY_ID'],
+					['join_type' => Join::TYPE_INNER])
+			)
+			->setSelect(['ACTIVITY_ID', 'OWNER_ID', 'OWNER_TYPE_ID'])
+			->addSelect('A.RESPONSIBLE_ID', 'RESPONSIBLE_ID');
+
+		$orCt = new ConditionTree();
+		$orCt->logic(ConditionTree::LOGIC_OR);
+		foreach ($identifiers as $identifier)
+		{
+			$ct = new ConditionTree();
+			$ct->where('OWNER_ID', $identifier->getEntityId());
+			$ct->where('OWNER_TYPE_ID', $identifier->getEntityTypeId());
+
+			$orCt->where($ct);
+		}
+		$bindQuery->where($orCt);
+		$bindings = $bindQuery->fetchAll();
+
+		if (empty($bindings))
+		{
+			return [];
+		}
+
+		$result = [];
+		foreach ($bindings as $bind)
+		{
+			$key = (new ItemIdentifier($bind['OWNER_TYPE_ID'], $bind['OWNER_ID']))->getHash();
+			if (!isset($result[$key]))
+			{
+				$result[$key] = [];
+			}
+			$result[$key][] = (int) $bind['RESPONSIBLE_ID'];
+		}
+
+		return array_map(fn($resp) => array_unique($resp), $result);
 	}
 
-	private function loadEntitiesDataForBindings(array $bindings): array
+	protected function loadEntitiesDataForBindings(array $bindings): array
 	{
 		if (empty($bindings))
 		{
@@ -359,7 +379,7 @@ final class Monitor
 		return $loadedEntitiesData;
 	}
 
-	private function resetCounters(
+	protected function resetCounters(
 		int $entityTypeId,
 		array $counterTypeIds,
 		?int $responsibleId,
@@ -404,6 +424,5 @@ final class Monitor
 			$entitiesData = $this->loadEntitiesDataForBindings($changedActivity->getAffectedBindings());
 			CountableActivitySynchronizer::synchronizeByActivityChange($changedActivity, $entitiesData);
 		}
-
 	}
 }

@@ -70,19 +70,6 @@ $sliderConditions = [
 	),
 ];
 
-if ($arParams['TILE_MODE'] === 'view')
-{
-	$sliderConditions[] = str_replace(
-		array(
-			'#landing_edit#', '?'
-		),
-		array(
-			'(\d+)', '\?'
-		),
-		CUtil::jsEscape($arParams['PAGE_URL_LANDING_VIEW'])
-	);
-}
-
 $sliderFullConditions = [];
 if ($arParams['TYPE'] === 'PAGE' && $component->isUseNewMarket())
 {
@@ -108,6 +95,12 @@ $sliderShortConditions = [
 \trimArr($sliderFullConditions, true);
 \trimArr($sliderConditions, true);
 \trimArr($sliderShortConditions, true);
+
+// Tool availability (by intranet settings)
+if (!$component->isToolAvailable())
+{
+	echo $component->getToolUnavailableInfoScript();
+}
 ?>
 
 <div class="grid-tile-wrap landing-pages-wrap" id="grid-tile-wrap">

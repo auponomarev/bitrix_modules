@@ -970,7 +970,7 @@ class CAllSocNetUserToGroup
 		if (
 			(
 				!is_array($arInvitedUser["UF_DEPARTMENT"])
-				|| (int)$arInvitedUser["UF_DEPARTMENT"][0] <= 0
+				|| (int) ($arInvitedUser["UF_DEPARTMENT"][0] ?? null) <= 0
 			) // extranet
 			&& ($arInvitedUser["LAST_LOGIN"] <= 0)
 			&& $arInvitedUser["LAST_ACTIVITY_DATE"] == ''
@@ -1496,6 +1496,15 @@ class CAllSocNetUserToGroup
 				{
 					ExecuteModuleEventEx($arEvent, array($arResult["ID"], $arResult));
 				}
+
+				$moderators = UserToGroupTable::getGroupModerators((int)$arResult['GROUP_ID']);
+				EventService\Service::addEvent(
+					EventService\EventDictionary::EVENT_WORKGROUP_MEMBER_REQUEST_CONFIRM,
+					[
+						'GROUP_ID' => (int)$arResult['GROUP_ID'],
+						'RECEPIENTS' => array_map(function ($row) { return $row['USER_ID']; }, $moderators),
+					]
+				);
 
 				if ($bAutoSubscribe)
 				{

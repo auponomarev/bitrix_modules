@@ -3,27 +3,26 @@
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Iblock;
 
-Loc::loadMessages(__FILE__);
-
 class CIBlockPropertyFileMan
 {
-	public const USER_TYPE = 'FileMan';
+	/** @deprecated */
+	public const USER_TYPE = Iblock\PropertyTable::USER_TYPE_FILE_MAN;
 
 	public static function GetUserTypeDescription()
 	{
-		return array(
-			"PROPERTY_TYPE" => Iblock\PropertyTable::TYPE_STRING,
-			"USER_TYPE" => self::USER_TYPE,
-			"DESCRIPTION" => Loc::getMessage("IBLOCK_PROP_FILEMAN_DESC"),
-			"GetPropertyFieldHtml" => array(__CLASS__, "GetPropertyFieldHtml"),
-			"GetPropertyFieldHtmlMulty" => array(__CLASS__, "GetPropertyFieldHtmlMulty"),
-			"ConvertToDB" => array(__CLASS__, "ConvertToDB"),
-			"ConvertFromDB" => array(__CLASS__, "ConvertFromDB"),
-			"GetSettingsHTML" => array(__CLASS__, "GetSettingsHTML"),
-			'GetUIEntityEditorProperty' => array(__CLASS__, 'GetUIEntityEditorProperty'),
-			'GetUIEntityEditorPropertyEditHtml' => array(__CLASS__, 'GetUIEntityEditorPropertyEditHtml'),
-			'GetUIEntityEditorPropertyViewHtml' => array(__CLASS__, 'GetUIEntityEditorPropertyViewHtml'),
-		);
+		return [
+			'PROPERTY_TYPE' => Iblock\PropertyTable::TYPE_STRING,
+			'USER_TYPE' => Iblock\PropertyTable::USER_TYPE_FILE_MAN,
+			'DESCRIPTION' => Loc::getMessage('IBLOCK_PROP_FILEMAN_DESC'),
+			'GetPropertyFieldHtml' => [__CLASS__, 'GetPropertyFieldHtml'],
+			'GetPropertyFieldHtmlMulty' => [__CLASS__, 'GetPropertyFieldHtmlMulty'],
+			'ConvertToDB' => [__CLASS__, 'ConvertToDB'],
+			'ConvertFromDB' => [__CLASS__, 'ConvertFromDB'],
+			'GetSettingsHTML' => [__CLASS__, 'GetSettingsHTML'],
+			'GetUIEntityEditorProperty' => [__CLASS__, 'GetUIEntityEditorProperty'],
+			'GetUIEntityEditorPropertyEditHtml' => [__CLASS__, 'GetUIEntityEditorPropertyEditHtml'],
+			'GetUIEntityEditorPropertyViewHtml' => [__CLASS__, 'GetUIEntityEditorPropertyViewHtml'],
+		];
 	}
 
 	public static function GetPropertyFieldHtmlMulty($arProperty, $arValues, $strHTMLControlName)
@@ -158,11 +157,18 @@ class CIBlockPropertyFileMan
 
 	public static function ConvertFromDB($arProperty, $value)
 	{
-		$return = array();
-		if (trim($value["VALUE"]) <> '')
-			$return["VALUE"] = $value["VALUE"];
-		if (trim($value["DESCRIPTION"]) <> '')
-			$return["DESCRIPTION"] = $value["DESCRIPTION"];
+		$return = [];
+		$value = trim((string)($value['VALUE'] ?? ''));
+		if ($value !== '')
+		{
+			$return['VALUE'] = $value;
+		}
+		$description = trim((string)($value['DESCRIPTION'] ?? ''));
+		if ($description !== '')
+		{
+			$return['DESCRIPTION'] = $description;
+		}
+
 		return $return;
 	}
 

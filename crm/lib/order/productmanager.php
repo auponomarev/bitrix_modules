@@ -210,6 +210,7 @@ class ProductManager
 			'PRODUCT_ID' => $basketItem->getField('PRODUCT_ID'),
 			'OFFER_ID' => $basketItem->getField('PRODUCT_ID'),
 			'QUANTITY' => (float)$basketItem->getField('QUANTITY'),
+			'CURRENCY' => $basketItem->getCurrency(),
 			'TYPE' => (int)$basketItem->getField('TYPE'),
 		];
 	}
@@ -514,7 +515,7 @@ class ProductManager
 			}
 		}
 
-		$productTypes = self::getCatalogProductTypes(array_unique($productIds));
+		$productTypes = $this->getCatalogProductTypes(array_unique($productIds));
 
 		$usedIndexes = [];
 		foreach ($basketProducts as $product)
@@ -684,7 +685,7 @@ class ProductManager
 		});
 	}
 
-	private static function getCatalogProductTypes(array $productIds): array
+	private function getCatalogProductTypes(array $productIds): array
 	{
 		$result = [];
 

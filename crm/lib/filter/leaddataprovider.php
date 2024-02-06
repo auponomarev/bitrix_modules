@@ -1,18 +1,16 @@
 <?php
 namespace Bitrix\Crm\Filter;
 
+use Bitrix\Crm;
+use Bitrix\Crm\Counter\EntityCounterType;
+use Bitrix\Crm\EntityAddress;
+use Bitrix\Crm\PhaseSemantics;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Service\ParentFieldManager;
 use Bitrix\Crm\UI\EntitySelector;
 use Bitrix\Main;
-use Bitrix\Main\Config\Option;
-use Bitrix\Main\Localization\Loc;
-
-use Bitrix\Crm;
-use Bitrix\Crm\EntityAddress;
-use Bitrix\Crm\Counter\EntityCounterType;
-use Bitrix\Crm\PhaseSemantics;
 use Bitrix\Main\Loader;
+use Bitrix\Main\Localization\Loc;
 
 Loc::loadMessages(__FILE__);
 
@@ -45,6 +43,11 @@ class LeadDataProvider extends EntityDataProvider implements FactoryOptionable
 	protected function getFieldName($fieldID)
 	{
 		$name = Loc::getMessage("CRM_LEAD_FILTER_{$fieldID}");
+		if($name === null)
+		{
+			$name = Loc::getMessage("CRM_LEAD_FILTER_{$fieldID}_MSGVER_1");
+		}
+
 		if($name === null)
 		{
 			$name = \CCrmLead::GetFieldCaption($fieldID);
@@ -85,6 +88,13 @@ class LeadDataProvider extends EntityDataProvider implements FactoryOptionable
 				[
 					'type' => 'list',
 					'partial' => true
+				]
+			),
+			'OBSERVER_IDS' => $this->createField(
+				'OBSERVER_IDS',
+				[
+					'type' => 'entity_selector',
+					'partial' => true,
 				]
 			),
 			'NAME' => $this->createField(
@@ -404,6 +414,17 @@ class LeadDataProvider extends EntityDataProvider implements FactoryOptionable
 			),
 		];
 
+		if ($this->isActivityResponsibleEnabled())
+		{
+			$result['ACTIVITY_RESPONSIBLE_IDS'] = $this->createField(
+				'ACTIVITY_RESPONSIBLE_IDS',
+				[
+					'type' => 'entity_selector',
+					'partial' => true,
+				]
+			);
+		}
+
 		Crm\Tracking\UI\Filter::appendFields($result, $this);
 
 		//region UTM
@@ -471,6 +492,18 @@ class LeadDataProvider extends EntityDataProvider implements FactoryOptionable
 			]
 		);
 
+		$factory = Container::getInstance()->getFactory(\CCrmOwnerType::Lead);
+		if ($factory && $factory->isLastActivityEnabled())
+		{
+			$result['LAST_ACTIVITY_TIME'] = $this->createField(
+				'LAST_ACTIVITY_TIME',
+				[
+					'type' => 'date',
+					'partial' => true,
+				]
+			);
+		}
+
 		return $result;
 	}
 
@@ -510,18 +543,26 @@ class LeadDataProvider extends EntityDataProvider implements FactoryOptionable
 				'items' => \CCrmCurrencyHelper::PrepareListItems()
 			);
 		}
-		elseif(in_array($fieldID, ['ASSIGNED_BY_ID', 'CREATED_BY_ID', 'MODIFY_BY_ID'], true))
+		elseif(in_array($fieldID, ['ASSIGNED_BY_ID', 'CREATED_BY_ID', 'MODIFY_BY_ID', 'ACTIVITY_RESPONSIBLE_IDS', 'OBSERVER_IDS'], true))
 		{
 			$factory = \Bitrix\Crm\Service\Container::getInstance()->getFactory(\CCrmOwnerType::Lead);
 			$referenceClass = ($factory ? $factory->getDataClass() : null);
+
+			if (in_array($fieldID, ['ACTIVITY_RESPONSIBLE_IDS', 'OBSERVER_IDS'], true))
+			{
+				$referenceClass = null;
+			}
+
+			$isEnableAllUsers = in_array($fieldID, ['ASSIGNED_BY_ID', 'ACTIVITY_RESPONSIBLE_IDS'], true);
+			$isEnableOtherUsers = in_array($fieldID, ['ASSIGNED_BY_ID', 'ACTIVITY_RESPONSIBLE_IDS'], true);
 
 			return $this->getUserEntitySelectorParams(
 				EntitySelector::CONTEXT,
 				[
 					'fieldName' => $fieldID,
 					'referenceClass' => $referenceClass,
-					'isEnableAllUsers' => $fieldID === 'ASSIGNED_BY_ID',
-					'isEnableOtherUsers' => $fieldID === 'ASSIGNED_BY_ID',
+					'isEnableAllUsers' => $isEnableAllUsers,
+					'isEnableOtherUsers' => $isEnableOtherUsers,
 				]
 			);
 		}

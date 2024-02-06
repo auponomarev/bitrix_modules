@@ -5,6 +5,7 @@ use Bitrix\Crm\Integration\StorageManager;
 use Bitrix\Crm\Integration\Channel;
 use Bitrix\Crm\Settings\ActivitySettings;
 use Bitrix\Crm\Tracking;
+use Bitrix\Crm\Timeline;
 
 if(!IsModuleInstalled('bitrix24'))
 {
@@ -39,6 +40,7 @@ class CCrmEMail
 			'NAME'        => GetMessage('CRM_ADD_MESSAGE'),
 			'ACTION_FUNC' => Array('CCrmEMail', 'imapEmailMessageAdd'),
 			'LAZY_ATTACHMENTS' => true,
+			'SANITIZE_ON_VIEW' => true,
 		);
 	}
 
@@ -1306,7 +1308,6 @@ class CCrmEMail
 		}
 
 		$body = isset($msgFields['BODY']) ? $msgFields['BODY'] : '';
-		$body_bb = isset($msgFields['BODY_BB']) ? $msgFields['BODY_BB'] : '';
 		$body_html = isset($msgFields['BODY_HTML']) ? $msgFields['BODY_HTML'] : '';
 
 		$filesData = array();
@@ -1425,23 +1426,6 @@ class CCrmEMail
 			$checkInlineFiles = true;
 			$descr = $body_html;
 		}
-		else if (!empty($body_bb))
-		{
-			$bbCodeParser = new \CTextParser();
-			$descr = $bbCodeParser->convertText($body_bb);
-
-			foreach ($filesData as $item)
-			{
-				$descr = preg_replace(
-					sprintf('/\[ATTACHMENT=attachment_%u\]/is', $item['attachment_id']),
-					sprintf('<img src="aid:%u">', $item['attachment_id']),
-					$descr, -1, $count
-				);
-
-				if ($count > 0)
-					$checkInlineFiles = true;
-			}
-		}
 		else
 		{
 			$descr = preg_replace('/\r\n|\n|\r/', '<br>', htmlspecialcharsbx($body));
@@ -1507,6 +1491,7 @@ class CCrmEMail
 			'COMPLETED'            => $completed,
 			'AUTHOR_ID'            => $mailbox['USER_ID'],
 			'RESPONSIBLE_ID'       => $userId,
+			'EDITOR_ID' => $userId,
 			'PRIORITY'             => \CCrmActivityPriority::Medium,
 			'DESCRIPTION'          => \Bitrix\Main\Text\Emoji::encode($descr),
 			'DESCRIPTION_TYPE'     => \CCrmContentType::Html,
@@ -1524,6 +1509,7 @@ class CCrmEMail
 					'cc'      => $cc,
 					'bcc'     => $bcc,
 				),
+				'SANITIZE_ON_VIEW' => (int)($msgFields['SANITIZE_ON_VIEW'] ?? 0),
 			),
 			'UF_MAIL_MESSAGE' => $messageId,
 			'IS_INCOMING_CHANNEL' => $isIncomingChannel ? 'Y' : 'N',
@@ -1628,6 +1614,20 @@ class CCrmEMail
 			if ($isIncome)
 			{
 				\Bitrix\Crm\Automation\Trigger\EmailTrigger::execute($activityFields['BINDINGS'], $activityFields);
+
+				$bindings = \CCrmActivity::GetBindings($activityId);
+				$logMessageController = Timeline\LogMessageController::getInstance();
+				foreach ($bindings as $binding)
+				{
+					$logMessageController->onCreate([
+							'ENTITY_TYPE_ID' => $binding['OWNER_TYPE_ID'],
+							'ENTITY_ID' => $binding['OWNER_ID'],
+							'ASSOCIATED_ENTITY_TYPE_ID' => \CCrmOwnerType::Activity,
+							'ASSOCIATED_ENTITY_ID' => $activityId,
+						],
+						Timeline\LogMessageType::EMAIL_INCOMING_MESSAGE,
+					);
+				}
 			}
 			Channel\EmailTracker::getInstance()->registerActivity($activityId, array('ORIGIN_ID' => sprintf('%u|%u', $mailbox['USER_ID'], $mailbox['ID'])));
 		}
@@ -2595,6 +2595,8 @@ class CCrmEMail
 		}
 
 		$userId = isset($activityFields['RESPONSIBLE_ID']) ? (int)$activityFields['RESPONSIBLE_ID'] : \CCrmSecurityHelper::GetCurrentUserID();
+		$authorId = isset($activityFields['AUTHOR_ID']) ? (int)$activityFields['AUTHOR_ID'] : $userId;
+		$editorId = isset($activityFields['EDITOR_ID']) ? (int)$activityFields['EDITOR_ID'] : $userId;
 
 		$now = convertTimeStamp(time() + \CTimeZone::getOffset(), 'FULL', SITE_ID);
 
@@ -2733,6 +2735,7 @@ class CCrmEMail
 		\CCrmActivity::addEmailSignature($body, \CCrmContentType::Html);
 
 		$activityFields = array(
+			'AUTHOR_ID' => $authorId,
 			'OWNER_ID' => $ownerId,
 			'OWNER_TYPE_ID' => $ownerTypeId,
 			'TYPE_ID' => \CCrmActivityType::Email,
@@ -2741,6 +2744,7 @@ class CCrmEMail
 			'END_TIME' => $now,
 			'COMPLETED' => 'Y',
 			'RESPONSIBLE_ID' => $userId,
+			'EDITOR_ID' => $editorId,
 			'PRIORITY' => !empty($messageFields['IMPORTANT']) && $messageFields['IMPORTANT'] ? \CCrmActivityPriority::High : \CCrmActivityPriority::Medium,
 			'DESCRIPTION' => $body,
 			'DESCRIPTION_TYPE' => \CCrmContentType::Html,
@@ -3098,11 +3102,18 @@ class CCrmEMail
 				),
 				false,
 				false,
-				array('ID', 'RESPONSIBLE_ID', 'SETTINGS')
+				array('ID', 'RESPONSIBLE_ID', 'SETTINGS', 'OWNER_TYPE_ID', 'OWNER_ID')
 			)->fetch();
 
 			if (!empty($activity) and empty($activity['SETTINGS']['READ_CONFIRMED']) || $activity['SETTINGS']['READ_CONFIRMED'] <= 0)
 			{
+				\Bitrix\Crm\Timeline\EmailActivityStatuses\Entry::create([
+					'ACTIVITY_ID' => $activity['ID'],
+					'AUTHOR_ID' => $activity['RESPONSIBLE_ID'],
+					'OWNER_TYPE_ID' => $activity['OWNER_TYPE_ID'],
+					'OWNER_ID' => $activity['OWNER_ID'],
+				]);
+
 				$activity['SETTINGS']['READ_CONFIRMED'] = time();
 				\CCrmActivity::update($activity['ID'], array('SETTINGS' => $activity['SETTINGS']), false, false);
 

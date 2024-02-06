@@ -1,6 +1,7 @@
 import { Base } from './base';
 import { Type } from 'main.core';
 import ConfigurableItem from '../configurable-item';
+import ContactList from "../components/content-blocks/mail/contact-list";
 
 export class Email extends Base
 {
@@ -29,7 +30,15 @@ export class Email extends Base
 		const editor = this.#getActivityEditor();
 		if (editor && id)
 		{
-			editor.viewActivity(id);
+			const emailActivity = BX.CrmActivityEmail.create(
+				{
+					ID: id,
+				},
+				editor,
+				{}
+			);
+
+			emailActivity.openDialog(BX.CrmDialogMode.view);
 		}
 	}
 
@@ -61,8 +70,23 @@ export class Email extends Base
 		this.#viewActivity(actionData.threadId);
 	}
 
+	getContentBlockComponents(Item: ConfigurableItem): Object
+	{
+		return {
+			ContactList,
+		};
+	}
+
 	static isItemSupported(item: ConfigurableItem): boolean
 	{
-		return (item.getType() === 'Activity:Email');
+		const supportedItemTypes = [
+			'ContactList',
+			'Activity:Email',
+			'EmailActivitySuccessfullyDelivered',
+			'EmailActivityNonDelivered',
+			'EmailLogIncomingMessage',
+		];
+
+		return supportedItemTypes.includes(item.getType());
 	}
 }

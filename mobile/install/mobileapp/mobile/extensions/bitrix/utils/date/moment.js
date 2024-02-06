@@ -2,7 +2,28 @@
  * @module utils/date/moment
  */
 jn.define('utils/date/moment', (require, exports, module) => {
+	const MMMregex = /\bMMM\b/;
 
+	const NATIVE_LANGS_MAP = {
+		ru: 'ru', // Russian
+		en: 'en', // English
+		de: 'de', // German
+		ua: 'ua', // Ukrainian
+		la: 'es', // Spanish
+		br: 'pt', // Portuguese
+		fr: 'fr', // French
+		sc: 'cn', // Chinese Traditional -> Chinese
+		tc: 'cn', // Chinese Traditional -> Chinese
+		pl: 'pl', // Polish
+		it: 'it', // Italian
+		tr: 'tr', // Turkish
+		ja: 'jp', // Japanese
+		vn: 'vn', // Vietnamese
+		id: 'id', // Indonesian
+		ms: 'my', // Malay
+		th: 'th', // Thai
+		ar: 'ar', // Arabic
+	};
 	/**
 	 * Handy wrapper for standard js Date object.
 	 */
@@ -48,6 +69,7 @@ jn.define('utils/date/moment', (require, exports, module) => {
 		setNow(moment)
 		{
 			this.now = moment;
+
 			return this;
 		}
 
@@ -66,6 +88,7 @@ jn.define('utils/date/moment', (require, exports, module) => {
 		{
 			const yesterday = new Date(this.getNow().date);
 			yesterday.setDate(yesterday.getDate() - 1);
+
 			return this.date.toDateString() === yesterday.toDateString();
 		}
 
@@ -76,6 +99,7 @@ jn.define('utils/date/moment', (require, exports, module) => {
 		{
 			const tomorrow = new Date(this.getNow().date);
 			tomorrow.setDate(tomorrow.getDate() + 1);
+
 			return this.date.toDateString() === tomorrow.toDateString();
 		}
 
@@ -85,6 +109,46 @@ jn.define('utils/date/moment', (require, exports, module) => {
 		get inThisYear()
 		{
 			return this.date.getFullYear() === this.getNow().date.getFullYear();
+		}
+
+		/**
+		 * @return {boolean}
+		 */
+		get inThisMonth()
+		{
+			return this.inThisYear && this.date.getMonth() === this.getNow().date.getMonth();
+		}
+
+		/**
+		 * @return {boolean}
+		 */
+		get inThisWeek()
+		{
+			if (this.inThisYear)
+			{
+				const momentWeek = Number(this.format('w'));
+				const nowWeek = Number(this.getNow().format('w'));
+
+				return nowWeek === momentWeek;
+			}
+
+			return false;
+		}
+
+		/**
+		 * @return {boolean}
+		 */
+		get inThisHour()
+		{
+			return this.isToday && this.date.getHours() === this.getNow().date.getHours();
+		}
+
+		/**
+		 * @return {boolean}
+		 */
+		get inThisMinute()
+		{
+			return this.inThisHour && this.date.getMinutes() === this.getNow().date.getMinutes();
 		}
 
 		/**
@@ -117,6 +181,40 @@ jn.define('utils/date/moment', (require, exports, module) => {
 		get withinHour()
 		{
 			return this.isWithinSeconds(3600);
+		}
+
+		/**
+		 * @return {boolean}
+		 */
+		get withinDay()
+		{
+			return this.isWithinSeconds(86400);
+		}
+
+		/**
+		 * @return {boolean}
+		 */
+		get withinWeek()
+		{
+			return this.isWithinSeconds(604_800);
+		}
+
+		/**
+		 * @return {boolean}
+		 */
+		get withinMonth()
+		{
+			// 2.592.000 seconds = 30 days
+			return this.isWithinSeconds(2_592_000);
+		}
+
+		/**
+		 * @return {boolean}
+		 */
+		get withinYear()
+		{
+			// 31.536.000 seconds = 365 days
+			return this.isWithinSeconds(31_536_000);
 		}
 
 		/**
@@ -166,6 +264,7 @@ jn.define('utils/date/moment', (require, exports, module) => {
 		get secondsFromNow()
 		{
 			const delta = Math.abs(this.getNow().timestamp - this.timestamp);
+
 			return Math.floor(delta);
 		}
 
@@ -175,6 +274,7 @@ jn.define('utils/date/moment', (require, exports, module) => {
 		get minutesFromNow()
 		{
 			const delta = Math.abs(this.getNow().timestamp - this.timestamp);
+
 			return Math.floor(delta / 60);
 		}
 
@@ -187,15 +287,84 @@ jn.define('utils/date/moment', (require, exports, module) => {
 		}
 
 		/**
+		 * @return {number}
+		 */
+		get daysFromNow()
+		{
+			const delta = Math.abs(this.getNow().timestamp - this.timestamp);
+
+			return Math.floor(delta / (60 * 60 * 24));
+		}
+
+		/**
+		 * @return {number}
+		 */
+		get weeksFromNow()
+		{
+			const delta = Math.abs(this.getNow().timestamp - this.timestamp);
+
+			return Math.floor(delta / (60 * 60 * 24 * 7));
+		}
+
+		/**
+		 * @return {number}
+		 */
+		get monthsFromNow()
+		{
+			const nowDate = this.getNow().date;
+			const date = this.date;
+
+			return Math.abs(date.getMonth() - nowDate.getMonth()
+				+ (12 * (date.getFullYear() - nowDate.getFullYear())));
+		}
+
+		/**
+		 * @return {number}
+		 */
+		get yearsFromNow()
+		{
+			const nowDate = this.getNow().date;
+			const date = this.date;
+
+			return Math.abs(date.getFullYear() - nowDate.getFullYear());
+		}
+
+		/**
 		 * @param {string|function} format
 		 * @param {string|null} locale
 		 * @param {*} rest
 		 * @return {string}
 		 */
-		format(format, locale = null, ...rest)
+		format(format, locale = env?.languageId, ...rest)
 		{
+			const languageId = NATIVE_LANGS_MAP[locale] || locale;
 			const formatStr = typeof format === 'function' ? format(this, locale, ...rest) : format;
-			return DateFormatter.getDateString(this.timestamp, formatStr, locale);
+
+			if (MMMregex.test(formatStr))
+			{
+				// fix for MMM format to remove trailing dot (e.g. Aug. => Aug)
+				const formattedMMM = this.getMMMWithoutTrailingDot(languageId);
+				const dateWithoutMMM = formatStr.replace(MMMregex, '#');
+
+				return DateFormatter.getDateString(this.timestamp, dateWithoutMMM, languageId).replace('#', formattedMMM);
+			}
+
+			// eslint-disable-next-line no-undef
+			return DateFormatter.getDateString(this.timestamp, formatStr, languageId);
+		}
+
+		getMMMWithoutTrailingDot(locale)
+		{
+			const languageId = NATIVE_LANGS_MAP[locale] || locale;
+			// eslint-disable-next-line no-undef
+			const formattedMMM = DateFormatter.getDateString(this.timestamp, 'MMM', languageId);
+
+			if (formattedMMM.endsWith('.'))
+			{
+				return formattedMMM.slice(0, -1);
+			}
+
+			return formattedMMM;
 		}
 
 		/**
@@ -234,6 +403,7 @@ jn.define('utils/date/moment', (require, exports, module) => {
 			{
 				moment.setNow(new Moment(this.now.date));
 			}
+
 			return moment;
 		}
 
@@ -245,6 +415,7 @@ jn.define('utils/date/moment', (require, exports, module) => {
 		{
 			const moment = this.clone();
 			moment.date.setTime(this.date.getTime() + ms);
+
 			return moment;
 		}
 
@@ -292,10 +463,10 @@ jn.define('utils/date/moment', (require, exports, module) => {
 		{
 			const moment = this.clone();
 			moment.date.setMinutes(0, 0, 0);
+
 			return moment;
 		}
 	}
 
 	module.exports = { Moment };
-
 });

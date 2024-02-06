@@ -290,6 +290,32 @@ class Template extends Base
 	}
 
 	/**
+	 * Install template if template with the same code does not already exist
+	 *
+	 * @param array $template
+	 * @return Result
+	 */
+	public function installDefaultTemplateIfNotExists(array $template): Result
+	{
+		$code = $template['CODE'] ?? null;
+		if (!empty($code))
+		{
+			$existedRecord = TemplateTable::query()
+				->where('CODE', $code)
+				->setSelect(['ID'])
+				->setLimit(1)
+				->fetch()
+			;
+			if ($existedRecord)
+			{
+				return new Result();
+			}
+		}
+
+		return $this->installDefaultTemplate($template);
+	}
+
+	/**
 	 * Install default template.
 	 *
 	 * @param array $template
@@ -362,7 +388,7 @@ class Template extends Base
 		}
 		if($result->isSuccess())
 		{
-			if($template['IS_DELETED'] === 'Y')
+			if(isset($template['IS_DELETED']) && $template['IS_DELETED'] === 'Y')
 			{
 				unset($template['ID']);
 			}
@@ -573,7 +599,7 @@ class Template extends Base
 	protected function add(array $templateData, array $providers = [], array $users = [])
 	{
 		$result = new Result();
-		$id = intval($templateData['ID']);
+		$id = intval($templateData['ID'] ?? 0);
 		if($id > 0 && !Driver::getInstance()->getUserPermissions()->canModifyTemplate($id))
 		{
 			$result->addError(new Error('You do not have permissions to modify this template'));

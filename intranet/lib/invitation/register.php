@@ -152,7 +152,7 @@ class Register
 		];
 	}
 
-	public static function checkExistingUserByPhone($phoneItems)
+	public static function checkExistingUserByPhone(array $phoneItems): array
 	{
 		$arPhoneToReinvite = [];
 		$arPhoneExist = [];
@@ -267,9 +267,8 @@ class Register
 		];
 	}
 
-	public static function checkExistingUserByEmail($emailItems, $returnExistingUsers)
+	public static function checkExistingUserByEmail(array $emailItems): array
 	{
-		$existingUserIdList = [];
 		$arUserForTransfer = [];
 		$arEmailToReinvite = [];
 		$arEmailExist = [];
@@ -320,58 +319,29 @@ class Register
 					$arUserForTransfer[] = $arUser;
 				}
 				elseif (
-					(
-						(string)$arUser["CONFIRM_CODE"] !== ''
-						|| $returnExistingUsers
-					)
+					(string)$arUser["CONFIRM_CODE"] !== ''
 					&& (
 						!$bExtranetInstalled
 						|| ( // both intranet
-							isset($item["UF_DEPARTMENT"], $arUser["UF_DEPARTMENT"])
+							isset($item["UF_DEPARTMENT"])
 							&& !empty($item["UF_DEPARTMENT"])
-							&& (
-								(
-									is_array($arUser["UF_DEPARTMENT"])
-									&& (int)$arUser["UF_DEPARTMENT"][0] > 0
-								)
-								|| (
-									!is_array($arUser["UF_DEPARTMENT"])
-									&& (int)$arUser["UF_DEPARTMENT"] > 0
-								)
-							)
+							&& static::isIntranetUser($arUser)
 						)
 						||
 						(	// both extranet
 							(!isset($item["UF_DEPARTMENT"]) || empty($item["UF_DEPARTMENT"]))
-							&& (
-								!isset($arUser["UF_DEPARTMENT"])
-								|| (
-									is_array($arUser["UF_DEPARTMENT"])
-									&& (int)$arUser["UF_DEPARTMENT"][0] <= 0
-								)
-								|| (
-									!is_array($arUser["UF_DEPARTMENT"])
-									&& (int)$arUser["UF_DEPARTMENT"] <= 0
-								)
-							)
+							&& static::isExtranetUser($arUser)
 						)
 					)
 				)
 				{
-					if ($returnExistingUsers)
-					{
-						$existingUserIdList[] = (int)$arUser['ID'];
-					}
-					else
-					{
-						$arEmailToReinvite[] = array(
-							"EMAIL" => $item["EMAIL"],
-							"REINVITE" => true,
-							"ID" => $arUser["ID"],
-							"CONFIRM_CODE" => $arUser["CONFIRM_CODE"],
-							"UF_DEPARTMENT" => $arUser["UF_DEPARTMENT"]
-						);
-					}
+					$arEmailToReinvite[] = array(
+						"EMAIL" => $item["EMAIL"],
+						"REINVITE" => true,
+						"ID" => $arUser["ID"],
+						"CONFIRM_CODE" => $arUser["CONFIRM_CODE"],
+						"UF_DEPARTMENT" => $arUser["UF_DEPARTMENT"]
+					);
 				}
 				else
 				{
@@ -387,12 +357,41 @@ class Register
 		}
 
 		return [
-			"USER_ID_EXIST" => $existingUserIdList,
 			"TRANSFER_USER" => $arUserForTransfer,
 			"EMAIL_TO_REINVITE" => $arEmailToReinvite,
 			"EMAIL_EXIST" => $arEmailExist,
 			"EMAIL_TO_REGISTER" => $arEmailToRegister,
 		];
+	}
+
+	private static function isIntranetUser(array $user): bool
+	{
+		return isset($user["UF_DEPARTMENT"])
+		&& (
+			(
+				is_array($user["UF_DEPARTMENT"])
+				&& (int)$user["UF_DEPARTMENT"][0] > 0
+			)
+			|| (
+				!is_array($user["UF_DEPARTMENT"])
+				&& (int)$user["UF_DEPARTMENT"] > 0
+			)
+		);
+	}
+
+	private static function isExtranetUser(array $user): bool
+	{
+		return (
+			!isset($user["UF_DEPARTMENT"])
+			|| (
+				is_array($user["UF_DEPARTMENT"])
+				&& (int)$user["UF_DEPARTMENT"][0] <= 0
+			)
+			|| (
+				!is_array($user["UF_DEPARTMENT"])
+				&& (int)$user["UF_DEPARTMENT"] <= 0
+			)
+		);
 	}
 
 	public static function transferUser($usersForTransfer, &$errors)
@@ -427,7 +426,7 @@ class Register
 			{
 				if($e = $APPLICATION->GetException())
 				{
-					$arError[] = $e->GetString();
+					$errors[] = $e->GetString();
 				}
 				return false;
 			}
@@ -567,7 +566,7 @@ class Register
 		$phoneItems = $res["PHONE_ITEMS"];
 
 		$resPhone =	self::checkExistingUserByPhone($phoneItems);
-		$resEmail = self::checkExistingUserByEmail($emailItems, !empty($fields['SONET_GROUPS_CODE']));
+		$resEmail = self::checkExistingUserByEmail($emailItems);
 
 		if (
 			empty($resPhone["PHONE_TO_REGISTER"])
@@ -575,7 +574,6 @@ class Register
 			&& empty($resEmail["EMAIL_TO_REGISTER"])
 			&& empty($resEmail["EMAIL_TO_REINVITE"])
 			&& empty($resEmail["TRANSFER_USER"])
-			&& empty($resEmail['USER_ID_EXIST'])
 		)
 		{
 			if (!empty($resEmail["EMAIL_EXIST"]))
@@ -629,8 +627,6 @@ class Register
 			return false;
 		}
 
-		$existingUserIds = $resEmail['USER_ID_EXIST'];
-
-		return array_merge($phoneUserIds, $emailUserIds, $reinvitedUserIds, $transferedUserIds, $existingUserIds);
+		return array_merge($phoneUserIds, $emailUserIds, $reinvitedUserIds, $transferedUserIds);
 	}
 }

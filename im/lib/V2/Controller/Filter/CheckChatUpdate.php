@@ -3,8 +3,8 @@
 namespace Bitrix\Im\V2\Controller\Filter;
 
 use Bitrix\Im\V2\Chat;
+use Bitrix\Im\V2\Chat\ChatError;
 use Bitrix\Main\Engine\ActionFilter\Base;
-use Bitrix\Main\Error;
 use Bitrix\Main\Event;
 use Bitrix\Main\EventResult;
 
@@ -18,17 +18,23 @@ class CheckChatUpdate extends Base
 		'setAvatarId',
 	];
 
-	private const UPDATE_USERS = [
+	private const UPDATE_USERS_ADD = [
 		'addUsers',
-		'removeUsers',
+	];
+
+	private const UPDATE_USERS_DELETE = [
+		'deleteUser',
 	];
 
 	private const UPDATE_SETTINGS = [
 		'setOwner',
 		'setManagers',
-		'setManageUsers',
+		'setManageUsersAdd',
+		'setManageUsersDelete',
 		'setManageUI',
 		'setManageSettings',
+		'setDisappearingDate',
+		'setCanPost',
 	];
 
 	public function onBeforeAction(Event $event)
@@ -40,28 +46,53 @@ class CheckChatUpdate extends Base
 		 */
 		$chat = $arguments['chat'];
 
+		if (!$chat->getChatId())
+		{
+			$this->addError(new ChatError(
+				ChatError::ACCESS_DENIED
+			));
+			return new EventResult(EventResult::ERROR, null, null, $this);
+		}
+
+		if ($currentUser->isAdmin())
+		{
+			return null;
+		}
+
 		if ($chat->getAuthorId() === (int)$currentUser->getId())
 		{
 			return null;
 		}
 
 		$actionName = $this->getAction()->getName();
-		if (in_array($actionName, self::UPDATE_UI, true))
+		if ($this->inArrayCaseInsensitive($actionName, self::UPDATE_UI, true))
 		{
 			$manageRights = $chat->getManageUI();
 		}
 
-		if (in_array($actionName, self::UPDATE_USERS, true))
+		if ($this->inArrayCaseInsensitive($actionName, self::UPDATE_USERS_ADD, true))
 		{
-			$manageRights = $chat->getManageUsers();
+			$manageRights = $chat->getManageUsersAdd();
 		}
 
-		if (in_array($actionName, self::UPDATE_SETTINGS, true))
+		if ($this->inArrayCaseInsensitive($actionName, self::UPDATE_USERS_DELETE, true))
+		{
+			$deleteUser = $arguments['userId'] ?? null;
+
+			if ((int)$deleteUser === (int)$currentUser->getId())
+			{
+				return null;
+			}
+
+			$manageRights = $chat->getManageUsersDelete();
+		}
+
+		if ($this->inArrayCaseInsensitive($actionName, self::UPDATE_SETTINGS, true))
 		{
 			$manageRights = $chat->getManageSettings();
 		}
 
-		if ($manageRights === Chat::MANAGE_RIGHTS_ALL)
+		if ($manageRights === Chat::MANAGE_RIGHTS_MEMBER)
 		{
 			return null;
 		}
@@ -75,9 +106,23 @@ class CheckChatUpdate extends Base
 			return null;
 		}
 
-		$this->addError(new Error(
-			Chat\ChatError::ACCESS_DENIED
+		$this->addError(new ChatError(
+			ChatError::ACCESS_DENIED
 		));
 		return new EventResult(EventResult::ERROR, null, null, $this);
+	}
+
+	/**
+	 * @param string $needle
+	 * @param string[] $haystack
+	 * @param bool $strict
+	 * @return bool
+	 */
+	private function inArrayCaseInsensitive(string $needle, array $haystack, bool $strict = true): bool
+	{
+		$needle = mb_strtolower($needle);
+		$haystack = array_map('mb_strtolower', $haystack);
+
+		return in_array($needle, $haystack, $strict);
 	}
 }

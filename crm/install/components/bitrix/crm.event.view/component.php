@@ -1,13 +1,33 @@
-<?
-if(!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED!==true)die();
+<?php
 
+if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
+{
+	die();
+}
+
+use Bitrix\Crm\Restriction\AvailabilityManager;
 use Bitrix\Crm\Restriction\RestrictionManager;
+use Bitrix\Crm\Service\Container;
 
 /** @var CrmEventViewComponent $this */
 
 if (!CModule::IncludeModule('crm'))
 {
 	ShowError(GetMessage('CRM_MODULE_NOT_INSTALLED'));
+	return;
+}
+
+$entityType = $arParams['ENTITY_TYPE'] ?? null;
+$toolsManager = Container::getInstance()->getIntranetToolsManager();
+$isAvailable = (
+	$entityType
+		? $toolsManager->checkEntityTypeAvailability(CCrmOwnerType::ResolveID($entityType))
+		: $toolsManager->checkCrmAvailability()
+);
+if(!$isAvailable)
+{
+	print AvailabilityManager::getInstance()->getCrmInaccessibilityContent();
+
 	return;
 }
 
@@ -90,7 +110,7 @@ $arFilter = array();
 $arSort = array();
 
 $bInternal = false;
-if ($arParams['INTERNAL'] == 'Y' || $arParams['GADGET'] == 'Y')
+if (($arParams['INTERNAL'] ?? 'N') == 'Y' || ($arParams['GADGET'] ?? 'N') == 'Y')
 	$bInternal = true;
 $arResult['INTERNAL'] = $bInternal;
 $arResult['INTERNAL_EDIT'] = false;
@@ -366,7 +386,7 @@ if (!$arResult['INTERNAL'] || $arResult['SHOW_INTERNAL_FILTER'])
 					'CONTACT' => GetMessage('CRM_ENTITY_TYPE_CONTACT'),
 					'COMPANY' => GetMessage('CRM_ENTITY_TYPE_COMPANY'),
 					'DEAL' => GetMessage('CRM_ENTITY_TYPE_DEAL'),
-					'QUOTE' => GetMessage('CRM_ENTITY_TYPE_QUOTE')
+					'QUOTE' => GetMessage('CRM_ENTITY_TYPE_QUOTE_MSGVER_1')
 				)
 			);
 		}
@@ -410,8 +430,8 @@ if (!$arResult['INTERNAL'] || $arResult['SHOW_INTERNAL_FILTER'])
 }
 
 $arResult['HEADERS'] = array();
-$arResult['HEADERS'][] = array('id' => 'ID', 'name' => 'ID', 'sort' => 'id', 'default' => false, 'editable' => false);
-$arResult['HEADERS'][] = array('id' => 'DATE_CREATE', 'name' => GetMessage('CRM_COLUMN_DATE_CREATE'), 'sort' => 'date_create', 'default' => true, 'editable' => false, 'width'=>'140px');
+$arResult['HEADERS'][] = ['id' => 'ID', 'name' => 'ID', 'sort' => '', 'default' => false, 'editable' => false];
+$arResult['HEADERS'][] = ['id' => 'DATE_CREATE', 'name' => GetMessage('CRM_COLUMN_DATE_CREATE'), 'sort' => 'event_rel_id', 'default' => true, 'editable' => false, 'width'=>'140px'];
 if ($arResult['EVENT_ENTITY_LINK'] == 'Y')
 {
 	$arResult['HEADERS'][] = array('id' => 'ENTITY_TYPE', 'name' => GetMessage('CRM_COLUMN_ENTITY_TYPE'), 'sort' => '', 'default' => true, 'editable' => false);
@@ -479,7 +499,7 @@ foreach ($arFilter as $k => $v)
 \Bitrix\Crm\UI\Filter\EntityHandler::internalize($arResult['FILTER'], $arFilter);
 
 $_arSort = $gridOptions->GetSorting(array(
-	'sort' => array('date_create' => 'desc'),
+	'sort' => array('event_rel_id' => 'desc'),
 	'vars' => array('by' => 'by', 'order' => 'order')
 ));
 
@@ -595,23 +615,54 @@ $obRes = CCrmEvent::GetListEx(
 	$arFilter,
 	false,
 	false,
+	[
+		'ID',
+	],
+	$arOptions
+);
+$loadedItems = [];
+while ($arEvent = $obRes->Fetch())
+{
+	$loadedItems[$arEvent['ID']] = $arEvent['ID'];
+}
+if (empty($loadedItems))
+{
+	$loadedItems[] = 0;
+}
+
+$obRes = CCrmEvent::GetListEx(
+	[],
+	['@ID' => $loadedItems, 'CHECK_PERMISSIONS' => 'N'],
+	false,
+	false,
 	array_diff(
 		array_keys(CCrmEvent::GetFields()),
-		array(
+		[
 			'CREATED_BY_LOGIN',
 			'CREATED_BY_NAME',
 			'CREATED_BY_LAST_NAME',
 			'CREATED_BY_SECOND_NAME',
 			'CREATED_BY_PERSONAL_PHOTO'
-		)
-	),
-	$arOptions
+		]
+	)
 );
+
+$loadedData = [];
+while ($arEvent = $obRes->Fetch())
+{
+	$loadedData[$arEvent['ID']] = $arEvent;
+}
 
 $userIDs = array();
 $qty = 0;
-while ($arEvent = $obRes->Fetch())
+foreach ($loadedItems as $loadedItemId)
 {
+	$arEvent = $loadedData[$loadedItemId] ?? null;
+	if (!$arEvent)
+	{
+		continue;
+	}
+
 	if(++$qty > $pageSize)
 	{
 		$enableNextPage = true;
@@ -761,7 +812,7 @@ $_SESSION['CRM_GRID_DATA'][$arResult['GRID_ID']] = array('FILTER' => $arFilter);
 
 if ($arResult['EVENT_ENTITY_LINK'] == 'Y')
 {
-	$router = \Bitrix\Crm\Service\Container::getInstance()->getRouter();
+	$router = Container::getInstance()->getRouter();
 	foreach ($arEntityList as $typeName => $ids)
 	{
 		if (empty($ids))
@@ -773,7 +824,7 @@ if ($arResult['EVENT_ENTITY_LINK'] == 'Y')
 		{
 			continue;
 		}
-		$factory = \Bitrix\Crm\Service\Container::getInstance()->getFactory($entityTypeId);
+		$factory = Container::getInstance()->getFactory($entityTypeId);
 		if (!$factory)
 		{
 			continue;
@@ -808,5 +859,3 @@ if ($arResult['EVENT_ENTITY_LINK'] == 'Y')
 $this->IncludeComponentTemplate();
 
 return $obRes->SelectedRowsCount();
-
-?>

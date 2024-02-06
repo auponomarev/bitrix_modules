@@ -238,6 +238,13 @@ class CAllSocNetLogComments
 
 					if ((int)$arComment["LOG_ID"] > 0)
 					{
+						\Bitrix\Socialnetwork\Internals\EventService\Service::addEvent(
+							\Bitrix\Socialnetwork\Internals\EventService\EventDictionary::EVENT_SPACE_LIVEFEED_COMMENT_DEL,
+							[
+								'SONET_LOG_ID' => (int)$arComment['LOG_ID'],
+							]
+						);
+
 						CSocNetLogComments::UpdateLogData($arComment["LOG_ID"], false, true);
 
 						$cache = new CPHPCache;
@@ -833,7 +840,7 @@ class CAllSocNetLogComments
 				foreach ($arMention as $mentionUserID)
 				{
 					$bHaveRights = (
-						$arTitleRes["IS_CRM"] != "Y"
+						($arTitleRes["IS_CRM"] ?? null) != "Y"
 						|| COption::GetOptionString("crm", "enable_livefeed_merge", "N") == "Y"
 							? CSocNetLogRights::CheckForUserOnly($arCommentFields["LOG_ID"], $mentionUserID)
 							: false
@@ -866,7 +873,7 @@ class CAllSocNetLogComments
 
 					if (
 						!$bHaveRights
-						&& $arTitleRes["IS_CRM"] == "Y"
+						&& ($arTitleRes["IS_CRM"] ?? null) == "Y"
 					)
 					{
 						$dbLog = CSocNetLog::GetList(

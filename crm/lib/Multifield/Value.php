@@ -93,7 +93,18 @@ final class Value implements Arrayable, \JsonSerializable
 
 	public function isEqualTo(self $anotherValue): bool
 	{
-		return $this->getHash() === $anotherValue->getHash();
+		/**
+		 * Only props of the Value are compared. ValueExtra is not taken into account, since it contains
+		 * only insignificant supporting data (namely COUNTRY_CODE).
+		 * If this changes in the future and ValueExtra starts contain significant data, please add its comparison here.
+		 * But make sure to handle edge cases (there is a pile of them)
+		 */
+
+		return (
+			$this->typeId === $anotherValue->typeId
+			&& $this->valueType === $anotherValue->valueType
+			&& $this->value === $anotherValue->value
+		);
 	}
 
 	/**
@@ -106,7 +117,12 @@ final class Value implements Arrayable, \JsonSerializable
 	 */
 	public function getHash(): string
 	{
-		return md5(serialize($this));
+		$valueToHash = clone $this;
+		// id and valueExtra doesn't matter in equality
+		$valueToHash->id = null;
+		$valueToHash->valueExtra = null;
+
+		return md5(serialize($valueToHash));
 	}
 
 	public function toArray(): array
@@ -123,5 +139,13 @@ final class Value implements Arrayable, \JsonSerializable
 			'value' => $this->getValue(),
 			'valueExtra' => $this->getValueExtra(),
 		];
+	}
+
+	public function __clone(): void
+	{
+		if (is_object($this->valueExtra))
+		{
+			$this->valueExtra = clone $this->valueExtra;
+		}
 	}
 }

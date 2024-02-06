@@ -2,6 +2,8 @@
 
 namespace Bitrix\Crm\Activity\Provider;
 
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
+use Bitrix\Crm\Model\ActivityPingOffsetsTable;
 use Bitrix\Crm\Settings\Crm;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Result;
@@ -86,9 +88,26 @@ class ToDo extends Base
 		return new Result();
 	}
 
-	public static function getDefaultPingOffsets(): array
+	public static function getDefaultPingOffsets(array $params = []): array
 	{
-		return [0, 15];
+		if (isset($params['entityTypeId'], $params['categoryId']))
+		{
+			return (new TodoPingSettingsProvider($params['entityTypeId'], $params['categoryId']))
+				->getCurrentOffsets()
+			;
+		}
+		
+		return TodoPingSettingsProvider::DEFAULT_OFFSETS;
+	}
+
+	public static function getPingOffsets(?int $activityId): array
+	{
+		if (isset($activityId))
+		{
+			return ActivityPingOffsetsTable::getOffsetsByActivityId($activityId);
+		}
+
+		return static::getDefaultPingOffsets();
 	}
 
 	public static function canUseCalendarEvents($providerTypeId = null): bool
@@ -104,5 +123,14 @@ class ToDo extends Base
 		}
 
 		return (bool) ($options['SKIP_CURRENT_CALENDAR_EVENT'] ?? true);
+	}
+
+	public static function getTypesFilterPresets()
+	{
+		return [
+			[
+				'NAME' => self::getName(),
+			],
+		];
 	}
 }

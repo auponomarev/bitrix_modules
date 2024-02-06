@@ -1,63 +1,54 @@
+/* eslint-disable */
 this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
-(function (exports) {
+(function (exports,im_v2_const) {
 	'use strict';
 
-	/**
-	 * Bitrix Messenger
-	 * Device constants
-	 *
-	 * @package bitrix
-	 * @subpackage im
-	 * @copyright 2001-2020 Bitrix
-	 */
-
-	const DeviceType = Object.freeze({
-	  mobile: 'mobile',
-	  desktop: 'desktop'
-	});
-	const DeviceOrientation = Object.freeze({
-	  horizontal: 'horizontal',
-	  portrait: 'portrait'
-	});
-
-	const MutationType = Object.freeze({
-	  none: 'none',
-	  add: 'delete',
-	  update: 'update',
-	  delete: 'delete',
-	  set: 'set',
-	  setAfter: 'after',
-	  setBefore: 'before'
-	});
-	const StorageLimit = Object.freeze({
-	  dialogues: 50,
-	  messages: 100
-	});
-	const OpenTarget = Object.freeze({
-	  current: 'current',
-	  auto: 'auto'
-	});
-	const BotType = Object.freeze({
-	  bot: 'bot',
-	  network: 'network',
-	  support24: 'support24'
-	});
-
 	const RestMethod = Object.freeze({
+	  imV2ChatLoad: 'im.v2.Chat.load',
+	  imV2ChatGetDialogId: 'im.v2.Chat.getDialogId',
+	  imV2ChatShallowLoad: 'im.v2.Chat.shallowLoad',
+	  imV2ChatLoadInContext: 'im.v2.Chat.loadInContext',
+	  imV2ChatLoadContext: 'im.v2.Chat.loadInContext',
+	  imV2ChatAdd: 'im.v2.Chat.add',
+	  imV2ChatUpdate: 'im.v2.Chat.update',
+	  imV2ChatRead: 'im.v2.Chat.read',
+	  imV2ChatReadAll: 'im.v2.Chat.readAll',
+	  imV2ChatUnread: 'im.v2.Chat.unread',
+	  imV2ChatJoin: 'im.v2.Chat.join',
+	  imV2ChatDeleteUser: 'im.v2.Chat.deleteUser',
+	  imV2ChatExtendPullWatch: 'im.v2.Chat.extendPullWatch',
+	  imV2ChatMessageGetContext: 'im.v2.Chat.Message.getContext',
+	  imV2ChatMessageSend: 'im.v2.Chat.Message.send',
+	  imV2ChatMessageList: 'im.v2.Chat.Message.list',
+	  imV2ChatMessageTail: 'im.v2.Chat.Message.tail',
+	  imV2ChatMessageRead: 'im.v2.Chat.Message.read',
+	  imV2ChatMessageMark: 'im.v2.Chat.Message.mark',
+	  imV2ChatMessageDelete: 'im.v2.Chat.Message.delete',
+	  imV2ChatMessageUpdate: 'im.v2.Chat.Message.update',
+	  imV2ChatMessageReactionAdd: 'im.v2.Chat.Message.Reaction.add',
+	  imV2ChatMessageReactionDelete: 'im.v2.Chat.Message.Reaction.delete',
+	  imV2ChatMessageReactionTail: 'im.v2.Chat.Message.Reaction.tail',
+	  imV2ChatMessagePin: 'im.v2.Chat.Message.pin',
+	  imV2ChatMessageUnpin: 'im.v2.Chat.Message.unpin',
+	  imV2ChatMessageTailViewers: 'im.v2.Chat.Message.tailViewers',
+	  imV2ChatMessageDeleteRichUrl: 'im.v2.Chat.Message.deleteRichUrl',
+	  imV2ChatPinTail: 'im.v2.Chat.Pin.tail',
+	  imV2ChatListShared: 'im.v2.Chat.listShared',
+	  imV2SettingsGeneralUpdate: 'im.v2.Settings.General.update',
+	  imV2SettingsNotifyUpdate: 'im.v2.Settings.Notify.update',
+	  imV2SettingsNotifySwitchScheme: 'im.v2.Settings.Notify.switchScheme',
+	  imV2DesktopLogout: 'im.v2.Desktop.logout',
+	  imV2UpdateState: 'im.v2.UpdateState.getStateData',
+	  imV2BetaEnable: 'im.v2.Beta.enable',
+	  imV2BetaDisable: 'im.v2.Beta.disable',
+	  imV2ChatTaskPrepare: 'im.v2.Chat.Task.prepare',
+	  imCallBetaCreateRoom: 'im.call.beta.createRoom',
 	  imMessageAdd: 'im.message.add',
-	  imMessageUpdate: 'im.message.update',
-	  imMessageDelete: 'im.message.delete',
-	  imMessageLike: 'im.message.like',
 	  imMessageCommand: 'im.message.command',
-	  imMessageShare: 'im.message.share',
-	  imChatAdd: 'im.chat.add',
-	  imChatGet: 'im.chat.get',
-	  imChatLeave: 'im.chat.leave',
 	  imChatMute: 'im.chat.mute',
 	  imChatUpdateTitle: 'im.chat.updateTitle',
-	  imChatParentJoin: 'im.chat.parent.join',
 	  imChatFileCollectionGet: 'im.chat.file.collection.get',
 	  imChatFileGet: 'im.chat.file.get',
 	  imChatUrlGet: 'im.chat.url.get',
@@ -73,95 +64,44 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  imChatPinGet: 'im.chat.pin.get',
 	  imChatPinAdd: 'im.chat.pin.add',
 	  imChatPinDelete: 'im.chat.pin.delete',
-	  imChatTaskPrepare: 'im.chat.task.prepare',
 	  imChatCalendarPrepare: 'im.chat.calendar.prepare',
 	  imChatCalendarAdd: 'im.chat.calendar.add',
 	  imChatCalendarDelete: 'im.chat.calendar.delete',
 	  imChatUserDelete: 'im.chat.user.delete',
 	  imChatUserAdd: 'im.chat.user.add',
-	  imV2ChatAdd: 'im.v2.Chat.add',
-	  imV2ChatRead: 'im.v2.Chat.read',
-	  imV2ChatReadAll: 'im.v2.Chat.readAll',
-	  imV2ChatUnread: 'im.v2.Chat.unread',
-	  imV2ChatMessageGetContext: 'im.v2.Chat.Message.getContext',
-	  imV2ChatMessageList: 'im.v2.Chat.Message.list',
-	  imV2ChatMessageTail: 'im.v2.Chat.Message.tail',
-	  imV2ChatMessageRead: 'im.v2.Chat.Message.read',
-	  imV2ChatMessageMark: 'im.v2.Chat.Message.mark',
-	  imV2ChatMessageReactionAdd: 'im.v2.Chat.Message.Reaction.add',
-	  imV2ChatMessageReactionDelete: 'im.v2.Chat.Message.Reaction.delete',
-	  imV2ChatMessageReactionTail: 'im.v2.Chat.Message.Reaction.tail',
-	  imV2ChatMessagePin: 'im.v2.Chat.Message.pin',
-	  imV2ChatMessageUnpin: 'im.v2.Chat.Message.unpin',
-	  imV2ChatMessageTailViewers: 'im.v2.Chat.Message.tailViewers',
-	  imV2ChatPinTail: 'im.v2.Chat.Pin.tail',
-	  imV2SettingsGeneralUpdate: 'im.v2.Settings.General.update',
-	  imDialogGet: 'im.dialog.get',
-	  imDialogMessagesGet: 'im.dialog.messages.get',
-	  imDialogRead: 'im.dialog.read',
-	  imDialogUnread: 'im.dialog.unread',
 	  imDialogWriting: 'im.dialog.writing',
-	  imDialogRestrictionsGet: 'im.dialog.restrictions.get',
-	  imDialogReadAll: 'im.dialog.read.all',
-	  imDialogContextGet: 'im.dialog.context.get',
 	  imDialogUsersList: 'im.dialog.users.list',
+	  imDialogMessagesSearch: 'im.dialog.messages.search',
 	  imUserGet: 'im.user.get',
 	  imUserListGet: 'im.user.list.get',
 	  imUserStatusSet: 'im.user.status.set',
+	  imUserStatusIdleStart: 'im.user.status.idle.start',
+	  imUserStatusIdleEnd: 'im.user.status.idle.end',
 	  imDiskFolderGet: 'im.disk.folder.get',
 	  imDiskFolderListGet: 'im.disk.folder.list.get',
-	  imDiskFileUpload: 'disk.folder.uploadfile',
+	  imDiskFilePreviewUpload: 'disk.api.file.attachPreview',
 	  imDiskFileCommit: 'im.disk.file.commit',
 	  imDiskFileDelete: 'im.disk.file.delete',
 	  imDiskFileSave: 'im.disk.file.save',
-	  mobileBrowserConstGet: 'mobile.browser.const.get',
 	  imRecentGet: 'im.recent.get',
 	  imRecentList: 'im.recent.list',
 	  imRecentPin: 'im.recent.pin',
-	  imRecentUnread: 'im.recent.unread',
 	  imRecentHide: 'im.recent.hide',
-	  imCallGetCallLimits: 'im.call.getCallLimits',
 	  imNotifyGet: 'im.notify.get',
 	  imNotifyRead: 'im.notify.read',
 	  imNotifySchemaGet: 'im.notify.schema.get',
 	  imNotifyHistorySearch: 'im.notify.history.search',
 	  imNotifyAnswer: 'im.notify.answer',
-	  imVersionV2Enable: 'im.version.v2.enable',
-	  imVersionV2Disable: 'im.version.v2.disable',
 	  imCallBackgroundGet: 'im.v2.Call.Background.get',
 	  imCallBackgroundCommit: 'im.v2.Call.Background.commit',
 	  imCallBackgroundDelete: 'im.v2.Call.Background.delete',
 	  imCallMaskGet: 'im.v2.Call.Mask.get',
-	  imSmilesGet: 'smile.get'
-	});
-	const RestMethodHandler = Object.freeze({
-	  imChatGet: 'im.chat.get',
-	  imMessageAdd: 'im.message.add',
-	  imDialogRead: 'im.dialog.read',
-	  imDialogMessagesGet: 'im.dialog.messages.get',
-	  imDialogMessagesGetInit: 'im.dialog.messages.get.init',
-	  imDialogMessagesGetUnread: 'im.dialog.messages.get.unread',
-	  imDiskFolderGet: 'im.disk.folder.get',
-	  imDiskFileUpload: 'disk.folder.uploadfile',
-	  imDiskFileCommit: 'im.disk.file.commit',
-	  imUserGet: 'im.user.get',
-	  imUserListGet: 'im.user.list.get',
-	  mobileBrowserConstGet: 'mobile.browser.const.get',
-	  imRecentGet: 'im.recent.get',
-	  imRecentList: 'im.recent.list',
-	  imCallGetCallLimits: 'im.call.getCallLimits',
-	  imNotifyGet: 'im.notify.get',
-	  imNotifySchemaGet: 'im.notify.schema.get'
-	});
-
-	const PullCommand = Object.freeze({
-	  messageUpdate: 'messageUpdate',
-	  messageDelete: 'messageDelete'
-	});
-	const PullHandlers = Object.freeze({
-	  recent: 'recent',
-	  notification: 'notification',
-	  sidebar: 'sidebar'
+	  imSmilesGet: 'smile.get',
+	  imPromotionRead: 'im.promotion.read',
+	  imBotGiphyListPopular: 'imbot.Giphy.listPopular',
+	  imBotGiphyList: 'imbot.Giphy.list',
+	  imBotDialogVote: 'imbot.dialog.vote',
+	  linesDialogGet: 'imopenlines.dialog.get'
 	});
 
 	const EventType = Object.freeze({
@@ -171,112 +111,75 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    onOpenNotifications: 'IM.Layout:onOpenNotifications'
 	  },
 	  dialog: {
-	    open: 'IM.Dialog:open',
-	    call: 'IM.Dialog:call',
-	    openHistory: 'IM.Dialog:openHistory',
-	    clearHistory: 'IM.Dialog:clearHistory',
-	    hide: 'IM.Dialog:hide',
-	    leave: 'IM.Dialog:leave',
-	    newMessage: 'IM.Dialog:newMessage',
-	    scrollOnStart: 'IM.Dialog:scrollOnStart',
+	    onDialogInited: 'IM.Dialog:onDialogInited',
 	    scrollToBottom: 'IM.Dialog:scrollToBottom',
-	    readVisibleMessages: 'IM.Dialog.readVisibleMessages',
-	    requestUnread: 'IM.Dialog.requestUnread',
-	    readMessage: 'IM.Dialog:readMessage',
-	    quoteMessage: 'IM.Dialog:quoteMessage',
-	    clickOnCommand: 'IM.Dialog:clickOnCommand',
-	    clickOnMention: 'IM.Dialog:clickOnMention',
-	    clickOnUserName: 'IM.Dialog:clickOnUserName',
-	    clickOnMessageMenu: 'IM.Dialog:clickOnMessageMenu',
-	    clickOnMessageRetry: 'IM.Dialog:clickOnMessageRetry',
-	    clickOnReadList: 'IM.Dialog:clickOnReadList',
-	    setMessageReaction: 'IM.Dialog:setMessageReaction',
-	    openMessageReactionList: 'IM.Dialog:openMessageReactionList',
-	    clickOnKeyboardButton: 'IM.Dialog:clickOnKeyboardButton',
-	    clickOnChatTeaser: 'IM.Dialog:clickOnChatTeaser',
-	    clickOnDialog: 'IM.Dialog:clickOnDialog',
-	    quotePanelClose: 'IM.Dialog:quotePanelClose',
-	    beforeMobileKeyboard: 'IM.Dialog:beforeMobileKeyboard',
 	    goToMessageContext: 'IM.Dialog:goToMessageContext',
-	    messagesSet: 'IM.Dialog:messagesSet',
-	    settingsChange: 'IM.Dialog:settingsChange',
-	    closePopup: 'IM.Dialog:closePopup',
+	    onClickMessageContextMenu: 'IM.Dialog:onClickMessageContextMenu',
+	    showForwardPopup: 'IM.Dialog:showForwardPopup',
 	    errors: {
 	      accessDenied: 'IM.Dialog.errors:accessDenied'
-	    },
-	    onDialogInited: 'IM.Dialog:onDialogInited'
+	    }
 	  },
 	  textarea: {
-	    focus: 'IM.Textarea:focus',
-	    setFocus: 'IM.Textarea:setFocus',
-	    blur: 'IM.Textarea:blur',
-	    setBlur: 'IM.Textarea:setBlur',
-	    keyUp: 'IM.Textarea:keyUp',
 	    editMessage: 'IM.Textarea:editMessage',
+	    replyMessage: 'IM.Textarea:replyMessage',
 	    insertText: 'IM.Textarea:insertText',
 	    insertMention: 'IM.Textarea:insertMention',
-	    sendMessage: 'IM.Textarea:sendMessage',
-	    fileSelected: 'IM.Textarea:fileSelected',
-	    startWriting: 'IM.Textarea:startWriting',
-	    stopWriting: 'IM.Textarea:stopWriting',
-	    appButtonClick: 'IM.Textarea:appButtonClick'
+	    insertForward: 'IM.Textarea:insertForward',
+	    sendMessage: 'IM.Textarea:sendMessage'
 	  },
 	  uploader: {
-	    addMessageWithFile: 'IM.Uploader:addMessageWithFile',
-	    // todo: delete legacy event?
 	    cancel: 'IM.Uploader:cancel'
 	  },
-	  conference: {
-	    setPasswordFocus: 'IM.Conference:setPasswordFocus',
-	    hideSmiles: 'IM.Conference:hideSmiles',
-	    requestPermissions: 'IM.Conference:requestPermissions',
-	    waitForStart: 'IM.Conference:waitForStart',
-	    userRenameFocus: 'IM.Conference:userRenameFocus',
-	    userRenameBlur: 'IM.Conference:userRenameBlur'
-	  },
-	  notification: {
-	    updateState: 'IM.Notifications:restoreConnection'
-	  },
-	  mobile: {
-	    textarea: {
-	      setText: 'IM.Mobile.Textarea:setText',
-	      setFocus: 'IM.Mobile.Textarea:setFocus'
-	    },
-	    openUserList: 'IM.Mobile:openUserList'
+	  call: {
+	    onFold: 'CallController::onFold',
+	    onViewStateChanged: 'IM.Call:onViewStateChanged'
 	  },
 	  search: {
 	    close: 'IM.Search:close',
 	    keyPressed: 'IM.Search:keyPressed',
-	    selectItem: 'IM.Search:selectItem',
-	    //deprecated
-	    openNetworkItem: 'IM.Search:openNetworkItem',
-	    //deprecated
 	    openContextMenu: 'IM.Search:openContextMenu'
 	  },
 	  recent: {
-	    openSearch: 'IM.Recent:openSearch',
-	    updateSearch: 'IM.Recent:updateSearch',
-	    closeSearch: 'IM.Recent:closeSearch',
-	    requestUser: 'IM.Recent:requestUser',
-	    // compatibility with old chat
-	    setCounter: 'IM.Recent:setCounter',
-	    setMessage: 'IM.Recent:setMessage',
-	    hideChat: 'IM.Recent:hideChat',
-	    leaveChat: 'IM.Recent:leaveChat',
-	    updateState: 'IM.Recent:updateState',
-	    clearLike: 'IM.Recent:clearLike',
-	    setDraftMessage: 'IM.Recent:setDraftMessage'
+	    openSearch: 'IM.Recent:openSearch'
 	  },
 	  sidebar: {
 	    open: 'IM.Sidebar:open',
 	    close: 'IM.Sidebar:close'
 	  },
 	  mention: {
-	    openChatInfo: 'IM.Mention:openChatInfo'
+	    selectItem: 'IM.Mention:selectItem'
+	  },
+	  counter: {
+	    onNotificationCounterChange: 'onImUpdateCounterNotify',
+	    onChatCounterChange: 'onImUpdateCounterMessage',
+	    onLinesCounterChange: 'onImUpdateCounterLines',
+	    onImUpdateCounter: 'onImUpdateCounter'
+	  },
+	  desktop: {
+	    onInit: 'onDesktopInit',
+	    onReload: 'onDesktopReload',
+	    onSyncPause: 'onDesktopSyncPause',
+	    onUserAway: 'BXUserAway',
+	    onWakeUp: 'BXWakeAction',
+	    onBxLink: 'BXProtocolUrl',
+	    onExit: 'BXExitApplication',
+	    onIconClick: 'BXApplicationClick'
+	  },
+	  lines: {
+	    onInit: 'onLinesInit',
+	    openChat: 'openLinesChat',
+	    onChatOpen: 'onLinesChatOpen'
+	  },
+	  slider: {
+	    onClose: 'onChatSliderClose'
+	  },
+	  request: {
+	    onAuthError: 'IM.request:onAuthError'
 	  }
 	});
 
-	const DialogType = Object.freeze({
+	const ChatType = Object.freeze({
 	  user: 'user',
 	  chat: 'chat',
 	  open: 'open',
@@ -292,40 +195,13 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  tasks: 'tasks',
 	  thread: 'thread',
 	  mail: 'mail',
-	  lines: 'lines'
+	  lines: 'lines',
+	  copilot: 'copilot'
 	});
 	const DialogScrollThreshold = Object.freeze({
 	  none: 'none',
 	  nearTheBottom: 'nearTheBottom',
 	  halfScreenUp: 'halfScreenUp'
-	});
-	const DialogCrmType = Object.freeze({
-	  lead: 'lead',
-	  company: 'company',
-	  contact: 'contact',
-	  deal: 'deal',
-	  none: 'none'
-	});
-	const DialogReferenceClassName = Object.freeze({
-	  listBody: 'bx-im-dialog-list',
-	  listItem: 'bx-im-dialog-list-item-reference',
-	  listItemName: 'bx-im-dialog-list-item-name-reference',
-	  listItemBody: 'bx-im-dialog-list-item-content-reference',
-	  listUnreadLoader: 'bx-im-dialog-list-unread-loader-reference'
-	});
-	const DialogTemplateType = Object.freeze({
-	  message: 'message',
-	  delimiter: 'delimiter',
-	  group: 'group',
-	  historyLoader: 'historyLoader',
-	  unreadLoader: 'unreadLoader',
-	  button: 'button',
-	  placeholder: 'placeholder'
-	});
-	const DialogState = Object.freeze({
-	  loading: 'loading',
-	  empty: 'empty',
-	  show: 'show'
 	});
 	const DialogBlockType = Object.freeze({
 	  dateGroup: 'dateGroup',
@@ -333,15 +209,10 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  newMessages: 'newMessages',
 	  markedMessages: 'markedMessages'
 	});
-
-	/**
-	 * Bitrix Messenger
-	 * File constants
-	 *
-	 * @package bitrix
-	 * @subpackage im
-	 * @copyright 2001-2020 Bitrix
-	 */
+	const DialogAlignment = Object.freeze({
+	  left: 'left',
+	  center: 'center'
+	});
 
 	const FileStatus = Object.freeze({
 	  upload: 'upload',
@@ -373,80 +244,40 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  system: 'system'
 	});
 	const MessageComponent = Object.freeze({
-	  base: 'BaseMessage'
+	  default: 'DefaultMessage',
+	  file: 'FileMessage',
+	  smile: 'SmileMessage',
+	  unsupported: 'UnsupportedMessage',
+	  deleted: 'DeletedMessage',
+	  callInvite: 'CallInviteMessage',
+	  chatCreation: 'ChatCreationMessage',
+	  ownChatCreation: 'OwnChatCreationMessage',
+	  copilotCreation: 'ChatCopilotCreationMessage',
+	  copilotMessage: 'CopilotMessage',
+	  conferenceCreation: 'ConferenceCreationMessage',
+	  supportVote: 'SupportVoteMessage',
+	  supportSessionNumber: 'SupportSessionNumberMessage',
+	  system: 'SystemMessage'
 	});
 	const MessageMentionType = Object.freeze({
 	  user: 'USER',
 	  chat: 'CHAT',
-	  context: 'CONTEXT'
+	  lines: 'LINES',
+	  context: 'CONTEXT',
+	  call: 'CALL'
 	});
-	const OwnMessageStatus = Object.freeze({
-	  sending: 'sending',
-	  sent: 'sent',
-	  viewed: 'viewed'
-	});
-
-	/**
-	 * Bitrix Messenger
-	 * Conference constants
-	 *
-	 * @package bitrix
-	 * @subpackage im
-	 * @copyright 2001-2020 Bitrix
-	 */
-
-	const ConferenceFieldState = Object.freeze({
-	  view: 'view',
-	  edit: 'edit',
-	  create: 'create'
-	});
-	const ConferenceStateType = Object.freeze({
-	  preparation: 'preparation',
-	  call: 'call'
-	});
-	const ConferenceErrorCode = Object.freeze({
-	  userLimitReached: 'userLimitReached',
-	  detectIntranetUser: 'detectIntranetUser',
-	  bitrix24only: 'bitrix24only',
-	  kickedFromCall: 'kickedFromCall',
-	  unsupportedBrowser: 'unsupportedBrowser',
-	  missingMicrophone: 'missingMicrophone',
-	  unsafeConnection: 'unsafeConnection',
-	  wrongAlias: 'wrongAlias',
-	  notStarted: 'notStarted',
-	  finished: 'finished',
-	  userLeftCall: 'userLeftCall',
-	  noSignalFromCamera: 'noSignalFromCamera'
-	});
-	const ConferenceRightPanelMode = Object.freeze({
-	  hidden: 'hidden',
-	  chat: 'chat',
-	  users: 'users',
-	  split: 'split'
-	});
-
-	//BX.Call.UserState sync
-	const ConferenceUserState = Object.freeze({
-	  Idle: 'Idle',
-	  Busy: 'Busy',
-	  Calling: 'Calling',
-	  Unavailable: 'Unavailable',
-	  Declined: 'Declined',
-	  Ready: 'Ready',
-	  Connecting: 'Connecting',
-	  Connected: 'Connected',
-	  Failed: 'Failed'
-	});
-
-	const RecentSection = {
-	  general: 'general',
-	  pinned: 'pinned'
-	};
 	const MessageStatus = {
 	  received: 'received',
 	  delivered: 'delivered',
 	  error: 'error'
 	};
+	const OwnMessageStatus = Object.freeze({
+	  sending: 'sending',
+	  sent: 'sent',
+	  viewed: 'viewed',
+	  error: 'error'
+	});
+
 	const RecentCallStatus = {
 	  waiting: 'waiting',
 	  joined: 'joined'
@@ -456,18 +287,10 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  confirm: 1,
 	  simple: 3
 	});
-
-	const ChatOption = Object.freeze({
-	  avatar: 'avatar',
-	  call: 'call',
-	  extend: 'extend',
-	  leave: 'leave',
-	  leaveOwner: 'leaveOwner',
-	  mute: 'mute',
-	  rename: 'rename',
-	  send: 'send',
-	  userList: 'userList'
-	});
+	const NotificationSettingsMode = {
+	  simple: 'simple',
+	  expert: 'expert'
+	};
 
 	const Layout = Object.freeze({
 	  chat: {
@@ -485,9 +308,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    list: 'RecentListContainer',
 	    content: 'NotificationContent'
 	  },
-	  openline: {
-	    name: 'openline',
-	    list: 'OpenlineListContainer',
+	  openlines: {
+	    name: 'openlines',
+	    list: '',
 	    content: 'OpenlineContent'
 	  },
 	  conference: {
@@ -500,15 +323,26 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    list: 'RecentListContainer',
 	    content: 'ChatContent'
 	  },
+	  settings: {
+	    name: 'settings',
+	    list: '',
+	    content: 'SettingsContent'
+	  },
+	  copilot: {
+	    name: 'copilot',
+	    list: 'CopilotListContainer',
+	    content: 'CopilotContent'
+	  },
 	  market: {
 	    name: 'market',
-	    list: 'RecentListContainer',
+	    list: '',
 	    content: 'MarketContent'
 	  }
 	});
 
 	const SearchEntityIdTypes = {
 	  user: 'user',
+	  imUser: 'im-user',
 	  bot: 'im-bot',
 	  chat: 'im-chat',
 	  chatUser: 'im-chat-user',
@@ -530,6 +364,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  bot: 'bot',
 	  call: 'call'
 	};
+	const UserRole = {
+	  guest: 'guest',
+	  member: 'member',
+	  manager: 'manager',
+	  owner: 'owner',
+	  none: 'none'
+	};
+	const UserIdNetworkPrefix = 'network';
 
 	const SidebarBlock = Object.freeze({
 	  main: 'main',
@@ -540,7 +382,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  fileUnsorted: 'fileUnsorted',
 	  sign: 'sign',
 	  meeting: 'meeting',
-	  market: 'market'
+	  market: 'market',
+	  messageSearch: 'messageSearch',
+	  chatsWithUser: 'chatsWithUser'
 	});
 	const SidebarDetailBlock = Object.freeze({
 	  main: 'main',
@@ -555,7 +399,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  other: 'other',
 	  sign: 'sign',
 	  meeting: 'meeting',
-	  market: 'market'
+	  market: 'market',
+	  messageSearch: 'messageSearch',
+	  chatsWithUser: 'chatsWithUser'
 	});
 	const SidebarFileTypes = Object.freeze({
 	  media: 'media',
@@ -569,6 +415,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  [SidebarFileTypes.media]: SidebarFileTypes.media,
 	  [SidebarFileTypes.audio]: SidebarFileTypes.audio,
 	  [SidebarFileTypes.document]: SidebarFileTypes.document,
+	  [SidebarFileTypes.brief]: SidebarFileTypes.brief,
 	  [SidebarFileTypes.other]: SidebarFileTypes.other
 	});
 
@@ -578,20 +425,41 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	});
 
 	const AttachType = Object.freeze({
-	  Delimiter: 'DELIMITER',
-	  File: 'FILE',
-	  Grid: 'GRID',
-	  Html: 'HTML',
-	  Image: 'IMAGE',
-	  Link: 'LINK',
-	  Message: 'MESSAGE',
-	  Rich: 'RICH_LINK',
-	  User: 'USER'
+	  Delimiter: 'delimiter',
+	  File: 'file',
+	  Grid: 'grid',
+	  Html: 'html',
+	  Image: 'image',
+	  Link: 'link',
+	  Message: 'message',
+	  Rich: 'richLink',
+	  User: 'user'
 	});
 	const AttachDescription = Object.freeze({
-	  FIRST_MESSAGE: 'FIRST_MESSAGE',
-	  SKIP_MESSAGE: 'SKIP_MESSAGE'
+	  firstMessage: 'FIRST_MESSAGE',
+	  skipMessage: 'SKIP_MESSAGE'
 	});
+
+	const KeyboardButtonType = {
+	  button: 'BUTTON',
+	  newLine: 'NEWLINE'
+	};
+	const KeyboardButtonContext = {
+	  all: 'ALL',
+	  mobile: 'MOBILE',
+	  desktop: 'DESKTOP'
+	};
+	const KeyboardButtonDisplay = {
+	  block: 'BLOCK',
+	  line: 'LINE'
+	};
+	const KeyboardButtonAction = {
+	  put: 'PUT',
+	  send: 'SEND',
+	  copy: 'COPY',
+	  call: 'CALL',
+	  dialog: 'DIALOG'
+	};
 
 	const DesktopFeature = {
 	  mask: {
@@ -599,19 +467,41 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    availableFromVersion: 72
 	  }
 	};
+	const DesktopBxLink = {
+	  chat: 'chat',
+	  lines: 'lines',
+	  call: 'call',
+	  phone: 'phone',
+	  conference: 'conference',
+	  callList: 'callList',
+	  notifications: 'notifications',
+	  recentSearch: 'recentSearch',
+	  timeManager: 'timemanpwt',
+	  openTab: 'openTab',
+	  copilot: 'copilot',
+	  settings: 'settings'
+	};
+	const LegacyDesktopBxLink = {
+	  messenger: 'messenger',
+	  chat: 'chat',
+	  videoconf: 'videoconf',
+	  notify: 'notify',
+	  callTo: 'callto',
+	  callList: 'calllist'
+	};
 
 	const LocalStorageKey = Object.freeze({
-	  draft: 'draft',
+	  recentDraft: 'recentDraft',
+	  copilotDraft: 'copilotDraft',
 	  smileLastUpdateTime: 'smileLastUpdateTime',
 	  sidebarOpened: 'sidebarOpened',
-	  textareaHeight: 'textareaHeight'
+	  textareaMarketOpened: 'textareaMarketOpened',
+	  textareaHeight: 'textareaHeight',
+	  lastCallType: 'lastCallType',
+	  lastNotificationId: 'lastNotificationId',
+	  findByParticipants: 'findByParticipants',
+	  layoutConfig: 'layoutConfig'
 	});
-
-	const ApplicationName = {
-	  core: 'core',
-	  quickAccess: 'quickAccess',
-	  messenger: 'messenger'
-	};
 
 	const PlacementType = Object.freeze({
 	  contextMenu: 'IM_CONTEXT_MENU',
@@ -631,24 +521,59 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  dialogMessageMenu: 'bx-im-message-context-menu',
 	  dialogAvatarMenu: 'bx-im-avatar-context-menu',
 	  dialogReactionUsers: 'bx-im-message-reaction-users',
-	  dialogReadUsers: 'bx-im-dialog-read-users'
+	  dialogReadUsers: 'bx-im-dialog-read-users',
+	  createChatManageUsersAddMenu: 'im-content-create-chat-manage-users-add',
+	  createChatManageUsersDeleteMenu: 'im-content-create-chat-manage-users-delete',
+	  createChatManageUiMenu: 'im-content-create-chat-manage-ui',
+	  createChatCanPostMenu: 'im-content-create-chat-can-post',
+	  messageBaseFileMenu: 'im-message-base-file-context-menu',
+	  desktopItemMenu: 'im-navigation-desktop-item-context-menu'
 	});
 
 	const Settings = Object.freeze({
-	  application: {
-	    darkTheme: 'enableDarkTheme',
-	    enableSound: 'enableSound'
+	  appearance: {
+	    background: 'backgroundImageId',
+	    alignment: 'chatAlignment'
 	  },
-	  dialog: {
-	    bigSmiles: 'enableBigSmile',
-	    background: 'backgroundImageId'
+	  notification: {
+	    enableSound: 'enableSound',
+	    enableAutoRead: 'notifyAutoRead',
+	    mode: 'notifyScheme',
+	    enableWeb: 'notifySchemeSendSite',
+	    enableMail: 'notifySchemeSendEmail',
+	    enablePush: 'notifySchemeSendPush'
+	  },
+	  hotkey: {
+	    sendByEnter: 'sendByEnter'
+	  },
+	  message: {
+	    bigSmiles: 'enableBigSmile'
 	  },
 	  recent: {
 	    showBirthday: 'viewBirthday',
 	    showInvited: 'viewCommonUsers',
 	    showLastMessage: 'viewLastMessage'
+	  },
+	  desktop: {
+	    enableRedirect: 'openDesktopFromPanel'
+	  },
+	  user: {
+	    status: 'status'
 	  }
 	});
+	const SettingsSection = Object.freeze({
+	  appearance: 'appearance',
+	  notification: 'notification',
+	  hotkey: 'hotkey',
+	  message: 'message',
+	  recent: 'recent',
+	  desktop: 'desktop'
+	});
+	const NotificationSettingsType = {
+	  web: 'site',
+	  mail: 'mail',
+	  push: 'push'
+	};
 
 	const SoundType = {
 	  reminder: 'reminder',
@@ -662,45 +587,106 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  error: 'error'
 	};
 
-	exports.DeviceType = DeviceType;
-	exports.DeviceOrientation = DeviceOrientation;
-	exports.MutationType = MutationType;
-	exports.StorageLimit = StorageLimit;
-	exports.OpenTarget = OpenTarget;
-	exports.BotType = BotType;
+	const PromoId = Object.freeze({
+	  copilot: 'im:ai:15062023:all',
+	  createGroupChat: 'im:group-chat-create:20062023:all',
+	  createConference: 'im:conference-create:24082023:all'
+	});
+
+	const ChatActionType = Object.freeze({
+	  avatar: 'avatar',
+	  call: 'call',
+	  extend: 'extend',
+	  leave: 'leave',
+	  leaveOwner: 'leaveOwner',
+	  kick: 'kick',
+	  mute: 'mute',
+	  rename: 'rename',
+	  send: 'send',
+	  userList: 'userList'
+	});
+	const ChatActionGroup = Object.freeze({
+	  manageSettings: 'manageSettings',
+	  manageUi: 'manageUi',
+	  manageUsersAdd: 'manageUsersAdd',
+	  manageUsersDelete: 'manageUsersDelete',
+	  canPost: 'canPost'
+	});
+
+	const RawBotType = Object.freeze({
+	  bot: 'bot',
+	  network: 'network',
+	  support24: 'support24',
+	  human: 'human',
+	  openline: 'openline',
+	  supervisor: 'supervisor'
+	});
+	const BotType = Object.freeze({
+	  bot: 'bot',
+	  network: 'network',
+	  support24: 'support24'
+	});
+	const BotCode = Object.freeze({
+	  marta: 'marta',
+	  giphy: 'giphy'
+	});
+	const BotCommand = Object.freeze({
+	  activate: 'activate'
+	});
+
+	const GetParameter = {
+	  openNotifications: 'IM_NOTIFY',
+	  openHistory: 'IM_HISTORY',
+	  openChat: 'IM_DIALOG',
+	  openLines: 'IM_LINES',
+	  openSettings: 'IM_SETTINGS',
+	  desktopChatTabMode: 'IM_TAB',
+	  backgroundType: 'IM_BACKGROUND'
+	};
+
+	// noinspection ES6PreferShortImport
+	const PathPlaceholder = {
+	  dialog: `/online/?${GetParameter.openChat}=#DIALOG_ID#`,
+	  lines: `/online/?${GetParameter.openLines}=#DIALOG_ID#`
+	};
+
+	const CallViewState = {
+	  opened: 'Opened',
+	  closed: 'Closed',
+	  folded: 'Folded'
+	};
+
+	const TextareaPanelType = {
+	  edit: 'edit',
+	  reply: 'reply',
+	  forward: 'forward',
+	  market: 'market',
+	  none: ''
+	};
+
 	exports.RestMethod = RestMethod;
-	exports.RestMethodHandler = RestMethodHandler;
-	exports.PullCommand = PullCommand;
-	exports.PullHandlers = PullHandlers;
 	exports.EventType = EventType;
-	exports.DialogType = DialogType;
-	exports.DialogCrmType = DialogCrmType;
-	exports.DialogReferenceClassName = DialogReferenceClassName;
-	exports.DialogTemplateType = DialogTemplateType;
-	exports.DialogState = DialogState;
+	exports.ChatType = ChatType;
 	exports.DialogBlockType = DialogBlockType;
 	exports.DialogScrollThreshold = DialogScrollThreshold;
+	exports.DialogAlignment = DialogAlignment;
 	exports.FileStatus = FileStatus;
 	exports.FileType = FileType;
 	exports.FileIconType = FileIconType;
 	exports.MessageType = MessageType;
 	exports.MessageComponent = MessageComponent;
 	exports.MessageMentionType = MessageMentionType;
-	exports.OwnMessageStatus = OwnMessageStatus;
-	exports.ConferenceFieldState = ConferenceFieldState;
-	exports.ConferenceStateType = ConferenceStateType;
-	exports.ConferenceErrorCode = ConferenceErrorCode;
-	exports.ConferenceRightPanelMode = ConferenceRightPanelMode;
-	exports.ConferenceUserState = ConferenceUserState;
-	exports.RecentSection = RecentSection;
 	exports.MessageStatus = MessageStatus;
+	exports.OwnMessageStatus = OwnMessageStatus;
 	exports.RecentCallStatus = RecentCallStatus;
 	exports.NotificationTypesCodes = NotificationTypesCodes;
-	exports.ChatOption = ChatOption;
+	exports.NotificationSettingsMode = NotificationSettingsMode;
 	exports.Layout = Layout;
 	exports.SearchEntityIdTypes = SearchEntityIdTypes;
 	exports.UserStatus = UserStatus;
 	exports.UserExternalType = UserExternalType;
+	exports.UserRole = UserRole;
+	exports.UserIdNetworkPrefix = UserIdNetworkPrefix;
 	exports.SidebarDetailBlock = SidebarDetailBlock;
 	exports.SidebarBlock = SidebarBlock;
 	exports.SidebarFileTabTypes = SidebarFileTabTypes;
@@ -708,13 +694,31 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	exports.Color = Color;
 	exports.AttachType = AttachType;
 	exports.AttachDescription = AttachDescription;
+	exports.KeyboardButtonType = KeyboardButtonType;
+	exports.KeyboardButtonAction = KeyboardButtonAction;
+	exports.KeyboardButtonDisplay = KeyboardButtonDisplay;
+	exports.KeyboardButtonContext = KeyboardButtonContext;
 	exports.DesktopFeature = DesktopFeature;
+	exports.DesktopBxLink = DesktopBxLink;
+	exports.LegacyDesktopBxLink = LegacyDesktopBxLink;
 	exports.LocalStorageKey = LocalStorageKey;
-	exports.ApplicationName = ApplicationName;
 	exports.PlacementType = PlacementType;
 	exports.PopupType = PopupType;
 	exports.Settings = Settings;
+	exports.SettingsSection = SettingsSection;
+	exports.NotificationSettingsType = NotificationSettingsType;
 	exports.SoundType = SoundType;
+	exports.PromoId = PromoId;
+	exports.ChatActionType = ChatActionType;
+	exports.ChatActionGroup = ChatActionGroup;
+	exports.BotType = BotType;
+	exports.RawBotType = RawBotType;
+	exports.BotCode = BotCode;
+	exports.BotCommand = BotCommand;
+	exports.PathPlaceholder = PathPlaceholder;
+	exports.GetParameter = GetParameter;
+	exports.CallViewState = CallViewState;
+	exports.TextareaPanelType = TextareaPanelType;
 
-}((this.BX.Messenger.v2.Const = this.BX.Messenger.v2.Const || {})));
+}((this.BX.Messenger.v2.Const = this.BX.Messenger.v2.Const || {}),BX.Messenger.v2.Const));
 //# sourceMappingURL=registry.bundle.js.map

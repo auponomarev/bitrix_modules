@@ -2,6 +2,7 @@
 
 namespace Bitrix\Disk;
 
+use Bitrix\Disk\Uf\Integration\DiskUploaderController;
 use Bitrix\Main\Localization\Loc;
 
 Loc::loadMessages(__FILE__);
@@ -156,9 +157,53 @@ final class TypeFile
 			self::getByFile($file) : self::getByFilename($file);
 	}
 
-	public static function isImage($file)
+	/**
+	 * @param AttachedObject|File|string$file
+	 * @return bool
+	 * @throws \Bitrix\Main\NotImplementedException
+	 */
+	public static function isImage($file): bool
 	{
-		return self::getByFlexibleVar($file) === self::IMAGE;
+		if ($file instanceof AttachedObject)
+		{
+			$attachedObject = $file;
+			if (!$attachedObject->isSpecificVersion())
+			{
+				return self::isImage($attachedObject->getFile());
+			}
+			$fileData = $attachedObject->getVersion()?->getFile();
+
+			return self::isImageByFileData($fileData);
+		}
+
+		if ($file instanceof File)
+		{
+			if (self::getByFile($file) === self::IMAGE)
+			{
+				$fileData = $file->getFile();
+
+				return self::isImageByFileData($fileData);
+			}
+
+			return false;
+		}
+
+		return self::getByFilename($file) === self::IMAGE;
+	}
+
+	private static function isImageByFileData(?array $fileData): bool
+	{
+		if (empty($fileData))
+		{
+			return false;
+		}
+
+		return !self::shouldTreatImageAsFile($fileData);
+	}
+
+	public static function shouldTreatImageAsFile(array $fileData): bool
+	{
+		return DiskUploaderController::shouldTreatImageAsFile($fileData);
 	}
 
 	public static function isVideo($file)

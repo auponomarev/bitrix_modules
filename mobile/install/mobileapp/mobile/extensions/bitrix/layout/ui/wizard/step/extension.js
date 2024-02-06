@@ -1,8 +1,9 @@
 /**
  * @module layout/ui/wizard/step
  */
-
 jn.define('layout/ui/wizard/step', (require, exports, module) => {
+	const AppTheme = require('apptheme');
+
 	/**
 	 * @class WizardStep
 	 */
@@ -11,10 +12,8 @@ jn.define('layout/ui/wizard/step', (require, exports, module) => {
 		constructor(props)
 		{
 			this.props = props;
-			this.titleChangeCallback = () => {
-			};
-			this.stepAvailabilityChangeCallback = () => {
-			};
+			this.titleChangeCallback = () => {};
+			this.stepAvailabilityChangeCallback = () => {};
 		}
 
 		renderNumberBlock()
@@ -29,9 +28,10 @@ jn.define('layout/ui/wizard/step', (require, exports, module) => {
 				number: 1,
 				count: 1,
 				title: {},
-				previousLineColor: '#9dcf00',
-				currentLineColor: '#55d0e0',
-				nextLineColor: '#d5d7db',
+				previousLineColor: AppTheme.colors.accentMainSuccess,
+				currentLineColor: AppTheme.colors.accentExtraAqua,
+				nextLineColor: AppTheme.colors.base6,
+				...BX.prop.getObject(this.props, 'progressBarSettings', {}),
 			};
 		}
 
@@ -95,6 +95,19 @@ jn.define('layout/ui/wizard/step', (require, exports, module) => {
 			return false;
 		}
 
+		resizableByKeyboard()
+		{
+			return false;
+		}
+
+		/**
+		 * @returns {boolean|null}
+		 */
+		isNavigationBarBorderEnabled()
+		{
+			return null;
+		}
+
 		/**
 		 * Wizard "next step" button text
 		 *
@@ -142,9 +155,14 @@ jn.define('layout/ui/wizard/step', (require, exports, module) => {
 		 *
 		 * @returns {boolean|Promise}
 		 */
-		onMoveToNextStep()
+		onMoveToNextStep(stepId)
 		{
 			return true;
+		}
+
+		onMoveToBackStep(stepId)
+		{
+			return Promise.resolve(stepId);
 		}
 
 		/**

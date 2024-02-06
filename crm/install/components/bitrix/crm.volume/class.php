@@ -154,6 +154,13 @@ class CrmVolumeComponent extends \CBitrixComponent
 			return;
 		}
 
+		if (Main\Application::getConnection() instanceof \Bitrix\Main\DB\PgsqlConnection)
+		{
+			Crm\Service\Container::getInstance()->getLocalization()->loadMessages();
+			\ShowError(Loc::getMessage('CRM_LOCALIZATION_DB_TYPE_NOT_SUPPORTED'));
+
+			return;
+		}
 
 		$action = $this->getAction();
 
@@ -335,7 +342,7 @@ class CrmVolumeComponent extends \CBitrixComponent
 
 
 	/**
-	 * @return array|bool|\CAllUser|\CUser
+	 * @return array|bool|\CUser
 	 */
 	private function getUser()
 	{
@@ -345,11 +352,11 @@ class CrmVolumeComponent extends \CBitrixComponent
 	}
 
 	/**
-	 * @return \CAllMain|\CMain
+	 * @return CMain
 	 */
 	protected function getApplication()
 	{
-		/** @global \CMain $APPLICATION */
+		/** @global CMain $APPLICATION */
 		global $APPLICATION;
 		return $APPLICATION;
 	}
@@ -1436,14 +1443,14 @@ class CrmVolumeComponent extends \CBitrixComponent
 
 			array(
 				'id' => 'disk',
-				'name' => Loc::getMessage('CRM_VOLUME_REPORT_DISK_SIZE'),
+				'name' => Loc::getMessage('CRM_VOLUME_REPORT_DISK_SIZE_MSGVER_1'),
 				'align' => 'right',
 				'sort' => 'disk',
 				'first_order' => 'desc',
 			),
 			array(
 				'id' => 'disk_cnt',
-				'name' => Loc::getMessage('CRM_VOLUME_REPORT_DISK_COUNT'),
+				'name' => Loc::getMessage('CRM_VOLUME_REPORT_DISK_COUNT_MSGVER_1'),
 				'align' => 'right',
 				'sort' => 'disk_cnt',
 				'first_order' => 'desc',
@@ -1581,13 +1588,25 @@ class CrmVolumeComponent extends \CBitrixComponent
 				{
 					$menuTitle = Loc::getMessage("CRM_VOLUME_DELETE_{$keyUpper}");
 				}
+				if (Loc::getMessage("CRM_VOLUME_DELETE_{$keyUpper}_MSGVER_1") != '')
+				{
+					$menuTitle = Loc::getMessage("CRM_VOLUME_DELETE_{$keyUpper}_MSGVER_1");
+				}
 				if (Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_{$keyUpper}") != '')
 				{
 					$confirm = Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_{$keyUpper}");
 				}
+				if (Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_{$keyUpper}_MSGVER_1") != '')
+				{
+					$confirm = Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_{$keyUpper}_MSGVER_1");
+				}
 				if (Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_ALL_{$keyUpper}") != '')
 				{
 					$confirmAll = Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_ALL_{$keyUpper}");
+				}
+				if (Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_ALL_{$keyUpper}_MSGVER_1") != '')
+				{
+					$confirmAll = Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_ALL_{$keyUpper}_MSGVER_1");
 				}
 
 				$actions[] = array(
@@ -1650,15 +1669,27 @@ class CrmVolumeComponent extends \CBitrixComponent
 					{
 						$confirm = Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_HISTORY_{$keyUpper}");
 					}
+					if (Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_HISTORY_{$keyUpper}_MSGVER_1") !== '')
+					{
+						$confirm = Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_HISTORY_{$keyUpper}_MSGVER_1");
+					}
 					$confirmAll = Loc::getMessage('CRM_VOLUME_DELETE_CONFIRM_ALL_HISTORY', array('#NAME#' => $report['TITLE']));
 					if (Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_ALL_HISTORY_{$keyUpper}") !== '')
 					{
 						$confirmAll = Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_ALL_HISTORY_{$keyUpper}");
 					}
+					if (Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_ALL_HISTORY_{$keyUpper}_MSGVER_1") !== '')
+					{
+						$confirmAll = Loc::getMessage("CRM_VOLUME_DELETE_CONFIRM_ALL_HISTORY_{$keyUpper}_MSGVER_1");
+					}
 					$menuTitle = Loc::getMessage('CRM_VOLUME_DELETE_HISTORY', array('#NAME#' => $report['TITLE']));
 					if (Loc::getMessage("CRM_VOLUME_DELETE_HISTORY_{$keyUpper}") != '')
 					{
 						$menuTitle = Loc::getMessage("CRM_VOLUME_DELETE_HISTORY_{$keyUpper}");
+					}
+					if (Loc::getMessage("CRM_VOLUME_DELETE_HISTORY_{$keyUpper}_MSGVER_1") != '')
+					{
+						$menuTitle = Loc::getMessage("CRM_VOLUME_DELETE_HISTORY_{$keyUpper}_MSGVER_1");
 					}
 
 					$actions[] = array(

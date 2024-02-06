@@ -1,10 +1,10 @@
 /**
  * @module crm/required-fields
  */
-
 jn.define('crm/required-fields', (require, exports, module) => {
-	const { Haptics } = require('haptics');
 	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
+	const { Haptics } = require('haptics');
 	const { RequiredFieldsBackdrop } = require('crm/required-fields/required-backdrop');
 
 	const REQUIRED_ERROR_CODE = 'CRM_FIELD_ERROR_REQUIRED';
@@ -30,6 +30,7 @@ jn.define('crm/required-fields', (require, exports, module) => {
 		static hasRequiredFields(errors)
 		{
 			const requiredFields = this.getRequiredFields(errors);
+
 			return requiredFields.length > 0;
 		}
 
@@ -42,13 +43,14 @@ jn.define('crm/required-fields', (require, exports, module) => {
 
 		showRequiredFields()
 		{
-			const { errors, params } = this.props;
-			const fieldCodes = RequiredFields.getRequiredFields(errors);
+			const { errors: requiredErrors, params } = this.props;
+			const fieldCodes = RequiredFields.getRequiredFields(requiredErrors);
 
 			return (
-				BX.ajax.runAction('crmmobile.EntityDetails.getRequiredFields', {
-					json: { ...params, fieldCodes },
-				})
+				BX.ajax.runAction(
+					'crmmobile.EntityDetails.getRequiredFields',
+					{ json: { ...params, fieldCodes } },
+				)
 					.then(({ data }) => this.showComponent(data, fieldCodes.length))
 					.catch((errors) => this.showErrors(errors))
 			);
@@ -59,19 +61,21 @@ jn.define('crm/required-fields', (require, exports, module) => {
 			return Math.min((fieldLength + 2) * 10, 85);
 		}
 
-		showComponent(editorData, fieldLength)
+		showComponent(editorData)
 		{
+			const { parentWidget = PageManager } = this.props;
+
 			Haptics.notifyWarning();
 
-			PageManager.openWidget('layout', {
+			parentWidget.openWidget('layout', {
 				modal: true,
-				backgroundColor: '#eef2f4',
+				backgroundColor: AppTheme.colors.bgSecondary,
 				backdrop: {
 					swipeAllowed: false,
 					horizontalSwipeAllowed: false,
 					shouldResizeContent: true,
 					swipeContentAllowed: false,
-					navigationBarColor: '#eef2f4',
+					navigationBarColor: AppTheme.colors.bgSecondary,
 				},
 				onReady: (layout) => {
 					layout.showComponent(new RequiredFieldsBackdrop({

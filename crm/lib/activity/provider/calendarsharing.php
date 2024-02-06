@@ -2,11 +2,13 @@
 
 namespace Bitrix\Crm\Activity\Provider;
 
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
 use Bitrix\Crm\Badge\SourceIdentifier;
 use Bitrix\Crm\Badge\Type\CalendarSharingStatus;
 use Bitrix\Crm\ItemIdentifier;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\Result;
 
 class CalendarSharing extends Base
 {
@@ -39,9 +41,9 @@ class CalendarSharing extends Base
 		];
 	}
 
-	public static function getDefaultPingOffsets(): array
+	public static function getDefaultPingOffsets(array $params = []): array
 	{
-		return [0, 15];
+		return TodoPingSettingsProvider::DEFAULT_OFFSETS;
 	}
 
 	public static function syncBadges(int $activityId, array $activityFields, array $bindings): void
@@ -81,5 +83,19 @@ class CalendarSharing extends Base
 		{
 			$badge->unbindWithAnyValue($itemIdentifier, $sourceIdentifier);
 		}
+	}
+
+	public static function checkFields($action, &$fields, $id, $params = null): Result
+	{
+		if ($action === self::ACTION_UPDATE)
+		{
+			if (isset($fields['END_TIME']) && (string)($fields['END_TIME']) !== '')
+			{
+				$fields['START_TIME'] = $fields['END_TIME'];
+				$fields['DEADLINE'] = $fields['END_TIME'];
+			}
+		}
+
+		return new Result();
 	}
 }

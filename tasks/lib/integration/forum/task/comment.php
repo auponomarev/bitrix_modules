@@ -20,6 +20,7 @@ use Bitrix\Tasks\Comments;
 use Bitrix\Tasks\Integration\CRM\Timeline;
 use Bitrix\Tasks\Integration\CRM\TimeLineManager;
 use Bitrix\Tasks\Integration\IM;
+use Bitrix\Tasks\Integration\Pull\PushCommand;
 use Bitrix\Tasks\Integration\Pull\PushService;
 use Bitrix\Tasks\Integration\SocialNetwork;
 use Bitrix\Tasks\Internals\Counter;
@@ -145,7 +146,7 @@ final class Comment extends \Bitrix\Tasks\Integration\Forum\Comment
 		if ($addResult)
 		{
 			$result->setData($addResult);
-			if ($data['AUX'] === 'Y' && method_exists($feed, 'send'))
+			if (isset($data['AUX']) && $data['AUX'] === 'Y' && method_exists($feed, 'send'))
 			{
 				$skipUserRead = 'N';
 
@@ -520,7 +521,7 @@ final class Comment extends \Bitrix\Tasks\Integration\Forum\Comment
 
 		PushService::addEvent($pushRecipients, [
 			'module_id' => 'tasks',
-			'command' => 'comment_delete',
+			'command' => PushCommand::COMMENT_DELETED,
 			'params' => [
 				'entityXmlId' => $data['MESSAGE']['XML_ID'],
 				'ownerId' => static::getOccurAsId($data['MESSAGE']['AUTHOR_ID']),
@@ -572,7 +573,7 @@ final class Comment extends \Bitrix\Tasks\Integration\Forum\Comment
 			&& !empty($arData['PARAMS']['UF_FORUM_MESSAGE_VER'])
 		);
 		$messageId  = $arData['MESSAGE_ID'];
-		$strMessage = $arData['PARAMS']['POST_MESSAGE'];
+		$strMessage = (string) ($arData['PARAMS']['POST_MESSAGE'] ?? '');
 
 		if ($parser === null)
 		{
@@ -949,10 +950,10 @@ final class Comment extends \Bitrix\Tasks\Integration\Forum\Comment
 
 			PushService::addEvent($pushRecipients, [
 				'module_id' => 'tasks',
-				'command' => 'comment_add',
+				'command' => PushCommand::COMMENT_ADDED,
 				'params' => [
 					'taskId' => $taskId,
-					'entityXmlId' => $arData['PARAMS']['XML_ID'],
+					'entityXmlId' => $arData['PARAMS']['XML_ID'] ?? '',
 					'ownerId' => $occurAsUserId,
 					'messageId' => $messageId,
 					'groupId' => $groupId,
@@ -1412,7 +1413,7 @@ final class Comment extends \Bitrix\Tasks\Integration\Forum\Comment
 		$arFields = array(
 			'TASK_ID'      => $taskId,
 			'MESSAGE_ID'   => $commentId,
-			'COMMENT_TEXT' => $fields['MESSAGE']['POST_MESSAGE'],
+			'COMMENT_TEXT' => $fields['MESSAGE']['POST_MESSAGE'] ?? '',
 			'FILES'        => $arFilesIds,
 			'URL_PREVIEW'  => $urlPreviewId,
 		);
@@ -1615,6 +1616,21 @@ final class Comment extends \Bitrix\Tasks\Integration\Forum\Comment
 	 */
 	private static function sendNotification($messageData, $taskData, $fromUser, $toUsers, array $eventData = []): bool
 	{
+		$message = (string)Util::trim(\CTextParser::clearAllTags($messageData['POST_MESSAGE']));
+
+		if (\CTaskNotifications::useNewNotifications())
+		{
+			$task = \Bitrix\Tasks\Internals\Registry\TaskRegistry::getInstance()->getObject($taskData['ID'], true);
+			if (!$task)
+			{
+				return false;
+			}
+			$controller = new \Bitrix\Tasks\Internals\Notification\Controller();
+			$controller->onCommentCreated($task, $messageData['ID'], $message);
+			$controller->push();
+			return true;
+		}
+
 		if (empty($toUsers) || !IM::includeModule())
 		{
 			return false;
@@ -1630,7 +1646,6 @@ final class Comment extends \Bitrix\Tasks\Integration\Forum\Comment
 
 //		$messageTemplate = '[color=#000]#TASK_TITLE#[/color][br][i]#USER_NAME#:[/i] #TASK_COMMENT_TEXT#';
 //		$messageTemplatePush = '#USER_NAME#: #TASK_COMMENT_TEXT#';
-		$message = (string)Util::trim(\CTextParser::clearAllTags($messageData['POST_MESSAGE']));
 
 //		if (
 //			Loader::includeModule('socialnetwork')

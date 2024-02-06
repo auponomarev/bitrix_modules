@@ -4,6 +4,7 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 	die();
 }
 
+use Bitrix\Landing\Binding\Group;
 use \Bitrix\Landing\Hook;
 use Bitrix\Landing\Hook\Page\Theme;
 use Bitrix\Landing\Node\Component;
@@ -19,6 +20,7 @@ use Bitrix\Main\Config\Option;
 use Bitrix\Main\Event;
 use \Bitrix\Main\Localization\Loc;
 use \Bitrix\Landing\Restriction;
+use Bitrix\Landing\Connector;
 
 CBitrixComponent::includeComponentClass('bitrix:landing.base.form');
 
@@ -145,6 +147,7 @@ class LandingSiteEditComponent extends LandingBaseFormComponent
 			$this->checkParam('SITE_ID', 0);
 			$this->checkParam('TYPE', '');
 			$this->checkParam('PAGE_URL_SITES', '');
+			$this->checkParam('PAGE_URL_LANDINGS', '');
 			$this->checkParam('PAGE_URL_LANDING_VIEW', '');
 			$this->checkParam('PAGE_URL_SITE_DOMAIN', '');
 			$this->checkParam('PAGE_URL_SITE_COOKIES', '');
@@ -167,6 +170,13 @@ class LandingSiteEditComponent extends LandingBaseFormComponent
 			$this->arResult['REGISTER'] = Register::getInstance();
 			$this->arResult['SITE_INCLUDES_SCRIPT'] = Cookies::isSiteIncludesScript($this->id);
 			$this->arResult['COOKIES_AGREEMENT'] = Cookies::getMainAgreement();
+			$this->arResult['SPECIAL_TYPE'] = Site\Type::getSiteTypeForms($this->arResult['SITE']['CODE']['CURRENT']);
+			// ai
+			$this->arResult['AI_TEXT_AVAILABLE'] = Connector\Ai::isTextAvailable();
+			$this->arResult['AI_TEXT_ACTIVE'] = Connector\Ai::isTextActive();
+			$this->arResult['AI_IMAGE_AVAILABLE'] = Connector\Ai::isImageAvailable();
+			$this->arResult['AI_IMAGE_ACTIVE'] = Connector\Ai::isImageActive();
+			$this->arResult['AI_UNACTIVE_INFO_CODE'] = self::getAiUnactiveInfoCode();
 
 			if (
 				!defined('LANDING_DISABLE_B24_MODE') &&
@@ -340,6 +350,40 @@ class LandingSiteEditComponent extends LandingBaseFormComponent
 						$primary['ID'],
 						$data
 					);
+				}
+				if ($this->arParams['TYPE'] === 'GROUP' && $_REQUEST['fields'])
+				{
+					$groupUnbind = $_REQUEST['fields']['GROUP_UNBIND'];
+					$groupDelete = $_REQUEST['fields']['GROUP_DELETE'];
+					if ($groupUnbind === 'on' || $groupDelete === 'on')
+					{
+						$siteId = $this->arParams['SITE_ID'];
+						$groupId = Site\Scope\Group::getGroupIdBySiteId($siteId);
+						if ($groupId)
+						{
+							$binding = new Group($groupId);
+							if (!$binding->isForbiddenBindingAction())
+							{
+								$binding->unbindSite($siteId);
+							}
+						}
+						if ($this->arParams['IS_CHANGED_TYPE'] !== true)
+						{
+							$this->arParams['IS_CHANGED_TYPE'] = true;
+							Site::changeType($siteId, 'KNOWLEDGE');
+						}
+						if ($this->arParams['IS_CHANGED_CODE'] !== true)
+						{
+							$this->arParams['IS_CHANGED_CODE'] = true;
+							$newCode = $this->arResult['SITE']['CODE']['CURRENT'] . '_'  . time();
+							Site::changeCode($siteId, $newCode);
+						}
+						if ($groupDelete === 'on' && $this->arParams['IS_SITE_DELETE'] !== true)
+						{
+							$this->arParams['IS_SITE_DELETE'] = true;
+							Site::markDelete($siteId);
+						}
+					}
 				}
 				// rights
 				if (Rights::isAdmin() && Rights::isExtendedMode())

@@ -17,7 +17,8 @@
 		'#ffe600',
 		'#5d5f74',
 	];
-
+	const require = (ext) => jn.require(ext);
+	const AppTheme = require('apptheme');
 	/**
 	 * @class UI.ColorPicker
 	 */
@@ -35,7 +36,14 @@
 
 		getCurrentColor()
 		{
-			return BX.prop.getString(this.props, 'currentColor', null);
+			const currentColor = BX.prop.getString(this.props, 'currentColor', null);
+
+			if (currentColor)
+			{
+				return currentColor.toLowerCase();
+			}
+
+			return currentColor;
 		}
 
 		getColors()
@@ -45,12 +53,23 @@
 				return [...this.getColorsFromProps(), ...ColorPalette];
 			}
 
-			return [this.getCurrentColor(), ...this.getColorsFromProps(), ...ColorPalette];
+			const currentColor = this.getCurrentColor();
+
+			if (currentColor)
+			{
+				return [this.getCurrentColor(), ...this.getColorsFromProps(), ...ColorPalette];
+			}
+
+			return [...this.getColorsFromProps(), ...ColorPalette];
 		}
 
 		isDefaultColor()
 		{
-			return [...ColorPalette, ...UI.ColorMenu.Colors, ...this.getColorsFromProps()].includes(this.getCurrentColor());
+			return [
+				...ColorPalette,
+				...UI.ColorMenu.Colors,
+				...this.getColorsFromProps(),
+			].includes(this.getCurrentColor());
 		}
 
 		getColorsFromProps()
@@ -97,8 +116,11 @@
 
 		renderColorPalette(color, index)
 		{
+			const isSelected = this.state.currentColor === color;
+
 			return View(
 				{
+					testId: `ColorContainer-${color}-${isSelected}`,
 					style: styles.colorPaletteContainer(this.state.currentColor, color, index),
 					onClick: () => {
 						this.setState({
@@ -130,28 +152,18 @@
 				{
 					style: styles.menuButton(this.isMenuColor()),
 					onClick: () => {
-						PageManager.openWidget('layout', {
-								modal: true,
-								backdrop: {
-									mediumPositionPercent: 65,
-									horizontalSwipeAllowed: false,
-								},
-								onReady: (layoutWidget) => {
-									layoutWidget.showComponent(
-										new UI.ColorMenu({
-											layoutWidget: layoutWidget,
-											currentColor: this.state.currentColor,
-											onChangeColor: (color) => {
-												this.setState({
-													currentColor: color,
-												}, () => {
-													this.onChangeColor();
-												});
-											},
-										}),
-									);
+						UI.ColorMenu.open(
+							{
+								currentColor: this.state.currentColor,
+								onChangeColor: (color) => {
+									this.setState({
+										currentColor: color,
+									}, () => {
+										this.onChangeColor();
+									});
 								},
 							},
+							this.props.layout,
 						);
 					},
 				},
@@ -181,12 +193,12 @@
 		colorPickerContainer: {
 			flexDirection: 'column',
 			borderRadius: 12,
-			backgroundColor: '#ffffff',
+			backgroundColor: AppTheme.colors.bgContentPrimary,
 			paddingTop: 10,
 			paddingBottom: 16,
 		},
 		colorPickerTitle: {
-			color: '#525c69',
+			color: AppTheme.colors.base1,
 			fontSize: 15,
 			fontWeight: '500',
 			marginBottom: 9,
@@ -203,9 +215,9 @@
 		colorPaletteContainer: (currentColor, color, index) => ({
 			marginRight: 2,
 			marginLeft: index === 0 ? 20 : 0,
-			backgroundColor: '#ffffff',
+			backgroundColor: AppTheme.colors.bgContentPrimary,
 			borderWidth: 3,
-			borderColor: currentColor === color ? '#2fc6f6' : '#ffffff',
+			borderColor: currentColor === color ? AppTheme.colors.accentBrandBlue : AppTheme.colors.bgContentPrimary,
 			borderRadius: 25,
 			justifyContent: 'center',
 			alignItems: 'center',
@@ -220,9 +232,9 @@
 		}),
 		menuButton: (isDefaultColor) => ({
 			marginRight: 20,
-			backgroundColor: '#ffffff',
+			backgroundColor: AppTheme.colors.bgContentPrimary,
 			borderWidth: 3,
-			borderColor: isDefaultColor ? '#2fc6f6' : '#ffffff',
+			borderColor: isDefaultColor ? AppTheme.colors.accentBrandBlue : AppTheme.colors.bgContentPrimary,
 			borderRadius: 25,
 			justifyContent: 'center',
 			alignItems: 'center',
@@ -233,7 +245,7 @@
 			width: 30,
 			height: 30,
 			borderRadius: 15,
-			backgroundColor: '#56fb7d',
+			backgroundColor: AppTheme.colors.accentBrandGreen,
 			justifyContent: 'center',
 			alignItems: 'center',
 		},
@@ -244,7 +256,7 @@
 	};
 
 	const svgImages = {
-		menuIcon: `<svg width="20" height="5" viewBox="0 0 20 5" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 5C3.88071 5 5 3.88071 5 2.5C5 1.11929 3.88071 0 2.5 0C1.11929 0 0 1.11929 0 2.5C0 3.88071 1.11929 5 2.5 5Z" fill="white"/><path d="M10 5C11.3807 5 12.5 3.88071 12.5 2.5C12.5 1.11929 11.3807 0 10 0C8.61929 0 7.5 1.11929 7.5 2.5C7.5 3.88071 8.61929 5 10 5Z" fill="white"/><path d="M20 2.5C20 3.88071 18.8807 5 17.5 5C16.1193 5 15 3.88071 15 2.5C15 1.11929 16.1193 0 17.5 0C18.8807 0 20 1.11929 20 2.5Z" fill="white"/></svg>`,
+		menuIcon: '<svg width="20" height="5" viewBox="0 0 20 5" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 5C3.88071 5 5 3.88071 5 2.5C5 1.11929 3.88071 0 2.5 0C1.11929 0 0 1.11929 0 2.5C0 3.88071 1.11929 5 2.5 5Z" fill="white"/><path d="M10 5C11.3807 5 12.5 3.88071 12.5 2.5C12.5 1.11929 11.3807 0 10 0C8.61929 0 7.5 1.11929 7.5 2.5C7.5 3.88071 8.61929 5 10 5Z" fill="white"/><path d="M20 2.5C20 3.88071 18.8807 5 17.5 5C16.1193 5 15 3.88071 15 2.5C15 1.11929 16.1193 0 17.5 0C18.8807 0 20 1.11929 20 2.5Z" fill="white"/></svg>',
 	};
 
 	this.UI = this.UI || {};

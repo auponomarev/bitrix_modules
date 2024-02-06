@@ -1,4 +1,5 @@
 <?php
+
 namespace Bitrix\Main\DB;
 
 use Bitrix\Main;
@@ -58,8 +59,8 @@ abstract class SqlHelper
 	 * @param string $identifier Table or Column name.
 	 *
 	 * @return string
-	 * @see \Bitrix\Main\DB\SqlHelper::getLeftQuote
-	 * @see \Bitrix\Main\DB\SqlHelper::getRightQuote
+	 * @see SqlHelper::getLeftQuote
+	 * @see SqlHelper::getRightQuote
 	 */
 	public function quote($identifier)
 	{
@@ -69,7 +70,7 @@ abstract class SqlHelper
 			$quotedIdentifier = str_replace([$this->getLeftQuote(), $this->getRightQuote()], '', $identifier);
 
 			// shield [[database.]tablename.]columnname
-			if (strpos($quotedIdentifier, '.') !== false)
+			if (str_contains($quotedIdentifier, '.'))
 			{
 				$quotedIdentifier = str_replace('.', $this->getRightQuote() . '.' . $this->getLeftQuote(), $quotedIdentifier);
 			}
@@ -127,6 +128,24 @@ abstract class SqlHelper
 	abstract public function addSecondsToDateTime($seconds, $from = null);
 
 	/**
+	 * Returns function for adding days time interval to $from.
+	 * <p>
+	 * If $from is null or omitted, then current time is used.
+	 * <p>
+	 * $days and $from parameters are SQL unsafe.
+	 *
+	 * @abstract
+	 * @param integer $days How many days to add.
+	 * @param integer $from Datetime database field of expression.
+	 *
+	 * @return string
+	 */
+	public function addDaysToDateTime($days, $from = null)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
 	 * Returns function cast $value to datetime database type.
 	 * <p>
 	 * $value parameter is SQL unsafe.
@@ -154,6 +173,7 @@ abstract class SqlHelper
 	 * - SS     Seconds with leading zeros
 	 * - TT     AM or PM
 	 * - T      AM or PM
+	 * - W      Day of the week (0=Sunday ... 6=Saturday)
 	 * <p>
 	 * $field parameter is SQL unsafe.
 	 *
@@ -232,7 +252,7 @@ abstract class SqlHelper
 	 * @param string $value String in YYYY-MM-DD HH:MI:SS format.
 	 *
 	 * @return string
-	 * @see \Bitrix\Main\DB\MssqlSqlHelper::formatDate
+	 * @see SqlHelper::formatDate
 	 */
 	abstract public function getCharToDateFunction($value);
 
@@ -246,7 +266,7 @@ abstract class SqlHelper
 	 * @param string $fieldName Database field or expression.
 	 *
 	 * @return string
-	 * @see \Bitrix\Main\DB\MssqlSqlHelper::formatDate
+	 * @see SqlHelper::formatDate
 	 */
 	abstract public function getDateToCharFunction($fieldName);
 
@@ -293,8 +313,6 @@ abstract class SqlHelper
 	 * @param bool   $returnAsArray
 	 *
 	 * @return array (columnList, valueList, binds)
-	 * @throws Main\ArgumentTypeException
-	 * @throws SqlQueryException
 	 */
 	public function prepareInsert($tableName, array $fields, $returnAsArray = false)
 	{
@@ -383,7 +401,7 @@ abstract class SqlHelper
 	 * Performs additional processing of CLOB fields.
 	 *
 	 * @param ORM\Fields\ScalarField[] $tableFields Table fields.
-	 * @param array                    $fields      Data fields.
+	 * @param array $fields Data fields.
 	 *
 	 * @return array
 	 */
@@ -411,11 +429,10 @@ abstract class SqlHelper
 	/**
 	 * Converts values to the string according to the column type to use it in a SQL query.
 	 *
-	 * @param mixed                $value Value to be converted.
-	 * @param ORM\Fields\IReadable $field Type "source".
+	 * @param mixed $value Value to be converted.
+	 * @param ORM\Fields\IReadable | null $field Type "source".
 	 *
 	 * @return string Value to write to column.
-	 * @throws \Bitrix\Main\ArgumentTypeException
 	 */
 	public function convertToDb($value, ORM\Fields\IReadable $field = null)
 	{
@@ -427,6 +444,15 @@ abstract class SqlHelper
 		if ($value instanceof SqlExpression)
 		{
 			return $value->compile();
+		}
+
+		if (is_a($field, '\Bitrix\Main\ORM\Fields\StringField'))
+		{
+			$size = $field->getSize();
+			if ($size)
+			{
+				$value = mb_substr($value, 0, $size);
+			}
 		}
 
 		if($field instanceof ORM\Fields\IReadable)
@@ -442,9 +468,9 @@ abstract class SqlHelper
 	}
 
 	/**
-	 * Returns $value converted to an type according to $field type.
+	 * Returns $value converted to a type according to $field type.
 	 * <p>
-	 * For example if $field is Entity\DatetimeField then returned value will be instance of Type\DateTime.
+	 * For example if $field is Entity\DatetimeField then returned value will be the instance of Type\DateTime.
 	 *
 	 * @param mixed                $value Value to be converted.
 	 * @param ORM\Fields\IReadable $field Type "source".
@@ -461,7 +487,7 @@ abstract class SqlHelper
 	 *
 	 * @param mixed $value Value to be converted.
 	 *
-	 * @return string Value to write to column.
+	 * @return int Value to write to column.
 	 */
 	public function convertToDbInteger($value)
 	{
@@ -637,6 +663,38 @@ abstract class SqlHelper
 	}
 
 	/**
+	 * @deprecated
+	 * Converts string into \Bitrix\Main\Type\DateTime object.
+	 * <p>
+	 * Helper function.
+	 *
+	 * @param string $value Value fetched.
+	 *
+	 * @return null|\Bitrix\Main\Type\DateTime
+	 * @see SqlHelper::getConverter
+	 */
+	public function convertDatetimeField($value)
+	{
+		return $this->convertFromDbDateTime($value);
+	}
+
+	/**
+	 * @deprecated
+	 * Converts string into \Bitrix\Main\Type\Date object.
+	 * <p>
+	 * Helper function.
+	 *
+	 * @param string $value Value fetched.
+	 *
+	 * @return null|\Bitrix\Main\Type\Date
+	 * @see SqlHelper::getConverter
+	 */
+	public function convertDateField($value)
+	{
+		return $this->convertFromDbDate($value);
+	}
+
+	/**
 	 * Returns callback to be called for a field value on fetch.
 	 * Used for soft conversion. For strict results @see ORM\Query\Result::setStrictValueConverters()
 	 *
@@ -664,7 +722,7 @@ abstract class SqlHelper
 	 *
 	 * @param string $name Database column name.
 	 * @param mixed $type Database specific type.
-	 * @param array $parameters Additional information.
+	 * @param array | null $parameters Additional information.
 	 *
 	 * @return \Bitrix\Main\ORM\Fields\ScalarField
 	 */
@@ -697,7 +755,271 @@ abstract class SqlHelper
 	 */
 	public function getConditionalAssignment(string $field, string $value): string
 	{
-		// should be overridden
-		return $this->convertToDbString($value);
+		$field = $this->quote($field);
+		$hash = $this->convertToDbString(sha1($value));
+		$value = $this->convertToDbString($value);
+
+		return 'case when ' . $this->getSha1Function($field) . ' = ' . $hash . ' then ' . $field . ' else ' . $value . ' end';
+	}
+
+	/**
+	 * Makes an insert statement which will ignore duplicate keys errors.
+	 *
+	 * @abstract
+	 * @param string $tableName Table to insert.
+	 * @param integer $fields Fields list in braces.
+	 * @param integer $sql Select or values sql.
+	 *
+	 * @return string
+	 */
+	public function getInsertIgnore($tableName, $fields, $sql)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * Returns function for getting random number.
+	 *
+	 * @return string
+	 */
+	public function getRandomFunction()
+	{
+		return 'rand()';
+	}
+
+	/**
+	 * Returns function to generate sha1 hash.
+	 * <p>
+	 * $field parameter is SQL unsafe.
+	 *
+	 * @param string $field Database field or expression.
+	 *
+	 * @return string
+	 */
+	public function getSha1Function($field)
+	{
+		return 'sha1(' . $field . ')';
+	}
+
+	/**
+	 * Returns regexp expression.
+	 * <p>
+	 * All parameters are SQL unsafe.
+	 *
+	 * @abstract
+	 * @param string $field Database field or expression.
+	 * @param string $regexp Regexp to match.
+	 *
+	 * @return string
+	 */
+	public function getRegexpOperator($field, $regexp)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * Returns identifier for usage in VALUES.
+	 *
+	 * @abstract
+	 * @param string $identifier Column name.
+	 *
+	 * @return string
+	 * @see SqlHelper::quote
+	 */
+	public function values($identifier)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * @abstract
+	 */
+	public function getMatchFunction($field, $value)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * @abstract
+	 */
+	public function getMatchAndExpression($values, $prefixSearch = false)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * @abstract
+	 */
+	public function getMatchOrExpression($values, $prefixSearch = false)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * Builds the DML strings for the SQL REPLACE INTO command for the given table.
+	 *
+	 * @abstract
+	 * @param string $tableName A table name.
+	 * @param array $primaryFields Array("column")[] Primary key columns list.
+	 * @param array $insertRows Array(Array("column" => $value)[])[] Rows to insert.
+	 *
+	 * @return array (replace)
+	 */
+	public function prepareMergeMultiple($tableName, array $primaryFields, array $insertRows)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * Builds the DML strings for the SQL INSERT INTO ON CONFLICT UPDATE command for the given table.
+	 *
+	 * @abstract
+	 * @param string $tableName A table name.
+	 * @param array $primaryFields Array("column")[] Primary key columns list.
+	 * @param array $selectFields
+	 * @param $select
+	 * @param $updateFields
+	 * @return string (replace)
+	 */
+	public function prepareMergeSelect($tableName, array $primaryFields, array $selectFields, $select, $updateFields)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * Builds the DML string for the SQL DELETE command for the given table with limited rows number.
+	 *
+	 * @abstract
+	 * @param string $tableName A table name.
+	 * @param array $primaryFields Array("column")[] Primary key columns list.
+	 * @param string $where Sql where clause.
+	 * @param array $order Array("column" => asc|desc)[] Sort order.
+	 * @param integer $limit Rows to delete count.
+	 *
+	 * @return string (replace)
+	 */
+	public function prepareDeleteLimit($tableName, array $primaryFields, $where, array $order, $limit)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * @abstract
+	 */
+	public function initRowNumber($variableName)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * @abstract
+	 */
+	public function getRowNumber($variableName)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * Builds correlated update DML.
+	 *
+	 * @abstract
+	 * @param string $tableName A table name.
+	 * @param string $tableAlias A table alias.
+	 * @param array $fields Array("column" => "expression")[] Update columns list.
+	 * @param string $from Correlated tables.
+	 * @param string $where Where clause.
+	 *
+	 * @return string
+	 */
+	public function prepareCorrelatedUpdate($tableName, $tableAlias, $fields, $from, $where)
+	{
+		throw new Main\NotImplementedException('Method should be implemented in a child class.');
+	}
+
+	/**
+	 * Returns prepared sql string for upsert multiple rows
+	 *
+	 * @param string $tableName Table name
+	 * @param array $primaryFields Fields that can be conflicting keys (primary, unique keys)
+	 * @param array $insertRows Rows to insert [['FIELD_NAME' =>'value',...],...], Attention! use same columns in each row
+	 * @param array $updateFields Fields to update, if empty - update all fields, can be only field names, or fieldname => expression or fieldname => value
+	 *
+	 * @return string
+	 * @throws \Bitrix\Main\ArgumentException
+	 */
+	public function prepareMergeValues(string $tableName, array $primaryFields, array $insertRows, array $updateFields = []): string
+	{
+		$insertColumns = array_keys($insertRows[array_key_first($insertRows)] ?? []);
+		$insertValuesStrings = [];
+		foreach ($insertRows as $row)
+		{
+			[, $rowValues] = $this->prepareInsert($tableName, $row);
+			$insertValuesStrings[] = $rowValues;
+		}
+
+		if (empty($updateFields))
+		{
+			$notPrimaryFields = array_diff($insertColumns, $primaryFields);
+			if (empty($notPrimaryFields))
+			{
+				trigger_error("Only primary fields to update, use getInsertIgnore() or specify fields", E_USER_WARNING);
+			}
+			$updateFields = $notPrimaryFields;
+		}
+
+		$compatibleUpdateFields = [];
+
+		foreach ($updateFields as $key => $value)
+		{
+			if (is_numeric($key) && is_string($value))
+			{
+				$compatibleUpdateFields[$value] = new SqlExpression('?v', $value);
+			}
+			else
+			{
+				$compatibleUpdateFields[$key] = $value;
+			}
+		}
+
+		$insertValueString = 'values (' . implode('),(', $insertValuesStrings) . ')';
+
+		return $this->prepareMergeSelect($tableName, $primaryFields, $insertColumns, $insertValueString, $compatibleUpdateFields);
+	}
+
+	/**
+	 * @param string $field
+	 * @param array $values
+	 * @param bool $quote
+	 *
+	 * @return string
+	 */
+	public function getOrderByStringField(string $field, array $values, bool $quote = true): string
+	{
+		return $this->getOrderByField($field, $values, [$this, 'convertToDbString'], $quote);
+	}
+
+	/**
+	 * @param string $field
+	 * @param array $values
+	 * @param bool $quote
+	 *
+	 * @return string
+	 */
+	public function getOrderByIntField(string $field, array $values, bool $quote = true): string
+	{
+		return $this->getOrderByField($field, $values, [$this, 'convertFromDbInteger'], $quote);
+	}
+
+	/**
+	 * @param string $field
+	 * @param array $values
+	 * @param callable $callback
+	 * @param bool $quote
+	 *
+	 * @return string
+	 */
+	protected function getOrderByField(string $field, array $values, callable $callback, bool $quote = true): string
+	{
+		return $quote ? $this->quote($field) : $field;
 	}
 }

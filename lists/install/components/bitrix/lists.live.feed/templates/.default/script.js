@@ -108,7 +108,7 @@ BX.Lists.LiveFeedClass = (function ()
 	LiveFeedClass.prototype.setTitle = function (iblockName)
 	{
 		BX('bx-lists-table-td-title').innerHTML = BX.util.htmlspecialchars(iblockName);
-		BX('bx-lists-title-notify-admin-popup').value = BX.util.htmlspecialchars(iblockName);
+		BX('bx-lists-title-notify-admin-popup').value = iblockName;
 	};
 
 	LiveFeedClass.prototype.getList = function (iblockId, iblockDescription, iblockCode)
@@ -133,6 +133,7 @@ BX.Lists.LiveFeedClass = (function ()
 			return;
 		}
 
+		let startTime = Math.round(Date.now() / 1000);
 		BX.Lists.ajax({
 			url: BX.Lists.addToLinkParam(this.ajaxUrl, 'action', 'getList'),
 			method: 'POST',
@@ -147,6 +148,8 @@ BX.Lists.LiveFeedClass = (function ()
 			},
 			onsuccess: BX.delegate(function (data)
 			{
+				startTime = Math.round(Date.now() / 1000);
+
 				BX('bx-lists-store-lists').appendChild(
 					BX.create('input', {
 						props: {
@@ -159,17 +162,19 @@ BX.Lists.LiveFeedClass = (function ()
 						}
 					})
 				);
-				BX('bx-lists-total-div-id').appendChild(
+
+				BX.Dom.append(
 					BX.create('div', {
 						props: {
-							id: 'bx-lists-div-list-'+iblockId,
+							id: 'bx-lists-div-list-' + iblockId,
 							className: 'bx-lists-div-list'
 						},
 						attrs: {
 							style: 'display: block;'
 						},
 						html: data
-					})
+					}),
+					BX('bx-lists-total-div-id')
 				);
 				var ob = BX.processHTML(data);
 				BX.ajax.processScripts(ob.SCRIPT);
@@ -177,6 +182,18 @@ BX.Lists.LiveFeedClass = (function ()
 		});
 		BX.unbindAll(BX('blog-submit-button-save'));
 		BX.bind(BX('blog-submit-button-save'), 'click', BX.proxy(function(e) {
+			const form = document.forms.namedItem('blogPostForm');
+			if (form)
+			{
+				const timeToStart = BX.Dom.create('input', {
+					attrs: {
+						name: 'timeToStart',
+						type: 'hidden',
+						value: Math.round(Date.now() / 1000) - startTime
+					}
+				});
+				BX.Dom.append(timeToStart, form);
+			}
 			this.submitForm(e);
 		}, this));
 	};
@@ -680,10 +697,12 @@ BX.Lists.LiveFeedClass = (function ()
 			{
 				if(result.status == 'success')
 				{
+					const titleEncoded = BX.Text.encode(BX('bx-lists-title-notify-admin-popup').value);
+
 					var html = '<span class="bp-question"><span>!</span>'
-						+BX.message('LISTS_NOTIFY_ADMIN_TITLE_WHY').replace('#NAME_PROCESSES#', BX('bx-lists-title-notify-admin-popup').value)+'</span>';
-					html += '<p>'+BX.message('LISTS_NOTIFY_ADMIN_TEXT_ONE').replace('#NAME_PROCESSES#', BX('bx-lists-title-notify-admin-popup').value)+'</p>';
-					html += '<p>'+BX.message('LISTS_NOTIFY_ADMIN_TEXT_TWO').replace('#NAME_PROCESSES#', BX('bx-lists-title-notify-admin-popup').value)+'</p>';
+						+BX.message('LISTS_NOTIFY_ADMIN_TITLE_WHY').replace('#NAME_PROCESSES#', titleEncoded)+'</span>';
+					html += '<p>'+BX.message('LISTS_NOTIFY_ADMIN_TEXT_ONE').replace('#NAME_PROCESSES#', titleEncoded)+'</p>';
+					html += '<p>'+BX.message('LISTS_NOTIFY_ADMIN_TEXT_TWO').replace('#NAME_PROCESSES#', titleEncoded)+'</p>';
 					html += '<span class="bp-question-title">'+BX.message('LISTS_NOTIFY_ADMIN_MESSAGE')+'</span>';
 					for(var k in result.listAdmin)
 					{

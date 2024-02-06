@@ -256,6 +256,10 @@ class DynamicController extends BaseController
 		$this->suspendScoringHistory($entityID, $recyclingEntityID);
 		$this->suspendCustomRelations($entityID, $recyclingEntityID);
 		$this->suspendBadges($entityID, $recyclingEntityID);
+		\Bitrix\Crm\Integration\AI\EventHandler::onItemMoveToBin(
+			new Crm\ItemIdentifier($this->getEntityTypeID(), $entityID),
+			new Crm\ItemIdentifier($this->getSuspendedEntityTypeID(), $recyclingEntityID),
+		);
 	}
 
 	/**
@@ -298,10 +302,7 @@ class DynamicController extends BaseController
 
 		$item = $this->createItem($fields);
 
-		$context = clone Crm\Service\Container::getInstance()->getContext();
-		$context->setItemOption('PRESERVE_CONTENT_TYPE', true);
-
-		$operation = $this->getFactory()->getRestoreOperation($item, $context);
+		$operation = $this->getFactory()->getRestoreOperation($item);
 		$operation
 			->disableAllChecks()
 		;
@@ -358,6 +359,10 @@ class DynamicController extends BaseController
 		$this->recoverScoringHistory($recyclingEntityID, $newEntityID);
 		$this->recoverCustomRelations($recyclingEntityID, $newEntityID);
 		$this->recoverBadges($recyclingEntityID, $newEntityID);
+		\Bitrix\Crm\Integration\AI\EventHandler::onItemRestoreFromRecycleBin(
+			new Crm\ItemIdentifier($this->getEntityTypeID(), $newEntityID),
+			new Crm\ItemIdentifier($this->getSuspendedEntityTypeID(), $recyclingEntityID),
+		);
 	}
 
 	protected function createItem(array $fields): Crm\Item
@@ -405,7 +410,7 @@ class DynamicController extends BaseController
 				$item->setCategoryId($factory->getDefaultCategory()->getId());
 			}
 
-			if(!$factory->getStage((string)$item->getStageId()))
+			if($factory->isStagesEnabled() && !$factory->getStage((string)$item->getStageId()))
 			{
 				$stages = $factory->getStages($item->getCategoryId())->getAll();
 				$item->setStageId($stages[0]->getStatusId());
@@ -457,6 +462,9 @@ class DynamicController extends BaseController
 		$this->eraseSuspendedScoringHistory($recyclingEntityID);
 		$this->eraseSuspendedCustomRelations($recyclingEntityID);
 		$this->eraseSuspendedBadges($recyclingEntityID);
+		\Bitrix\Crm\Integration\AI\EventHandler::onItemDelete(
+			new Crm\ItemIdentifier($this->getSuspendedEntityTypeID(), $recyclingEntityID),
+		);
 	}
 
 	public function eraseAll(): void

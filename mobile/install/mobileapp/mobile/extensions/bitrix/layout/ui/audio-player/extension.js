@@ -5,10 +5,20 @@ jn.define('layout/ui/audio-player', (require, exports, module) => {
 	const { AudioPlayer: Player } = require('native/media');
 	const { PlayButton } = require('layout/ui/audio-player/play-button');
 	const { SpeedButton } = require('layout/ui/audio-player/speed-button');
+	const { AudioPlayerTimings } = require('layout/ui/audio-player/timings');
 	const { EventEmitter } = require('event-emitter');
 	const { RangeSlider } = require('layout/ui/range-slider');
+	const { Feature } = require('feature');
 
 	const { Alert } = require('alert');
+
+	const AUDIO_DEVICES = {
+		BLUETOOTH: 'bluetooth',
+		RECEIVER: 'receiver',
+		SPEAKER: 'speaker',
+		WIRED: 'wired',
+		NONE: 'none',
+	};
 
 	class AudioPlayer extends LayoutComponent
 	{
@@ -28,10 +38,15 @@ jn.define('layout/ui/audio-player', (require, exports, module) => {
 			this.speed = 1;
 			this.uid = this.props.uid || Random.getString();
 			this.customEventEmitter = EventEmitter.createWithUid(this.uid);
+			this.lastDevice = null;
+			this.proximityState = null;
 
 			this.handleExternalChangePlay = this.handleExternalEvent(this.handleExternalChangePlay);
 			this.handleExternalCancel = this.handleExternalEvent(this.handleExternalCancel);
 			this.handleExternalSetSeek = this.handleExternalEvent(this.handleExternalSetSeek);
+			this.handleProximitySensor = this.handleExternalEvent(this.handleProximitySensor);
+
+			this.handleExternalChangeSpeed = this.handleExternalEvent(this.handleExternalChangeSpeed);
 			this.onPlay = this.onPlay.bind(this);
 			this.onLoadAudio = this.onLoadAudio.bind(this);
 		}
@@ -62,6 +77,8 @@ jn.define('layout/ui/audio-player', (require, exports, module) => {
 			this.customEventEmitter.on('TopPanelAudioPlayer::onChangePlay', this.handleExternalChangePlay);
 			this.customEventEmitter.on('TopPanelAudioPlayer::onCancel', this.handleExternalCancel);
 			this.customEventEmitter.on('TopPanelAudioPlayer::onSetSeek', this.handleExternalSetSeek);
+			this.customEventEmitter.on('TopPanelAudioPlayer::onChangeSpeed', this.handleExternalChangeSpeed);
+			this.customEventEmitter.on('TopPanelAudioPlayer::onProximitySensor', this.handleProximitySensor);
 		}
 
 		/**
@@ -112,43 +129,85 @@ jn.define('layout/ui/audio-player', (require, exports, module) => {
 			this.player.setSeek(currentTime);
 		}
 
+		handleProximitySensor({ proximityState })
+		{
+			this.proximityState = proximityState;
+			const currentDevice = this.player.getCurrentDevice();
+
+			if (this.state.play && !AudioPlayer.isHeadphone(currentDevice))
+			{
+				if (proximityState)
+				{
+					this.lastDevice = currentDevice;
+					this.player.selectAudioDevice(AUDIO_DEVICES.RECEIVER);
+				}
+				else
+				{
+					this.player.selectAudioDevice(this.lastDevice);
+				}
+			}
+		}
+
+		static isHeadphone(currentDevice)
+		{
+			return currentDevice === AUDIO_DEVICES.BLUETOOTH || currentDevice === AUDIO_DEVICES.WIRED;
+		}
+
+		handleExternalChangeSpeed({ speed })
+		{
+			this.player.setSpeed(speed);
+		}
+
 		onPlayerReady(duration)
 		{
-			this.customEventEmitter.emit('AudioPlayer::onReady', [{duration}]);
+			this.customEventEmitter.emit('AudioPlayer::onReady', [{ duration }]);
 		}
 
 		onPlayerPlay()
 		{
 			this.customEventEmitter.emit(
 				'AudioPlayer::onPlay',
-				[{
-					duration: this.state.duration,
-					uid: this.uid,
-					currentTime: this.currentTime,
-					speed: this.speed,
-					uri: this.uri,
-					title: this.title,
-				}]);
+				[
+					{
+						duration: this.state.duration,
+						uid: this.uid,
+						currentTime: this.currentTime,
+						speed: this.speed,
+						uri: this.uri,
+						title: this.title,
+					},
+				],
+			);
 		}
 
 		onPlayerChangeSpeed(speed)
 		{
-			this.customEventEmitter.emit('AudioPlayer::onChangeSpeed', [{speed}]);
+			this.customEventEmitter.emit('AudioPlayer::onChangeSpeed', [{ speed, uri: this.uri }]);
 		}
 
 		onPlayerPause()
 		{
-			this.customEventEmitter.emit('AudioPlayer::onPause', [])
+			this.customEventEmitter.emit('AudioPlayer::onPause', [{ uri: this.uri }]);
 		}
 
 		onPlayerFinish()
 		{
-			this.customEventEmitter.emit('AudioPlayer::onFinish', []);
+			this.customEventEmitter.emit('AudioPlayer::onFinish', [{ uri: this.uri }]);
 		}
 
 		onPlayerUpdate(currentTime)
 		{
-			this.customEventEmitter.emit('AudioPlayer::onUpdate', [{currentTime, duration: this.state.duration, uid: this.uid}]);
+			this.customEventEmitter.emit(
+				'AudioPlayer::onUpdate',
+				[
+					{
+						currentTime,
+						duration: this.state.duration,
+						uid: this.uid,
+						uri: this.uri,
+					},
+				],
+			);
 		}
 
 		onPlay()
@@ -172,6 +231,42 @@ jn.define('layout/ui/audio-player', (require, exports, module) => {
 
 		render()
 		{
+			return this.props.compact ? this.renderCompactLayout() : this.renderDefaultLayout();
+		}
+
+		renderCompactLayout()
+		{
+			const { duration, play, isLoading } = this.state;
+
+			return View(
+				{
+					style: {
+						flexDirection: 'row',
+						alignItems: 'center',
+						height: 24,
+					},
+					onClick: this.onPlay,
+				},
+				PlayButton({
+					play,
+					isLoading,
+					duration,
+					compact: true,
+					onClick: this.onPlay,
+					onLoadAudio: this.onLoadAudio,
+				}),
+				this.player && new AudioPlayerTimings({
+					play,
+					duration,
+					currentTime: this.currentTime,
+					player: this.player,
+					onClick: this.onPlay,
+				}),
+			);
+		}
+
+		renderDefaultLayout()
+		{
 			const { duration, play, isLoading } = this.state;
 
 			return View(
@@ -182,10 +277,10 @@ jn.define('layout/ui/audio-player', (require, exports, module) => {
 				},
 				PlayButton({
 					play,
-					onClick: this.onPlay,
-					onLoadAudio: this.onLoadAudio,
 					isLoading,
 					duration,
+					onClick: this.onPlay,
+					onLoadAudio: this.onLoadAudio,
 				}),
 				new RangeSlider({
 					uid: this.uid,
@@ -271,6 +366,12 @@ jn.define('layout/ui/audio-player', (require, exports, module) => {
 			});
 
 			this.player.on('play', () => {
+				this.lastDevice = this.player.getCurrentDevice();
+				if (this.proximityState && !AudioPlayer.isHeadphone(this.lastDevice) && Feature.canChangeAudioDevice())
+				{
+					this.player.selectAudioDevice(AUDIO_DEVICES.RECEIVER);
+				}
+
 				if (!this.state.play)
 				{
 					this.onPlayerPlay();

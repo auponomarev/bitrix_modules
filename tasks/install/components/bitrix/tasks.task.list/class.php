@@ -20,6 +20,7 @@ use Bitrix\Main\ORM\Query\Join;
 use Bitrix\Main\UI\Filter\Options;
 use Bitrix\Socialnetwork\Item\Workgroup;
 use Bitrix\Tasks\Access;
+use Bitrix\Tasks\Integration\Socialnetwork\Context\Context;
 use Bitrix\Tasks\Helper\Filter;
 use Bitrix\Tasks\Helper\Grid;
 use Bitrix\Tasks\Integration\CRM;
@@ -28,6 +29,7 @@ use Bitrix\Tasks\Integration\SocialNetwork;
 use Bitrix\Tasks\Internals\Counter;
 use Bitrix\Tasks\Internals\Task\LabelTable;
 use Bitrix\Tasks\Internals\Task\MemberTable;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Internals\TaskTable;
 use Bitrix\Tasks\Internals\UserOption;
 use Bitrix\Tasks\Manager;
@@ -256,58 +258,6 @@ class TasksTaskListComponent extends TasksBaseComponent
 		return $result;
 	}
 
-	/**
-	 * @param $taskId
-	 * @param array $navigation
-	 * @param array $arParams
-	 * @return bool[]
-	 */
-	public function getNearTasksAction($taskId, array $navigation, array $arParams = []): array
-	{
-		if (!\Bitrix\Main\Loader::includeModule('tasks'))
-		{
-			return [];
-		}
-
-		/** @var Filter $filter */
-		$filter = Filter::getInstance($arParams['USER_ID'], $arParams['GROUP_ID']);
-
-		$pageNumber = $navigation['pageNumber'];
-		$pageSize = $navigation['pageSize'];
-
-		$getListParameters = [
-			'select' => ['ID'],
-			'legacyFilter' => $filter->process(),
-			'order' => $arParams['GET_LIST_PARAMETERS']['order'],
-			'NAV_PARAMS' => [
-				'iNumPage' => $pageNumber,
-				'iNumPageSize' => ($pageNumber - 1) * $pageSize,
-				'nPageSize' => $pageSize,
-			],
-		];
-		$parameters = [
-			'RETURN_ACCESS' => 'N',
-			'USE_MINIMAL_SELECT_LEGACY' => 'N',
-			'MAKE_ACCESS_FILTER' => true,
-		];
-
-		$falseResult = [
-			'before' => false,
-			'after' => false,
-		];
-
-		$tasks = array_keys(Manager\Task::getList($arParams['USER_ID'], $getListParameters, $parameters)['DATA']);
-		if (empty($tasks) || ($index = array_search((int)$taskId, $tasks, true)) === false)
-		{
-			return $falseResult;
-		}
-
-		return [
-			'before' => ($index === count($tasks) - 1 ? false : $tasks[$index + 1]),
-			'after' => ($index === 0 ? false : $tasks[$index - 1]),
-		];
-	}
-
 	public function getTotalCountAction($userId, $groupId, $parameters)
 	{
 		$userId = (int) $userId;
@@ -432,6 +382,92 @@ class TasksTaskListComponent extends TasksBaseComponent
 	public function getGridRowsAction(array $taskIds = [], array $arParams = []): array
 	{
 		return self::getGridRows($taskIds, $arParams);
+	}
+
+	/**
+	 * returns information about element left and right
+	 * @param array $taskIds
+	 * @param array $navigation
+	 * @param array $arParams
+	 * @return array
+	 * @throws Main\LoaderException
+	 */
+	public static function getNearTasks(array $taskIds, array $navigation, array $arParams = []): array
+	{
+		$result = [];
+
+		if (!\Bitrix\Main\Loader::includeModule('tasks'))
+		{
+			return [];
+		}
+
+		if (empty($taskIds))
+		{
+			return [];
+		}
+
+		/** @var Filter $filter */
+		$filter = Filter::getInstance($arParams['USER_ID'], $arParams['GROUP_ID']);
+
+		$pageNumber = $navigation['pageNumber'];
+		$pageSize = $navigation['pageSize'];
+
+		$getListParameters = [
+			'select' => ['ID'],
+			'legacyFilter' => $filter->process(),
+			'order' => $arParams['GET_LIST_PARAMETERS']['order'],
+			'NAV_PARAMS' => [
+				'iNumPage' => $pageNumber,
+				'iNumPageSize' => ($pageNumber - 1) * $pageSize,
+				'nPageSize' => $pageSize,
+			],
+		];
+		$parameters = [
+			'RETURN_ACCESS' => 'N',
+			'USE_MINIMAL_SELECT_LEGACY' => 'N',
+			'MAKE_ACCESS_FILTER' => true,
+		];
+
+		$falseResult = [
+			'before' => false,
+			'after' => false,
+		];
+
+		$tasks = array_keys(Manager\Task::getList($arParams['USER_ID'], $getListParameters, $parameters)['DATA']);
+
+		foreach ($taskIds as $taskId)
+		{
+			if (empty($tasks))
+			{
+				$result[$taskId] = $falseResult;
+			}
+			else
+			{
+				$index = array_search((int)$taskId, $tasks, true);
+
+				$result[$taskId] = $index === false
+					? $falseResult
+					: [
+						'before' => ($index === count($tasks) - 1 ? false : $tasks[$index + 1]),
+						'after' => ($index === 0 ? false : $tasks[$index - 1])
+					]
+				;
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * @param $taskId
+	 * @param array $navigation
+	 * @param array $arParams
+	 * @return array
+	 * @throws Main\LoaderException
+	 */
+	public function getNearTasksAction($taskId, array $navigation, array $arParams = []): array
+	{
+		return self::getNearTasks([$taskId], $navigation, $arParams)[$taskId];
 	}
 
 	protected static function checkRequiredModules(
@@ -644,8 +680,11 @@ class TasksTaskListComponent extends TasksBaseComponent
 
 	protected function loadGrid()
 	{
-		$this->grid = Grid::getInstance($this->arParams["USER_ID"], $this->arParams["GROUP_ID"]);
-		$this->filter = Filter::getInstance($this->arParams["USER_ID"], $this->arParams["GROUP_ID"]);
+		$this->grid = Grid::getInstance($this->arParams["USER_ID"], $this->arParams["GROUP_ID"])
+			->setScope($this->arParams['CONTEXT'] ?? '');
+
+		$this->filter = Filter::getInstance($this->arParams["USER_ID"], $this->arParams["GROUP_ID"])
+			->setGanttMode(static::class === TasksTaskGanttComponent::class);
 	}
 
 	protected function doPreAction()
@@ -669,14 +708,15 @@ class TasksTaskListComponent extends TasksBaseComponent
 		$this->arResult['USER_ID'] = $this->userId;
 		$this->arResult['OWNER_ID'] = $this->arParams['USER_ID'];
 
+		$this->arResult['CONTEXT'] = $this->arParams['CONTEXT'] ?? Context::DEFAULT;
+
 		$this->arParams['DEFAULT_ROLEID'] = $this->filter->getDefaultRoleId();
 
 		$order = $this->getOrder();
 		unset($order['GROUP_ID'], $order['IS_PINNED'], $order['IS_PINNED_IN_GROUP']);
 
-		reset($order);
-		$field = key($order);
-		$direction = current($order);
+		$field = array_key_first($order);
+		$direction = $order[$field] ?? false;
 		$direction = ($direction ? explode(',', $direction)[0] : 'asc');
 
 		$this->disableGrouping($field, $direction);
@@ -1547,7 +1587,7 @@ class TasksTaskListComponent extends TasksBaseComponent
 		if (
 			array_key_exists('STATUS', $filter)
 			&& is_array($filter['STATUS'])
-			&& in_array(CTasks::STATE_IN_PROGRESS, $filter['STATUS'])
+			&& in_array(Status::IN_PROGRESS, $filter['STATUS'])
 		)
 		{
 			unset($filter['STATUS']);

@@ -1,4 +1,5 @@
-<?
+<?php
+
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 {
 	die();
@@ -14,13 +15,13 @@ return [
 	'rel' => [
 		'calendar.controls',
 		'calendar.planner',
-		'intranet.control-button',
 		'ui.vue3',
 		'calendar.util',
 		'calendar.entry',
 		'main.core',
 		'main.core.events',
 		'calendar.sectionmanager',
+		'viewer',
 	],
 	'skip_core' => false,
 	'lang' => '/bitrix/modules/calendar/classes/general/calendar_js.php'

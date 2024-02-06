@@ -1149,7 +1149,9 @@ class EntityConverter
 			Crm\Timeline\TimelineType::ACTIVITY,
 			Crm\Timeline\TimelineType::CREATION,
 			Crm\Timeline\TimelineType::MARK,
-			Crm\Timeline\TimelineType::COMMENT
+			Crm\Timeline\TimelineType::COMMENT,
+			Crm\Timeline\TimelineType::LOG_MESSAGE,
+			Crm\Timeline\TimelineType::AI_CALL_PROCESSING,
 		];
 	}
 

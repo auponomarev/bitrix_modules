@@ -7,7 +7,7 @@ global $APPLICATION, $USER_FIELD_MANAGER;
 
 $id = $arParams['id'];
 $event = $arParams['event'];
-$isSocialnetworkEnabled = $arParams['bSocNet'];
+$isSocialNetworkEnabled = $arParams['bSocNet'];
 $isCrmEnabled = \Bitrix\Main\ModuleManager::isModuleInstalled('crm');
 $hiddenFields = $arParams['hiddenFields'] ?? [];
 
@@ -22,7 +22,7 @@ $fieldsList = [
 	'private' => ['title' => Loc::getMessage('EC_EDIT_SLIDER_PRIVATE_COLUMN')]
 ];
 
-if (!$isSocialnetworkEnabled)
+if (!$isSocialNetworkEnabled)
 {
 	unset($fieldsList['accessibility']);
 	unset($fieldsList['private']);
@@ -47,11 +47,15 @@ foreach ($fieldsList as $k => $field)
 
 $event['UF_CRM_CAL_EVENT'] = $UF['UF_CRM_CAL_EVENT'] ?? null;
 if (empty($event['UF_CRM_CAL_EVENT']['VALUE']))
+{
 	$event['UF_CRM_CAL_EVENT'] = false;
+}
 
 $event['UF_WEBDAV_CAL_EVENT'] = $UF['UF_WEBDAV_CAL_EVENT'] ?? null;
 if (empty($event['UF_WEBDAV_CAL_EVENT']['VALUE']))
+{
 	$event['UF_WEBDAV_CAL_EVENT'] = false;
+}
 
 $userId = CCalendar::GetCurUserId();
 $arParams['event'] = $event;
@@ -86,12 +90,7 @@ $arParams['UF'] = $UF;
 					<input id="<?=$id?>_event_current_date_from" type="hidden" name="current_date_from" value="0"/>
 					<input id="<?=$id?>_event_rec_edit_mode" type="hidden" name="rec_edit_mode" value="0"/>
 					<input id="<?=$id?>_exclude_users" type="hidden" name="exclude_users" value=""/>
-					<!--
-					<input id="<?=$id?>_location_old" type="hidden" name="location_old" value=""/>
-					<input id="<?=$id?>_location_new" type="hidden" name="location_new" value=""/>
-					<input name="time_from_real" type="hidden" id="<?=$id?>_time_from_real" value="">
-					<input name="time_to_real" type="hidden" id="<?=$id?>_time_to_real" value="">
-					-->
+					<input id="<?=$id?>_do_check_occupancy" type="hidden" name="doCheckOccupancy" value="Y"/>
 
 					<div class="calendar-info pinned">
 						<div class="calendar-info-panel">
@@ -99,7 +98,10 @@ $arParams['UF'] = $UF;
 								<input name="importance" type="checkbox" id="<?=$id?>_important" value="high">
 								<label for="<?=$id?>_important"><?= Loc::getMessage('EC_EDIT_SLIDER_IMPORTANT_EVENT')?></label>
 							</div>
-							<div class="calendar-info-panel-title"><input name="name" id="<?=$id?>_entry_name" type="text" placeholder="<?= Loc::getMessage('EC_EDIT_SLIDER_NAME_PLACEHOLDER')?>"></div>
+							<div class="calendar-info-panel-title">
+								<input name="name" id="<?=$id?>_entry_name" type="text" placeholder="<?= Loc::getMessage('EC_EDIT_SLIDER_NAME_PLACEHOLDER')?>">
+								<div class="calendar-field-title-fade --edit-form" id="<?=$id?>_input_fade"></div>
+							</div>
 						</div>
 
 						<div data-bx-block-placeholer="description" class="calendar-field-placeholder calendar-info-panel-description">
@@ -108,10 +110,10 @@ $arParams['UF'] = $UF;
 								<?$APPLICATION->IncludeComponent(
 									"bitrix:main.post.form",
 									"",
-									array(
+									[
 										"FORM_ID" => "calendar_entry_edit",
 										"SHOW_MORE" => "Y",
-										"PARSER" => Array(
+										"PARSER" => [
 											"Bold", "Italic", "Underline", "Strike", "ForeColor",
 											"FontList", "FontSizeList", "RemoveFormat", "Quote",
 											"Code", "CreateLink",
@@ -120,45 +122,56 @@ $arParams['UF'] = $UF;
 											"Table", "Justify", "InsertOrderedList",
 											"InsertUnorderedList",
 											"Source", "MentionUser"
-										),
-										"BUTTONS" => IsModuleInstalled('disk') ? Array(
+										],
+										"BUTTONS" => IsModuleInstalled('disk') ? [
+											"Copilot",
 											"UploadFile",
 											"CreateLink",
 											"InputVideo",
 											"Quote"
-										) : Array(
+										] : [
+											"Copilot",
 											"CreateLink",
 											"InputVideo",
 											"Quote"
-										),
-										"TEXT" => Array(
+										],
+										"TEXT" => [
 											"ID" => $id.'_edit_ed_desc',
 											"NAME" => "desc",
 											"VALUE" => $event['DESCRIPTION'] ?? null,
 											"HEIGHT" => "160px"
-										),
+										],
 										"UPLOAD_WEBDAV_ELEMENT" => $arParams['UF']['UF_WEBDAV_CAL_EVENT'],
 										"UPLOAD_FILE_PARAMS" => array("width" => 400, "height" => 400),
-										"FILES" => Array(
-											"VALUE" => array(),
+										"FILES" => [
+											"VALUE" => [],
 											"DEL_LINK" => '',
 											"SHOW" => "N"
-										),
-										"SMILES" => Array("VALUE" => array()),
-										"LHE" => array(
+										],
+										"SMILES" => [
+											"VALUE" => []
+										],
+										"LHE" => [
 											"id" => $arParams['id'].'_entry_slider_editor',
 											"jsObjName" => $arParams['id'].'_entry_slider_editor',
 											"height" => 120,
 											"documentCSS" => "",
 											"fontSize" => "14px",
 											"lazyLoad" => false,
-											"setFocusAfterShow" => false
-										)
-									),
+											"setFocusAfterShow" => false,
+											'isCopilotImageEnabledBySettings' => \Bitrix\Calendar\Integration\AI\Settings::isImageAvailable(),
+											'isCopilotTextEnabledBySettings' => \Bitrix\Calendar\Integration\AI\Settings::isTextAvailable(),
+											'copilotParams' => [
+												'moduleId' => 'calendar',
+												'contextId' => 'calendar_description',
+												'category' => 'calendar',
+											],
+										],
+									],
 									false,
-									array(
+									[
 										"HIDE_ICONS" => "Y"
-									)
+									]
 								);?>
 								<span data-bx-fixfield="description" class="calendar-option-fixedbtn" title="<?= Loc::getMessage('EC_EDIT_SLIDER_FIX_FIELD')?>"></span>
 							<?endif;?>
@@ -171,7 +184,7 @@ $arParams['UF'] = $UF;
 							<div class="calendar-options-item-column-left">
 								<div class="calendar-options-item-name"><?= Loc::getMessage('EC_EDIT_SLIDER_TIME_COLUMN')?></div>
 							</div>
-							<div class="calendar-options-item-column-right">
+							<div id="<?=$id?>_datetime_editor" class="calendar-options-item-column-right">
 								<div class="calendar-options-item-column-one">
 									<div class="calendar-options-item-column-one-item">
 										<span class="calendar-event-date">
@@ -185,7 +198,7 @@ $arParams['UF'] = $UF;
 										</span>
 										<span class="calendar-event-time">
 											<span class="calendar-field-container calendar-field-container-select">
-												<span class="calendar-field-block">
+												<span class="calendar-field-block calendar-field-select calendar-field">
 													<?CClock::Show(array(
 														'inputId' => $id.'_time_from',
 														'inputName' => 'time_from',
@@ -210,7 +223,7 @@ $arParams['UF'] = $UF;
 										</span>
 										<span class="calendar-event-time">
 											<span class="calendar-field-container calendar-field-container-select">
-												<span class="calendar-field-block">
+												<span class="calendar-field-block calendar-field-select calendar-field">
 													<?CClock::Show(array(
 														'inputId' => $id.'_time_to',
 														'inputName' => 'time_to',
@@ -487,7 +500,7 @@ $arParams['UF'] = $UF;
 							ob_start();
 						}?>
 						<div class="calendar-options-item calendar-options-item-border calendar-event-location">
-							<div class="calendar-options-item-column-left">
+							<div class="calendar-options-item-column-left calendar-options-item-column-left-location">
 								<div class="calendar-options-item-name js-calendar-field-name"><?= Loc::getMessage('EC_EDIT_SLIDER_LOCATION_COLUMN')?></div>
 							</div>
 							<div class="calendar-options-item-column-right">
@@ -506,40 +519,15 @@ $arParams['UF'] = $UF;
 						<!--endregion-->
 
 						<!--region Destination-->
-						<div class="calendar-options-item calendar-options-item-border calendar-options-item-destination" style="border-bottom: none;">
+						<div id="<?=$id?>_attendees_selector">
+							<div class="calendar-options-item calendar-options-item-border calendar-options-item-destination" style="border-bottom: none;">
 
-							<div class="calendar-options-item-column-left">
-								<div class="calendar-options-item-name js-calendar-field-name"  id="<?=$id?>_attendees_title_wrap"><?= Loc::getMessage('EC_EDIT_SLIDER_ATTENDEES_COLUMN')?></div>
-							</div>
-							<div class="calendar-options-item-column-right">
-								<div id="tag-selector-654"></div>
-								<div class="calendar-attendees-selector-wrap"></div>
-								<div>
-									<?
-//									$APPLICATION->IncludeComponent(
-//										"bitrix:main.user.selector",
-//										"",
-//										[
-//											"ID" => $id.'_destination',
-//											"LIST" => $selectedUserCodes,
-//											"LAZYLOAD" => "Y",
-//											"INPUT_NAME" => 'EVENT_DESTINATION[]',
-//											"USE_SYMBOLIC_ID" => true,
-//											"API_VERSION" => 3,
-//											"SELECTOR_OPTIONS" => [
-//												'lazyLoad' => 'Y',
-//												'context' => \Bitrix\Calendar\Util::getUserSelectorContext(),
-//												'contextCode' => '',
-//												'enableSonetgroups' => 'Y',
-//												'departmentSelectDisable' => 'N',
-//												'showVacations' => 'Y',
-//												'enableAll' => 'Y',
-//												'allowSearchEmailUsers' => 'Y',
-//												'allowEmailInvitation' => 'Y'
-//											]
-//										]
-//									);
-									?>
+								<div class="calendar-options-item-column-left">
+									<div class="calendar-options-item-name js-calendar-field-name"  id="<?=$id?>_attendees_title_wrap"><?= Loc::getMessage('EC_EDIT_SLIDER_ATTENDEES_COLUMN')?></div>
+								</div>
+								<div class="calendar-options-item-column-right">
+									<div id="tag-selector-654"></div>
+									<div class="calendar-attendees-selector-wrap"></div>
 								</div>
 							</div>
 						</div>
@@ -763,7 +751,7 @@ $arParams['UF'] = $UF;
 									if(!$field["pinned"] && !$field['hidden'])
 									{
 										?>
-										<span class="calendar-additional-alt-promo-text"><?= $field["title"]?></span>
+										<span data-bx-field-id="<?= $fieldId?>" class="calendar-additional-alt-promo-text"><?= $field["title"]?></span>
 										<?
 									}
 								}?>
@@ -786,10 +774,10 @@ $arParams['UF'] = $UF;
 														<?$APPLICATION->IncludeComponent(
 															"bitrix:main.post.form",
 															"",
-															array(
+															[
 																"FORM_ID" => "event_edit_form",
 																"SHOW_MORE" => "Y",
-																"PARSER" => Array(
+																"PARSER" => [
 																	"Bold", "Italic", "Underline", "Strike", "ForeColor",
 																	"FontList", "FontSizeList", "RemoveFormat", "Quote",
 																	"Code", "CreateLink",
@@ -798,48 +786,59 @@ $arParams['UF'] = $UF;
 																	"Table", "Justify", "InsertOrderedList",
 																	"InsertUnorderedList",
 																	"Source", "MentionUser"
-																),
-																"BUTTONS" => IsModuleInstalled('disk') ? Array(
+																],
+																"BUTTONS" => IsModuleInstalled('disk') ? [
+																	"Copilot",
 																	"UploadFile",
 																	"CreateLink",
 																	"InputVideo",
 																	"Quote"
-																) : Array(
+																] : [
+																	"Copilot",
 																	"CreateLink",
 																	"InputVideo",
 																	"Quote"
-																),
-																"TEXT" => Array(
+																],
+																"TEXT" => [
 																	"ID" => $id.'_edit_ed_desc',
 																	"NAME" => "desc",
 																	"VALUE" => $event['DESCRIPTION'] ?? null,
 																	"HEIGHT" => "160px"
-																),
+																],
 																"UPLOAD_WEBDAV_ELEMENT" => $arParams['UF']['UF_WEBDAV_CAL_EVENT'],
 																"UPLOAD_FILE_PARAMS" => array("width" => 400, "height" => 400),
-																"FILES" => Array(
-																	"VALUE" => array(),
+																"FILES" => [
+																	"VALUE" => [],
 																	"DEL_LINK" => '',
 																	"SHOW" => "N"
-																),
-																"SMILES" => Array("VALUE" => array()),
-																"LHE" => array(
+																],
+																"SMILES" => [
+																	"VALUE" => []
+																],
+																"LHE" => [
 																	"id" => $arParams['id'].'_entry_slider_editor',
 																	"jsObjName" => $arParams['id'].'_entry_slider_editor',
 																	"height" => 120,
 																	"documentCSS" => "",
 																	"fontSize" => "14px",
 																	"lazyLoad" => false,
-																	"setFocusAfterShow" => false
-																)
-															),
+																	"setFocusAfterShow" => false,
+																	'isCopilotImageEnabledBySettings' => \Bitrix\Calendar\Integration\AI\Settings::isImageAvailable(),
+																	'isCopilotTextEnabledBySettings' => \Bitrix\Calendar\Integration\AI\Settings::isTextAvailable(),
+																	'copilotParams' => [
+																		'moduleId' => 'calendar',
+																		'contextId' => 'calendar_description',
+																		'category' => 'calendar',
+																	],
+																],
+															],
 															false,
-															array(
+															[
 																"HIDE_ICONS" => "Y"
-															)
+															]
 														);?>
 														<span data-bx-fixfield="description" class="calendar-option-fixedbtn" title="<?= Loc::getMessage('EC_EDIT_SLIDER_FIX_FIELD')?>"></span>
-														<?endif;?>
+													<?endif;?>
 													</div>
 												</div>
 											</div>
@@ -851,7 +850,7 @@ $arParams['UF'] = $UF;
 							<?
 							foreach ($fieldsList as $fieldId => $field)
 							{
-								if ($fieldId != 'description')
+								if ($fieldId !== 'description')
 								{
 									?>
 									<div data-bx-block-placeholer="<?= $fieldId ?>"

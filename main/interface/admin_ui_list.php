@@ -915,9 +915,8 @@ class CAdminUiList extends CAdminList
 			$defaultSort = array("sort" => array($this->sort->getField() => $this->sort->getOrder()));
 		}
 		$sorting = $gridOptions->GetSorting($defaultSort);
-		$gridParameters["SORT"] = $sorting["sort"];
+		$gridParameters["SORT"] = !isset($_GET[$sorting['vars']['by']]) || !isset($_GET[$sorting['vars']['order']]) ? $sorting["sort"] : $defaultSort['sort'];
 		$gridParameters["SORT_VARS"] = $sorting["vars"];
-
 		$gridColumns = $gridOptions->getVisibleColumns();
 		if (empty($gridColumns))
 			$gridColumns = array_keys($this->aVisibleHeaders);
@@ -1030,7 +1029,7 @@ class CAdminUiList extends CAdminList
 				{
 					if (!is_array($row->arRes[$columnId]))
 					{
-						$value = trim($row->arRes[$columnId]);
+						$value = trim((string)$row->arRes[$columnId]);
 					}
 					else
 					{
@@ -1101,7 +1100,7 @@ class CAdminUiList extends CAdminList
 								$field["view"]["showInfo"], $field["view"]["inputs"]) : "";
 							break;
 						case "html":
-							$value = $field["view"]["value"];
+							$value = $field["view"]["value"] ?? '';
 							break;
 						default:
 							$value = htmlspecialcharsex($value);
@@ -1192,6 +1191,7 @@ class CAdminUiList extends CAdminList
 			return;
 		}
 
+		// TODO: use \Bitrix\Main\Grid\Column\Type::getEditorType
 		switch ($field["edit"]["type"])
 		{
 			case "input":

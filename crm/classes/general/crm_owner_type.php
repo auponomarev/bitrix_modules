@@ -1,6 +1,7 @@
 <?php
 
 use Bitrix\Catalog\StoreDocumentTable;
+use Bitrix\Catalog\AgentContractTable;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Main\DI\ServiceLocator;
 use Bitrix\Crm\Security\EntityAuthorization;
@@ -51,8 +52,10 @@ class CCrmOwnerType
 	public const SmartDocument = 36;
 	public const SuspendedSmartDocument = 37;
 
+	public const AgentContractDocument = 38;
+
 	public const FirstOwnerType = 1;
-	public const LastOwnerType = 37;
+	public const LastOwnerType = 38;
 
 	public const DynamicTypeStart = 128;
 	public const DynamicTypeEnd = 192;
@@ -107,6 +110,8 @@ class CCrmOwnerType
 
 	public const DynamicTypePrefixName = 'DYNAMIC_';
 	public const SuspendedDynamicTypePrefixName = 'SUS_DYNAMIC_';
+
+	public const AgentContractDocumentName = 'AGENT_CONTRACT';
 
 	private static $ALL_DESCRIPTIONS = array();
 	private static $ALL_CATEGORY_CAPTION = array();
@@ -353,6 +358,9 @@ class CCrmOwnerType
 			case self::SystemName:
 				return self::System;
 
+			case self::AgentContractDocumentName:
+				return self::AgentContractDocument;
+
 			default:
 				if (CCrmOwnerTypeAbbr::isDynamicTypeAbbreviation($name) || CCrmOwnerTypeAbbr::isSuspendedDynamicTypeAbbreviation($name))
 				{
@@ -487,6 +495,9 @@ class CCrmOwnerType
 
 			case self::System:
 				return self::SystemName;
+
+			case self::AgentContractDocument:
+				return self::AgentContractDocumentName;
 
 			case self::Undefined:
 				return '';
@@ -673,7 +684,7 @@ class CCrmOwnerType
 				self::Company => GetMessage('CRM_OWNER_TYPE_COMPANY'),
 				self::Invoice => Container::getInstance()->getLocalization()->appendOldVersionSuffix(GetMessage('CRM_OWNER_TYPE_INVOICE')),
 				self::SmartInvoice => GetMessage('CRM_OWNER_TYPE_INVOICE'),
-				self::Quote => GetMessage('CRM_OWNER_TYPE_QUOTE'),
+				self::Quote => GetMessage('CRM_OWNER_TYPE_QUOTE_MSGVER_1'),
 				self::Requisite => GetMessage('CRM_OWNER_TYPE_REQUISITE'),
 				self::DealCategory => GetMessage('CRM_OWNER_TYPE_DEAL_CATEGORY'),
 				self::DealRecurring => GetMessage('CRM_OWNER_TYPE_RECURRING_DEAL'),
@@ -712,7 +723,7 @@ class CCrmOwnerType
 				self::Company => GetMessage('CRM_OWNER_TYPE_COMPANY_CATEGORY'),
 				self::Invoice => Container::getInstance()->getLocalization()->appendOldVersionSuffix(GetMessage('CRM_OWNER_TYPE_INVOICE_CATEGORY')),
 				self::SmartInvoice => GetMessage('CRM_OWNER_TYPE_INVOICE_CATEGORY'),
-				self::Quote => GetMessage('CRM_OWNER_TYPE_QUOTE_CATEGORY'),
+				self::Quote => GetMessage('CRM_OWNER_TYPE_QUOTE_CATEGORY_MSGVER_2'),
 				self::Requisite => GetMessage('CRM_OWNER_TYPE_REQUISITE_CATEGORY'),
 				self::DealCategory => GetMessage('CRM_OWNER_TYPE_DEAL_CATEGORY_CATEGORY'),
 				self::CustomActivityType => GetMessage('CRM_OWNER_TYPE_CUSTOM_ACTIVITY_TYPE_CATEGORY'),
@@ -1003,6 +1014,16 @@ class CCrmOwnerType
 				);
 			}
 
+			case self::AgentContractDocument:
+			{
+				return CComponentEngine::MakePathFromTemplate(
+					COption::GetOptionString('crm', 'path_to_agent_contract_details'),
+					[
+						'agent_contract_id' => $ID,
+					]
+				);
+			}
+
 			default:
 				return '';
 		}
@@ -1195,6 +1216,7 @@ class CCrmOwnerType
 			|| $typeID === CCrmOwnerType::StoreDocument
 			|| $typeID === CCrmOwnerType::SmartInvoice
 			|| $typeID === CCrmOwnerType::SmartDocument
+			|| $typeID === CCrmOwnerType::AgentContractDocument
 		)
 		{
 			return true;
@@ -1435,6 +1457,27 @@ class CCrmOwnerType
 							return $documentTitle;
 						}
 					}
+					return '';
+				}
+				break;
+			}
+
+			case self::AgentContractDocument:
+			{
+				if (\Bitrix\Main\Loader::includeModule('catalog'))
+				{
+					$documentData = AgentContractTable::getList(
+						[
+							'select' => ['ID', 'TITLE'],
+							'filter' => ['ID' => $ID],
+						]
+					)->fetch();
+
+					if ($documentData && !empty($documentData['TITLE']))
+					{
+						return $documentData['TITLE'];
+					}
+
 					return '';
 				}
 				break;
@@ -1717,7 +1760,7 @@ class CCrmOwnerType
 					return false;
 				}
 
-				$date = new Bitrix\Main\Type\Date($arRes['DATE_CREATE']);
+				$date = Bitrix\Main\Type\DateTime::createFromUserTime($arRes['DATE_CREATE']);
 
 				self::$INFOS[$key] = array(
 					'TITLE' => $arRes['TITLE'],
@@ -1899,22 +1942,22 @@ class CCrmOwnerType
 			case self::Contact:
 			{
 				$dbRes = CCrmContact::GetListEx(
-					array(),
-					array('@ID' => $IDs, 'CHECK_PERMISSIONS' => $checkPermissions ? 'Y' : 'N'),
+					[],
+					['@ID' => $IDs, 'CHECK_PERMISSIONS' => $checkPermissions ? 'Y' : 'N'],
 					false,
 					false,
-					array('ID', 'HONORIFIC', 'NAME', 'POST', 'SECOND_NAME', 'LAST_NAME', 'COMPANY_ID', 'COMPANY_TITLE', 'PHOTO', 'ASSIGNED_BY_ID')
+					['ID', 'HONORIFIC', 'NAME', 'POST', 'SECOND_NAME', 'LAST_NAME', 'COMPANY_ID', 'COMPANY_TITLE', 'PHOTO', 'ASSIGNED_BY_ID', 'CATEGORY_ID']
 				);
 				break;
 			}
 			case self::Company:
 			{
 				$dbRes = CCrmCompany::GetListEx(
-					array(),
-					array('@ID' => $IDs, 'CHECK_PERMISSIONS' => $checkPermissions ? 'Y' : 'N'),
+					[],
+					['@ID' => $IDs, 'CHECK_PERMISSIONS' => $checkPermissions ? 'Y' : 'N'],
 					false,
 					false,
-					array('ID', 'TITLE', 'COMPANY_TYPE', 'INDUSTRY',  'LOGO', 'ASSIGNED_BY_ID', 'IS_MY_COMPANY')
+					['ID', 'TITLE', 'COMPANY_TYPE', 'INDUSTRY',  'LOGO', 'ASSIGNED_BY_ID', 'IS_MY_COMPANY', 'CATEGORY_ID']
 				);
 				break;
 			}
@@ -1967,15 +2010,23 @@ class CCrmOwnerType
 			}
 			case self::OrderPayment:
 			{
-				$orderDB = \Bitrix\Crm\Order\Payment::getList(
-					array(
-						'filter' => array('=ID' => $IDs),
-						'select' => [
-							'ID', 'ACCOUNT_NUMBER', 'ORDER_ID', 'PAY_SYSTEM_NAME',
-							'DATE_BILL', 'RESPONSIBLE_ID', 'SUM', 'CURRENCY', 'PAY_SYSTEM_ID'
-						]
-					)
-				);
+				$orderDB = \Bitrix\Crm\Order\Payment::getList([
+					'filter' => [
+						'=ID' => $IDs,
+					],
+					'select' => [
+						'ID',
+						'ACCOUNT_NUMBER',
+						'ORDER_ID',
+						'PAY_SYSTEM_NAME',
+						'DATE_BILL',
+						'RESPONSIBLE_ID',
+						'SUM',
+						'CURRENCY',
+						'PAY_SYSTEM_ID',
+						'PAID',
+					]
+				]);
 				$dbRes = new \CDBResult($orderDB);
 				break;
 			}
@@ -2305,6 +2356,11 @@ class CCrmOwnerType
 						),
 					'ENTITY_TYPE_CAPTION' => static::GetDescription(static::Contact),
 				);
+				$categoryId = $arRes['CATEGORY_ID'] ?? 0;
+				if ($categoryId > 0)
+				{
+					$result['CATEGORY_NAME'] = Container::getInstance()->getFactory(CCrmOwnerType::Contact)->getCategory($categoryId)?->getSingleNameIfPossible();
+				}
 				if($enableEditUrl)
 				{
 					$result['EDIT_URL'] =
@@ -2353,6 +2409,11 @@ class CCrmOwnerType
 					'ENTITY_TYPE_CAPTION' => static::GetDescription(static::Company),
 					'IS_MY_COMPANY' => isset($arRes['IS_MY_COMPANY']) ? ($arRes['IS_MY_COMPANY'] === 'Y') : false,
 				);
+				$categoryId = $arRes['CATEGORY_ID'] ?? 0;
+				if ($categoryId > 0)
+				{
+					$result['CATEGORY_NAME'] = Container::getInstance()->getFactory(CCrmOwnerType::Company)->getCategory($categoryId)?->getSingleNameIfPossible();
+				}
 				if($enableEditUrl)
 				{
 					$result['EDIT_URL'] =
@@ -2516,7 +2577,7 @@ class CCrmOwnerType
 				{
 					$dateInsert = FormatDate($culture->getLongDateFormat(), $arRes['DATE_BILL']->getTimestamp());
 				}
-				$result = array(
+				$result = [
 					'ID' => $arRes['ID'],
 					'ORDER_ID' => $arRes['ORDER_ID'],
 					'TITLE' => isset($arRes['ACCOUNT_NUMBER']) ?  $arRes['ACCOUNT_NUMBER'] : '',
@@ -2541,7 +2602,8 @@ class CCrmOwnerType
 					'RAW_CURRENCY' => $arRes['CURRENCY'],
 					'SUM_WITH_CURRENCY' => \CCrmCurrency::MoneyToString($arRes['SUM'], $arRes['CURRENCY']),
 					'ENTITY_TYPE_CAPTION' => static::GetDescription(static::OrderPayment),
-				);
+					'PAID' => $arRes['PAID'],
+				];
 				if ($enableEditUrl)
 				{
 					$result['EDIT_URL'] = Service\Sale\EntityLinkBuilder\EntityLinkBuilder::getInstance()
@@ -3400,7 +3462,7 @@ class CCrmOwnerType
 			self::DealName => GetMessage('CRM_OWNER_TYPE_DEAL_NOT_FOUND'),
 			self::DealRecurringName => GetMessage('CRM_OWNER_TYPE_DEAL_NOT_FOUND'),
 			self::InvoiceName => GetMessage('CRM_OWNER_TYPE_INVOICE_NOT_FOUND'),
-			self::QuoteName => GetMessage('CRM_OWNER_TYPE_QUOTE_NOT_FOUND'),
+			self::QuoteName => GetMessage('CRM_OWNER_TYPE_QUOTE_NOT_FOUND_MSGVER_1'),
 			self::SmartInvoiceName => GetMessage('CRM_OWNER_TYPE_INVOICE_NOT_FOUND'),
 			self::CommonDynamicName => GetMessage('CRM_TYPE_ITEM_NOT_FOUND'),
 		];

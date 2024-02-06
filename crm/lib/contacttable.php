@@ -7,7 +7,6 @@
  */
 namespace Bitrix\Crm;
 
-use Bitrix\Crm\Multifield;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Settings\ContactSettings;
 use Bitrix\Main\DI\ServiceLocator;
@@ -22,8 +21,8 @@ use Bitrix\Main\ORM\Fields\Relations\CascadePolicy;
 use Bitrix\Main\ORM\Fields\Relations\OneToMany;
 use Bitrix\Main\ORM\Fields\Relations\Reference;
 use Bitrix\Main\ORM\Fields\StringField;
-use Bitrix\Main\ORM\Query\Join;
 use Bitrix\Main\ORM\Objectify\State;
+use Bitrix\Main\ORM\Query\Join;
 use Bitrix\Main\UserTable;
 
 Loc::loadMessages(Path::combine(__DIR__, 'contact.php'));
@@ -35,9 +34,9 @@ Loc::loadMessages(Path::combine(__DIR__, 'contact.php'));
  *
  * <<< ORMENTITYANNOTATION
  * @method static EO_Contact_Query query()
- * @method static EO_Contact_Result getByPrimary($primary, array $parameters = array())
+ * @method static EO_Contact_Result getByPrimary($primary, array $parameters = [])
  * @method static EO_Contact_Result getById($id)
- * @method static EO_Contact_Result getList(array $parameters = array())
+ * @method static EO_Contact_Result getList(array $parameters = [])
  * @method static EO_Contact_Entity getEntity()
  * @method static \Bitrix\Crm\Contact createObject($setDefaultValues = true)
  * @method static \Bitrix\Crm\EO_Contact_Collection createCollection()
@@ -229,6 +228,8 @@ class ContactTable extends ORM\Data\DataManager
 			))
 				->configureTitle(Loc::getMessage('CRM_CONTACT_ENTITY_EVENT_RELATION_FIELD'))
 			,
+
+			$fieldRepository->getObservers('CONTACT', 'OBSERVER_IDS'),
 
 			$fieldRepository->getMultifieldValue(
 				'EMAIL_HOME',

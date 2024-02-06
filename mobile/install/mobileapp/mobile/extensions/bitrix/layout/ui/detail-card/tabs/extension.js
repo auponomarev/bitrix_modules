@@ -2,6 +2,7 @@
  * @module layout/ui/detail-card/tabs
  */
 jn.define('layout/ui/detail-card/tabs', (require, exports, module) => {
+	const AppTheme = require('apptheme');
 	const { EventEmitter } = require('event-emitter');
 	const { TabLoaderFactory } = require('layout/ui/detail-card/tabs/loader-factory');
 	const { PureComponent } = require('layout/pure-component');
@@ -164,13 +165,24 @@ jn.define('layout/ui/detail-card/tabs', (require, exports, module) => {
 				this.customEventEmitter.emit('DetailCard::onSaveLock', [true]);
 
 				this.setState({ status: Status.FETCHING }, () => {
-					BX.ajax.runAction(this.props.endpoint, {
-						json: {
-							...this.props.payload,
-							...extraPayload,
+					BX.ajax.runAction(
+						this.props.endpoint,
+						{
+							json: {
+								...this.props.payload,
+								...extraPayload,
+							},
 						},
-					})
-						.then((response) => this.setResult(response.data))
+					)
+						.then((response) => {
+							const result = response.data;
+							if (this.props.onFetchHandler)
+							{
+								this.props.onFetchHandler(result);
+							}
+
+							this.setResult(result);
+						})
 						.catch((response) => {
 							if (this.props.onErrorHandler)
 							{
@@ -210,8 +222,7 @@ jn.define('layout/ui/detail-card/tabs', (require, exports, module) => {
 		}
 
 		scrollTop(animate = true)
-		{
-		}
+		{}
 
 		refreshResult()
 		{
@@ -219,6 +230,7 @@ jn.define('layout/ui/detail-card/tabs', (require, exports, module) => {
 				if (this.state.status !== Status.DONE)
 				{
 					resolve();
+
 					return;
 				}
 
@@ -257,7 +269,8 @@ jn.define('layout/ui/detail-card/tabs', (require, exports, module) => {
 			{
 				return [this.renderLoader()];
 			}
-			else if (this.state.status === Status.DONE)
+
+			if (this.state.status === Status.DONE)
 			{
 				return [
 					this.renderCustomShimmer(),
@@ -273,7 +286,7 @@ jn.define('layout/ui/detail-card/tabs', (require, exports, module) => {
 			return View(
 				{
 					style: {
-						backgroundColor: '#eef2f4',
+						backgroundColor: AppTheme.colors.bgPrimary,
 						justifyContent: 'center',
 						alignItems: 'center',
 					},
@@ -296,7 +309,7 @@ jn.define('layout/ui/detail-card/tabs', (require, exports, module) => {
 						flexGrow: 1,
 					},
 				},
-				new LoadingScreenComponent({ backgroundColor: '#eef2f4' }),
+				new LoadingScreenComponent({ backgroundColor: AppTheme.colors.bgPrimary }),
 			);
 		}
 
@@ -338,8 +351,7 @@ jn.define('layout/ui/detail-card/tabs', (require, exports, module) => {
 		 * @return void
 		 */
 		handleFloatingMenuAction({ actionId, tabId })
-		{
-		}
+		{}
 	}
 
 	module.exports = { Tab };

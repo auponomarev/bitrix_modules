@@ -1,8 +1,9 @@
-import {Loc, Reflection, Tag} from "main.core";
-import {BaseCard} from "catalog.entity-card";
-import {EventEmitter} from "main.core.events";
-import {Button, ButtonColor, ButtonState} from "ui.buttons";
-import {DocumentOnboardingManager, OnboardingData} from "./document.onboarding.manager";
+import { Dom, Event, Loc, Reflection, Tag, Text } from 'main.core';
+import { BaseCard } from 'catalog.entity-card';
+import { EventEmitter } from 'main.core.events';
+import { Popup } from 'main.popup';
+import { Button, ButtonColor, ButtonState } from 'ui.buttons';
+import { DocumentOnboardingManager, OnboardingData } from './document.onboarding.manager';
 
 export class Document extends BaseCard
 {
@@ -12,7 +13,9 @@ export class Document extends BaseCard
 	static deductAction = 'deduct';
 	static cancelDeductAction = 'cancelDeduct';
 
-	#documentOnboardingManager: DocumentOnboardingManager|null = null;
+	static HELP_COST_CALCULATION_MODE_ARTICLE_ID = 17858278;
+
+	#documentOnboardingManager: DocumentOnboardingManager | null = null;
 
 	constructor(id, settings)
 	{
@@ -22,20 +25,31 @@ export class Document extends BaseCard
 		this.masterSliderUrl = settings.masterSliderUrl;
 		this.inventoryManagementSource = settings.inventoryManagementSource;
 		this.permissions = settings.permissions;
+		this.isInventoryManagementDisabled = settings.isInventoryManagementDisabled;
+		this.inventoryManagementFeatureCode = settings.inventoryManagementFeatureCode;
+		this.lockedCancellation = settings.isProductBatchMethodSelected;
 
 		this.addCopyLinkPopup();
 
 		EventEmitter.subscribe('BX.Crm.EntityEditor:onFailedValidation', (event) => {
-			EventEmitter.emit('BX.Catalog.EntityCard.TabManager:onOpenTab', {tabId: 'main'});
+			EventEmitter.emit('BX.Catalog.EntityCard.TabManager:onOpenTab', { tabId: 'main' });
 		});
 		EventEmitter.subscribe('onProductsCheckFailed', (event) => {
-			EventEmitter.emit('BX.Catalog.EntityCard.TabManager:onOpenTab', {tabId: 'tab_products'});
+			EventEmitter.emit('BX.Catalog.EntityCard.TabManager:onOpenTab', { tabId: 'tab_products' });
 		});
 
 		EventEmitter.subscribe('BX.Crm.EntityEditor:onSave', (event) => {
 			const eventEditor = event.data[0];
 			if (eventEditor && eventEditor._ajaxForm)
 			{
+				if (this.isInventoryManagementDisabled)
+				{
+					event.data[1].cancel = true;
+					eventEditor._toolPanel?.setLocked(false);
+
+					return;
+				}
+
 				let action = eventEditor._ajaxForm?._actionName === 'SAVE' ? 'save' : eventEditor._ajaxForm?._config.data.ACTION;
 				if (action === Document.saveAndDeductAction)
 				{
@@ -45,6 +59,7 @@ export class Document extends BaseCard
 						event.data[1].cancel = true;
 						eventEditor._toolPanel?.setLocked(false);
 						eventEditor._toolPanel?.addError(controllersErrorCollection[0]);
+
 						return;
 					}
 				}
@@ -55,7 +70,7 @@ export class Document extends BaseCard
 					action = 'save';
 				}
 
-				let urlParams = {
+				const urlParams = {
 					isNewDocument: this.entityId <= 0 ? 'Y' : 'N',
 					inventoryManagementSource: this.inventoryManagementSource,
 				};
@@ -87,18 +102,18 @@ export class Document extends BaseCard
 
 		Document.#instance = this;
 
-		BX.UI.SidePanel.Wrapper.setParam("closeAfterSave", true);
+		BX.UI.SidePanel.Wrapper.setParam('closeAfterSave', true);
 		this.showNotificationOnClose = false;
 	}
 
 	#subscribeToProductRowSummaryEvents()
 	{
 		EventEmitter.subscribe('BX.UI.EntityEditorProductRowSummary:onDetailProductListLinkClick', () => {
-			EventEmitter.emit('BX.Catalog.EntityCard.TabManager:onOpenTab', {tabId: 'tab_products'});
+			EventEmitter.emit('BX.Catalog.EntityCard.TabManager:onOpenTab', { tabId: 'tab_products' });
 		});
 
 		EventEmitter.subscribe('BX.UI.EntityEditorProductRowSummary:onAddNewRowInProductList', () => {
-			EventEmitter.emit('BX.Catalog.EntityCard.TabManager:onOpenTab', {tabId: 'tab_products'});
+			EventEmitter.emit('BX.Catalog.EntityCard.TabManager:onOpenTab', { tabId: 'tab_products' });
 			setTimeout(() => {
 				EventEmitter.emit('onFocusToProductList');
 			}, 500);
@@ -107,13 +122,13 @@ export class Document extends BaseCard
 
 	focusOnTab(tabId)
 	{
-		EventEmitter.emit('BX.Catalog.EntityCard.TabManager:onOpenTab', {tabId: tabId});
+		EventEmitter.emit('BX.Catalog.EntityCard.TabManager:onOpenTab', { tabId: tabId });
 	}
 
 	getControllersIssues(controllers)
 	{
-		let validateErrorCollection = [];
-		if (controllers instanceof Array)
+		const validateErrorCollection = [];
+		if (Array.isArray(controllers))
 		{
 			controllers.forEach((controller) => {
 				if (controller instanceof BX.Crm.EntityStoreDocumentProductListController)
@@ -133,7 +148,7 @@ export class Document extends BaseCard
 
 	openMasterSlider()
 	{
-		let card = this;
+		const card = this;
 
 		BX.SidePanel.Instance.open(
 			this.masterSliderUrl,
@@ -144,7 +159,7 @@ export class Document extends BaseCard
 				},
 				events: {
 					onCloseComplete: function(event) {
-						let slider = event.getSlider();
+						const slider = event.getSlider();
 						if (!slider)
 						{
 							return;
@@ -154,7 +169,7 @@ export class Document extends BaseCard
 						{
 							card.isDeductLocked = false;
 
-							let sliders = BX.SidePanel.Instance.getOpenSliders();
+							const sliders = BX.SidePanel.Instance.getOpenSliders();
 							sliders.forEach((slider) => {
 								if (slider.getWindow()?.BX.Catalog?.DocumentGridManager)
 								{
@@ -163,9 +178,9 @@ export class Document extends BaseCard
 								}
 							});
 						}
-					}
-				}
-			}
+					},
+				},
+			},
 		);
 	}
 
@@ -188,6 +203,12 @@ export class Document extends BaseCard
 		this.defaultOnSuccessCallback = editor._ajaxForm._config.onsuccess;
 
 		saveButton.onclick = (event) => {
+			if (this.isInventoryManagementDisabled && this.inventoryManagementFeatureCode)
+			{
+				top.BX.UI.InfoHelper.show(this.inventoryManagementFeatureCode);
+
+				return;
+			}
 			this.showNotificationOnClose = false;
 			editor._ajaxForm._config.data.ACTION = this.defaultSaveActionName;
 			editor._ajaxForm._config.onsuccess = this.defaultOnSuccessCallback;
@@ -198,6 +219,13 @@ export class Document extends BaseCard
 		{
 			const deductAndSaveButton = Tag.render`<button class="ui-btn ui-btn-light-border">${Loc.getMessage('CRM_STORE_DOCUMENT_DETAIL_SAVE_AND_DEDUCT_BUTTON')}</button>`;
 			deductAndSaveButton.onclick = (event) => {
+				if (this.isInventoryManagementDisabled && this.inventoryManagementFeatureCode)
+				{
+					top.BX.UI.InfoHelper.show(this.inventoryManagementFeatureCode);
+
+					return;
+				}
+
 				if (this.isDeductLocked)
 				{
 					this.openMasterSlider();
@@ -230,6 +258,14 @@ export class Document extends BaseCard
 					{
 						return;
 					}
+
+					if (this.isInventoryManagementDisabled && this.inventoryManagementFeatureCode)
+					{
+						top.BX.UI.InfoHelper.show(this.inventoryManagementFeatureCode);
+
+						return;
+					}
+
 					if (this.isDeductLocked)
 					{
 						this.openMasterSlider();
@@ -243,14 +279,14 @@ export class Document extends BaseCard
 					const controllers = editor.getControllers();
 					const errorCollection = [];
 					controllers.forEach((controller) => {
-						if (controller instanceof BX.Crm.EntityStoreDocumentProductListController)
+						if (
+							controller instanceof BX.Crm.EntityStoreDocumentProductListController
+							&& !controller.validateProductList()
+						)
 						{
-							if (!controller.validateProductList())
-							{
-								errorCollection.push(...controller.getErrorCollection());
-							}
+							errorCollection.push(...controller.getErrorCollection());
 						}
-					})
+					});
 
 					if (errorCollection.length > 0)
 					{
@@ -288,7 +324,7 @@ export class Document extends BaseCard
 								button.setState(ButtonState.ACTIVE);
 								editor.onSaveFailure(result);
 							},
-						}
+						},
 					);
 
 					deductDocumentAjaxForm.addUrlParams({
@@ -305,19 +341,35 @@ export class Document extends BaseCard
 		else if (this.permissions.cancel)
 		{
 			const deductButton = new Button({
-				text:  Loc.getMessage('CRM_STORE_DOCUMENT_DETAIL_CANCEL_DEDUCT_BUTTON'),
+				text: Loc.getMessage('CRM_STORE_DOCUMENT_DETAIL_CANCEL_DEDUCT_BUTTON'),
 				color: ButtonColor.LIGHT_BORDER,
 				onclick: (button, event) => {
 					if (savePanel.isLocked())
 					{
 						return;
 					}
+
+					if (this.isInventoryManagementDisabled && this.inventoryManagementFeatureCode)
+					{
+						top.BX.UI.InfoHelper.show(this.inventoryManagementFeatureCode);
+
+						return;
+					}
+
 					if (this.isDeductLocked)
 					{
 						this.openMasterSlider();
 
 						return;
 					}
+
+					if (this.isLockedCancellation())
+					{
+						this.showCancellationInfo();
+
+						return;
+					}
+
 					button.setState(ButtonState.CLOCKING);
 					savePanel.setLocked(true);
 
@@ -348,13 +400,13 @@ export class Document extends BaseCard
 								button.setState(ButtonState.ACTIVE);
 								editor.onSaveFailure(result);
 							},
-						}
+						},
 					);
 
 					deductDocumentAjaxForm.addUrlParams({
 						action: actionName,
 						documentType: 'W',
-					inventoryManagementSource: this.inventoryManagementSource,
+						inventoryManagementSource: this.inventoryManagementSource,
 					});
 
 					deductDocumentAjaxForm.submit();
@@ -367,7 +419,7 @@ export class Document extends BaseCard
 		EventEmitter.subscribe('BX.Crm.EntityEditor:onControlModeChange', (event) => {
 			const eventEditor = event.data[0];
 			const control = event.data[1].control;
-			if(control.getMode() === BX.Crm.EntityEditorMode.edit)
+			if (control.getMode() === BX.Crm.EntityEditorMode.edit)
 			{
 				this.setEditModeButtons(eventEditor);
 			}
@@ -431,9 +483,9 @@ export class Document extends BaseCard
 								events: {
 									click: function(event, balloon, action) {
 										balloon.close();
-									}
-								}
-							}
+									},
+								},
+							},
 						],
 					});
 				}
@@ -448,6 +500,75 @@ export class Document extends BaseCard
 		{
 			this.setViewModeButtons(editor);
 		}
+	}
+
+	isLockedCancellation(): boolean
+	{
+		return this.lockedCancellation;
+	}
+
+	showCancellationInfo(): void
+	{
+		const popup = new Popup(null, null, {
+			events: {
+				onPopupClose: () => {
+					popup.destroy();
+				},
+			},
+			content: this.getCancellationPopupContent(),
+			overlay: true,
+			buttons: [
+				new Button({
+					text: Loc.getMessage('CRM_STORE_DOCUMENT_WAREHOUSE_PRODUCT_CANCELLATION_POPUP_YES'),
+					color: Button.Color.PRIMARY,
+					onclick: () => {
+						this.lockedCancellation = false;
+
+						if (this.deductButton)
+						{
+							this.deductButton.click();
+						}
+
+						popup.close();
+					},
+				}),
+				new BX.UI.Button({
+					text: Loc.getMessage('CRM_STORE_DOCUMENT_WAREHOUSE_PRODUCT_CANCELLATION_POPUP_NO'),
+					color: BX.UI.Button.Color.LINK,
+					onclick: () => {
+						popup.close();
+					},
+				}),
+			],
+		});
+
+		popup.show();
+	}
+
+	getCancellationPopupContent(): HTMLElement
+	{
+		const moreLink = Tag.render`<a href="#" class="ui-form-link">${Loc.getMessage('CRM_STORE_DOCUMENT_WAREHOUSE_PRODUCT_CANCELLATION_POPUP_LINK')}</a>`;
+
+		Event.bind(moreLink, 'click', () => {
+			if (top.BX.Helper)
+			{
+				top.BX.Helper.show(`redirect=detail&code=${Document.HELP_COST_CALCULATION_MODE_ARTICLE_ID}`);
+			}
+		});
+
+		const descriptionHtml = Tag.render`
+			<div>${Loc.getMessage('CRM_STORE_DOCUMENT_WAREHOUSE_PRODUCT_CANCELLATION_POPUP_HINT').replace('#HELP_LINK#', '<help-link></help-link>')}</div>
+		`;
+
+		Dom.replace(descriptionHtml.querySelector('help-link'), moreLink);
+
+		return Tag.render`
+			<div>
+				<h3>${Loc.getMessage('CRM_STORE_DOCUMENT_WAREHOUSE_PRODUCT_CANCELLATION_POPUP_TITLE')}</h3>
+				<div>${Text.encode(Loc.getMessage('CRM_STORE_DOCUMENT_WAREHOUSE_PRODUCT_CANCELLATION_POPUP_QUESTION'))}
+				<br>${descriptionHtml}<div>
+			</div>
+		`;
 	}
 
 	setViewModeButtons(editor)
@@ -466,6 +587,7 @@ export class Document extends BaseCard
 		{
 			BX.hide(this.deductAndSaveButton);
 		}
+
 		if (this.deductButton)
 		{
 			BX.show(this.deductButton);
@@ -488,6 +610,7 @@ export class Document extends BaseCard
 		{
 			BX.show(this.deductAndSaveButton);
 		}
+
 		if (this.deductButton && !this.isDocumentDeducted)
 		{
 			BX.hide(this.deductButton);
@@ -506,7 +629,7 @@ export class Document extends BaseCard
 
 	addCopyLinkPopup()
 	{
-		let copyLinkButton = document.getElementById(this.settings.copyLinkButtonId);
+		const copyLinkButton = document.getElementById(this.settings.copyLinkButtonId);
 		if (!copyLinkButton)
 		{
 			return;
@@ -514,13 +637,13 @@ export class Document extends BaseCard
 
 		copyLinkButton.onclick = () => {
 			this.copyDocumentLinkToClipboard();
-		}
+		};
 	}
 
 	copyDocumentLinkToClipboard()
 	{
-		let url = BX.util.remove_url_param(window.location.href, ["IFRAME", "IFRAME_TYPE"]);
-		if(!BX.clipboard.copy(url))
+		const url = BX.util.remove_url_param(window.location.href, ['IFRAME', 'IFRAME_TYPE']);
+		if (!BX.clipboard.copy(url))
 		{
 			return;
 		}
@@ -534,12 +657,14 @@ export class Document extends BaseCard
 				autoHide: true,
 				zIndex: 1000,
 				angle: true,
-				bindOptions: { position: "top" }
-			}
+				bindOptions: { position: 'top' },
+			},
 		);
 		popup.show();
 
-		setTimeout(function(){ popup.close(); }, 1500);
+		setTimeout(() => 
+                     { popup.close();
+		}, 1500);
 	}
 
 	sendAnalyticsData(data)
@@ -550,7 +675,7 @@ export class Document extends BaseCard
 			{
 				mode: 'class',
 				analyticsLabel: data,
-			}
+			},
 		);
 	}
 
@@ -558,7 +683,7 @@ export class Document extends BaseCard
 	{
 		if (this.#documentOnboardingManager === null)
 		{
-			this.#documentOnboardingManager  = new DocumentOnboardingManager({
+			this.#documentOnboardingManager = new DocumentOnboardingManager({
 				onboardingData: onboardingData,
 				documentGuid: this.id,
 				productListController: this.getProductListController(),
@@ -567,7 +692,7 @@ export class Document extends BaseCard
 		}
 	}
 
-	getProductListController(): BX.Crm.EntityStoreDocumentProductListController|null
+	getProductListController(): BX.Crm.EntityStoreDocumentProductListController | null
 	{
 		const editor = this.getEditorInstance();
 		const controllers = editor.getControllers();

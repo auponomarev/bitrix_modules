@@ -1,31 +1,41 @@
-import {MessengerMenu, MenuItem, MenuItemIcon} from 'im.v2.component.elements';
-import {EntityCreator} from 'im.v2.lib.entity-creator';
+import { MessengerMenu, MenuItem, MenuItemIcon } from 'im.v2.component.elements';
+import { EntityCreator } from 'im.v2.lib.entity-creator';
+import { Extension } from 'main.core';
 
-import type {PopupOptions} from 'main.popup';
-import type {ImModelDialog} from 'im.v2.model';
+import type { PopupOptions } from 'main.popup';
+import type { ImModelChat } from 'im.v2.model';
 
 // @vue/component
 export const CreateEntityMenu = {
-	components: {MessengerMenu, MenuItem},
+	components:
+	{
+		MessengerMenu,
+		MenuItem,
+	},
 	props:
 	{
 		dialogId: {
 			type: String,
-			required: true
+			required: true,
+		},
+		textareaValue: {
+			type: String,
+			required: false,
+			default: '',
 		},
 	},
-	data()
+	data(): Object
 	{
 		return {
-			showMenu: false
+			showMenu: false,
 		};
 	},
 	computed:
 	{
 		MenuItemIcon: () => MenuItemIcon,
-		dialog(): ImModelDialog
+		dialog(): ImModelChat
 		{
-			return this.$store.getters['dialogues/get'](this.dialogId, true);
+			return this.$store.getters['chats/get'](this.dialogId, true);
 		},
 		chatId(): number
 		{
@@ -35,18 +45,27 @@ export const CreateEntityMenu = {
 		{
 			return {
 				width: 288,
-				bindElement: this.$refs['createEntity'] || {},
+				bindElement: this.$refs.createEntity || {},
 				bindOptions: {
-					position: 'top'
+					position: 'top',
 				},
 				offsetTop: 30,
 				offsetLeft: -139,
 				padding: 0,
 			};
-		}
+		},
 	},
 	methods:
 	{
+		onCreateAiTextClick()
+		{
+			this.getEntityCreator().createAiTextForChat(this.textareaValue);
+			this.showMenu = false;
+		},
+		onCreateAiImageClick()
+		{
+			//
+		},
 		onCreateTaskClick()
 		{
 			this.getEntityCreator().createTaskForChat();
@@ -73,7 +92,7 @@ export const CreateEntityMenu = {
 		loc(phraseCode: string): string
 		{
 			return this.$Bitrix.Loc.getMessage(phraseCode);
-		}
+		},
 	},
 	template: `
 		<div
@@ -98,17 +117,19 @@ export const CreateEntityMenu = {
 				@click="onCreateMeetingClick"
 			/>
 			<MenuItem
+				v-if="false"
 				:icon="MenuItemIcon.summary"
 				:title="loc('IM_TEXTAREA_CREATE_SUMMARY_TITLE')"
 				:subtitle="loc('IM_TEXTAREA_CREATE_SUMMARY_SUBTITLE')"
 				:disabled="true"
 			/>
 			<MenuItem
+				v-if="false"
 				:icon="MenuItemIcon.vote"
 				:title="loc('IM_TEXTAREA_CREATE_VOTE_TITLE')"
 				:subtitle="loc('IM_TEXTAREA_CREATE_VOTE_SUBTITLE')"
 				:disabled="true"
 			/>
 		</MessengerMenu>
-	`
+	`,
 };

@@ -3,11 +3,13 @@
 return [
 	'extensions' => [
 		'notify',
-		'helpers/component',
+		'apptheme',
 		'utils/error-notifier',
 		'utils/string',
-		'catalog/barcode-scanner',
-		'catalog/store/product-list',
+		'helpers/component',
 		'layout/ui/detail-card/tabs',
+
+		'catalog:barcode-scanner',
+		'catalog:store/product-list',
 	],
 ];

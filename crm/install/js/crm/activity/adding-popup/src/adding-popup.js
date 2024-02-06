@@ -1,11 +1,11 @@
-import { ajax as Ajax, Tag, Text, Type } from "main.core";
-import { Popup } from "main.popup";
-import { ButtonColor, ButtonSize, ButtonState, CancelButton, SaveButton } from "ui.buttons";
-import { TodoEditor, TodoEditorMode } from "crm.activity.todo-editor";
-import { BaseEvent, EventEmitter } from "main.core.events";
+import { TodoEditor, TodoEditorMode } from 'crm.activity.todo-editor';
+import { ajax as Ajax, Tag, Text, Type } from 'main.core';
+import { BaseEvent, EventEmitter } from 'main.core.events';
+import { Popup } from 'main.popup';
+import { ButtonColor, ButtonSize, ButtonState, CancelButton, SaveButton } from 'ui.buttons';
 import { UI } from 'ui.notification';
 
-import "./adding-popup.css"
+import './adding-popup.css';
 
 /**
  * @event onSave
@@ -16,20 +16,22 @@ export class AddingPopup
 	#entityId: Number = null;
 	#entityTypeId: Number = null;
 	#currentUser: Object = null;
+	#pingSettings: Object = null;
 	#popup: ?Popup = null;
 	#popupContainer: HTMLElement = null;
 	#todoEditor: ?TodoEditor = null;
 	#eventEmitter: EventEmitter = null;
 
-	constructor(entityTypeId: Number, entityId: Number, currentUser: Object, params: Object)
+	constructor(entityTypeId: Number, entityId: Number, currentUser: Object, pingSettings: Object, params: Object)
 	{
 		this.#entityId = Text.toInteger(entityId);
 		this.#entityTypeId = Text.toInteger(entityTypeId);
 		this.#currentUser = currentUser;
+		this.#pingSettings = pingSettings;
 
 		this.#eventEmitter = new EventEmitter;
 		this.#eventEmitter.setEventNamespace('Crm.Activity.AddingPopup');
-		
+
 		if (!Type.isPlainObject(params))
 		{
 			params = {};
@@ -64,10 +66,12 @@ export class AddingPopup
 				ownerTypeId: this.#entityTypeId,
 				ownerId: this.#entityId,
 				currentUser: this.#currentUser,
+				pingSettings: this.#pingSettings,
 				events: {
 					onChangeDescription: this.#onChangeEditorDescription.bind(this),
 					onSaveHotkeyPressed: this.#onEditorSaveHotkeyPressed.bind(this),
 					onChangeUploaderContainerSize: this.#onChangeUploaderContainerSize.bind(this),
+					onFocus: this.#onFocus.bind(this),
 				},
 				popupMode: true
 			});
@@ -92,7 +96,10 @@ export class AddingPopup
 				}),
 			]);
 
-			popup.subscribeOnce('onFirstShow', () => this.#todoEditor.show());
+			popup.subscribeOnce('onFirstShow', (event) => {
+				event.target.getZIndexComponent().setZIndex(1400);
+				this.#todoEditor.show();
+			});
 			popup.subscribe('onAfterShow', () => {
 				this.#actualizePopupLayout(this.#todoEditor.getDescription());
 				this.#todoEditor.setFocused();
@@ -272,5 +279,16 @@ export class AddingPopup
 			this.#eventEmitter.emit('onActualizePopupLayout', { entityId: this.#entityId });
 			this.#popup.adjustPosition();
 		}
+	}
+
+	#onFocus()
+	{
+		setTimeout(() => {
+			const popup = this.#createPopupIfNotExists();
+
+			popup.adjustPosition({
+				forceBindPosition: true,
+			});
+		}, 0);
 	}
 }

@@ -48,7 +48,19 @@ class Settings
 		return (bool)$settings['call']['broadcast_enabled'];
 	}
 
-	public static function isBetaAvailable(): bool
+	public static function isCallBetaAvailable(): bool
+	{
+		$result = \Bitrix\Main\Config\Option::get('im', 'call_beta_access', 'N');
+		return $result === 'Y';
+	}
+
+	public static function isAiBetaAvailable(): bool
+	{
+		$result = \Bitrix\Main\Config\Option::get('im', 'ai_beta_access', 'N');
+		return $result === 'Y';
+	}
+
+	public static function isV2Available(): bool
 	{
 		$userId = Common::getUserId();
 		if (!$userId)
@@ -56,67 +68,46 @@ class Settings
 			return false;
 		}
 
-		if (
-			\Bitrix\Main\Loader::includeModule('bitrix24')
-			&& \CBitrix24::IsNfrLicense()
-		)
-		{
-			return true;
-		}
-
-		$result = \Bitrix\Main\Config\Option::get('im', 'beta_access', 'N');
-		if ($result === 'N')
+		if (!\Bitrix\Main\Loader::includeModule('intranet'))
 		{
 			return false;
 		}
 
-		if ($result === 'Y')
-		{
-			return true;
-		}
-
-		try
-		{
-			$users = Json::decode($result);
-			if (in_array($userId, $users, true))
-			{
-				return true;
-			}
-		}
-		catch (ArgumentException $exception)
-		{
-			return false;
-		}
-
-		return false;
+		return true;
 	}
 
-	public static function isBetaActivated(): bool
+	public static function isLegacyChatActivated($userId = false): bool
 	{
-		if (!self::isBetaAvailable())
+		if (!self::isV2Available())
 		{
-			return false;
+			return true;
 		}
 
-		if (\CIMMessenger::IsDesktopEnvironment())
+		if (\Bitrix\Main\Config\Option::get('im', 'legacy_chat_enabled', 'N') === 'Y')
 		{
-			return false;
+			return true;
+		}
+		if (\CUserOptions::GetOption('im', 'legacy_chat_user_enabled', 'N', $userId) === 'Y')
+		{
+			return true;
 		}
 
 		$isLegacy = \Bitrix\Main\Context::getCurrent()->getRequest()->getQuery('IM_LEGACY');
 		$isIframe = \Bitrix\Main\Context::getCurrent()->getRequest()->getQuery('IFRAME');
-		$isHistory = \Bitrix\Main\Context::getCurrent()->getRequest()->getQuery('IM_HISTORY');
-		if ($isLegacy === 'Y' || $isIframe === 'Y' || !is_null($isHistory))
+
+		return $isLegacy === 'Y' || $isIframe === 'Y';
+	}
+
+	public static function setLegacyChatActivity($active = true, $userId = false): bool
+	{
+		if (!self::isV2Available())
 		{
 			return false;
 		}
 
-		if (\CUserOptions::GetOption('im', 'v2_enabled', 'N') === 'Y')
-		{
-			return true;
-		}
+		\CUserOptions::SetOption('im', 'legacy_chat_user_enabled', $active ? 'Y' : 'N', false, $userId);
+		\Bitrix\Intranet\Composite\CacheProvider::deleteUserCache();
 
-		return false;
+		return true;
 	}
 }
-

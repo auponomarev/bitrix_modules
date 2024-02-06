@@ -364,6 +364,13 @@ if(CModule::IncludeModule("socialnetwork"))
 							{
 								$arComments["UF"][$field_name]["VALUE"] = $arComments[$field_name];
 								$arComments["UF"][$field_name]["ENTITY_VALUE_ID"] = $arComments["ID"];
+								if (method_exists($GLOBALS['USER_FIELD_MANAGER'], 'getCustomData'))
+								{
+									$arComments["UF"][$field_name]['CUSTOM_DATA'] = $GLOBALS['USER_FIELD_MANAGER']->getCustomData(
+										$arComments["UF"][$field_name],
+										(int)$arComments["ID"]
+									);
+								}
 							}
 						}
 
@@ -538,7 +545,7 @@ if(CModule::IncludeModule("socialnetwork"))
 						"UF" => $arComment["UF"],
 						"~POST_MESSAGE_TEXT" => $arComment["EVENT_FORMATTED"]["MESSAGE"],
 						"POST_MESSAGE_TEXT" => $arComment["EVENT_FORMATTED"]["FULL_MESSAGE_CUT"],
-						"CLASSNAME" => $t ? "" : "",
+						"CLASSNAME" => "",
 						"BEFORE_HEADER" => "",
 						"BEFORE_ACTIONS" => "",
 						"AFTER_ACTIONS" => "",

@@ -22,7 +22,7 @@ class EmployeeType extends BaseType
 	public static function getDescription(): array
 	{
 		return [
-			'DESCRIPTION' => Loc::getMessage('INTRANET_PROPERTY_TITLE'),
+			'DESCRIPTION' => Loc::getMessage('INTRANET_PROPERTY_TITLE_MSGVER_1'),
 			'BASE_TYPE' => CUserTypeManager::BASE_TYPE_ENUM,
 		];
 	}
@@ -32,7 +32,9 @@ class EmployeeType extends BaseType
 	 */
 	public static function getDbColumnType(): string
 	{
-		return 'int(18)';
+		$connection = \Bitrix\Main\Application::getConnection();
+		$helper = $connection->getSqlHelper();
+		return $helper->getColumnTypeByField(new \Bitrix\Main\ORM\Fields\IntegerField('x'));
 	}
 
 	/**
@@ -43,7 +45,7 @@ class EmployeeType extends BaseType
 	{
 		return [];
 	}
-	
+
 	/**
 	 * @param array $userField
 	 * @param string|array $value

@@ -197,6 +197,12 @@ final class AjaxProcessor extends Crm\Order\AjaxProcessor
 
 	protected function saveAction(): void
 	{
+		if (!\Bitrix\Catalog\Config\Feature::isInventoryManagementEnabled())
+		{
+			$this->addError(Loc::getMessage('CRM_STORE_DOCUMENT_SD_NO_INVENTORY_MANAGEMENT_ENABLED'));
+			return;
+		}
+
 		$this->showWarnings = false;
 
 		$this->saveOrder();
@@ -204,6 +210,12 @@ final class AjaxProcessor extends Crm\Order\AjaxProcessor
 
 	protected function saveAndDeductAction(): void
 	{
+		if (!\Bitrix\Catalog\Config\Feature::isInventoryManagementEnabled())
+		{
+			$this->addError(Loc::getMessage('CRM_STORE_DOCUMENT_SD_NO_INVENTORY_MANAGEMENT_ENABLED'));
+			return;
+		}
+
 		$this->showWarnings = false;
 
 		$result = $this->saveOrder();
@@ -630,6 +642,12 @@ final class AjaxProcessor extends Crm\Order\AjaxProcessor
 
 	protected function deductAction(): void
 	{
+		if (!\Bitrix\Catalog\Config\Feature::isInventoryManagementEnabled())
+		{
+			$this->addError(Loc::getMessage('CRM_STORE_DOCUMENT_SD_NO_INVENTORY_MANAGEMENT_ENABLED'));
+			return;
+		}
+
 		if (!$this->checkDocumentDeductRights())
 		{
 			$this->addError(Loc::getMessage('CRM_STORE_DOCUMENT_SD_INSUFFICIENT_RIGHTS'));
@@ -652,6 +670,12 @@ final class AjaxProcessor extends Crm\Order\AjaxProcessor
 
 	protected function cancelDeductAction(): void
 	{
+		if (!\Bitrix\Catalog\Config\Feature::isInventoryManagementEnabled())
+		{
+			$this->addError(Loc::getMessage('CRM_STORE_DOCUMENT_SD_NO_INVENTORY_MANAGEMENT_ENABLED'));
+			return;
+		}
+
 		if (
 			!AccessController::getCurrent()->checkByValue(
 				ActionDictionary::ACTION_STORE_DOCUMENT_CANCEL,
@@ -1132,24 +1156,37 @@ final class AjaxProcessor extends Crm\Order\AjaxProcessor
 			$quantity = (float)$product['AMOUNT'] > 0 ? (float)$product['AMOUNT'] : 1;
 			$storeId = (int)$product['STORE_FROM'];
 
+			$barcode = null;
+			if (isset($product['DOC_BARCODE']) && !empty($product['DOC_BARCODE']))
+			{
+				$barcode = $product['DOC_BARCODE'];
+			}
+			elseif (isset($product['BARCODE']) && !empty($product['BARCODE']))
+			{
+				$barcode = $product['BARCODE'];
+			}
+
 			$item = [
 				'QUANTITY' => $quantity,
 				'AMOUNT' => $quantity,
 				'BASKET_ID' => $basketCode,
 				'BASKET_CODE' => $basketCode,
-				'XML_ID' => uniqid('bx_'),
 				'BARCODE_INFO' => [
 					$storeId => [
 						'STORE_ID' => (int)$product['STORE_FROM'],
 						'QUANTITY' => $quantity,
 						'BARCODE' => [
 							[
-								'VALUE' => $product['BARCODE'],
+								'VALUE' => $barcode,
 							],
 						],
 					],
 				],
 			];
+			if (!$product['BASKET_ID'])
+			{
+				$item['XML_ID'] = uniqid('bx_');
+			}
 
 			$result[$basketCode] = $item;
 		}
@@ -1191,6 +1228,12 @@ final class AjaxProcessor extends Crm\Order\AjaxProcessor
 
 	protected function deleteAction(): void
 	{
+		if (!\Bitrix\Catalog\Config\Feature::isInventoryManagementEnabled())
+		{
+			$this->addError(Loc::getMessage('CRM_STORE_DOCUMENT_SD_NO_INVENTORY_MANAGEMENT_ENABLED'));
+			return;
+		}
+
 		$id = (int)$this->request['ACTION_ENTITY_ID'] > 0 ? (int)$this->request['ACTION_ENTITY_ID'] : 0;
 
 		if (

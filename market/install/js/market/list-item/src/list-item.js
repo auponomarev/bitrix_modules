@@ -115,8 +115,11 @@ export const ListItem = {
 			}
 
 			if (menu.length > 0) {
+				const menuId = 'list-item-menu-' + this.getAppCode;
+				MenuManager.destroy(menuId);
+
 				this.contextMenu = MenuManager.create(
-					'list-item-menu-' + this.getAppCode,
+					menuId,
 					this.$refs.listItemContextMenu,
 					menu,
 					{
@@ -170,6 +173,7 @@ export const ListItem = {
 				},
 				analyticsLabel: {
 					viewMode: 'list',
+					appCode: this.getAppCode,
 				},
 			}).then(
 				response => {
@@ -328,7 +332,7 @@ export const ListItem = {
 						{{ label.TEXT }}
 					</span>
 				</span>
-				<span class="market-catalog__elements-item_labels-status" v-if="!$parent.isInstalledList">
+				<span class="market-catalog__elements-item_labels-status" v-if="item.PRICE_POLICY_NAME">
 					<span class="market-catalog__elements-item_label-status"
 						  :class="{'--blue': item.PRICE_POLICY_BLUE}"
 					>
@@ -362,9 +366,8 @@ export const ListItem = {
 				<div class="market-catalog__elements-item_info-description"
 					 v-if="!$parent.isInstalledList"
 					 :title="item.SHORT_DESC"
-				>
-					{{ item.SHORT_DESC }}
-				</div>
+					 v-html="item.SHORT_DESC"
+				></div>
 				
 				<div class="market-rating__container">
 					<div class="market-rating__stars" v-if="!this.isSiteTemplate">

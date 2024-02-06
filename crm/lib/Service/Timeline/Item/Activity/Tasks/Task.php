@@ -14,6 +14,7 @@ use Bitrix\Crm\Service\Timeline\Layout\Action\Analytics;
 use Bitrix\Crm\Service\Timeline\Layout\Action\JsEvent;
 use Bitrix\Crm\Service\Timeline\Layout\Action\Redirect;
 use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\ContentBlockWithTitle;
+use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\Date;
 use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\EditableDate;
 use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\FileList;
 use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\Link;
@@ -48,14 +49,9 @@ class Task extends Activity
 		return true;
 	}
 
-	public function getIcon(): ?\Bitrix\Crm\Service\Timeline\Layout\Icon
+	public function getIconCode(): ?string
 	{
-		$iconObject = new \Bitrix\Crm\Service\Timeline\Layout\Icon();
-		$iconObject
-			->setCode(Icon::TASK_ACTIVITY)
-			->setBackgroundColorToken(\Bitrix\Crm\Service\Timeline\Layout\Icon::BACKGROUND_PRIMARY_ALT)
-		;
-		return $iconObject;
+		return Icon::TASK_ACTIVITY;
 	}
 
 	public function getTags(): ?array
@@ -161,6 +157,7 @@ class Task extends Activity
 		{
 			$contentBlockObject = new EditableDate();
 			$contentBlockObject
+				->setReadonly(!$this->isScheduled())
 				->setStyle(EditableDate::STYLE_PILL)
 				->setDate($deadline)
 				->setAction($action)
@@ -173,6 +170,7 @@ class Task extends Activity
 			$contentBlockObject->setValue(Loc::getMessage('TASKS_TASK_DEAL_EMPTY_DEADLINE'));
 		}
 		$deadlineBlockObject
+			->setAlignItems('center')
 			->setInline()
 			->setTitle(Loc::getMessage('TASKS_TASK_DEAL_DEADLINE'))
 			->setContentBlock($contentBlockObject)
@@ -187,7 +185,7 @@ class Task extends Activity
 		$deadlineBlockObject = new ContentBlockWithTitle();
 		$deadlineBlockObject
 			->setInline()
-			->setTitle(Loc::getMessage('TASKS_TASK_DEAL_RESPONSIBLE'))
+			->setTitle(Loc::getMessage('TASKS_TASK_DEAL_ASSIGNEE'))
 			->setContentBlock(
 				(new Link())
 					->setValue($this->getUserName($task->getResponsibleMemberId()))

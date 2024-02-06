@@ -3,10 +3,8 @@ IncludeModuleLangFile(__FILE__);
 
 class CIMMail
 {
-	public static function MailNotifyAgent()
+	public static function MailNotifyAgent(): string
 	{
-		global $DB;
-
 		$defSiteID = CSite::GetDefSite();
 
 		$arMark = array();
@@ -157,13 +155,11 @@ class CIMMail
 			$event->Send($arNotify["EMAIL_TEMPLATE"], $arNotify["TO_USER_LID"], $arFields, "N");
 		}
 
-		return "CIMMail::MailNotifyAgent();";
+		return __METHOD__. '();';
 	}
 
-	public static function MailMessageAgent()
+	public static function MailMessageAgent(): string
 	{
-		global $DB;
-
 		$defSiteID = CSite::GetDefSite();
 
 		$arMark = array();
@@ -323,7 +319,8 @@ class CIMMail
 				"EMAIL_TO" => $arToInfo["EMAIL_TO"],
 				"TITLE" => $arToInfo["TITLE"] ?? null,
 				"MESSAGES" => $message,
-				"MESSAGES_FROM_USERS" => serialize($messagesFromUsers)
+				"MESSAGES_FROM_USERS" => serialize($messagesFromUsers),
+				"DATE_CREATE" => null,
 			);
 			$arFields['FROM_USER_ID'] = implode(', ', $arFromId);
 			if (count($arNames) > 1)
@@ -341,7 +338,7 @@ class CIMMail
 			$event->Send($mailTemplate, $arToInfo['TO_USER_LID'], $arFields, "N");
 		}
 
-		return "CIMMail::MailMessageAgent();";
+		return __METHOD__. '();';
 	}
 
 	/**

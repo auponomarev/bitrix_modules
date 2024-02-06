@@ -192,7 +192,7 @@ class CVoxImplantEvent
 				}
 			}
 
-			if ($arFields["ACTIVE"] === 'N' && CVoximplantUser::GetPhoneActive($arFields['ID']))
+			if (($arFields["ACTIVE"] ?? null) === 'N' && CVoximplantUser::GetPhoneActive($arFields['ID']))
 			{
 				$viUser = new CVoximplantUser();
 				$viUser->UpdateUserPassword($arFields['ID'], CVoxImplantUser::MODE_PHONE);
@@ -315,7 +315,7 @@ class CVoxImplantEvent
 					"DISABLED" => [],
 				],
 				"status_notifications" => [
-					"NAME" => Loc::getMessage('VI_EVENTS_SIP_STATUS_NOTIFICATIONS'),
+					"NAME" => Loc::getMessage('VI_EVENTS_SIP_STATUS_NOTIFICATIONS_V2'),
 					"SITE" => "Y",
 					"MAIL" => "Y",
 					"XMPP" => "N",

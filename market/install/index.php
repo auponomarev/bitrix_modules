@@ -55,13 +55,14 @@ class Market extends \CModule
 	public function installDB()
 	{
 		global $DB, $APPLICATION;
+		$connection = \Bitrix\Main\Application::getConnection();
 		$this->errors = false;
 
 		// Database tables creation
 		if (!$DB->Query('SELECT 1 FROM b_market_tag WHERE 1=0', true))
 		{
 			$this->errors = $DB->RunSQLBatch(
-				$this->MODULE_FOLDER . '/install/db/mysql/install.sql'
+				$this->MODULE_FOLDER . '/install/db/' . $connection->getType() . '/install.sql'
 			);
 		}
 
@@ -92,12 +93,13 @@ class Market extends \CModule
 	public function uninstallDB($arParams = [])
 	{
 		global $DB, $APPLICATION;
+		$connection = \Bitrix\Main\Application::getConnection();
 		$this->errors = false;
 
 		if (!array_key_exists('save_tables', $arParams) || $arParams['save_tables'] !== 'Y')
 		{
 			$this->errors = $DB->RunSQLBatch(
-				$this->MODULE_FOLDER . '/install/db/mysql/uninstall.sql'
+				$this->MODULE_FOLDER . '/install/db/' . $connection->getType() . '/uninstall.sql'
 			);
 		}
 
@@ -204,13 +206,6 @@ class Market extends \CModule
 			//Main integration
 			[
 				'main',
-				'OnAfterUserUpdate',
-				'market',
-				'\Bitrix\Market\Integration\Main\TagHandler',
-				'onAfterUserUpdate',
-			],
-			[
-				'main',
 				'OnAfterSetOption_~PARAM_CLIENT_LANG',
 				'market',
 				'\Bitrix\Market\Integration\Main\TagHandler',
@@ -263,6 +258,24 @@ class Market extends \CModule
 				'onEventDelete'
 			],
 			//BizProc end integration
+			//Sale integration
+			[
+				'sale',
+				'OnSalePaySystemUpdate',
+				'market',
+				'\Bitrix\Market\Integration\Sale\TagHandler',
+				'onUpdatePaySystem'
+			],
+			//Sale end integration
+			//Messageservice integration
+			[
+				'messageservice',
+				'onGetSmsSenders',
+				'market',
+				'\Bitrix\Market\Integration\Messageservice\TagHandler',
+				'onGetMessageProvider'
+			]
+			//Messageservice end integration
 		];
 	}
 
@@ -331,6 +344,42 @@ class Market extends \CModule
 				'',
 				'Y',
 				\ConvertTimeStamp(time() + \CTimeZone::GetOffset() + 1500, 'FULL')
+			],
+			[
+				'\Bitrix\Market\Tag\Manager::doAgentOnceLoad(\'sale\');',
+				$this->MODULE_ID,
+				'N',
+				86400,
+				'',
+				'Y',
+				\ConvertTimeStamp(time() + \CTimeZone::GetOffset() + 1600, 'FULL')
+			],
+			[
+				'\Bitrix\Market\Tag\Manager::doAgentOnceLoad(\'messageservice\');',
+				$this->MODULE_ID,
+				'N',
+				86400,
+				'',
+				'Y',
+				\ConvertTimeStamp(time() + \CTimeZone::GetOffset() + 1700, 'FULL')
+			],
+			[
+				'\Bitrix\Market\Tag\Manager::doAgentOnceLoad(\'crm\');',
+				$this->MODULE_ID,
+				'Y',
+				86400,
+				'',
+				'Y',
+				\ConvertTimeStamp(time() + \CTimeZone::GetOffset() + 1800, 'FULL')
+			],
+			[
+				'\Bitrix\Market\Tag\Manager::doAgentOnceLoad(\'tasks\');',
+				$this->MODULE_ID,
+				'Y',
+				86400,
+				'',
+				'Y',
+				\ConvertTimeStamp(time() + \CTimeZone::GetOffset() + 1900, 'FULL')
 			],
 		];
 	}

@@ -1,3 +1,4 @@
+/* eslint-disable */
 this.BX = this.BX || {};
 this.BX.Tasks = this.BX.Tasks || {};
 (function (exports,main_core,main_core_events,ui_entitySelector) {
@@ -157,8 +158,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        tabs: 'recents',
 	        avatarOptions: {
 	          bgColor: epic.color,
-	          bgImage: 'none',
-	          borderRadius: '12px'
+	          bgImage: 'none'
 	        }
 	      };
 	    }
@@ -375,8 +375,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        tabs: 'recents',
 	        avatarOptions: {
 	          bgColor: epic.color,
-	          bgImage: 'none',
-	          borderRadius: '12px'
+	          bgImage: 'none'
 	        }
 	      };
 	    }

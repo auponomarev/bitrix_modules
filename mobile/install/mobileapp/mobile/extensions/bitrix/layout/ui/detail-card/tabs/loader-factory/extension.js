@@ -2,7 +2,6 @@
  * @module layout/ui/detail-card/tabs/loader-factory
  */
 jn.define('layout/ui/detail-card/tabs/loader-factory', (require, exports, module) => {
-
 	const { TabType } = require('layout/ui/detail-card/tabs/factory/type');
 	const { EditorTabShimmer } = require('layout/ui/detail-card/tabs/shimmer/editor');
 	const { CrmProductTabShimmer } = require('layout/ui/detail-card/tabs/shimmer/crm-product');
@@ -15,6 +14,7 @@ jn.define('layout/ui/detail-card/tabs/loader-factory', (require, exports, module
 	{
 		static createLoader(type, props = {})
 		{
+			// eslint-disable-next-line default-case
 			switch (type)
 			{
 				case TabType.EDITOR:
@@ -32,5 +32,4 @@ jn.define('layout/ui/detail-card/tabs/loader-factory', (require, exports, module
 	}
 
 	module.exports = { TabLoaderFactory };
-
 });

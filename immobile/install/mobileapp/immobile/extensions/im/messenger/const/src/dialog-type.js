@@ -2,7 +2,6 @@
  * @module im/messenger/const/dialog-type
  */
 jn.define('im/messenger/const/dialog-type', (require, exports, module) => {
-
 	const DialogType = Object.freeze({
 		user: 'user',
 		chat: 'chat',
@@ -19,6 +18,9 @@ jn.define('im/messenger/const/dialog-type', (require, exports, module) => {
 		tasks: 'tasks',
 		thread: 'thread',
 		mail: 'mail',
+		private: 'private',
+		copilot: 'copilot',
+		default: 'default',
 	});
 
 	module.exports = { DialogType };

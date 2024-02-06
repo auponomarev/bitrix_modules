@@ -111,6 +111,8 @@ class TranslateListComponent extends Translate\ComponentBase
 		if (!$this->isAjaxRequest())
 		{
 			$this->checkMysqlConfig();
+			$this->checkModuleStepper();
+			$this->checkFtsTables();
 		}
 
 		$this->prepareParams();
@@ -509,7 +511,7 @@ class TranslateListComponent extends Translate\ComponentBase
 				'params' => array('multiple' => 'Y'),
 				'items' => array(
 					Index\PhraseIndexSearch::SEARCH_METHOD_CASE_SENSITIVE => Loc::getMessage('TR_SEARCH_METHOD_CASE_SENSITIVE'),
-					Index\PhraseIndexSearch::SEARCH_METHOD_EXACT_WORD => Loc::getMessage('TR_SEARCH_METHOD_EXACT_WORD'),
+					Index\PhraseIndexSearch::SEARCH_METHOD_ENTRY_WORD => Loc::getMessage('TR_SEARCH_METHOD_EXACT_WORD'),
 					Index\PhraseIndexSearch::SEARCH_METHOD_EQUAL => Loc::getMessage('TR_SEARCH_METHOD_EQUAL_PHRASE'),
 					Index\PhraseIndexSearch::SEARCH_METHOD_START_WITH => Loc::getMessage('TR_SEARCH_METHOD_START_WITH'),
 					Index\PhraseIndexSearch::SEARCH_METHOD_END_WITH => Loc::getMessage('TR_SEARCH_METHOD_END_WITH'),
@@ -520,7 +522,7 @@ class TranslateListComponent extends Translate\ComponentBase
 						Index\PhraseIndexSearch::SEARCH_METHOD_END_WITH,
 					),
 					array(
-						Index\PhraseIndexSearch::SEARCH_METHOD_EXACT_WORD,
+						Index\PhraseIndexSearch::SEARCH_METHOD_ENTRY_WORD,
 						Index\PhraseIndexSearch::SEARCH_METHOD_EQUAL,
 					)
 				),
@@ -676,7 +678,7 @@ class TranslateListComponent extends Translate\ComponentBase
 	private function detectFilter()
 	{
 		$this->getFilter();
-		$this->filter->restore($this->tabId);
+		$this->filter->restore((int)$this->tabId);
 
 		if (
 			$this->request->isPost() &&
@@ -1270,13 +1272,13 @@ class TranslateListComponent extends Translate\ComponentBase
 	 */
 	private function detectPath($inpName = 'path')
 	{
-		$path = null;
+		$path = '';
 
 		// from filter
-		$path1 = $this->filter['PATH'];
+		$path1 = $this->filter['PATH'] ?? '';
 
 		// from request
-		$path2 = $this->request->get($inpName);
+		$path2 = $this->request->get($inpName) ?? '';
 
 		if ($this->filterApplying && !empty($path1))
 		{

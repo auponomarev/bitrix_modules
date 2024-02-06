@@ -6,6 +6,7 @@ use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Service\ParentFieldManager;
 use Bitrix\Crm\UI\EntitySelector;
 use Bitrix\Main;
+use Bitrix\Main\Config\Option;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Crm;
 use Bitrix\Crm\Category\DealCategory;
@@ -60,13 +61,14 @@ class DealDataProvider extends EntityDataProvider implements FactoryOptionable
 	 * @param string $fieldID Field ID.
 	 * @return string
 	 */
-	protected function getFieldName($fieldID)
+	protected function getFieldName($fieldID): string
 	{
-		$name = Loc::getMessage("CRM_DEAL_FILTER_{$fieldID}");
-		if($name === null)
-		{
-			$name = \CCrmDeal::GetFieldCaption($fieldID);
-		}
+		$name =
+			Loc::getMessage("CRM_DEAL_FILTER_{$fieldID}")
+			?? Loc::getMessage("CRM_DEAL_FILTER_{$fieldID}_MSGVER_1")
+			?? \CCrmDeal::GetFieldCaption($fieldID)
+		;
+
 		if (!$name && ParentFieldManager::isParentFieldName($fieldID))
 		{
 			$parentEntityTypeId = ParentFieldManager::getEntityTypeIdFromFieldName($fieldID);
@@ -169,6 +171,17 @@ class DealDataProvider extends EntityDataProvider implements FactoryOptionable
 				]
 			),
 		);
+
+		if ($this->isActivityResponsibleEnabled())
+		{
+			$result['ACTIVITY_RESPONSIBLE_IDS'] = $this->createField(
+				'ACTIVITY_RESPONSIBLE_IDS',
+				[
+					'type' => 'entity_selector',
+					'partial' => true,
+				]
+			);
+		}
 
 		if(!$this->settings->checkFlag(DealSettings::FLAG_RECURRING))
 		{
@@ -555,6 +568,18 @@ class DealDataProvider extends EntityDataProvider implements FactoryOptionable
 			$result[$code] = $this->createField($code, $parentField);
 		}
 
+		$factory = Container::getInstance()->getFactory(\CCrmOwnerType::Deal);
+		if ($factory && $factory->isLastActivityEnabled())
+		{
+			$result['LAST_ACTIVITY_TIME'] = $this->createField(
+				'LAST_ACTIVITY_TIME',
+				[
+					'type' => 'date',
+					'partial' => true,
+				]
+			);
+		}
+
 		return $result;
 	}
 
@@ -580,18 +605,30 @@ class DealDataProvider extends EntityDataProvider implements FactoryOptionable
 				'items' => \CCrmStatus::GetStatusList('DEAL_TYPE')
 			);
 		}
-		elseif(in_array($fieldID, ['ASSIGNED_BY_ID', 'CREATED_BY_ID', 'MODIFY_BY_ID', 'OBSERVER_IDS'], true))
+		elseif(in_array($fieldID, ['ASSIGNED_BY_ID', 'CREATED_BY_ID', 'MODIFY_BY_ID', 'OBSERVER_IDS', 'ACTIVITY_RESPONSIBLE_IDS'], true))
 		{
-			$factory = \Bitrix\Crm\Service\Container::getInstance()->getFactory(\CCrmOwnerType::Deal);
-			$referenceClass = ($factory ? $factory->getDataClass() : null);
+			$factory = Container::getInstance()->getFactory(\CCrmOwnerType::Deal);
+
+
+			$isEnableAllUsers = in_array($fieldID, ['ASSIGNED_BY_ID', 'ACTIVITY_RESPONSIBLE_IDS'], true);
+			$isEnableOtherUsers = in_array($fieldID, ['ASSIGNED_BY_ID', 'ACTIVITY_RESPONSIBLE_IDS'], true);
+
+			if (in_array($fieldID, ['ACTIVITY_RESPONSIBLE_IDS', 'OBSERVER_IDS'], true))
+			{
+				$referenceClass = null;
+			}
+			else
+			{
+				$referenceClass = ($factory ? $factory->getDataClass() : null);
+			}
 
 			return $this->getUserEntitySelectorParams(
 				EntitySelector::CONTEXT,
 				[
 					'fieldName' => $fieldID,
-					'referenceClass' => $fieldID !== 'OBSERVER_IDS' ? $referenceClass : null,
-					'isEnableAllUsers' => $fieldID === 'ASSIGNED_BY_ID',
-					'isEnableOtherUsers' => $fieldID === 'ASSIGNED_BY_ID',
+					'referenceClass' => $referenceClass,
+					'isEnableAllUsers' => $isEnableAllUsers,
+					'isEnableOtherUsers' => $isEnableOtherUsers,
 				]
 			);
 		}
@@ -794,7 +831,7 @@ class DealDataProvider extends EntityDataProvider implements FactoryOptionable
 
 	protected function applySettingsDependantFilter(array &$filterFields): void
 	{
-		$filterFields['IS_RECURRING'] = $this->getSettings()->checkFlag(DealSettings::FLAG_RECURRING) ? 'Y' : 'N';
+		$filterFields['=IS_RECURRING'] = $this->getSettings()->checkFlag(DealSettings::FLAG_RECURRING) ? 'Y' : 'N';
 
 		$categoryId = $this->getSettings()->getCategoryID();
 		if ($categoryId >= 0)

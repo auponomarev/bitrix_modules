@@ -34,13 +34,13 @@ export const ParserIcon = {
 		let {text} = config;
 		const {attach, files} = config;
 
-		if (Type.isArray(files) && files.length > 0)
+		if (Type.isArrayFilled(files) || files === true)
 		{
 			text = this.getTextForFile(text, files);
 		}
 		else if (
 			attach === true
-			|| (Type.isArray(attach) && attach.length > 0)
+			|| Type.isArrayFilled(attach)
 			|| Type.isStringFilled(attach)
 		)
 		{
@@ -94,19 +94,20 @@ export const ParserIcon = {
 		return `[${Loc.getMessage('IM_PARSER_ICON_TYPE_FILE')}]`;
 	},
 
-	getTextForFile(text: string, files: boolean | Array): string
+	getTextForFile(rawText: string, files: boolean | Array): string
 	{
+		let preparedText = rawText;
 		if (Type.isArray(files) && files.length > 0)
 		{
 			const [firstFile] = files;
-			text = this.getIconTextForFile(text, firstFile);
+			preparedText = this.getIconTextForFile(rawText, firstFile);
 		}
 		else if (files === true)
 		{
-			text = this.getIconTextForFileType(text, FileIconType.file);
+			preparedText = this.getIconTextForFileType(rawText, FileIconType.file);
 		}
 
-		return text;
+		return preparedText;
 	},
 
 	getTextForAttach(text: string, attach: boolean | string | Array): string
@@ -115,9 +116,9 @@ export const ParserIcon = {
 		if (Type.isArray(attach) && attach.length > 0)
 		{
 			const [firstAttach] = attach;
-			if (Type.isStringFilled(firstAttach.DESCRIPTION))
+			if (Type.isStringFilled(firstAttach.description))
 			{
-				attachDescription = firstAttach.DESCRIPTION;
+				attachDescription = firstAttach.description;
 			}
 		}
 		else if (Type.isStringFilled(attach))
@@ -127,7 +128,7 @@ export const ParserIcon = {
 
 		if (Type.isStringFilled(attachDescription))
 		{
-			if (attachDescription === AttachDescription.SKIP_MESSAGE)
+			if (attachDescription === AttachDescription.skipMessage)
 			{
 				attachDescription = '';
 			}

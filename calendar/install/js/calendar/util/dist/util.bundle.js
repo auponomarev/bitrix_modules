@@ -1,9 +1,10 @@
 this.BX = this.BX || {};
-(function (exports,main_core,main_date,ui_notification,main_popup,pull_client) {
+(function (exports,main_core,main_date,main_popup,pull_client,ui_dialogs_messagebox) {
 	'use strict';
 
 	let _ = t => t,
-	  _t;
+	  _t,
+	  _t2;
 	class Util {
 	  static parseTime(str) {
 	    let date = Util.parseDate1(BX.date.format(Util.getDateFormat(), new Date()) + ' ' + str, false);
@@ -126,6 +127,18 @@ this.BX = this.BX || {};
 	    const formattedTo = main_date.DateTimeFormat.format(Util.getTimeFormatShort(), to.getTime() / 1000);
 	    return `${formattedFrom} - ${formattedTo}`;
 	  }
+	  static formatDuration(diffMinutes) {
+	    const hours = Math.floor(diffMinutes / 60);
+	    const minutes = diffMinutes % 60;
+	    let hint = main_date.DateTimeFormat.format('idiff', new Date().getTime() / 1000 - minutes * 60);
+	    if (hours > 0) {
+	      hint = main_date.DateTimeFormat.format('Hdiff', new Date().getTime() / 1000 - hours * 60 * 60);
+	      if (minutes > 0) {
+	        hint += ' ' + main_date.DateTimeFormat.format('idiff', new Date().getTime() / 1000 - minutes * 60);
+	      }
+	    }
+	    return hint;
+	  }
 	  static formatDateUsable(date, showYear = true, showDayOfWeek = false) {
 	    const lang = main_core.Loc.getMessage('LANGUAGE_ID');
 	    let format = Util.getDateFormat();
@@ -136,6 +149,9 @@ this.BX = this.BX || {};
 	      }
 	    }
 	    return BX.date.format([["today", "today"], ["tommorow", "tommorow"], ["yesterday", "yesterday"], ["", format]], date);
+	  }
+	  static formatDayMonthShortTime(timestamp) {
+	    return main_date.DateTimeFormat.format(main_date.DateTimeFormat.getFormat('DAY_MONTH_FORMAT'), timestamp) + ' ' + main_date.DateTimeFormat.format(main_date.DateTimeFormat.getFormat('SHORT_TIME_FORMAT'), timestamp);
 	  }
 	  static getDayLength() {
 	    if (!Util.DAY_LENGTH) {
@@ -190,13 +206,13 @@ this.BX = this.BX || {};
 	      SA: 6
 	    })[weekDay];
 	  }
-	  static getWeekdaysLoc() {
+	  static getWeekdaysLoc(isFull = false) {
 	    const today = new Date();
 	    const weekdays = [];
 	    const dayLength = 24 * 60 * 60 * 1000;
+	    const format = isFull ? 'l' : 'D';
 	    for (let weekOffset = 0; weekOffset < 7; weekOffset++) {
-	      const weekDayName = main_date.DateTimeFormat.format('D', new Date(today.getTime() + dayLength * weekOffset));
-	      weekdays[(today.getDay() + weekOffset) % 7] = weekDayName;
+	      weekdays[(today.getDay() + weekOffset) % 7] = main_date.DateTimeFormat.format(format, new Date(today.getTime() + dayLength * weekOffset));
 	    }
 	    return weekdays;
 	  }
@@ -375,6 +391,41 @@ this.BX = this.BX || {};
 	      }
 	    }
 	  }
+	  static showConfirmPopup(action, message, options = {}) {
+	    this.confirmPopup = new ui_dialogs_messagebox.MessageBox({
+	      message: main_core.Tag.render(_t2 || (_t2 = _`
+				<div class="calendar-list-slider-messagebox-text">
+					${0}
+				</div>
+			`), message),
+	      minHeight: 120,
+	      minWidth: 280,
+	      maxWidth: 300,
+	      buttons: BX.UI.Dialogs.MessageBoxButtons.OK_CANCEL,
+	      onOk: () => {
+	        var _this$confirmPopup;
+	        action();
+	        (_this$confirmPopup = this.confirmPopup) == null ? void 0 : _this$confirmPopup.close();
+	      },
+	      onCancel: () => {
+	        var _this$confirmPopup2;
+	        (_this$confirmPopup2 = this.confirmPopup) == null ? void 0 : _this$confirmPopup2.close();
+	      },
+	      popupOptions: {
+	        events: {
+	          onPopupClose: () => {
+	            delete this.confirmPopup;
+	          }
+	        },
+	        closeByEsc: false,
+	        padding: 0,
+	        contentPadding: 0,
+	        animation: 'fading-slide'
+	      },
+	      ...options
+	    });
+	    this.confirmPopup.show();
+	  }
 	  static sendAnalyticLabel(label) {
 	    BX.ajax.runAction('calendar.api.calendarajax.sendAnalyticsLabel', {
 	      analyticsLabel: label
@@ -398,6 +449,20 @@ this.BX = this.BX || {};
 	  }
 	  static getMeetingStatusList() {
 	    return ['Y', 'N', 'Q', 'H'];
+	  }
+	  static getWorkTimeStart() {
+	    let workTimeStartParsed = this.config.work_time_start.split('.');
+	    if (workTimeStartParsed.length === 1) {
+	      return workTimeStartParsed[0] + '.00';
+	    }
+	    return this.config.work_time_start;
+	  }
+	  static getWorkTimeEnd() {
+	    let workTimeEndParsed = this.config.work_time_end.split('.');
+	    if (workTimeEndParsed.length === 1) {
+	      return workTimeEndParsed[0] + '.00';
+	    }
+	    return this.config.work_time_end;
 	  }
 	  static checkEmailLimitationPopup() {
 	    const emailGuestAmount = Util.getEventWithEmailGuestAmount();
@@ -624,5 +689,5 @@ this.BX = this.BX || {};
 
 	exports.Util = Util;
 
-}((this.BX.Calendar = this.BX.Calendar || {}),BX,BX.Main,BX,BX.Main,BX));
+}((this.BX.Calendar = this.BX.Calendar || {}),BX,BX.Main,BX.Main,BX,BX.UI.Dialogs));
 //# sourceMappingURL=util.bundle.js.map

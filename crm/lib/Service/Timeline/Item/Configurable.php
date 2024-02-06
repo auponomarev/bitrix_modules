@@ -10,9 +10,6 @@ use Bitrix\Crm\Service\Timeline\Item;
 use Bitrix\Crm\Service\Timeline\Layout;
 use Bitrix\Crm\Service\Timeline\Layout\Action\Redirect;
 use Bitrix\Crm\Service\Timeline\Layout\Action\RunAjaxAction;
-use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\ContentBlockFactory;
-use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\ContentBlockWithTitle;
-use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\LineOfTextBlocks;
 use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\Note;
 use Bitrix\Crm\Service\Timeline\Layout\Body\ContentBlock\Text;
 use Bitrix\Crm\Service\Timeline\Layout\Converter;
@@ -22,15 +19,11 @@ use Bitrix\Crm\Service\Timeline\Layout\Menu\MenuItem;
 use Bitrix\Crm\Timeline\Entity\NoteTable;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
-use Bitrix\Main\PhoneNumber;
 use Bitrix\Main\Type\DateTime;
 use Bitrix\Main\Web\Uri;
 
 abstract class Configurable extends Item
 {
-	public const BLOCK_WITH_FORMATTED_VALUE = 1;
-	public const BLOCK_WITH_FIXED_TITLE = 2;
-
 	protected Layout $layout;
 
 	public function __construct(Context $context, Model $model)
@@ -109,9 +102,10 @@ abstract class Configurable extends Item
 			'type' => $this->getType(),
 			'id' => $this->getModel()->getId(),
 			'payload' => $this->getPayload(),
-			'timestamp' => $this->getModel()->getDate() ? $this->getModel()->getDate()->getTimestamp() : null,
+			'timestamp' => $this->getModel()->getDate()?->getTimestamp(),
 			'sort' => $this->getSort(),
-			'languageId' => \Bitrix\Main\Context::getCurrent()->getLanguage(),
+			'languageId' => \Bitrix\Main\Context::getCurrent()?->getLanguage(),
+			'targetUsersList' => $this->getListOfTargetUsers(),
 			'canBeReloaded' => $this->canBeReloaded(),
 		];
 	}
@@ -223,7 +217,7 @@ abstract class Configurable extends Item
 	}
 
 	/**
-	 * By default item is pinnable if it has title
+	 * By default, item is pinnable if it has title
 	 *
 	 * @return bool
 	 */
@@ -461,7 +455,7 @@ abstract class Configurable extends Item
 				->setDetailsText(Loc::getMessage('CRM_TIMELINE_MARKET_PANEL_TEXT_DETAILS'))
 				->setDetailsTextAction(
 					$placementCode
-						? new Redirect(new Uri('/marketplace/?placement=' . $placementCode))
+						? new Redirect(new Uri(\Bitrix\Crm\Integration\Market\Router::getBasePath() . '?placement=' . $placementCode))
 						: null
 				)
 			;
@@ -494,50 +488,15 @@ abstract class Configurable extends Item
 
 	protected function buildClientBlock(int $options = 0, string $blockTitle = null): ?Layout\Body\ContentBlock
 	{
-		$communication = $this->getAssociatedEntityModel()->get('COMMUNICATION') ?? [];
-		$title = $communication['TITLE'] ?? null;
-		if (!$title)
+		$communication = $this->getAssociatedEntityModel()?->get('COMMUNICATION') ?? [];
+		if (empty($communication))
 		{
 			return null;
 		}
 
-		if (($options & self::BLOCK_WITH_FORMATTED_VALUE))
-		{
-			$source = empty($communication['SOURCE'])
-				? ''
-				: PhoneNumber\Parser::getInstance()->parse($communication['SOURCE'])->format();
-
-			$formattedValue = empty($communication['FORMATTED_VALUE'])
-				? $source
-				: $communication['FORMATTED_VALUE'];
-
-			$title = sprintf('%s %s', $title, $formattedValue);
-		}
-
-		$blockTitle = $blockTitle ?? Loc::getMessage("CRM_TIMELINE_CLIENT_TITLE");
-
-		$url = isset($communication['SHOW_URL'])
-			? new Uri($communication['SHOW_URL'])
-			: null;
-
-		$textOrLink = ContentBlockFactory::createTextOrLink($title, $url ? new Redirect($url) : null);
-		$textOrLink->setTitle($title);
-
-		if ($options & self::BLOCK_WITH_FIXED_TITLE)
-		{
-			return (new ContentBlockWithTitle())
-				->setTitle($blockTitle)
-				->setContentBlock($textOrLink->setIsBold(isset($url))->setColor(Text::COLOR_BASE_90))
-				->setInline()
-			;
-		}
-
-		return (new LineOfTextBlocks())
-			->addContentBlock(
-				'title',
-				ContentBlockFactory::createTitle($blockTitle)
-			)
-			->addContentBlock('data', $textOrLink->setIsBold(isset($url))->setColor(Text::COLOR_BASE_90))
+		return (new Layout\Body\ContentBlock\Client($communication, $options))
+			->setTitle($blockTitle ?? Loc::getMessage("CRM_TIMELINE_CLIENT_TITLE"))
+			->build()
 		;
 	}
 
@@ -598,6 +557,26 @@ abstract class Configurable extends Item
 	public function getNoteItemId(): int
 	{
 		return $this->model->getId();
+	}
+
+	/**
+	 * Returns list of user ids that this item was built for
+	 *
+	 * @return int[]
+	 */
+	protected function getListOfTargetUsers(): array
+	{
+		if ($this->isBuiltOnlyForCurrentUser())
+		{
+			return [$this->getContext()->getUserId()];
+		}
+
+		return [];
+	}
+
+	protected function isBuiltOnlyForCurrentUser(): bool
+	{
+		return false;
 	}
 
 	/**

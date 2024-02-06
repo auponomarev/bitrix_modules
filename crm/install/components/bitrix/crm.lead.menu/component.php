@@ -69,7 +69,7 @@ $arParams['PATH_TO_LEAD_DEDUPE'] = CrmCheckPath(
 	$curPage
 );
 
-$arParams['PATH_TO_MIGRATION'] = SITE_DIR . "marketplace/category/migration/";
+$arParams['PATH_TO_MIGRATION'] = \Bitrix\Crm\Integration\Market\Router::getCategoryPath('migration');
 
 $arResult['PATH_TO_LEAD_WIDGET'] = CrmCheckPath(
 	'PATH_TO_LEAD_WIDGET',
@@ -318,7 +318,7 @@ if($arParams['TYPE'] === 'details')
 	return;
 }
 
-if($arParams['TYPE'] === 'list')
+if (isset($arParams['TYPE']) && $arParams['TYPE'] === 'list')
 {
 	if ($bAdd)
 	{
@@ -330,7 +330,11 @@ if($arParams['TYPE'] === 'list')
 			'JS_AVAILABLE_POPUP_SHOWER' => Rc\Service::getJsAvailablePopupShower(),
 		];
 
-		if($arResult['RC']['CAN_USE'] && !$arResult['RC']['IS_AVAILABLE'])
+		if (
+			isset($arResult['RC']['CAN_USE'])
+			&& $arResult['RC']['CAN_USE']
+			&& !$arResult['RC']['IS_AVAILABLE']
+		)
 		{
 			Rc\Service::initJsExtensions();
 		}
@@ -341,7 +345,7 @@ if($arParams['TYPE'] === 'list')
 		['lead_id' => 0]
 	);
 
-	if($arResult['RC']['CAN_USE'])
+	if (isset($arResult['RC']['CAN_USE']) && $arResult['RC']['CAN_USE'])
 	{
 		$itemAdd = ['TEXT' => GetMessage('LEAD_CREATE')];
 		if($isSliderEnabled)
@@ -585,8 +589,8 @@ if($arParams['TYPE'] === 'list')
 		CCrmComponentHelper::RegisterScriptLink('/bitrix/js/crm/common.js');
 		$arResult['BUTTONS'][] = \Bitrix\Crm\Settings\LeadSettings::getCrmTypeMenuItem(true);
 		$arResult['BUTTONS'][] = array(
-			'TEXT' => GetMessage('LEAD_CRM_CONFIG_STATUSES'),
-			'TITLE' => GetMessage('LEAD_CRM_CONFIG_STATUSES_TITLE'),
+			'TEXT' => GetMessage('LEAD_CRM_CONFIG_STATUSES_MSGVER_1'),
+			'TITLE' => GetMessage('LEAD_CRM_CONFIG_STATUSES_TITLE_MSGVER_1'),
 			'ONCLICK' => 'BX.Crm.Lead.Menu.onClickConfigStatuses(\''.CUtil::JSEscape($arResult["PATH_TO_LEAD_STATUS_LIST"]).'\')'
 		);
 	}

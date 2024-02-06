@@ -4,12 +4,8 @@ namespace Bitrix\ImOpenLines;
 use Bitrix\Main;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Text\Emoji;
-use Bitrix\ImOpenLines\Queue;
 use Bitrix\Main\Type\DateTime;
-use Bitrix\Main\DB\SqlExpression;
 use Bitrix\Main\Localization\Loc;
-use Bitrix\Main\Entity\ReferenceField;
-use Bitrix\Main\Entity\ExpressionField;
 
 use Bitrix\Bitrix24\Feature;
 
@@ -124,11 +120,8 @@ class Config
 		}
 		elseif ($mode == self::MODE_ADD)
 		{
-			$configCount = Model\ConfigTable::getList(array(
-				'select' => array('CNT'),
-				'runtime' => array(new ExpressionField('CNT', 'COUNT(*)'))
-			))->fetch();
-			if ($configCount['CNT'] == 0)
+			$configCount = Model\ConfigTable::getCount();
+			if ($configCount == 0)
 			{
 				$fields['LINE_NAME'] = Loc::getMessage('IMOL_CONFIG_LINE_NAME', Array('#NAME#' => $companyName));
 			}
@@ -986,13 +979,13 @@ class Config
 			$this->error = new BasicError(__METHOD__, 'ADD_ERROR', Loc::getMessage('IMOL_ADD_ERROR'));
 			return false;
 		}
-		$id = (int)$result->getId();
+		$configId = (int)$result->getId();
 		$data = $result->getData();
 
 
-		ConfigStatistic::add($id);
+		ConfigStatistic::add($configId);
 
-		$queueManager = new QueueManager($id);
+		$queueManager = new QueueManager($configId);
 		if (isset($params['QUEUE']) && is_array($params['QUEUE']) && !empty($params['QUEUE']))
 		{
 			if(!isset($params['QUEUE_USERS_FIELDS']))
@@ -1012,11 +1005,12 @@ class Config
 		{
 			$date = new DateTime();
 			$date->add('8 HOUR');
-			\CAgent::AddAgent('\Bitrix\ImOpenLines\Config::deleteTemporaryConfigAgent('.$id.');', "imopenlines", "N", 28800, "", "Y", $date);
+			/** @see \Bitrix\ImOpenLines\Config::deleteTemporaryConfigAgent */
+			\CAgent::AddAgent('Bitrix\ImOpenLines\Config::deleteTemporaryConfigAgent('.$configId.');', "imopenlines", "N", 28800, "", "Y", $date);
 		}
 
 		self::sendUpdateForQueueList(Array(
-			'ID' => $id,
+			'ID' => $configId,
 			'NAME' => $data['LINE_NAME'],
 			'SESSION_PRIORITY' => $data['SESSION_PRIORITY'],
 			'QUEUE_TYPE' => $data['QUEUE_TYPE'],
@@ -1027,27 +1021,27 @@ class Config
 			ListsDataManager::updateIblockRights($fields['QUICK_ANSWERS_IBLOCK_ID']);
 		}
 
-		$eventData = array(
-			'line' => $id
-		);
+		$eventData = [
+			'line' => $configId
+		];
 		$event = new Main\Event('imopenlines', self::EVENT_IMOPENLINE_CREATE, $eventData);
 		$event->send();
 
-		return $id;
+		return $configId;
 	}
 
 	/**
-	 * @param $id
+	 * @param int $configId
 	 * @param array $params
 	 * @return Result
 	 */
-	public function update($id, array $params = []): Result
+	public function update($configId, array $params = []): Result
 	{
 		$result = new Result();
 
 		$fields = $this->prepareFields($params, self::MODE_UPDATE);
 
-		$orm = Model\ConfigTable::getById($id);
+		$orm = Model\ConfigTable::getById($configId);
 
 		if ($config = $orm->fetch())
 		{
@@ -1095,7 +1089,7 @@ class Config
 					}
 				}
 
-				$resultConfigTableUpdate = Model\ConfigTable::update($id, $fields);
+				$resultConfigTableUpdate = Model\ConfigTable::update($configId, $fields);
 
 				if($resultConfigTableUpdate->isSuccess())
 				{
@@ -1105,7 +1099,7 @@ class Config
 					)
 					{
 						$eventData = [
-							'line' => $id,
+							'line' => $configId,
 							'active' => $fields['ACTIVE']
 						];
 						$event = new Main\Event('imopenlines', self::EVENT_AFTER_IMOPENLINE_ACTIVE_CHANGE, $eventData);
@@ -1118,7 +1112,7 @@ class Config
 					)
 					{
 						$eventData = [
-							'line' => $id,
+							'line' => $configId,
 							'typeBefore' => $config['QUEUE_TYPE'],
 							'typeAfter' => $fields['QUEUE_TYPE']
 						];
@@ -1147,7 +1141,7 @@ class Config
 						{
 							$params['QUEUE_USERS_FIELDS'] = false;
 						}
-						$queueManager = new QueueManager($id);
+						$queueManager = new QueueManager($configId);
 						$queueManager->compatibleUpdate($params['QUEUE'], $params['QUEUE_USERS_FIELDS']);
 					}
 
@@ -1209,7 +1203,7 @@ class Config
 					if ($sendUpdate)
 					{
 						self::sendUpdateForQueueList([
-							'ID' => $id,
+							'ID' => $configId,
 							'NAME' => $lineName,
 							'SESSION_PRIORITY' => $fields['SESSION_PRIORITY'] ?? $config['SESSION_PRIORITY'],
 							'QUEUE_TYPE' => $queueType
@@ -1218,7 +1212,7 @@ class Config
 					elseif ($sendDelete)
 					{
 						self::sendUpdateForQueueList([
-							'ID' => $id,
+							'ID' => $configId,
 							'ACTION' => 'DELETE',
 							'SESSION_PRIORITY' => 0
 						]);
@@ -1230,7 +1224,7 @@ class Config
 						Loc::getMessage('IMOL_UPDATE_ERROR'),
 						'IMOL_ERROR_UPDATE_ERROR',
 						__METHOD__,
-						['id' => $id, 'fields' => $fields]
+						['id' => $configId, 'fields' => $fields]
 					));
 				}
 			}
@@ -1241,7 +1235,7 @@ class Config
 				Loc::getMessage('IMOL_ERROR_UPDATE_NO_LOAD_LINE'),
 				'IMOL_ERROR_UPDATE_NO_LOAD_LINE',
 				__METHOD__,
-				['idLine' => $id]
+				['idLine' => $configId]
 			));
 		}
 
@@ -1249,25 +1243,25 @@ class Config
 	}
 
 	/**
-	 * @param $id
+	 * @param int $configId
 	 * @return bool
 	 */
-	public function delete($id)
+	public function delete($configId): bool
 	{
-		$id = (int)$id;
-		if (!$id)
+		$configId = (int)$configId;
+		if (!$configId)
 		{
 			return false;
 		}
 
-		$sessList = Model\ConfigTable::getById($id);
+		$sessList = Model\ConfigTable::getById($configId);
 		if (!($config = $sessList->fetch()))
 		{
 			return false;
 		}
 
-		Model\ConfigTable::delete($id);
-		ConfigStatistic::delete($id);
+		Model\ConfigTable::delete($configId);
+		ConfigStatistic::delete($configId);
 
 		if($config['QUICK_ANSWERS_IBLOCK_ID'] > 0)
 		{
@@ -1276,7 +1270,7 @@ class Config
 
 		$sessList = Model\QueueTable::getList([
 			'select' => ['ID'],
-			'filter' => ['=CONFIG_ID' => $id]
+			'filter' => ['=CONFIG_ID' => $configId]
 		]);
 		while ($row = $sessList->fetch())
 		{
@@ -1285,18 +1279,18 @@ class Config
 
 		$raw = ConfigQueueTable::getList([
 			'select' => ['ID'],
-			'filter' => ['=CONFIG_ID' => $id]
+			'filter' => ['=CONFIG_ID' => $configId]
 		]);
 		while ($row = $raw->fetch())
 		{
 			ConfigQueueTable::delete($row['ID']);
 		}
 
-		$this->deleteAllAutomaticMessage($id);
+		$this->deleteAllAutomaticMessage($configId);
 
 		$sessList = Model\SessionTable::getList([
 			'select' => ['ID', 'CHAT_ID', 'CLOSED'],
-			'filter' => ['=CONFIG_ID' => $id]
+			'filter' => ['=CONFIG_ID' => $configId]
 		]);
 		while ($session = $sessList->fetch())
 		{
@@ -1316,7 +1310,7 @@ class Config
 					Array(
 						'filter' => Array(
 							'=ALIAS' => \Bitrix\Im\Alias::ENTITY_TYPE_LIVECHAT,
-							'=ENTITY_ID' => $id
+							'=ENTITY_ID' => $configId
 						)
 					)
 				);
@@ -1328,20 +1322,20 @@ class Config
 
 			if (Loader::includeModule('imconnector'))
 			{
-				\Bitrix\ImConnector\Output::deleteLine($id);
+				\Bitrix\ImConnector\Output::deleteLine($configId);
 			}
 		}
 		catch (\Bitrix\Main\SystemException $e)
 		{}
 
 		self::sendUpdateForQueueList(Array(
-			'ID' => $id,
+			'ID' => $configId,
 			'ACTION' => 'DELETE',
 			'SESSION_PRIORITY' => 0
 		));
 
 		$eventData = array(
-			'line' => $id
+			'line' => $configId
 		);
 		$event = new Main\Event('imopenlines', self::EVENT_IMOPENLINE_DELETE, $eventData);
 		$event->send();
@@ -1350,15 +1344,15 @@ class Config
 	}
 
 	/**
-	 * @param $id
+	 * @param int $configId
 	 * @param bool $status
 	 * @return bool
 	 */
-	public function setActive($id, $status = true): bool
+	public function setActive($configId, $status = true): bool
 	{
 		$result = false;
 
-		$resultUpdate = $this->update($id, ['ACTIVE' => $status? 'Y': 'N']);
+		$resultUpdate = $this->update($configId, ['ACTIVE' => $status? 'Y': 'N']);
 
 		if($resultUpdate->isSuccess())
 		{
@@ -1383,11 +1377,11 @@ class Config
 		return $maxLines > Model\ConfigTable::getCount(array('=ACTIVE' => 'Y', '=TEMPORARY' => 'N'));
 	}
 
-	private static function canDoOperation($id, $entity, $action, $userId = null)
+	private static function canDoOperation($configId, $entity, $action, $userId = null)
 	{
-		if (isset(self::$cacheOperation[$id][$entity][$action]))
+		if (isset(self::$cacheOperation[$configId][$entity][$action]))
 		{
-			return self::$cacheOperation[$id][$entity][$action];
+			return self::$cacheOperation[$configId][$entity][$action];
 		}
 
 		$userId = $userId ?? Security\Helper::getCurrentUserId();
@@ -1408,20 +1402,20 @@ class Config
 
 		if (!is_array($allowedUserIds))
 		{
-			self::$cacheOperation[$id][$entity][$action] = true;
+			self::$cacheOperation[$configId][$entity][$action] = true;
 			return true;
 		}
 		elseif (empty($allowedUserIds))
 		{
-			self::$cacheOperation[$id][$entity][$action] = false;
+			self::$cacheOperation[$configId][$entity][$action] = false;
 			return false;
 		}
 
 		$canEdit = false;
-		$orm = \Bitrix\ImOpenlines\Model\QueueTable::getList([
+		$orm = Model\QueueTable::getList([
 			'filter' => [
 				'=USER_ID' => $allowedUserIds,
-				'=CONFIG_ID' => $id
+				'=CONFIG_ID' => $configId
 			],
 			'order' => [
 				'SORT' => 'ASC',
@@ -1435,7 +1429,7 @@ class Config
 		if (!$canEdit)
 		{
 			$configManager = new self();
-			$config = $configManager->get($id, false);
+			$config = $configManager->get($configId, false);
 
 			if ($config['MODIFY_USER_ID'] == $userId)
 			{
@@ -1443,55 +1437,54 @@ class Config
 			}
 		}
 
-		self::$cacheOperation[$id][$entity][$action] = $canEdit;
+		self::$cacheOperation[$configId][$entity][$action] = $canEdit;
 
 		return $canEdit;
 	}
 
-	public static function canViewLine($id, $userId = null)
+	public static function canViewLine($configId, $userId = null)
 	{
-		return self::canDoOperation($id, Security\Permissions::ENTITY_LINES, Security\Permissions::ACTION_VIEW, $userId);
+		return self::canDoOperation($configId, Security\Permissions::ENTITY_LINES, Security\Permissions::ACTION_VIEW, $userId);
 	}
 
-	public static function canEditLine($id, $userId = null)
+	public static function canViewHistory($configId, $userId = null)
 	{
-		return self::canDoOperation($id, Security\Permissions::ENTITY_LINES, Security\Permissions::ACTION_MODIFY, $userId);
+		return self::canDoOperation($configId, Security\Permissions::ENTITY_HISTORY, Security\Permissions::ACTION_VIEW, $userId);
 	}
 
-	public static function canEditConnector($id, $userId = null)
+	public static function canEditLine($configId, $userId = null)
 	{
-		return self::canDoOperation($id, Security\Permissions::ENTITY_CONNECTORS, Security\Permissions::ACTION_MODIFY, $userId);
+		return self::canDoOperation($configId, Security\Permissions::ENTITY_LINES, Security\Permissions::ACTION_MODIFY, $userId);
+	}
+
+	public static function canEditConnector($configId, $userId = null)
+	{
+		return self::canDoOperation($configId, Security\Permissions::ENTITY_CONNECTORS, Security\Permissions::ACTION_MODIFY, $userId);
 	}
 
 	/**
-	 * @param $id
-	 * @param null $crmEntityType
-	 * @param null $crmEntityId
-	 * @return bool|mixed
-	 * @throws Main\LoaderException
+	 * @param int $configId
+	 * @param string|null $crmEntityType
+	 * @param int|null $crmEntityId
+	 * @return bool
 	 */
-	public static function canJoin($id, $crmEntityType = null, $crmEntityId = null)
+	public static function canJoin($configId, $crmEntityType = null, $crmEntityId = null): bool
 	{
-		if(
-			!empty($crmEntityType) &&
-			!empty($crmEntityId)
+		if (
+			!empty($crmEntityType)
+			&& !empty($crmEntityId)
 		)
 		{
-			return (
-				self::canDoOperation($id, Security\Permissions::ENTITY_JOIN, Security\Permissions::ACTION_PERFORM)
-				|| \Bitrix\ImOpenLines\Crm\Common::hasAccessToEntity($crmEntityType, $crmEntityId)
-			);
+			return
+				self::canDoOperation($configId, Security\Permissions::ENTITY_JOIN, Security\Permissions::ACTION_PERFORM)
+				|| Crm\Common::hasAccessToEntity($crmEntityType, $crmEntityId);
 		}
 
-		return self::canDoOperation($id, Security\Permissions::ENTITY_JOIN, Security\Permissions::ACTION_PERFORM);
+		return self::canDoOperation($configId, Security\Permissions::ENTITY_JOIN, Security\Permissions::ACTION_PERFORM);
 	}
 
 	/**
-	 * @return array
-	 * @throws Main\ArgumentException
-	 * @throws Main\LoaderException
-	 * @throws Main\ObjectPropertyException
-	 * @throws Main\SystemException
+	 * @return int[]
 	 */
 	public static function getIdConfigCanJoin(): array
 	{
@@ -1504,7 +1497,7 @@ class Config
 
 		while ($config = $configs->fetch())
 		{
-			if(self::canJoin($config['ID']))
+			if (self::canJoin($config['ID']))
 			{
 				$result[] = $config['ID'];
 			}
@@ -1514,12 +1507,12 @@ class Config
 	}
 
 	/**
-	 * @param $id
+	 * @param int $configId
 	 * @param bool $checkLimit
 	 * @param int $userId
 	 * @return bool|mixed
 	 */
-	public static function canVoteAsHead($id, $checkLimit = true, $userId = null)
+	public static function canVoteAsHead($configId, $checkLimit = true, $userId = null): bool
 	{
 		$result = false;
 
@@ -1528,30 +1521,30 @@ class Config
 			Limit::canUseVoteHead()
 		)
 		{
-			$result =  self::canDoOperation($id, Security\Permissions::ENTITY_VOTE_HEAD, Security\Permissions::ACTION_PERFORM, $userId);
+			$result = self::canDoOperation($configId, Security\Permissions::ENTITY_VOTE_HEAD, Security\Permissions::ACTION_PERFORM, $userId);
 		}
 
 		return $result;
 	}
 
 	/**
-	 * @param $id
+	 * @param int $configId
 	 * @param bool $withQueue
 	 * @param bool $showOffline
 	 * @param bool $withConfigQueue
 	 * @return array|bool
 	 */
-	public function get($id, $withQueue = true, $showOffline = true, $withConfigQueue = false)
+	public function get($configId, $withQueue = true, $showOffline = true, $withConfigQueue = false)
 	{
 		$config = false;
 
-		$id = (int)$id;
+		$configId = (int)$configId;
 		if (
-			!empty($id) ||
-			$id > 0
+			!empty($configId) ||
+			$configId > 0
 		)
 		{
-			$orm = Model\ConfigTable::getById($id);
+			$orm = Model\ConfigTable::getById($configId);
 			if ($config = $orm->fetch())
 			{
 				$config['WORKTIME_DAYOFF'] = explode(',', $config['WORKTIME_DAYOFF']);
@@ -1564,7 +1557,7 @@ class Config
 				if ($withQueue)
 				{
 					$selectQueue = ['ID', 'SORT', 'USER_ID', 'DEPARTMENT_ID', 'USER_NAME', 'USER_WORK_POSITION', 'USER_AVATAR', 'USER_AVATAR_ID'];
-					$filterQueue = ['=CONFIG_ID' => $id, '=USER.ACTIVE' => 'Y'];
+					$filterQueue = ['=CONFIG_ID' => $configId, '=USER.ACTIVE' => 'Y'];
 
 					if ($showOffline === true)
 					{
@@ -1619,7 +1612,7 @@ class Config
 
 				if($withConfigQueue === true)
 				{
-					$queueManager = new QueueManager($id);
+					$queueManager = new QueueManager($configId);
 
 					$config['configQueue'] = $queueManager->getConfigQueue();
 				}
@@ -1654,19 +1647,19 @@ class Config
 	/**
 	 * Returns all automatic message tasks for a specific open line.
 	 *
-	 * @param $idConfig
+	 * @param int $configId
 	 * @return array
 	 */
-	public function getAutomaticMessage($idConfig): array
+	public function getAutomaticMessage($configId): array
 	{
 		$result = [];
-		$idConfig = (int)$idConfig;
+		$configId = (int)$configId;
 
-		if (!empty($idConfig))
+		if (!empty($configId))
 		{
 			$configTasks = ConfigAutomaticMessagesTable::getList([
 				'select' => ['*'],
-				'filter' => ['=CONFIG_ID' => $idConfig],
+				'filter' => ['=CONFIG_ID' => $configId],
 				'order' => ['ID'],
 			]);
 
@@ -1680,11 +1673,11 @@ class Config
 	}
 
 	/**
-	 * @param $idConfig
-	 * @param $configs
+	 * @param int $configId
+	 * @param array $configs
 	 * @return Result
 	 */
-	public function updateAllAutomaticMessage($idConfig, $configs): Result
+	public function updateAllAutomaticMessage($configId, $configs): Result
 	{
 		$result = new Result();
 		$resultData = [
@@ -1700,7 +1693,7 @@ class Config
 
 		$configTasks = ConfigAutomaticMessagesTable::getList([
 			'select' => ['ID'],
-			'filter' => ['=CONFIG_ID' => $idConfig],
+			'filter' => ['=CONFIG_ID' => $configId],
 			'order' => ['ID'],
 		]);
 
@@ -1715,7 +1708,7 @@ class Config
 			{
 				$addConfigTasks[] = [
 					'ACTIVE' => $config['ACTIVE'],
-					'CONFIG_ID' => $idConfig,
+					'CONFIG_ID' => $configId,
 					'TIME_TASK' => $config['TIME_TASK'],
 					'MESSAGE' => $config['MESSAGE'],
 					'TEXT_BUTTON_CLOSE' => $config['TEXT_BUTTON_CLOSE'],
@@ -1752,7 +1745,7 @@ class Config
 				}
 				else
 				{
-					$result->addError(new Error('The input parameters contain tasks with the same ID twice', 'IMOL_CONFIG_ERROR_IDS_MATCH', __METHOD__, ['idConfig' => $idConfig, 'config' => $config]));
+					$result->addError(new Error('The input parameters contain tasks with the same ID twice', 'IMOL_CONFIG_ERROR_IDS_MATCH', __METHOD__, ['idConfig' => $configId, 'config' => $config]));
 				}
 			}
 		}
@@ -1790,13 +1783,13 @@ class Config
 
 		foreach ($deleteIdConfigTasks as $idTask)
 		{
-			if($this->deleteAutomaticMessage($idConfig, $idTask))
+			if($this->deleteAutomaticMessage($configId, $idTask))
 			{
 				$resultData['delete'][] = $idTask;
 			}
 			else
 			{
-				$result->addError(new Error('Couldn\'t delete task', 'IMOL_CONFIG_ERROR_DELETE_TASK', __METHOD__, ['idConfig' => $idConfig, 'idTask' => $idTask]));
+				$result->addError(new Error('Couldn\'t delete task', 'IMOL_CONFIG_ERROR_DELETE_TASK', __METHOD__, ['idConfig' => $configId, 'idTask' => $idTask]));
 			}
 		}
 
@@ -1806,19 +1799,16 @@ class Config
 	}
 
 	/**
-	 * @param $idConfig
+	 * @param int $configId
 	 * @return bool
-	 * @throws Main\ArgumentException
-	 * @throws Main\ObjectPropertyException
-	 * @throws Main\SystemException
 	 */
-	public function deleteAllAutomaticMessage($idConfig): bool
+	public function deleteAllAutomaticMessage($configId): bool
 	{
 		$result = true;
 
 		$configTasks = ConfigAutomaticMessagesTable::getList([
 			'select' => ['ID'],
-			'filter' => ['=CONFIG_ID' => $idConfig],
+			'filter' => ['=CONFIG_ID' => $configId],
 			'order' => ['ID'],
 		]);
 
@@ -1848,34 +1838,31 @@ class Config
 	}
 
 	/**
-	 * @param $idConfig
-	 * @param $idTask
+	 * @param int $configId
+	 * @param int $taskId
 	 * @return bool
-	 * @throws Main\ArgumentException
-	 * @throws Main\ObjectPropertyException
-	 * @throws Main\SystemException
 	 */
-	public function deleteAutomaticMessage($idConfig, $idTask): bool
+	public function deleteAutomaticMessage($configId, $taskId): bool
 	{
 		$result = false;
 
 		$configTasks = ConfigAutomaticMessagesTable::getList([
 			'select' => ['ID'],
 			'filter' => [
-				'=CONFIG_ID' => $idConfig,
-				'=ID' => $idTask
+				'=CONFIG_ID' => $configId,
+				'=ID' => $taskId
 			]
 		]);
 
 		while ($configTask = $configTasks->fetch())
 		{
-			$resultDelete = ConfigAutomaticMessagesTable::delete($idTask);
+			$resultDelete = ConfigAutomaticMessagesTable::delete($taskId);
 
 			if($resultDelete->isSuccess())
 			{
 				$tasks = SessionAutomaticTasksTable::getList([
 					'select' => ['ID'],
-					'filter' => ['=CONFIG_AUTOMATIC_MESSAGE_ID' => $idTask]
+					'filter' => ['=CONFIG_AUTOMATIC_MESSAGE_ID' => $taskId]
 				]);
 
 				foreach ($tasks as $task)
@@ -1920,12 +1907,12 @@ class Config
 		$permissionAllowedUsers = [];
 		if (isset($options['CHECK_PERMISSION']))
 		{
-			$permission = \Bitrix\ImOpenlines\Security\Permissions::createWithUserId($this->userId);
+			$permission = Security\Permissions::createWithUserId($this->userId);
 
-			$permissionAllowedUsers = \Bitrix\ImOpenlines\Security\Helper::getAllowedUserIds(
+			$permissionAllowedUsers = Security\Helper::getAllowedUserIds(
 				$this->userId,
 				$permission->getPermission(
-					\Bitrix\ImOpenlines\Security\Permissions::ENTITY_LINES,
+					Security\Permissions::ENTITY_LINES,
 					$options['CHECK_PERMISSION']
 				)
 			);
@@ -1937,7 +1924,7 @@ class Config
 
 				if (!empty($permissionAllowedUsers))
 				{
-					$orm = \Bitrix\ImOpenlines\Model\QueueTable::getList([
+					$orm = Model\QueueTable::getList([
 						'filter' => [
 							'=USER_ID' => $permissionAllowedUsers
 						]
@@ -2023,9 +2010,6 @@ class Config
 
 	/**
 	 * @return array
-	 * @throws Main\ArgumentException
-	 * @throws Main\ObjectPropertyException
-	 * @throws Main\SystemException
 	 */
 	public static function getOptionList()
 	{
@@ -2155,7 +2139,7 @@ class Config
 			return false;
 
 		$userList = [];
-		$orm = \Bitrix\ImOpenlines\Model\QueueTable::getList([
+		$orm = Model\QueueTable::getList([
 			'select' => [
 				'USER_ID',
 			 ],
@@ -2209,13 +2193,13 @@ class Config
 		return new self();
 	}
 
-	public static function deleteTemporaryConfigAgent($id)
+	public static function deleteTemporaryConfigAgent($configId): string
 	{
-		$orm = Model\ConfigTable::getList(Array(
-			'filter'=>Array(
-				'=ID' => $id,
-			)
-		));
+		$orm = Model\ConfigTable::getList([
+			'filter'=> [
+				'=ID' => $configId,
+			]
+		]);
 		if ($config = $orm->fetch())
 		{
 			if ($config['TEMPORARY'] == 'Y')
@@ -2224,7 +2208,8 @@ class Config
 				$configManager->delete($config['ID']);
 			}
 		}
-		return "";
+
+		return '';
 	}
 
 	public static function checkLinesLimit()
@@ -2265,14 +2250,7 @@ class Config
 
 	public static function available()
 	{
-		$orm = \Bitrix\ImOpenLines\Model\ConfigTable::getList(Array(
-			'select' => Array('CNT'),
-			'runtime' => array(
-				new ExpressionField('CNT', 'COUNT(*)')
-			),
-		));
-		$row = $orm->fetch();
-		return ($row['CNT'] > 0);
+		return (Model\ConfigTable::getCount() > 0);
 	}
 
 	private static function getSla($configId)
@@ -2322,9 +2300,6 @@ class Config
 	 * @param $configId
 	 *
 	 * @return bool
-	 * @throws Main\ArgumentException
-	 * @throws Main\ObjectPropertyException
-	 * @throws Main\SystemException
 	 */
 	public static function isShowOperatorData($configId)
 	{
@@ -2339,9 +2314,6 @@ class Config
 	 * @param $configId
 	 *
 	 * @return array|mixed
-	 * @throws Main\ArgumentException
-	 * @throws Main\ObjectPropertyException
-	 * @throws Main\SystemException
 	 */
 	public static function getDefaultOperatorData($configId)
 	{
@@ -2374,9 +2346,6 @@ class Config
 	 *
 	 * @param $configId
 	 * @return bool
-	 * @throws Main\ArgumentException
-	 * @throws Main\ObjectPropertyException
-	 * @throws Main\SystemException
 	 */
 	public static function isConfigActive($configId): bool
 	{
@@ -2396,7 +2365,6 @@ class Config
 	 * Check whether the time tracking functionality is available for this portal.
 	 *
 	 * @return bool
-	 * @throws Main\LoaderException
 	 */
 	public static function isTimeManActive(): bool
 	{

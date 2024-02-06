@@ -38,6 +38,7 @@ class SalesCenterPaySystemPanel extends CBitrixComponent implements Controllerab
 	{
 		$arParams['MODE'] = $arParams['MODE'] ?? 'main';
 		$this->mode = $arParams['MODE'];
+		$arParams['HIDE_CASH'] = $arParams['HIDE_CASH'] ?? false;
 
 		return parent::onPrepareComponentParams($arParams);
 	}
@@ -46,6 +47,7 @@ class SalesCenterPaySystemPanel extends CBitrixComponent implements Controllerab
 	{
 		return [
 			'PAYSYSTEM_COLOR',
+			'HIDE_CASH',
 		];
 	}
 
@@ -67,7 +69,7 @@ class SalesCenterPaySystemPanel extends CBitrixComponent implements Controllerab
 	{
 		if (!Loader::includeModule('salescenter'))
 		{
-			$this->showError(Loc::getMessage('SPP_SALESCENTER_MODULE_ERROR'));
+			$this->showError(Loc::getMessage('SPP_SALESCENTER_MODULE_ERROR_MSGVER_1'));
 			return;
 		}
 
@@ -118,6 +120,9 @@ class SalesCenterPaySystemPanel extends CBitrixComponent implements Controllerab
 			$this->isMainMode(),
 			self::PAYSYSTEM_TITLE_LENGTH_LIMIT,
 			$this->paySystemColor,
+			[
+				'hideCash' => $this->arParams['HIDE_CASH'],
+			]
 		);
 
 		$paySystemItems = $paySystemItemsResult->isSuccess()
@@ -253,7 +258,6 @@ class SalesCenterPaySystemPanel extends CBitrixComponent implements Controllerab
 				'alfabank' => '#EE2A23',
 				'yoo_money' => '#FFA900',
 				'qiwi' => '#E9832C',
-				'webmoney' => '#006FA8',
 				'embedded' => '#0697F2',
 				'tinkoff_bank' => '#FFE52B',
 				'installments' => '#00EEBC',
@@ -400,7 +404,8 @@ class SalesCenterPaySystemPanel extends CBitrixComponent implements Controllerab
 		$paySystemPath->addParams([
 			'analyticsLabel' => 'salescenterClickPaymentTile',
 			'type' => 'extra',
-			'mode' => 'extra'
+			'mode' => 'extra',
+			'hideCash' => $this->arParams['HIDE_CASH'],
 		]);
 
 		return [

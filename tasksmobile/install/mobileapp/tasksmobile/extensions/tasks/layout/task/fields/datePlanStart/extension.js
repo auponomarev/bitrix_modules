@@ -2,8 +2,8 @@
  * @module tasks/layout/task/fields/datePlanStart
  */
 jn.define('tasks/layout/task/fields/datePlanStart', (require, exports, module) => {
-	const {Loc} = require('loc');
-	const {DateTimeField} = require('layout/ui/fields/datetime');
+	const { Loc } = require('loc');
+	const { DateTimeField } = require('layout/ui/fields/datetime');
 
 	class DatePlanStart extends LayoutComponent
 	{
@@ -15,6 +15,8 @@ jn.define('tasks/layout/task/fields/datePlanStart', (require, exports, module) =
 				readOnly: props.readOnly,
 				startDatePlan: props.startDatePlan,
 			};
+
+			this.handleOnChange = this.handleOnChange.bind(this);
 		}
 
 		componentWillReceiveProps(props)
@@ -33,6 +35,11 @@ jn.define('tasks/layout/task/fields/datePlanStart', (require, exports, module) =
 			});
 		}
 
+		handleOnChange(date)
+		{
+			this.props.datesResolver.updateStartDate(date);
+		}
+
 		render()
 		{
 			return DateTimeField({
@@ -46,10 +53,10 @@ jn.define('tasks/layout/task/fields/datePlanStart', (require, exports, module) =
 					dateFormat: 'd MMMM, HH:mm',
 				},
 				testId: 'datePlanStart',
-				onChange: date => this.props.datesResolver.updateStartDate(date),
+				onChange: this.handleOnChange,
 			});
 		}
 	}
 
-	module.exports = {DatePlanStart};
+	module.exports = { DatePlanStart };
 });

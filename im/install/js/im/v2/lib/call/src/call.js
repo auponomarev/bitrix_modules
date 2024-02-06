@@ -1,15 +1,21 @@
-import {EventEmitter, BaseEvent} from 'main.core.events';
-import {Store} from 'ui.vue3.vuex';
+import { EventEmitter, BaseEvent } from 'main.core.events';
+import { Store } from 'ui.vue3.vuex';
 
-import {Controller} from 'im.call';
-import {Messenger} from 'im.public';
-import {Core} from 'im.v2.application.core';
-import {MessengerSlider} from 'im.v2.lib.slider';
-import {ChatOption, DialogType, RecentCallStatus, Layout, EventType, SoundType} from 'im.v2.const';
-import {Logger} from 'im.v2.lib.logger';
-import {SoundNotificationManager} from 'im.v2.lib.sound-notification';
+import { Controller, State as CallState } from 'im.call';
+import { Messenger } from 'im.public';
+import { Core } from 'im.v2.application.core';
+import { MessengerSlider } from 'im.v2.lib.slider';
+import { RecentCallStatus, Layout, EventType } from 'im.v2.const';
+import { Logger } from 'im.v2.lib.logger';
+import { PromoManager } from 'im.v2.lib.promo';
+import { SoundNotificationManager } from 'im.v2.lib.sound-notification';
+
+import { BetaCallService } from './classes/beta-call-service';
+import { openCallUserSelector } from './functions/open-call-user-selector';
 
 import 'im_call_compatible';
+
+import type { ImModelChat } from 'im.v2.model';
 
 export class CallManager
 {
@@ -42,6 +48,11 @@ export class CallManager
 		this.#subscribeToEvents();
 	}
 
+	createBetaCallRoom(chatId: number)
+	{
+		BetaCallService.createRoom(chatId);
+	}
+
 	startCall(dialogId: string, withVideo: boolean = true)
 	{
 		Logger.warn('CallManager: startCall', dialogId, withVideo);
@@ -62,7 +73,7 @@ export class CallManager
 
 	foldCurrentCall()
 	{
-		if (!this.#controller.hasActiveCall())
+		if (!this.#controller.hasActiveCall() || !this.#controller.hasVisibleCall())
 		{
 			return;
 		}
@@ -88,6 +99,16 @@ export class CallManager
 		}
 
 		return this.#controller.currentCall.associatedEntity.id;
+	}
+
+	getCurrentCall(): boolean
+	{
+		if (!this.#controller.hasActiveCall())
+		{
+			return false;
+		}
+
+		return this.#controller.currentCall;
 	}
 
 	hasCurrentCall(): boolean
@@ -133,21 +154,39 @@ export class CallManager
 				openMessenger: (dialogId) => {
 					return Messenger.openChat(dialogId);
 				},
-				openHistory: () => {},
-				openSettings: () => {}, // TODO
+				openHistory: (dialogId) => {
+					return Messenger.openChat(dialogId);
+				},
+				openSettings: () => {
+					return Messenger.openSettings();
+				},
 				openHelpArticle: () => {}, // TODO
 				getContainer: () => document.querySelector(`.${CallManager.viewContainerClass}`),
-				getMessageCount: () => this.#store.getters['recent/getTotalCounter'],
+				getMessageCount: () => this.#store.getters['counters/getTotalChatCounter'],
 				getCurrentDialogId: () => this.#getCurrentDialogId(),
-				isPromoRequired: () => false,
+				isPromoRequired: (promoCode: string) => {
+					return PromoManager.getInstance().needToShow(promoCode);
+				},
 				repeatSound: (soundType, timeout, force) => {
 					SoundNotificationManager.getInstance().playLoop(soundType, timeout, force);
 				},
 				stopRepeatSound: (soundType) => {
 					SoundNotificationManager.getInstance().stop(soundType);
-				}
+				},
+				showUserSelector: openCallUserSelector,
 			},
-			events: {}
+			events: {
+				[Controller.Events.onPromoViewed]: (event) => {
+					const { code } = event.getData();
+					PromoManager.getInstance().markAsWatched(code);
+				},
+				[Controller.Events.onOpenVideoConference]: (event) => {
+					const { dialogId: chatId } = event.getData();
+					const dialog: ImModelChat = Core.getStore().getters['chats/get'](`chat${chatId}`, true);
+
+					return Messenger.openConference({ code: dialog.public?.code });
+				},
+			},
 		});
 	}
 
@@ -162,16 +201,22 @@ export class CallManager
 
 	#onCallCreated(event)
 	{
-		const {call} = event.getData()[0];
+		const { call } = event.getData()[0];
 		call.addEventListener(BX.Call.Event.onJoin, this.#onCallJoin.bind(this));
 		call.addEventListener(BX.Call.Event.onLeave, this.#onCallLeave.bind(this));
 		call.addEventListener(BX.Call.Event.onDestroy, this.#onCallDestroy.bind(this));
 
+		const state = (
+			call.state === CallState.Connected || call.state === CallState.Proceeding
+				? RecentCallStatus.joined
+				: RecentCallStatus.waiting
+		);
+
 		this.#store.dispatch('recent/calls/addActiveCall', {
 			dialogId: call.associatedEntity.id,
 			name: call.associatedEntity.name,
-			call: call,
-			state: RecentCallStatus.waiting
+			call,
+			state,
 		});
 	}
 
@@ -180,8 +225,8 @@ export class CallManager
 		this.#store.dispatch('recent/calls/updateActiveCall', {
 			dialogId: event.call.associatedEntity.id,
 			fields: {
-				state: RecentCallStatus.joined
-			}
+				state: RecentCallStatus.joined,
+			},
 		});
 	}
 
@@ -190,15 +235,15 @@ export class CallManager
 		this.#store.dispatch('recent/calls/updateActiveCall', {
 			dialogId: event.call.associatedEntity.id,
 			fields: {
-				state: RecentCallStatus.waiting
-			}
+				state: RecentCallStatus.waiting,
+			},
 		});
 	}
 
 	#onCallDestroy(event)
 	{
 		this.#store.dispatch('recent/calls/deleteActiveCall', {
-			dialogId: event.call.associatedEntity.id
+			dialogId: event.call.associatedEntity.id,
 		});
 	}
 
@@ -216,25 +261,10 @@ export class CallManager
 
 	chatCanBeCalled(dialogId: string): boolean
 	{
-		const dialog = this.#store.getters['dialogues/get'](dialogId);
-		if (!dialog)
-		{
-			return false;
-		}
-
-		const isChat = dialog.type !== DialogType.user;
-		const callAllowed = this.#store.getters['dialogues/getChatOption'](dialog.type, ChatOption.call);
-		if (isChat && !callAllowed)
-		{
-			return false;
-		}
-
 		const callSupported = this.#checkCallSupport(dialogId);
-		const isAnnouncement = dialog.type === DialogType.announcement;
-		const isExternalTelephonyCall = dialog.type === DialogType.call;
-		const hasCurrentCall = this.hasCurrentCall();
+		const hasCurrentCall = this.#store.getters['recent/calls/hasActiveCall'](dialogId);
 
-		return callSupported && !isAnnouncement && !isExternalTelephonyCall && !hasCurrentCall;
+		return callSupported && !hasCurrentCall;
 	}
 
 	#checkCallSupport(dialogId: string): boolean
@@ -265,7 +295,7 @@ export class CallManager
 
 	#checkChatCallSupport(dialogId: string): boolean
 	{
-		const dialog = this.#store.getters['dialogues/get'](dialogId);
+		const dialog = this.#store.getters['chats/get'](dialogId);
 		if (!dialog)
 		{
 			return false;

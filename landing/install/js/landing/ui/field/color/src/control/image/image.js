@@ -4,6 +4,7 @@ import {BaseEvent} from 'main.core.events';
 import {Dom, Tag, Type, Loc, Text} from 'main.core';
 import {Image as ImageField} from 'landing.ui.field.image';
 import {Backend} from 'landing.backend';
+import {Env} from 'landing.env';
 import {PageObject} from 'landing.pageobject';
 import BaseControl from "../base_control/base_control";
 import BgImageValue from '../../bg_image_value';
@@ -24,7 +25,6 @@ export default class Image extends BaseControl
 		super();
 		this.setEventNamespace('BX.Landing.UI.Field.Color.Image');
 		this.options = options;
-
 		this.imgField = new ImageField({
 			id: 'landing_ui_color_image_' + Text.getRandom().toLowerCase(),
 			className: 'landing-ui-field-color-image-image',
@@ -33,6 +33,9 @@ export default class Image extends BaseControl
 			disableLink: true,
 			disableAltField: true,
 			allowClear: true,
+			isAiImageAvailable: Env.getInstance().getOptions()['ai_image_available'],
+			isAiImageActive: Env.getInstance().getOptions()['ai_image_active'],
+			aiUnactiveInfoCode: Env.getInstance().getOptions()['ai_unactive_info_code'],
 			dimensions: {width: 1920},
 			uploadParams: {
 				action: "Block::uploadFile",

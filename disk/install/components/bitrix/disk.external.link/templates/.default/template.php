@@ -42,7 +42,7 @@ switch(mb_strtolower($langId))
 
 	<? if(!$arResult['PROTECTED_BY_PASSWORD']){ ?>
 		<meta content="<?= $arResult['FILE']['VIEW_URL'] ?>" property="og:url"/>
-		<meta content="<?= $arResult['SITE_NAME'] ?>" property="og:site_name"/>
+		<meta content="<?= htmlspecialcharsbx($arResult['SITE_NAME']) ?>" property="og:site_name"/>
 		<meta content="<?= htmlspecialcharsbx($arResult['FILE']['NAME']) ?>" property="og:title"/>
 		<meta content="website" property="og:type"/>
 		<meta content="<?= $component->getMessage('DISK_EXT_LINK_OPEN_GRAPH_MADE_BY_B24') ?>" property="og:description"/>
@@ -66,6 +66,11 @@ switch(mb_strtolower($langId))
 			BX.UI.Notification.Center.notify({
 				content: '<?= GetMessageJS('DISK_EXT_SESSION_EXPIRED') ?>',
 			});
+
+			let url = window.location.href;
+			url = url.replace(/\&session=expired/, '');
+			window.history.replaceState({}, '', url);
+
 		<?php endif; ?>
 	});
 </script>

@@ -122,7 +122,7 @@ foreach($arResult["FIELDS"] as $fieldId => $field)
 $tabSection = array(
 	array(
 		"id" => "IBLOCK_SECTION_ID",
-		"name" => $arResult["IBLOCK"]["SECTIONS_NAME"],
+		"name" => $arResult["~IBLOCK"]["SECTIONS_NAME"],
 		"type" => "list",
 		"items" => $arResult["LIST_SECTIONS"],
 		"params" => array("size" => 15),
@@ -130,8 +130,8 @@ $tabSection = array(
 );
 
 $arTabs = array(
-	array("id" => "tab_el", "name" => $arResult["IBLOCK"]["ELEMENT_NAME"], "icon" => "", "fields" => $tabElement),
-	array("id" => "tab_se", "name" => $arResult["IBLOCK"]["SECTION_NAME"], "icon" => "", "fields" => $tabSection)
+	array("id" => "tab_el", "name" => $arResult["~IBLOCK"]["ELEMENT_NAME"], "icon" => "", "fields" => $tabElement),
+	array("id" => "tab_se", "name" => $arResult["~IBLOCK"]["SECTION_NAME"], "icon" => "", "fields" => $tabSection)
 );
 
 if (
@@ -244,7 +244,6 @@ if (
 				{
 					$arWorkflowParameters = [];
 				}
-				$formName = $arResult["form_id"];
 				$bVarsFromForm = $arResult["VARS_FROM_FORM"];
 				if ($templateId > 0)
 				{
@@ -278,7 +277,7 @@ if (
 								$arResult["IBLOCK_ID"]),
 							$arParameter,
 							["Form" => "start_workflow_form1", "Field" => $parameterKeyExt],
-							$parametersValues[$parameterKey],
+							$parametersValues[$parameterKey] ?? null,
 							false,
 							true
 						);
@@ -420,6 +419,7 @@ $APPLICATION->IncludeComponent(
 <script type="text/javascript">
 	BX.ready(function () {
 		BX.Lists['<?=$jsClass?>'] = new BX.Lists.ListsElementEditClass({
+			formId: '<?= CUtil::JSEscape(htmlspecialcharsbx($arResult['FORM_ID'])) ?>',
 			randomString: '<?=$arResult['RAND_STRING']?>',
 			urlTabBp: '<?=$urlTabBp?>',
 			iblockTypeId: '<?=$arParams["IBLOCK_TYPE_ID"]?>',
@@ -427,7 +427,7 @@ $APPLICATION->IncludeComponent(
 			elementId: '<?=$arResult["ELEMENT_ID"]?>',
 			socnetGroupId: '<?=$socnetGroupId?>',
 			sectionId: '<?= $sectionId ?>',
-			isConstantsTuned: <?= $arResult["isConstantsTuned"] ? 'true' : 'false' ?>,
+			isConstantsTuned: <?= !empty($arResult["isConstantsTuned"]) ? 'true' : 'false' ?>,
 			elementUrl: '<?= $arResult["ELEMENT_URL"] ?>',
 			sectionUrl: '<?= $arResult["LIST_SECTION_URL"] ?>',
 			lockStatus: <?=($lockStatus ? 'true' : 'false')?>

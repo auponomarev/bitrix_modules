@@ -1,11 +1,13 @@
+/* eslint-disable no-param-reassign */
+
 /**
  * @module im/messenger/model/users
  */
 jn.define('im/messenger/model/users', (require, exports, module) => {
-
-	const { UsersCache } = require('im/messenger/cache');
 	const { Type } = require('type');
-	const { Logger } = require('im/messenger/lib/logger');
+	const { DateHelper } = require('im/messenger/lib/helper');
+	const { LoggerManager } = require('im/messenger/lib/logger');
+	const logger = LoggerManager.getInstance().getLogger('model--users');
 
 	const elementState = {
 		id: 0,
@@ -19,6 +21,7 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 		extranet: false,
 		network: false,
 		bot: false,
+		botData: {},
 		connector: false,
 		externalAuthId: 'default',
 		status: '',
@@ -32,12 +35,14 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 		absent: false,
 		isAbsent: false,
 		departments: [],
+		departmentName: '',
 		phones: {
 			workPhone: '',
 			personalMobile: '',
 			personalPhone: '',
 			innerPhone: '',
-		}
+		},
+		isCompleteInfo: true,
 	};
 
 	const usersModel = {
@@ -46,13 +51,75 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 			collection: {},
 		}),
 		getters: {
-			/** @function usersModel/getUserById */
-			getUserById: (state) => (userId) => {
+			/**
+			 * @function usersModel/getById
+			 * @return {?UsersModelState}
+			 */
+			getById: (state) => (userId) => {
 				return state.collection[userId];
 			},
 
-			/** @function usersModel/getUserList */
-			getUserList: (state) => {
+			/**
+			 * @function usersModel/getList
+			 * @return {UsersModelState[]}
+			 */
+			getList: (state) => () => {
+				const userList = [];
+
+				Object.keys(state.collection).forEach((userId) => {
+					const user = state.collection[userId];
+					if (user.isCompleteInfo === true)
+					{
+						userList.push(user);
+					}
+				});
+
+				return userList;
+			},
+
+			/** @function usersModel/getByIdList */
+			getByIdList: (state, getters) => (idList) => {
+				if (!Type.isArrayFilled(idList))
+				{
+					return [];
+				}
+
+				const userList = [];
+				idList.forEach((id) => {
+					const dialog = getters.getById(id);
+					if (dialog)
+					{
+						userList.push(dialog);
+					}
+				});
+
+				return userList;
+			},
+
+			/** @function usersModel/getCollectionByIdList */
+			getCollectionByIdList: (state, getters) => (idList) => {
+				if (!Type.isArrayFilled(idList))
+				{
+					return [];
+				}
+
+				const collection = {};
+				idList.forEach((id) => {
+					const dialog = getters.getById(id);
+					if (dialog)
+					{
+						collection[id] = dialog;
+					}
+				});
+
+				return collection;
+			},
+
+			/**
+			 * @function usersModel/getListWithUncompleted
+			 * @return {UsersModelState[]}
+			 */
+			getListWithUncompleted: (state) => () => {
 				const userList = [];
 
 				Object.keys(state.collection).forEach((userId) => {
@@ -61,24 +128,69 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 
 				return userList;
 			},
+
+			/**
+			 * @function usersModel/hasBirthday
+			 * @return boolean
+			 */
+			hasBirthday: (state) => (rawUserId) => {
+				const userId = Number.parseInt(rawUserId, 10);
+
+				const user = state.collection[userId];
+				if (userId <= 0 || !user)
+				{
+					return false;
+				}
+
+				const timestampInSeconds = Math.round(Date.now() / 1000);
+
+				return user.birthday === dateFormatter.get(timestampInSeconds, 'd-m');
+			},
+
+			/**
+			 * @function usersModel/hasVacation
+			 * @return boolean
+			 */
+			hasVacation: (state) => (rawUserId) => {
+				const userId = Number.parseInt(rawUserId, 10);
+
+				const user = state.collection[userId];
+				if (userId <= 0 || !user)
+				{
+					return false;
+				}
+
+				const absentDate = DateHelper.cast(user.absent, false);
+				if (absentDate === false)
+				{
+					return false;
+				}
+
+				return absentDate > new Date();
+			},
 		},
 		actions: {
 			/** @function usersModel/setState */
-			setState: (store, payload) =>
-			{
-				store.commit('setState', payload);
+			setState: (store, payload) => {
+				store.commit('setState', {
+					actionName: 'setState',
+					data: {
+						collection: payload.collection,
+					},
+				});
 			},
 
-			/** @function usersModel/set */
-			set: (store, payload) =>
-			{
+			/** @function usersModel/setFromLocalDatabase */
+			setFromLocalDatabase: (store, payload) => {
 				let result = [];
 				if (Type.isArray(payload))
 				{
-					result = payload.map(user => {
+					result = payload.map((user) => {
 						return {
 							...elementState,
-							...validate(user),
+							...validate(user, {
+								fromLocalDatabase: true,
+							}),
 						};
 					});
 				}
@@ -88,50 +200,221 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 					return false;
 				}
 
-				store.commit('set', result);
+				store.commit('set', {
+					actionName: 'setFromLocalDatabase',
+					data: {
+						userList: result,
+					},
+				});
+
+				return true;
+			},
+
+			/** @function usersModel/set */
+			set: (store, payload) => {
+				let result = [];
+				if (Type.isArray(payload))
+				{
+					result = payload.map((user) => {
+						return {
+							...elementState,
+							...validate(user),
+							isCompleteInfo: true,
+						};
+					});
+				}
+
+				if (result.length === 0)
+				{
+					return false;
+				}
+
+				store.commit('set', {
+					actionName: 'set',
+					data: {
+						userList: result,
+					},
+				});
+
+				return true;
+			},
+
+			/** @function usersModel/addShort */
+			addShort: (store, payload) => {
+				if (!Type.isArray(payload) && Type.isPlainObject(payload))
+				{
+					payload = [payload];
+				}
+
+				const userList = [];
+				payload.forEach((user) => {
+					const modelUser = validate(user);
+					const existingUser = store.state.collection[modelUser.id];
+					if (!existingUser)
+					{
+						modelUser.isCompleteInfo = false;
+						userList.push({
+							...elementState,
+							...modelUser,
+						});
+					}
+				});
+
+				if (Type.isArrayFilled(userList))
+				{
+					store.commit('set', {
+						actionName: 'addShort',
+						data: {
+							userList,
+						},
+					});
+				}
+			},
+
+			/** @function usersModel/update */
+			update: (store, payload) => {
+				const result = [];
+				if (Type.isArray(payload))
+				{
+					payload.forEach((user) => {
+						const existingItem = store.state.collection[user.id];
+						if (existingItem)
+						{
+							result.push({
+								...store.state.collection[user.id],
+								...validate(user),
+								isCompleteInfo: true,
+							});
+						}
+					});
+				}
+
+				if (result.length > 0)
+				{
+					store.commit('set', {
+						actionName: 'update',
+						data: {
+							userList: result,
+						},
+					});
+				}
+			},
+
+			/** @function usersModel/merge */
+			merge: (store, payload) => {
+				const result = [];
+				if (Type.isArray(payload))
+				{
+					payload.forEach((user) => {
+						const existingItem = store.state.collection[user.id];
+						if (existingItem)
+						{
+							result.push({
+								...store.state.collection[user.id],
+								...validate(user),
+							});
+						}
+						else
+						{
+							const isHasBaseProperty = (
+								user.id
+								&& user.name
+								&& (user.firstName || user.first_name)
+							);
+
+							if (isHasBaseProperty)
+							{
+								result.push({
+									...elementState,
+									...validate(user),
+								});
+							}
+						}
+					});
+				}
+
+				if (result.length > 0)
+				{
+					store.commit('set', {
+						actionName: 'merge',
+						data: {
+							userList: result,
+						},
+					});
+				}
 			},
 
 			/** @function usersModel/delete */
-			delete: (store, payload) =>
-			{
+			delete: (store, payload) => {
 				const existingItem = store.state.collection[payload.id];
 				if (!existingItem)
 				{
 					return false;
 				}
 
-				store.commit('delete', { id: payload.id });
+				store.commit('delete', {
+					actionName: 'delete',
+					data: {
+						id: payload.id,
+					},
+				});
+
+				return true;
 			},
 		},
 		mutations: {
+			/**
+			 * @param state
+			 * @param {MutationPayload} payload
+			 */
 			setState: (state, payload) => {
-				Logger.warn('usersModel: setState mutation', payload);
+				logger.log('usersModel: setState mutation', payload);
 
-				state.collection = payload.collection;
+				const {
+					collection,
+				} = payload.data;
+
+				state.collection = collection;
 			},
-			set: (state, payload) => {
-				Logger.warn('usersModel: set mutation', payload);
 
-				payload.forEach((user) => {
+			/**
+			 * @param state
+			 * @param {MutationPayload} payload
+			 */
+			set: (state, payload) => {
+				logger.log('usersModel: set mutation', payload);
+
+				const {
+					userList,
+				} = payload.data;
+
+				userList.forEach((user) => {
 					state.collection[user.id] = user;
 				});
-
-				UsersCache.save(state);
 			},
+
+			/**
+			 * @param state
+			 * @param {MutationPayload} payload
+			 */
 			delete: (state, payload) => {
-				Logger.warn('usersModel: delete mutation', payload);
+				logger.log('usersModel: delete mutation', payload);
 
-				delete state.collection[payload.id];
+				const {
+					id,
+				} = payload.data;
 
-				UsersCache.save(state);
+				delete state.collection[id];
 			},
-		}
+		},
 	};
 
-	function validate(rowFields)
+	function validate(fields, options = {})
 	{
-		const fields = ChatUtils.objectKeysToLowerCase(rowFields);
 		const result = {};
+		const {
+			fromLocalDatabase,
+		} = options;
 
 		if (Type.isNumber(fields.id) || Type.isString(fields.id))
 		{
@@ -142,18 +425,22 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 		{
 			fields.firstName = fields.first_name;
 		}
+
 		if (Type.isStringFilled(fields.last_name))
 		{
 			fields.lastName = fields.last_name;
 		}
+
 		if (Type.isStringFilled(fields.firstName))
 		{
 			result.firstName = ChatUtils.htmlspecialcharsback(fields.firstName);
 		}
+
 		if (Type.isStringFilled(fields.lastName))
 		{
 			result.lastName = ChatUtils.htmlspecialcharsback(fields.lastName);
 		}
+
 		if (Type.isStringFilled(fields.name))
 		{
 			fields.name = ChatUtils.htmlspecialcharsback(fields.name);
@@ -167,13 +454,21 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 
 		if (Type.isStringFilled(fields.avatar))
 		{
-			result.avatar = prepareAvatar(fields.avatar);
+			if (fromLocalDatabase === true)
+			{
+				result.avatar = fields.avatar;
+			}
+			else
+			{
+				result.avatar = prepareAvatar(fields.avatar);
+			}
 		}
 
 		if (Type.isStringFilled(fields.work_position))
 		{
 			fields.workPosition = fields.work_position;
 		}
+
 		if (Type.isStringFilled(fields.workPosition))
 		{
 			result.workPosition = ChatUtils.htmlspecialcharsback(fields.workPosition);
@@ -181,7 +476,7 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 
 		if (Type.isStringFilled(fields.gender))
 		{
-			result.gender = fields.gender === 'F'? 'F': 'M';
+			result.gender = fields.gender === 'F' ? 'F' : 'M';
 		}
 
 		if (Type.isStringFilled(fields.birthday))
@@ -204,6 +499,26 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 			result.bot = fields.bot;
 		}
 
+		if (Type.isObject(fields.bot_data))
+		{
+			result.botData = {
+				appId: fields.bot_data.app_id,
+				code: fields.bot_data.code,
+				isHidden: fields.bot_data.is_hidden,
+				isSupportOpenline: fields.bot_data.is_support_openline,
+				type: fields.bot_data.type,
+			};
+		}
+		else
+		{
+			result.botData = {};
+		}
+
+		if (Type.isObject(fields.botData))
+		{
+			result.botData = fields.botData;
+		}
+
 		if (Type.isBoolean(fields.connector))
 		{
 			result.connector = fields.connector;
@@ -213,6 +528,7 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 		{
 			fields.externalAuthId = fields.external_auth_id;
 		}
+
 		if (Type.isStringFilled(fields.externalAuthId))
 		{
 			result.externalAuthId = fields.externalAuthId;
@@ -227,18 +543,22 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 		{
 			result.idle = fields.idle;
 		}
+
 		if (!Type.isUndefined(fields.last_activity_date))
 		{
 			fields.lastActivityDate = fields.last_activity_date;
 		}
+
 		if (!Type.isUndefined(fields.lastActivityDate))
 		{
 			result.lastActivityDate = fields.lastActivityDate;
 		}
+
 		if (!Type.isUndefined(fields.mobile_last_date))
 		{
 			fields.mobileLastDate = fields.mobile_last_date;
 		}
+
 		if (!Type.isUndefined(fields.mobileLastDate))
 		{
 			result.mobileLastDate = fields.lastActivityDate;
@@ -246,14 +566,13 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 
 		if (!Type.isUndefined(fields.absent))
 		{
-			result.absent = fields.lastActivityDate;
+			result.absent = fields.absent;
 		}
 
 		if (Array.isArray(fields.departments))
 		{
 			result.departments = [];
-			fields.departments.forEach(departmentId =>
-			{
+			fields.departments.forEach((departmentId) => {
 				departmentId = Number.parseInt(departmentId, 10);
 				if (departmentId > 0)
 				{
@@ -262,9 +581,19 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 			});
 		}
 
+		if (Type.isString(fields.departmentName))
+		{
+			result.departmentName = fields.departmentName;
+		}
+
 		if (Type.isPlainObject(fields.phones))
 		{
 			result.phones = preparePhones(fields.phones);
+		}
+
+		if (Type.isBoolean(fields.isCompleteInfo))
+		{
+			result.isCompleteInfo = fields.isCompleteInfo;
 		}
 
 		return result;
@@ -303,6 +632,7 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 		{
 			phones.workPhone = phones.work_phone;
 		}
+
 		if (Type.isStringFilled(phones.workPhone) || Type.isNumber(phones.workPhone))
 		{
 			result.workPhone = phones.workPhone.toString();
@@ -312,6 +642,7 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 		{
 			phones.personalMobile = phones.personal_mobile;
 		}
+
 		if (Type.isStringFilled(phones.personalMobile) || Type.isNumber(phones.personalMobile))
 		{
 			result.personalMobile = phones.personalMobile.toString();
@@ -321,6 +652,7 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 		{
 			phones.personalPhone = phones.personal_phone;
 		}
+
 		if (Type.isStringFilled(phones.personalPhone) || Type.isNumber(phones.personalPhone))
 		{
 			result.personalPhone = phones.personalPhone.toString();
@@ -330,6 +662,7 @@ jn.define('im/messenger/model/users', (require, exports, module) => {
 		{
 			phones.innerPhone = phones.inner_phone;
 		}
+
 		if (Type.isStringFilled(phones.innerPhone) || Type.isNumber(phones.innerPhone))
 		{
 			result.innerPhone = phones.innerPhone.toString();

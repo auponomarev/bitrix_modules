@@ -4,7 +4,9 @@ namespace Bitrix\Crm\Model;
 
 use Bitrix\Crm\CompanyTable;
 use Bitrix\Crm\Currency;
+use Bitrix\Crm\Entity\CommentsHelper;
 use Bitrix\Crm\FieldMultiTable;
+use Bitrix\Crm\Format\TextHelper;
 use Bitrix\Crm\Item;
 use Bitrix\Crm\Observer\Entity\ObserverTable;
 use Bitrix\Crm\ProductRowTable;
@@ -106,6 +108,9 @@ final class FieldRepository
 		return
 			(new DatetimeField($fieldName))
 				->configureTitle(Loc::getMessage($messageCode))
+				->configureDefaultValue(static function () {
+					return new DateTime();
+				})
 		;
 	}
 
@@ -246,7 +251,7 @@ final class FieldRepository
 				return $defaultMyCompanyId;
 			}
 
-			return null;
+			return 0;
 		};
 
 		return
@@ -306,7 +311,7 @@ final class FieldRepository
 	): ScalarField
 	{
 		$title = Loc::getMessage($entityTypeId === \CCrmOwnerType::Quote
-			? 'CRM_TYPE_QUOTE_FIELD_STATUS'
+			? 'CRM_TYPE_QUOTE_FIELD_STATUS_MSGVER_2'
 			: 'CRM_TYPE_ITEM_FIELD_STAGE_ID'
 		);
 
@@ -436,16 +441,9 @@ final class FieldRepository
 		;
 	}
 
-	/**
-	 * @deprecated This field is not used anymore
-	 *
-	 * @param string $fieldName
-	 * @return ScalarField
-	 */
-	public function getExchRate(string $fieldName = 'EXCH_RATE'): ScalarField
+	public function getExchRate(string $fieldName = Item::FIELD_NAME_EXCH_RATE): ScalarField
 	{
 		return
-			/** @deprecated */
 			(new FloatField($fieldName))
 				->configureScale(4)
 				->configureDefaultValue(1)
@@ -488,8 +486,21 @@ final class FieldRepository
 			(new TextField($fieldName))
 				->configureNullable()
 				->configureTitle(Loc::getMessage('CRM_TYPE_ITEM_FIELD_COMMENTS'))
-				->addSaveDataModifier($this->getHtmlNormalizer())
+				->addSaveDataModifier($this->getCommentsNormalizer())
 		;
+	}
+
+	/**
+	 * Returns save data modifier that normalizes value for fields with text content. As they are used to be html,
+	 * and now - bb, html -> bb conversion is implemented for backwards compatibility.
+	 *
+	 * @return callable
+	 */
+	public function getCommentsNormalizer(): callable
+	{
+		return static function ($value): string {
+			return CommentsHelper::normalizeComment($value);
+		};
 	}
 
 	/**
@@ -500,7 +511,7 @@ final class FieldRepository
 	public function getHtmlNormalizer(): callable
 	{
 		return static function ($value): string {
-			return \Bitrix\Crm\Format\TextHelper::sanitizeHtml($value);
+			return TextHelper::sanitizeHtml($value);
 		};
 	}
 

@@ -2,8 +2,8 @@
  * @module tasks/layout/task/fields/isMatchWorkTime
  */
 jn.define('tasks/layout/task/fields/isMatchWorkTime', (require, exports, module) => {
-	const {Loc} = require('loc');
-	const {BooleanField, BooleanMode} = require('layout/ui/fields/boolean');
+	const { Loc } = require('loc');
+	const { BooleanField, BooleanMode } = require('layout/ui/fields/boolean');
 
 	class IsMatchWorkTime extends LayoutComponent
 	{
@@ -15,6 +15,8 @@ jn.define('tasks/layout/task/fields/isMatchWorkTime', (require, exports, module)
 				readOnly: props.readOnly,
 				isMatchWorkTime: props.isMatchWorkTime,
 			};
+
+			this.handleOnChange = this.handleOnChange.bind(this);
 		}
 
 		componentWillReceiveProps(props)
@@ -31,6 +33,13 @@ jn.define('tasks/layout/task/fields/isMatchWorkTime', (require, exports, module)
 				readOnly: newState.readOnly,
 				isMatchWorkTime: newState.isMatchWorkTime,
 			});
+		}
+
+		handleOnChange(value)
+		{
+			this.setState({ isMatchWorkTime: value });
+			this.props.onChange(value);
+			this.props.datesResolver.setIsMatchWorkTime(value);
 		}
 
 		render()
@@ -51,15 +60,11 @@ jn.define('tasks/layout/task/fields/isMatchWorkTime', (require, exports, module)
 						showSwitcher: true,
 					},
 					testId: 'isMatchWorkTime',
-					onChange: (value) => {
-						this.setState({isMatchWorkTime: value});
-						this.props.onChange(value);
-						this.props.datesResolver.setIsMatchWorkTime(value);
-					},
+					onChange: this.handleOnChange,
 				}),
 			);
 		}
 	}
 
-	module.exports = {IsMatchWorkTime};
+	module.exports = { IsMatchWorkTime };
 });

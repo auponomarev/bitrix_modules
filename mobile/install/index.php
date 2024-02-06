@@ -39,6 +39,9 @@ Class mobile extends CModule
 			"tasks",
 			"calendar",
 			"imconnector",
+			"catalog",
+			'bizproc',
+			'lists',
 		];
 	}
 
@@ -77,6 +80,8 @@ Class mobile extends CModule
 		$eventManager->registerEventHandler('mobileapp', 'onJNComponentWorkspaceGet', 'mobile', 'CMobileEvent', 'getJNWorkspace');
 		$eventManager->registerEventHandler('mobile', 'onMobileMenuStructureBuilt', 'mobile', 'CMobileEvent', 'onMobileMenuBuilt');
 		$eventManager->registerEventHandler('main', 'onKernelCheckInstallFilesMappingGet', 'mobile', 'CMobileEvent', 'getKernelCheckPath');
+		$eventManager->registerEventHandler('mobileapp', 'onBeforeComponentContentGet', 'mobile', 'CMobileEvent', 'onBeforeComponentContentGet');
+
 
 		return true;
 	}
@@ -90,6 +95,7 @@ Class mobile extends CModule
 		$eventManager->unRegisterEventHandler('rest', 'OnRestServiceBuildDescription', 'mobile', '\Bitrix\Mobile\Rest', 'onRestServiceBuildDescription');
 		$eventManager->unRegisterEventHandler('mobileapp', 'onJNComponentWorkspaceGet', 'mobile', 'CMobileEvent', 'getJNWorkspace');
 		$eventManager->unRegisterEventHandler('main', 'onKernelCheckInstallFilesMappingGet', 'mobile', 'CMobileEvent', 'getKernelCheckPath');
+		$eventManager->unRegisterEventHandler('mobileapp', 'onBeforeComponentContentGet', 'mobile', 'CMobileEvent', 'onBeforeComponentContentGet');
 
 		UnRegisterModule("mobile");
 		return true;
@@ -128,12 +134,14 @@ Class mobile extends CModule
 					$mobileAppFound = true;
 					$template = $arAppTempalate;
 				}
+
 				$arFields["TEMPLATE"][] = array(
 					"TEMPLATE" => $template['TEMPLATE'],
 					"SORT" => $template['SORT'],
 					"CONDITION" => $template['CONDITION']
 				);
 			}
+
 			if (!$mobileAppFound)
 			{
 				$arFields["TEMPLATE"][] = $arAppTempalate;

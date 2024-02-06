@@ -154,6 +154,7 @@ class Installed extends BaseTemplate
 		if (empty($appCodes)) {
 			$response = Transport::instance()->call(Transport::METHOD_TOTAL_APPS);
 			$this->result['TOTAL_APPS'] = NumberApps::get($response);
+			$this->result['SHOW_MARKET_ICON'] = $response[Transport::METHOD_TOTAL_APPS]['SHOW_MARKET_ICON'];
 		}
 
 		$unpublishedApps = array_diff($appCodes, $publishedApps);
@@ -175,6 +176,11 @@ class Installed extends BaseTemplate
 
 			if (isset($appItem['BUTTONS'][Action::RIGHTS_SETTING]) || isset($appItem['BUTTONS'][Action::DELETE])) {
 				$appItem['SHOW_CONTEXT_MENU'] = 'Y';
+			}
+
+			if (in_array($appItem['STATUS'], [AppTable::STATUS_FREE, AppTable::STATUS_SUBSCRIPTION])) {
+				$appItem['FREE'] = $appItem['STATUS'] == AppTable::STATUS_FREE ? 'Y' : 'N';
+				$appItem['BY_SUBSCRIPTION'] = $appItem['STATUS'] == AppTable::STATUS_SUBSCRIPTION ? 'Y' : 'N';
 			}
 		}
 		unset($appItem);

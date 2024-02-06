@@ -3,6 +3,7 @@
  */
 jn.define('crm/product-grid/menu/product-context-menu', (require, exports, module) => {
 	const { Loc } = require('loc');
+	const { ContextMenu } = require('layout/ui/context-menu');
 
 	/**
 	 * @class ProductContextMenu
@@ -28,7 +29,7 @@ jn.define('crm/product-grid/menu/product-context-menu', (require, exports, modul
 			{
 				actions.push({
 					id: 'edit',
-					title: Loc.getMessage('PRODUCT_GRID_MENU_PRODUCT_CONTEXT_EDIT_PRODUCT'),
+					title: Loc.getMessage('PRODUCT_GRID_MENU_PRODUCT_CONTEXT_EDIT_PRODUCT_MSGVER_1'),
 					subTitle: '',
 					data: {
 						svgIcon: SvgIcons.edit,
@@ -81,6 +82,7 @@ jn.define('crm/product-grid/menu/product-context-menu', (require, exports, modul
 					this.props[eventName]();
 				}
 			});
+
 			return Promise.resolve();
 		}
 

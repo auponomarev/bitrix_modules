@@ -162,6 +162,16 @@ BX.ImMobile = function(params)
 	this.messenger.popupMessengerBodyWrap = BX('im-dialog-wrap');
 
 	BX.addClass(this.messenger.popupMessengerBodyWrap, 'bx-messenger-dialog-wrap');
+
+	if (BX.componentParameters.get('THEME_ID') === 'dark')
+	{
+		BX.addClass(document.body, 'bx-messenger-dark');
+	}
+	else
+	{
+		BX.addClass(document.body, 'bx-messenger-light');
+	}
+
 	this.messenger.dialogOpen = true;
 
 	clearInterval(this.serviceInterval);
@@ -601,7 +611,7 @@ BX.ImMobile.prototype.mobileActionReady = function()
 			items:[
 				{
 					"id":"disk",
-					"name":BX.message("IM_B24DISK"),
+					"name":BX.message("IM_B24DISK_MSGVER_1"),
 					"dataSource":
 					{
 						"multiple":false,

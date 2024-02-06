@@ -362,6 +362,10 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	  setSyncStatus(mode) {
 	    this.unitNode.className = 'calendar-sync__calendar-item';
 	    switch (mode) {
+	      case this.connectionProvider.STATUS_REFUSED:
+	        main_core.Dom.addClass(this.unitNode, '--refused');
+	        this.setSyncInfoStatusText(main_core.Loc.getMessage('CAL_SYNC_INFO_STATUS_REFUSED'), false);
+	        break;
 	      case this.connectionProvider.STATUS_SUCCESS:
 	        main_core.Dom.addClass(this.unitNode, '--complete');
 	        this.setSyncInfoStatusText(this.formatSyncTime(this.connectionProvider.getSyncDate()));
@@ -379,14 +383,19 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	        this.setSyncInfoStatusText(main_core.Loc.getMessage('CAL_SYNC_INFO_STATUS_SYNCHRONIZING'));
 	        break;
 	      case this.connectionProvider.STATUS_NOT_CONNECTED:
-	        this.setSyncInfoStatusText('');
+	        if (this.connectionProvider.isGoogleApplicationRefused) {
+	          main_core.Dom.addClass(this.unitNode, '--off');
+	          this.setSyncInfoStatusText(main_core.Loc.getMessage('CAL_SYNC_INFO_STATUS_REFUSED'), false);
+	        } else {
+	          this.setSyncInfoStatusText('');
+	        }
 	        break;
 	    }
 	  }
-	  setSyncInfoStatusText(text) {
+	  setSyncInfoStatusText(text, upperCase = true) {
 	    const syncInfoStatusText = this.syncInfoWrap.querySelector('[data-role="sync_info_text"]');
 	    if (main_core.Type.isElementNode(syncInfoStatusText)) {
-	      syncInfoStatusText.innerHTML = main_core.Text.encode(text).toUpperCase();
+	      syncInfoStatusText.innerHTML = upperCase ? main_core.Text.encode(text).toUpperCase() : main_core.Text.encode(text);
 	    }
 	  }
 	  getButtonsWrap() {
@@ -395,16 +404,18 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 				${0}
 				${0}
 			</div>`), this.getButton(), this.getMoreButton());
-	      main_core.Event.bind(this.moreButton, 'click', this.handleItemClick.bind(this));
 	    }
 	    return this.buttonsWrap;
 	  }
 	  refreshButton() {
 	    main_core.Dom.clean(this.buttonsWrap);
-	    this.moreButton = this.buttonsWrap.appendChild(this.getMoreButton());
 	    this.button = this.buttonsWrap.appendChild(this.getButton());
+	    this.moreButton = this.buttonsWrap.appendChild(this.getMoreButton());
 	  }
 	  getButton() {
+	    if (this.connectionProvider.isGoogleApplicationRefused) {
+	      return null;
+	    }
 	    switch (this.connectionProvider.getStatus()) {
 	      case this.connectionProvider.STATUS_SUCCESS:
 	        this.button = main_core.Tag.render(_t5$2 || (_t5$2 = _$2`
@@ -442,15 +453,17 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	  }
 	  getMoreButton() {
 	    this.moreButton = main_core.Tag.render(_t10 || (_t10 = _$2`
-			<div 
+			<div
 				data-role="more-button" 
 				class="ui-btn ui-btn-round ui-btn-light-border calendar-sync__calendar-item--more"
-			></div>`));
+			></div>
+		`));
+	    main_core.Event.bind(this.moreButton, 'click', this.handleItemClick.bind(this));
 	    return this.moreButton;
 	  }
 	  handleItemClick(e) {
 	    const status = this.connectionProvider.getStatus();
-	    if ([this.connectionProvider.STATUS_SUCCESS, this.connectionProvider.STATUS_FAILED].includes(status)) {
+	    if ([this.connectionProvider.STATUS_SUCCESS, this.connectionProvider.STATUS_FAILED, this.connectionProvider.STATUS_REFUSED].includes(status)) {
 	      if (this.connectionProvider.hasMenu()) {
 	        this.connectionProvider.showMenu(this.button);
 	      } else if (this.connectionProvider.getConnectStatus()) {
@@ -715,13 +728,6 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    }
 	  }
 	  onClick() {
-	    BX.ajax.runAction('calendar.api.calendarajax.analytical', {
-	      analyticsLabel: {
-	        open_connection_slider: 'Y',
-	        sync_connection_type: this.item.getType(),
-	        sync_connection_status: this.item.getSyncStatus() ? 'Y' : 'N'
-	      }
-	    });
 	    if (this.item.hasMenu()) {
 	      this.item.showMenu(this.gridUnit);
 	    } else if (this.item.getConnectStatus()) {
@@ -914,8 +920,8 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	  }
 	  initQrCode() {
 	    return new Promise(resolve => {
-	      main_core.Runtime.loadExtension(['main.qrcode']).then(exports => {
-	        if (exports && exports.QRCode) {
+	      main_core.Runtime.loadExtension(['main.qrcode']).then(() => {
+	        if (typeof QRCode !== 'undefined') {
 	          resolve();
 	        }
 	      });
@@ -1057,9 +1063,9 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 			${0}
 		`), this.getContentActiveBodyHeader(), this.getContentActiveBodySectionsHeader(), this.getContentActiveBodySectionsManager());
 	  }
-	  showHelp() {
-	    if (BX.Helper) {
-	      BX.Helper.show("redirect=detail&code=" + this.helpdeskCode);
+	  showHelp(event) {
+	    if (top.BX.Helper) {
+	      top.BX.Helper.show("redirect=detail&code=" + this.helpdeskCode);
 	      event.preventDefault();
 	    }
 	  }
@@ -1238,12 +1244,6 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    const buttonWrapper = formObject.getButtonWrapper();
 	    const bodyHeader = this.getContentInfoBodyHeader();
 	    button.addEventListener('click', event => {
-	      BX.ajax.runAction('calendar.api.calendarajax.analytical', {
-	        analyticsLabel: {
-	          click_to_connection_button: 'Y',
-	          connection_type: this.provider.getType()
-	        }
-	      });
 	      main_core.Dom.addClass(button, ['ui-btn-clock', 'ui-btn-disabled']);
 	      event.preventDefault();
 	      this.sendRequestAddConnection(form);
@@ -1718,12 +1718,6 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	        slider.close();
 	      }
 	    });
-	    BX.ajax.runAction('calendar.api.calendarajax.analytical', {
-	      analyticsLabel: {
-	        calendarAction: 'complete_wizard_close',
-	        connection_type: this.TYPE
-	      }
-	    });
 	  }
 	  handleUpdateState(stateData) {
 	    const currentTimestamp = Date.now();
@@ -2088,14 +2082,8 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    this.handleSuccessConnectionDebounce = main_core.Runtime.debounce(this.handleSuccessConnection, this.HANDLE_CONNECTION_DELAY, this);
 	  }
 	  createConnection() {
-	    BX.ajax.runAction('calendar.api.calendarajax.analytical', {
-	      analyticsLabel: {
-	        calendarAction: 'createConnection',
-	        click_to_connection_button: 'Y',
-	        connection_type: 'google'
-	      }
-	    });
-	    BX.util.popup(this.provider.getSyncLink(), 500, 600);
+	    const syncLink = this.provider.getSyncLink();
+	    BX.util.popup(syncLink, 500, 600);
 	    main_core.Event.bind(window, 'hashchange', this.handleSuccessConnectionDebounce);
 	    main_core.Event.bind(window, 'message', this.handleSuccessConnectionDebounce);
 	  }
@@ -2107,6 +2095,8 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	      this.openSyncWizard();
 	      this.provider.setStatus(this.provider.STATUS_SYNCHRONIZING);
 	      this.provider.getInterfaceUnit().refreshButton();
+	      main_core.Event.unbind(window, 'hashchange', this.handleSuccessConnectionDebounce);
+	      main_core.Event.unbind(window, 'message', this.handleSuccessConnectionDebounce);
 	    }
 	  }
 	  getSectionsForGoogle() {
@@ -2502,13 +2492,6 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	  openHelpDesk() {
 	    const helpDeskCode = '15426356';
 	    top.BX.Helper.show('redirect=detail&code=' + helpDeskCode);
-	    BX.ajax.runAction('calendar.api.calendarajax.analytical', {
-	      analyticsLabel: {
-	        calendarAction: 'openHelpDesk',
-	        click_to_helpdesk_button: 'Y',
-	        connection_type: 'icloud'
-	      }
-	    });
 	  }
 	  handleKeyPress(e) {
 	    if (e.keyCode === calendar_util.Util.getKeyCode('enter')) {
@@ -2729,17 +2712,7 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	        this.openSyncWizard(data.appleId);
 	        this.syncCalendarsWithIcloud(result.connectionId);
 	      }
-	    }, response => {
-	      const result = response.data;
-	      if (result.status === 'incorrect_app_pass') {
-	        BX.ajax.runAction('calendar.api.calendarajax.analytical', {
-	          analyticsLabel: {
-	            calendarAction: 'createConnection',
-	            wrong_app_pass: 'Y',
-	            connection_type: 'icloud'
-	          }
-	        });
-	      }
+	    }, () => {
 	      this.authDialog.showErrorAuthorizationAlert();
 	    });
 	  }
@@ -2789,13 +2762,6 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    this.showUpdateSectionListNotification();
 	  }
 	  handleConnectButton() {
-	    BX.ajax.runAction('calendar.api.calendarajax.analytical', {
-	      analyticsLabel: {
-	        calendarAction: 'createConnection',
-	        click_to_connection_button: 'Y',
-	        connection_type: 'icloud'
-	      }
-	    });
 	    this.initPopup();
 	    if (calendar_util.Util.isIphoneConnected() || calendar_util.Util.isMacConnected()) {
 	      this.alertSyncPopup.show();
@@ -2888,9 +2854,9 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    this.getSyncStages().forEach(stage => {
 	      if (stateData.stage === 'connection_created' && stage.name === this.STAGE_1_CODE) {
 	        stage.setDone();
-	      } else if (stateData.stage === this.STAGE_2_CODE && (stage.name === this.STAGE_1_CODE || stage.name === this.STAGE_2_CODE)) {
+	      } else if (stateData.stage === 'import_finished' && (stage.name === this.STAGE_1_CODE || stage.name === this.STAGE_2_CODE)) {
 	        stage.setDone();
-	      } else if (stateData.stage === this.STAGE_3_CODE) {
+	      } else if (stateData.stage === 'export_finished') {
 	        stage.setDone();
 	        this.setActiveStatusFinished();
 	        this.showButtonWrapper();
@@ -2922,56 +2888,26 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	      connection: connection,
 	      popupWithUpdateButton: true
 	    });
+	    this.HANDLE_CONNECTION_DELAY = 500;
 	    this.sectionStatusObject = {};
 	    this.sectionList = [];
+	    this.handleSuccessConnectionDebounce = main_core.Runtime.debounce(this.handleSuccessConnection, this.HANDLE_CONNECTION_DELAY, this);
 	  }
 	  createConnection() {
-	    BX.ajax.runAction('calendar.api.calendarajax.analytical', {
-	      analyticsLabel: {
-	        calendarAction: 'createConnection',
-	        click_to_connection_button: 'Y',
-	        connection_type: 'office365'
-	      }
-	    });
-	    BX.util.popup(this.provider.getSyncLink(), 500, 600);
-	    main_core.Event.bind(window, 'hashchange', event => {
-	      if (window.location.hash === '#office365AuthSuccess') {
-	        calendar_util.Util.removeHash();
-	        this.provider.setWizardSyncMode(true);
-	        this.saveConnection();
-	        this.openSyncWizard();
-	        this.provider.setStatus(this.provider.STATUS_SYNCHRONIZING);
-	        this.provider.getInterfaceUnit().refreshButton();
-	      }
-	    });
+	    const syncLink = this.provider.getSyncLink();
+	    BX.util.popup(syncLink, 500, 600);
+	    main_core.Event.bind(window, 'hashchange', this.handleSuccessConnectionDebounce);
 	  }
-	  saveConnection() {
-	    return new Promise(resolve => {
-	      BX.ajax.runAction('calendar.api.syncajax.createOffice365Connection').then(response => {
-	        var _response$data, _response$data2;
-	        if ((response == null ? void 0 : (_response$data = response.data) == null ? void 0 : _response$data.status) === this.provider.ERROR_CODE) {
-	          this.provider.setStatus(this.provider.STATUS_FAILED);
-	          this.provider.setWizardState({
-	            status: this.provider.ERROR_CODE,
-	            vendorName: this.provider.type
-	          });
-	        } else if (response != null && (_response$data2 = response.data) != null && _response$data2.connectionId) {
-	          this.provider.setStatus(this.provider.STATUS_SUCCESS);
-	          this.provider.getConnection().setId(response.data.connectionId);
-	          this.provider.getConnection().setStatus(true);
-	          this.provider.getConnection().setConnected(true);
-	          this.provider.getConnection().setSyncDate(new Date());
-	        }
-	        resolve(response.data);
-	      }, response => {
-	        this.provider.setStatus(this.provider.STATUS_FAILED);
-	        this.provider.setWizardState({
-	          status: this.provider.ERROR_CODE,
-	          vendorName: this.provider.type
-	        });
-	        resolve(response.errors);
-	      });
-	    });
+	  handleSuccessConnection(event) {
+	    if (window.location.hash === '#office365AuthSuccess') {
+	      calendar_util.Util.removeHash();
+	      this.provider.setWizardSyncMode(true);
+	      this.provider.saveConnection();
+	      this.openSyncWizard();
+	      this.provider.setStatus(this.provider.STATUS_SYNCHRONIZING);
+	      this.provider.getInterfaceUnit().refreshButton();
+	      main_core.Event.unbind(window, 'hashchange', this.handleSuccessConnectionDebounce);
+	    }
 	  }
 	  onClickCheckSection(event) {
 	    this.sectionStatusObject[event.target.value] = event.target.checked;
@@ -3217,7 +3153,7 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	  constructor(provider, connection = null) {
 	    super({
 	      title: main_core.Loc.getMessage("CALENDAR_TITLE_YANDEX"),
-	      helpDeskCode: '10930170',
+	      helpDeskCode: '12925048',
 	      titleInfoHeader: main_core.Loc.getMessage('CAL_CONNECT_YANDEX_CALENDAR'),
 	      descriptionInfoHeader: main_core.Loc.getMessage('CAL_YANDEX_CONNECT_DESCRIPTION'),
 	      titleActiveHeader: main_core.Loc.getMessage('CAL_YANDEX_CALENDAR_IS_CONNECT'),

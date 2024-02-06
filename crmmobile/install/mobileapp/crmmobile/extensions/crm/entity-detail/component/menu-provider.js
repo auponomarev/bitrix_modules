@@ -14,6 +14,7 @@ jn.define('crm/entity-detail/component/menu-provider', (require, exports, module
 	const { CrmDocumentList } = require('crm/document/list');
 	const { getPaymentAutomationMenuItem } = require('crm/entity-detail/component/payment-automation-menu-item');
 	const { getOpenLinesMenuItems } = require('crm/entity-detail/component/open-lines-menu-items');
+	const { EntityChatOpener } = require('crm/entity-chat-opener');
 
 	/**
 	 * @param {DetailCardComponent} detailCard
@@ -30,9 +31,11 @@ jn.define('crm/entity-detail/component/menu-provider', (require, exports, module
 			permissions = {},
 			todoNotificationParams,
 			isAutomationAvailable,
-			shouldShowAutomationMenuItem,
-			isDocumentPreviewerAvailable,
-			isGoToChatAvailable,
+			isLinkWithProductsEnabled,
+			isDocumentGenerationEnabled,
+			isCategoriesEnabled,
+			isClientEnabled,
+			isChatSupported,
 		} = detailCard.getComponentParams();
 		const { entityModel } = detailCard;
 
@@ -51,25 +54,42 @@ jn.define('crm/entity-detail/component/menu-provider', (require, exports, module
 			const canDelete = BX.prop.getBoolean(permissions, 'delete', false);
 			const canExclude = BX.prop.getBoolean(permissions, 'exclude', false);
 
-			if (isDocumentPreviewerAvailable)
+			if (isDocumentGenerationEnabled)
 			{
-				result.push({
-					id: 'documents',
-					sectionCode: 'action',
-					onItemSelected: () => showEntityDocuments(detailCard),
-					title: Loc.getMessage('M_CRM_ENTITY_ACTION_DOCUMENTS'),
-					iconUrl: `${component.path}/icons/documents.png`,
-					disable: false, // todo check rights to documents
-				});
+				result.push(
+					{
+						id: 'documents',
+						sectionCode: 'action',
+						onItemSelected: () => showEntityDocuments(detailCard),
+						title: Loc.getMessage('M_CRM_ENTITY_ACTION_DOCUMENTS'),
+						iconUrl: `${component.path}/icons/documents.png`,
+						disable: false, // todo check rights to documents
+					},
+				);
 			}
 
-			result.push({
-				...getCopyEntity(detailCard, canAdd),
-				showTopSeparator: Boolean(isDocumentPreviewerAvailable),
-			});
+			if (isChatSupported)
+			{
+				result.push(
+					{
+						id: 'openChat',
+						sectionCode: 'action',
+						onItemSelected: () => openChat(detailCard),
+						title: Loc.getMessage('M_CRM_ENTITY_ACTION_CHAT'),
+						iconUrl: `${component.path}/icons/chat.png`,
+						disable: false,
+					},
+				);
+			}
 
-			// ToDo move to isCategoriesEnabled
-			if (entityTypeId === TypeId.Deal)
+			result.push(
+				{
+					...getCopyEntity(detailCard, canAdd),
+					showTopSeparator: isDocumentGenerationEnabled,
+				},
+			);
+
+			if (isCategoriesEnabled)
 			{
 				result.push(getChangeEntityCategory(detailCard, canUpdate));
 			}
@@ -95,7 +115,7 @@ jn.define('crm/entity-detail/component/menu-provider', (require, exports, module
 				disable: !canDelete,
 			});
 
-			if (entityModel.hasOwnProperty('IS_MANUAL_OPPORTUNITY'))
+			if (isLinkWithProductsEnabled)
 			{
 				result.push({
 					id: 'disableManualOpportunity',
@@ -126,8 +146,12 @@ jn.define('crm/entity-detail/component/menu-provider', (require, exports, module
 				onAction: onShareAction,
 			} = getActionToShare();
 
-			const hasOpenLinesAccess = BX.prop.getBoolean(permissions, 'openLinesAccess', false);
-			if (isGoToChatAvailable && hasOpenLinesAccess)
+			const hasOpenLinesPermission = BX.prop.getBoolean(permissions, 'openLinesAccess', null);
+			const isClientRelatedEntity = entityTypeId === TypeId.Contact
+				|| entityTypeId === TypeId.Company
+				|| isClientEnabled;
+
+			if (hasOpenLinesPermission && isClientRelatedEntity)
 			{
 				const openLineItems = getOpenLinesMenuItems(entityTypeId, layout);
 
@@ -141,7 +165,7 @@ jn.define('crm/entity-detail/component/menu-provider', (require, exports, module
 				showTopSeparatorForSettingsMenu = false;
 			}
 
-			if (entityTypeId === TypeId.Deal && shouldShowAutomationMenuItem)
+			if (entityTypeId === TypeId.Deal)
 			{
 				result.push({
 					...getPaymentAutomationMenuItem(entityId, entityTypeId, categoryId, isAutomationAvailable),
@@ -266,6 +290,8 @@ jn.define('crm/entity-detail/component/menu-provider', (require, exports, module
 					.then(() => onAction({
 						entityTypeId,
 						categoryId: detailCard.entityModel.CATEGORY_ID,
+						itemId: detailCard.getComponentParams().entityId,
+						onlyEmitEvent: true,
 					}))
 					.then(({ categoryId }) => {
 						selectedCategoryId = categoryId;
@@ -339,6 +365,13 @@ jn.define('crm/entity-detail/component/menu-provider', (require, exports, module
 				},
 			],
 		);
+	};
+
+	/**
+	 * @param {DetailCardComponent} detailCard
+	 */
+	const openChat = (detailCard) => {
+		EntityChatOpener.openChatByEntity(detailCard.getEntityTypeId(), detailCard.getEntityId());
 	};
 
 	/**

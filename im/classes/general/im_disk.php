@@ -155,6 +155,7 @@ class CIMDisk
 				'CHAT_ID' => $chatId,
 				'AUTHOR_ID' => self::GetUserId()
 			]);
+			$message->setParams($ar['PARAMS'] ?? []);
 			(new IM\V2\Link\File\FileService())->saveFilesFromMessage($filesModels, $message);
 			$result['MESSAGE_ID'] = $messageId;
 		}
@@ -515,6 +516,7 @@ class CIMDisk
 		$templateId = isset($options['TEMPLATE_ID']) && $options['TEMPLATE_ID'] <> '' ? $options['TEMPLATE_ID'] : '';
 		$fileTemplateId = isset($options['FILE_TEMPLATE_ID']) && $options['FILE_TEMPLATE_ID'] <> '' ? $options['FILE_TEMPLATE_ID'] : '';
 		$attach = $options['ATTACH'] ?? null;
+		$asFile = isset($options['AS_FILE']) && $options['AS_FILE'] === 'Y';
 		$params = isset($options['PARAMS']) && is_array($options['PARAMS']) ? $options['PARAMS'] : null;
 
 		$chatRelation = \CIMChat::GetRelationById($chatId, false, true, false);
@@ -544,6 +546,10 @@ class CIMDisk
 			if (mb_substr($fileId, 0, 6) == 'upload')
 			{
 				$newFile = self::IncreaseFileVersionDisk($chatId, mb_substr($fileId, 6), $skipUserCheck? 0: $userId);
+				if ($asFile)
+				{
+					$newFile->changeCode(IM\V2\Link\File\FileItem::MEDIA_ORIGINAL_CODE);
+				}
 			}
 			else
 			{
@@ -671,6 +677,7 @@ class CIMDisk
 			'CHAT_ID' => $chatId,
 			'AUTHOR_ID' => $userId,
 		]);
+		$message->setParams($params ?? []);
 		(new IM\V2\Link\File\FileService())->saveFilesFromMessage($result['FILE_MODELS'], $message);
 
 		if (
@@ -1570,7 +1577,11 @@ class CIMDisk
 		/** @var \Bitrix\Disk\File $fileModel */
 		$contentType = 'file';
 		$imageParams = false;
-		if (\Bitrix\Disk\TypeFile::isImage($fileModel->getName()))
+		if ($fileModel->getCode() === IM\V2\Link\File\FileItem::MEDIA_ORIGINAL_CODE)
+		{
+			// skip
+		}
+		else if (\Bitrix\Disk\TypeFile::isImage($fileModel))
 		{
 			$contentType = 'image';
 			$params = $fileModel->getFile();
@@ -1633,7 +1644,7 @@ class CIMDisk
 					])
 					->addAction([
 						'type' => 'copyToMe',
-						'text' => Loc::getMessage('IM_DISK_ACTION_SAVE_TO_OWN_FILES'),
+						'text' => Loc::getMessage('IM_DISK_ACTION_SAVE_TO_OWN_FILES_MSGVER_1'),
 						'action' => 'BXIM.disk.saveToDiskAction',
 						'params' => [
 							'fileId' => $fileModel->getId(),
@@ -2154,7 +2165,7 @@ class CIMDisk
 
 		$urlManager = \Bitrix\Main\Engine\UrlManager::getInstance();
 
-		$isImage = \Bitrix\Disk\TypeFile::isImage($fileModel->getName());
+		$isImage = \Bitrix\Disk\TypeFile::isImage($fileModel);
 		$isVideo = \Bitrix\Disk\TypeFile::isVideo($fileModel->getName());
 
 		if ($type == self::PATH_TYPE_SHOW)
@@ -2242,7 +2253,7 @@ class CIMDisk
 
 		$urlManager = \Bitrix\Main\Engine\UrlManager::getInstance();
 		$host = $urlManager->getHostUrl();
-		$isImage = \Bitrix\Disk\TypeFile::isImage($fileModel->getName());
+		$isImage = \Bitrix\Disk\TypeFile::isImage($fileModel);
 
 		$link = $host.'/pub/im.file.php?FILE_ID='.$fileId.'&SIGN='.$signedValue;
 		if ($isImage)
@@ -2279,7 +2290,7 @@ class CIMDisk
 	/**
 	 * @return string
 	 */
-	public static function RemoveTmpFileAgent()
+	public static function RemoveTmpFileAgent(): string
 	{
 		$storageModel = self::GetStorage();
 		if (!$storageModel)
@@ -2303,7 +2314,7 @@ class CIMDisk
 			$fileModel->delete(\Bitrix\Disk\SystemUser::SYSTEM_USER_ID);
 		}
 
-		return "CIMDisk::RemoveTmpFileAgent();";
+		return __METHOD__. '();';
 	}
 
 	/**
@@ -2393,10 +2404,13 @@ class CIMDisk
 			return true;
 		}
 
-		$messageId = \CIMMessageParam::GetMessageIdByParam('FILE_ID', $fileId);
+		$messageIds = \CIMMessageParam::GetMessageIdByParam('FILE_ID', $fileId);
 		\CIMMessageParam::DeleteByParam('FILE_ID', $fileId);
 		(new IM\V2\Link\File\FileService())->deleteFilesByDiskFileId($fileId);
-		\CIMMessageParam::SendPull($messageId, Array('FILE_ID'));
+		foreach ($messageIds as $messageId)
+		{
+			\CIMMessageParam::SendPull((int)$messageId, Array('FILE_ID'));
+		}
 
 		return true;
 	}

@@ -1,7 +1,8 @@
+import { Router } from 'crm.router';
+import { SettingsButtonExtender } from 'crm.settings-button-extender';
 import { ajax as Ajax, Event, Loc, Reflection, Runtime, Text, Type, Uri } from 'main.core';
 import { BaseEvent, EventEmitter } from 'main.core.events';
 import { MessageBox, MessageBoxButtons } from 'ui.dialogs.messagebox';
-import { Router } from 'crm.router';
 import 'ui.notification';
 
 const namespace = Reflection.namespace('BX.Crm');
@@ -16,11 +17,12 @@ class ItemListComponent
 	entityTypeName: string;
 	reloadGridTimeoutId: number;
 	exportPopups: Object;
-	#isUniversalActivityScenarioEnabled: boolean = false;
 	#isIframe: boolean = false;
 	#smartActivityNotificationSupported: boolean = false;
 	// is the list is embedded in another entity detail tab
 	#isEmbedded: boolean = false;
+	#pingSettings: Object;
+	#aiAutostartSettings: ?string;
 
 	constructor(params): void
 	{
@@ -64,10 +66,6 @@ class ItemListComponent
 			{
 				this.errorTextContainer = params.errorTextContainer;
 			}
-			if (Type.isBoolean(params.isUniversalActivityScenarioEnabled))
-			{
-				this.#isUniversalActivityScenarioEnabled = params.isUniversalActivityScenarioEnabled;
-			}
 			if (Type.isBoolean(params.isIframe))
 			{
 				this.#isIframe = params.isIframe;
@@ -76,6 +74,11 @@ class ItemListComponent
 			{
 				this.#isEmbedded = params.isEmbedded;
 			}
+			if (Type.isPlainObject(params.pingSettings))
+			{
+				this.#pingSettings = params.pingSettings;
+			}
+			this.#aiAutostartSettings = Type.isString(params.aiAutostartSettings) ? params.aiAutostartSettings : null;
 		}
 
 		this.reloadGridTimeoutId = 0;
@@ -85,7 +88,7 @@ class ItemListComponent
 	{
 		this.bindEvents();
 
-		this.#initPushCrmSettings();
+		this.#initSettingsButtonExtender();
 	}
 
 	bindEvents(): void
@@ -186,9 +189,9 @@ class ItemListComponent
 		return component ? component.Instance : null;
 	}
 
-	#initPushCrmSettings(): void
+	#initSettingsButtonExtender(): void
 	{
-		if (!this.#isUniversalActivityScenarioEnabled || this.#isIframe || this.#isEmbedded)
+		if (this.#isIframe || this.#isEmbedded)
 		{
 			return;
 		}
@@ -197,18 +200,24 @@ class ItemListComponent
 		if (!toolbar)
 		{
 			console.error('BX.Crm.ToolbarComponent not found');
+
 			return;
 		}
 
-		Runtime.loadExtension('crm.push-crm-settings').then(({PushCrmSettings}) => {
-			/** @see BX.Crm.PushCrmSettings */
-			new PushCrmSettings({
+		const settingsMenu = toolbar.getSettingsButton()?.getMenuWindow();
+		if (settingsMenu)
+		{
+			/** @see BX.Crm.SettingsButtonExtender */
+			new SettingsButtonExtender({
 				smartActivityNotificationSupported: this.#smartActivityNotificationSupported,
 				entityTypeId: this.entityTypeId,
-				rootMenu: toolbar.getSettingsButton()?.getMenuWindow(),
+				categoryId: this.categoryId,
+				aiAutostartSettings: this.#aiAutostartSettings,
+				pingSettings: this.#pingSettings,
+				rootMenu: settingsMenu,
 				grid: this.grid,
 			});
-		});
+		}
 	}
 
 	reloadGridAfterTimeout()

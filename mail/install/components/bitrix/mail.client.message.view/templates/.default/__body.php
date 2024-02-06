@@ -1,12 +1,26 @@
 <?php
 
+use Bitrix\Mail\Message;
+use Bitrix\Main\Engine\UrlManager;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\UI\Viewer;
 use Bitrix\Main\Web\Uri;
 
-\Bitrix\Main\UI\Extension::load("ui.icons.b24");
-
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) die();
+
+\Bitrix\Main\UI\Extension::load([
+	'ui.icons.b24',
+	'ui.viewer',
+	'ui.progressbar',
+]);
+\CJSCore::Init("loader");
+
+Loc::loadMessages(__DIR__);
+
+if (IsModuleInstalled('disk'))
+{
+	\Bitrix\Main\Page\Asset::getInstance()->addCss('/bitrix/js/disk/css/legacy_uf_common.css');
+}
 
 /** @var array $arParams */
 /** @var array $arResult */
@@ -18,6 +32,7 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) die();
 /** @var string $templateFolder */
 /** @var string $componentPath */
 /** @var \CMailClientMessageViewComponent $component */
+/** @var array $message */
 
 $rcptList = array(
 	'users' => array(),
@@ -92,6 +107,18 @@ $readDatetimeFormatted = !empty($message['READ_CONFIRMED']) && $message['READ_CO
 
 
 $isCrmEnabled = ($arResult['CRM_ENABLE'] === 'Y');
+
+$isAjaxBody = isset($message['IS_AJAX_BODY_SANITIZE']) && $message['IS_AJAX_BODY_SANITIZE'];
+$messageId = (int)$message['ID'];
+$messageControlElementId = "mail-msg-view-control-$messageId";
+$bodyElementId = "mail_msg_{$messageId}_body";
+$fastReplyElementId = "mail-msg-fast-reply-$messageId";
+$bodyLoaderElementId = "mail-msg-body-loader-$messageId";
+$bodyDownloadLink = UrlManager::getInstance()
+	->createByBitrixComponent($this->getComponent(), 'downloadHtmlBody', ['id' => $messageId]);
+$warningWaitElementId = "mail-msg-warning-top-wait-$messageId";
+$warningFailElementId = "mail-msg-warning-top-fail-$messageId";
+$bodyLoaderMaxTime = ini_get('max_execution_time') ?: 60;
 
 ?>
 <div class="mail-msg-view-border-bottom">
@@ -227,7 +254,9 @@ $isCrmEnabled = ($arResult['CRM_ENABLE'] === 'Y');
 	</div>
 
 	<? if (!$message['hideMailControlPanel']): ?>
-		<div class="mail-msg-view-control-wrapper">
+		<div class="mail-msg-view-control-wrapper"
+			 id="<?= htmlspecialcharsbx($messageControlElementId) ?>"
+			<?php if($isAjaxBody): ?> style="display:none" <?php endif; ?>>
 			<div class="mail-msg-view-control-block">
 				<div class="mail-msg-view-control mail-msg-view-control-reply js-msg-view-control-reply"><?=Loc::getMessage('MAIL_MESSAGE_BTN_REPLY') ?></div>
 				<div class="mail-msg-view-control mail-msg-view-control-replyall js-msg-view-control-replyall"><?=Loc::getMessage('MAIL_MESSAGE_BTN_REPLY_All') ?></div>
@@ -262,102 +291,67 @@ $isCrmEnabled = ($arResult['CRM_ENABLE'] === 'Y');
 		</span>
 		</div>
 	<? endif; ?>
+	<?php if ($isAjaxBody): ?>
+		<div class="ui-alert ui-alert-warning" id="<?= htmlspecialcharsbx($warningWaitElementId) ?>">
+			<div class="ui-alert-message">
+				<?= Loc::getMessage('MAIL_MESSAGE_WARNING_BODY_LOAD_WAIT', [
+					'[download_link]' => "<a href=\"$bodyDownloadLink\" target=\"_blank\">",
+					'[/download_link]' => '</a>',
+				]) ?>
+			</div>
+			<div class="mail-message-alert-progress" id="<?= htmlspecialcharsbx($bodyLoaderElementId) ?>"></div>
+		</div>
+		<div class="ui-alert ui-alert-default"
+			id="<?= htmlspecialcharsbx($warningFailElementId) ?>"
+			style="display:none">
+			<span class="ui-alert-message">
+				<?= Loc::getMessage('MAIL_MESSAGE_WARNING_BODY_LOAD_FAIL', [
+					'[download_link]' => "<a href=\"$bodyDownloadLink\" target=\"_blank\">",
+					'[/download_link]' => '</a>',
+				]) ?>
+			</span>
+			<span class="ui-alert-close-btn"></span>
+		</div>
+	<?php endif; ?>
 	<div id="mail_msg_<?=$message['ID'] ?>_body" class="mail-msg-view-body"></div>
 </div>
 
-<? $diskFiles = array(); ?>
-<? if (!empty($message['__files'])):
-
-	\Bitrix\Main\UI\Extension::load('ui.viewer');
-
-	$viewerItemAttributes = function ($item) use (&$message)
+<?php
+$diskFiles = $message['__diskFiles'] ?? [];
+$ajaxAttachmentElementId = '';
+?>
+<?php if (!empty($message['__files']) || !empty($message['OPTIONS']['attachments'])) : ?>
+<div class="mail-msg-view-file-block mail-msg-view-border-bottom">
+	<div class="mail-msg-view-file-text"><?=getMessage('MAIL_MESSAGE_ATTACHES') ?>:</div>
+	<?php
+	if (empty($message['__files']) && !empty($message['OPTIONS']['attachments']))
 	{
-		$attributes = Viewer\ItemAttributes::tryBuildByFileId($item['fileId'], $item['url'])
-			->setTitle($item['name'])
-			->setGroupBy(sprintf('mail_msg_%u_file', $message['ID']))
-			->addAction(array(
-				'type' => 'download',
-			));
-
-		if (isset($item['objectId']) && $item['objectId'] > 0)
-		{
-			$attributes->addAction(array(
-				'type' => 'copyToMe',
-				'text' => Loc::getMessage('MAIL_DISK_ACTION_SAVE_TO_OWN_FILES'),
-				'action' => 'BX.Disk.Viewer.Actions.runActionCopyToMe',
-				'params' => array(
-					'objectId' => $item['objectId'],
-				),
-				'extension' => 'disk.viewer.actions',
-				'buttonIconClass' => 'ui-btn-icon-cloud',
-			));
-		}
-
-		return $attributes;
-	};
-
-	$diskFiles = array_filter(
-		$message['__files'],
-		function ($item)
-		{
-			return isset($item['objectId']) && $item['objectId'] > 0;
-		}
-	);
-
+		$ajaxAttachmentElementId = 'bx-mail-message-ajax-attachment-'. ((int)$message['ID']);
+	}
 	?>
-	<div class="mail-msg-view-file-block mail-msg-view-border-bottom">
-		<div class="mail-msg-view-file-text"><?=getMessage('MAIL_MESSAGE_ATTACHES') ?>:</div>
-		<div class="mail-msg-view-file-inner">
-			<div id="mail_msg_<?=$message['ID'] ?>_files_images_list" class="mail-msg-view-file-inner">
-				<? foreach ($message['__files'] as $item): ?>
-					<? if (empty($item['preview'])) continue; ?>
-					<div class="mail-msg-view-file-item-image">
-						<span class="mail-msg-view-file-link-image">
-							<img class="mail-msg-view-file-item-img" src="<?=htmlspecialcharsbx($item['preview']) ?>"
-							<?=$viewerItemAttributes($item) ?>>
-						</span>
-					</div>
-				<? endforeach ?>
-			</div>
-			<div class="mail-msg-view-file-inner">
-				<? foreach ($message['__files'] as $item): ?>
-					<? if (!empty($item['preview'])) continue; ?>
-					<div class="mail-msg-view-file-item diskuf-files-entity">
-						<span class="feed-com-file-icon feed-file-icon-<?=htmlspecialcharsbx(\Bitrix\Main\IO\Path::getExtension($item['name'])) ?>"></span>
-						<a class="mail-msg-view-file-link" href="<?=htmlspecialcharsbx($item['url']) ?>" target="_blank"
-							<? if (preg_match('/^n\d+$/i', $item['id'])) echo $viewerItemAttributes($item); ?>>
-							<?=htmlspecialcharsbx($item['name']) ?>
-						</a>
-						<div class="mail-msg-view-file-link-info"><?=htmlspecialcharsbx($item['size']) ?></div>
-					</div>
-				<? endforeach ?>
-			</div>
-			<? if (\Bitrix\Main\Loader::includeModule('disk') && count($diskFiles) > 1): ?>
-				<div class="mail-msg-view-file-archive-block">
-					<? $href = \Bitrix\Disk\Driver::getInstance()->getUrlManager()->getUrlDownloadController('downloadArchive', array(
-						'fileId' => 0,
-						'objectIds' => array_column($diskFiles, 'objectId'),
-						'signature' => \Bitrix\Disk\Security\ParameterSigner::getArchiveSignature(array_column($diskFiles, 'objectId')),
-					)) ?>
-					<a class="mail-msg-view-file-archive-link" href="<?=htmlspecialcharsbx($href) ?>"><?=Loc::getMessage('MAIL_DISK_FILE_DOWNLOAD_ARCHIVE') ?></a>
-					<div class="mail-msg-view-file-link-info">&nbsp;(<?=\CFile::formatSize(array_sum(array_column($diskFiles, 'bytes'))) ?>)</div>
-				</div>
-			<? endif ?>
-		</div>
+	<div class="mail-msg-view-file-inner"
+		<?php if($ajaxAttachmentElementId): ?> id="<?=htmlspecialcharsbx($ajaxAttachmentElementId)?>" <?php endif; ?>>
+		<?php
+		if (!empty($message['__files']))
+		{
+			include __DIR__ . '/__files.php';
+		}
+		?>
 	</div>
-<? endif ?>
+</div>
+<?php endif; ?>
 
 
 <? if (!$message['hideFastReplyPanel']):?>
-	<div class="mail-msg-view-reply-panel mail-msg-view-border-bottom js-msg-view-reply-panel">
+	<div class="mail-msg-view-reply-panel mail-msg-view-border-bottom js-msg-view-reply-panel"
+		 id="<?= htmlspecialcharsbx($fastReplyElementId) ?>"
+		<?php if($isAjaxBody): ?> style="display:none" <?php endif; ?>>
 		<div class="ui-icon ui-icon-common-user mail-msg-userpic">
 			<i <? if (!empty($arResult['USER_IMAGE'])): ?> style="background: url('<?= Uri::urnEncode(htmlspecialcharsbx($arResult['USER_IMAGE'])) ?>'); background-size: 23px 23px; "<? endif ?>></i>
 		</div>
 		<div class="mail-msg-view-reply-panel-text"><?=Loc::getMessage('MAIL_MESSAGE_REPLY_Q') ?></div>
 	</div>
 <? endif; ?>
-
-<? $messageHtml = trim($message['BODY_HTML']) ? $message['BODY_HTML'] : preg_replace('/(\s*(\r\n|\n|\r))+/', '<br>', htmlspecialcharsbx($message['BODY'])); ?>
 
 <?
 $formId = sprintf('mail_msg_reply_%u_form', $message['ID']);
@@ -373,18 +367,31 @@ $actionUrl = '/bitrix/services/main/ajax.php?c=bitrix%3Amail.client&action=sendM
 	<?
 
 	$inlineFiles = array();
-	$quote = preg_replace_callback(
+	// there is no replace, only filling $inlineFiles array
+	preg_replace_callback(
 		'#(\?|&)__bxacid=(n?\d+)#i',
 		function ($matches) use (&$inlineFiles)
 		{
 			$inlineFiles[] = $matches[2];
 			return $matches[0];
 		},
-		$messageHtml
+		$message['BODY_HTML']
 	);
-	$quote = $messageHtml;
+	$messageQuote = '';
+	if (isset($message['MESSAGE_HTML']) && $message['MESSAGE_HTML'] && !$isAjaxBody)
+	{
+		$messageQuote = Message::wrapTheMessageWithAQuote(
+			$message['MESSAGE_HTML'],
+			$message['SUBJECT'],
+			$message['FIELD_DATE'],
+			$message['__from'],
+			$message['__to'],
+			$message['__cc'],
+			true
+		);
+	}
 
-	$attachedFiles = array_intersect(array_column($diskFiles, 'id'), $inlineFiles);
+    $attachedFiles = array_intersect(array_column($diskFiles, 'id'), $inlineFiles);
 
 	$selectorParams = array(
 		//'pathToAjax' => '/bitrix/components/bitrix/crm.activity.editor/ajax.php?soc_net_log_dest=search_email_comms';
@@ -403,6 +410,7 @@ $actionUrl = '/bitrix/services/main/ajax.php?c=bitrix%3Amail.client&action=sendM
 		'searchOnlyWithEmail'      => true,
 	);
 
+	$formQuoteFieldName = 'data[message]';
 	$APPLICATION->includeComponent(
 		'bitrix:main.mail.form', '',
 		array(
@@ -413,6 +421,8 @@ $actionUrl = '/bitrix/services/main/ajax.php?c=bitrix%3Amail.client&action=sendM
 			'FOLD_QUOTE' => true,
 			'FOLD_FILES' => true,
 			'USE_SIGNATURES' => true,
+			'USE_CALENDAR_SHARING' => true,
+			'COPILOT_PARAMS' => $arResult['COPILOT_PARAMS'],
 			'FIELDS' => array(
 				array(
 					'name'     => 'data[from]',
@@ -470,18 +480,9 @@ $actionUrl = '/bitrix/services/main/ajax.php?c=bitrix%3Amail.client&action=sendM
 					'folded'      => true,
 				),
 				array(
-					'name'   => 'data[message]',
+					'name'   => $formQuoteFieldName,
 					'type'   => 'editor',
-					'value'  => sprintf(
-						'<br><br>%s, %s:<br><blockquote style="margin: 0 0 0 5px; padding: 5px 5px 5px 8px; border-left: 4px solid #e2e3e5; ">%s</blockquote>',
-						formatDate(
-							preg_replace('/[\/.,\s:][s]/', '', $GLOBALS['DB']->dateFormatToPhp(FORMAT_DATETIME)),
-							$message['FIELD_DATE']->getTimestamp()+\CTimeZone::getOffset(),
-							time()+\CTimeZone::getOffset()
-						),
-						htmlspecialcharsbx($__from['formated']),
-						$quote
-					),
+					'value'  => $messageQuote,
 					'height' => 100,
 				),
 				array(
@@ -543,9 +544,9 @@ for (var i in emailLinks)
 		}
 	}
 }
-
-document.getElementById('mail_msg_<?=$message['ID'] ?>_body').innerHTML = '<div id="mail-message-wrapper">'+'<?=CUtil::jsEscape($messageHtml) ?>'+'</div>';
-
+<?php if ($message['MESSAGE_HTML']): ?>
+document.getElementById('<?= CUtil::JSescape($bodyElementId) ?>').innerHTML = '<div id="mail-message-wrapper">' + '<?= CUtil::jsEscape($message['MESSAGE_HTML']) ?>' + '</div>';
+<?php endif; ?>
 try
 {
 	top.BX.SidePanel.Instance.getSliderByWindow(window).closeLoader();
@@ -554,13 +555,31 @@ catch (err) {}
 
 BX.ready(function()
 {
-	new BXMailMessage({
+	var message = new BXMailMessage({
 		messageId: <?=intval($message['ID']) ?>,
 		formId: '<?=\CUtil::jsEscape($formId) ?>',
 		rcptSelected: <?=\Bitrix\Main\Web\Json::encode($rcptSelected) ?>,
 		rcptAllSelected: <?=\Bitrix\Main\Web\Json::encode($rcptAllSelected) ?>,
 		rcptCcSelected: <?=\Bitrix\Main\Web\Json::encode($rcptCcSelected) ?>
 	});
+
+	new BXMailView({
+		messageId: <?= (int)$message['ID'] ?>,
+		isAjaxBody: <?= (int)$isAjaxBody ?>,
+		formId: '<?= CUtil::JSescape($formId) ?>',
+		messageBodyElementId: '<?= CUtil::JSescape($bodyElementId) ?>',
+		bodyLoaderElementId: '<?= CUtil::JSescape($bodyLoaderElementId) ?>',
+		bodyLoaderMaxTime: <?= (int)$bodyLoaderMaxTime ?>,
+		mailUfMessageToken: '<?= CUtil::JSescape((string)($_REQUEST['mail_uf_message_token'] ?? '')) ?>',
+		ajaxAttachmentElementId: '<?= CUtil::JSescape($ajaxAttachmentElementId) ?>',
+		quoteFieldName: '<?= CUtil::JSescape($formQuoteFieldName) ?>',
+		messageControlElementId: '<?= CUtil::JSescape($messageControlElementId) ?>',
+		fastReplyElementId: '<?= CUtil::JSescape($fastReplyElementId) ?>',
+		warningWaitElementId: '<?= CUtil::JSescape($warningWaitElementId) ?>',
+		warningFailElementId: '<?= CUtil::JSescape($warningFailElementId) ?>',
+		bxMailMessage: message,
+	});
+
 });
 
 </script>

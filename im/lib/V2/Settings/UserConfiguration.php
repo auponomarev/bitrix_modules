@@ -3,8 +3,10 @@
 namespace Bitrix\Im\V2\Settings;
 
 use Bitrix\Im\Common;
+use Bitrix\Im\Configuration\Configuration;
 use Bitrix\Im\Configuration\General;
 use Bitrix\Im\Model\OptionUserTable;
+use Bitrix\Im\Recent;
 use Bitrix\Im\V2\Result;
 use Bitrix\Im\V2\Settings\Preset\Preset;
 use Bitrix\Im\V2\Settings\Preset\PresetError;
@@ -53,7 +55,12 @@ class UserConfiguration
 		$bindings = $query->fetch();
 		if ($bindings === false)
 		{
-			return $result->addError(new PresetError(PresetError::BINDINGS_NOT_FOUND));
+			$presetId = Configuration::restoreBindings($userId);
+
+			$bindings = [
+				CacheManager::GENERAL_PRESET => $presetId,
+				CacheManager::NOTIFY_PRESET => $presetId,
+			];
 		}
 
 		$this->generalPreset = Preset::getInstance($bindings[CacheManager::GENERAL_PRESET]);
@@ -69,6 +76,11 @@ class UserConfiguration
 
 	public function updateGeneralSetting(array $settingsConfiguration)
 	{
+		$settingsBeforeUpdate = ($settingsConfiguration['name'] === 'pinnedChatSort')
+			? $this->getGeneralSettings()
+			: null
+		;
+
 		if (!$this->generalPreset->isPersonal($this->userId))
 		{
 			$personalPreset = Preset::getPersonal($this->userId);
@@ -89,7 +101,7 @@ class UserConfiguration
 		}
 
 		$this->generalPreset->general->updateSetting($settingsConfiguration);
-		$this->perfomSideEffect($settingsConfiguration);
+		$this->perfomSideEffect($settingsConfiguration, $settingsBeforeUpdate);
 
 		if (!$this->generalPreset->general->shouldUpdateSimpleNotifySettings($settingsConfiguration))
 		{
@@ -150,6 +162,11 @@ class UserConfiguration
 			$this->recoveryBinding(Preset::BIND_GENERAL);
 		}
 
+		if ($this->generalPreset->general === null)
+		{
+			$this->generalPreset = Preset::getDefaultPreset();
+		}
+
 		return $this->generalPreset->general->toRestFormat();
 	}
 
@@ -160,13 +177,23 @@ class UserConfiguration
 			$this->recoveryBinding(Preset::BIND_NOTIFY);
 		}
 
+		if ($this->notifyPreset->notify === null)
+		{
+			$this->notifyPreset = Preset::getDefaultPreset();
+		}
+
 		return $this->notifyPreset->notify->toRestFormat();
 	}
 
-	protected function perfomSideEffect(array $settingConfiguration)
+	protected function perfomSideEffect(array $settingConfiguration, ?array $settingsBeforeUpdate)
 	{
 		$this->updateUserSearch($settingConfiguration);
 		$this->openDesktopFromPanel($settingConfiguration);
+
+		if (isset($settingsBeforeUpdate))
+		{
+			$this->updatePinSortCost($settingConfiguration, $settingsBeforeUpdate);
+		}
 	}
 
 	private function updateUserSearch(array $settingsConfiguration): void
@@ -241,5 +268,26 @@ class UserConfiguration
 		}
 	}
 
+	public function checkIsPersonalGeneralPreset(): bool
+	{
+		return $this->generalPreset->isPersonal($this->userId);
+	}
 
+	public function getPersonalGeneralPresetId(): ?int
+	{
+		return $this->generalPreset->getId();
+	}
+
+	private function updatePinSortCost(array $settingsConfiguration, array $settingsBeforeUpdate): void
+	{
+		if ($settingsConfiguration['name'] === 'pinnedChatSort'
+			&& $settingsConfiguration['value'] !== 'byDate'
+		)
+		{
+			if ($settingsBeforeUpdate['pinnedChatSort'] !== 'byCost')
+			{
+				Recent::updatePinSortCost($this->userId);
+			}
+		}
+	}
 }

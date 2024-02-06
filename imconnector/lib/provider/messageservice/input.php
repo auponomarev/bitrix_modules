@@ -5,6 +5,7 @@ namespace Bitrix\ImConnector\Provider\Messageservice;
 use Bitrix\ImConnector\Library;
 use Bitrix\ImConnector\Provider\Base;
 use Bitrix\Main\Loader;
+use Bitrix\MessageService;
 use Bitrix\MessageService\Sender\SmsManager;
 
 class Input extends Base\Input
@@ -37,9 +38,24 @@ class Input extends Base\Input
 		{
 			$this->params = $params;
 		}
-		$this->connector = Library::ID_EDNA_WHATSAPP_CONNECTOR;
-		$this->line = SmsManager::getSenderById('ednaru')->getLineId();
 		$this->data = [$this->params];
+
+		$this->connector = Library::ID_EDNA_WHATSAPP_CONNECTOR;
+
+		$sender = SmsManager::getSenderById(MessageService\Sender\Sms\Ednaru::ID);
+		if ($sender instanceof MessageService\Sender\Base)
+		{
+			$this->line = $sender->getLineId();
+		}
+		else
+		{
+			$this->result->addError(new \Bitrix\ImConnector\Error(
+				'Messageservice is not enabled',
+				'NO_MESSAGESERVICE_LINE',
+				__METHOD__,
+				Library::ID_EDNA_WHATSAPP_CONNECTOR
+			));
+		}
 	}
 
 	private function prepareMessageParams(array $params): array
@@ -123,6 +139,6 @@ class Input extends Base\Input
 
 	private function getSentTemplateMessage(string $from, string $to): string
 	{
-		return SmsManager::getSenderById('ednaru')->getSentTemplateMessage($from, $to);
+		return SmsManager::getSenderById(MessageService\Sender\Sms\Ednaru::ID)->getSentTemplateMessage($from, $to);
 	}
 }

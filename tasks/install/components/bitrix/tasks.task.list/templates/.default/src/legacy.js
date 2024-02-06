@@ -1472,51 +1472,32 @@ BX(function() {
 			}
 		},
 
-		placeToNearTasks: function(taskId, taskData, parameters, repository) {
-			var queryParams = {
-				taskId: taskId,
-				navigation: {
-					pageNumber: this.getPageNumber(),
-					pageSize: this.getPageSize(),
-				},
-				arParams: this.arParams,
-			};
+		placeToNearTasks: function(taskId, taskData, parameters, repository)
+		{
+			var item = repository.collectionNear.get(BX.Text.toNumber(taskId));
 
-			BX.ajax.runComponentAction('bitrix:tasks.task.list', 'getNearTasks', {
-				mode: 'class',
-				data: queryParams,
-			}).then(
-				function(response) {
-					if (response.data)
-					{
-						var before = response.data.before;
-						var after = response.data.after;
+			if (item[taskId])
+			{
+				var rowData = item[taskId];
+				var before = rowData.before;
+				var after = rowData.after;
 
-						if ((before && this.isRowExist(before)) || (after && this.isRowExist(after)))
-						{
-							var params = {
-								before: before,
-								after: after,
-							};
-							Object.keys(parameters).forEach(function(key) {
-								params[key] = parameters[key];
-							});
-							this.updateItem(taskId, taskData, params, repository);
-						}
-						else
-						{
-							this.removeItem(taskId);
-						}
-					}
-				}.bind(this),
-			).catch(
-				function(response) {
-					if (response.errors)
-					{
-						BX.Tasks.alert(response.errors);
-					}
-				}.bind(this),
-			);
+				if ((before && this.isRowExist(before)) || (after && this.isRowExist(after)))
+				{
+					var params = {
+						before: before,
+						after: after,
+					};
+					Object.keys(parameters).forEach(function(key) {
+						params[key] = parameters[key];
+					});
+					this.updateItem(taskId, taskData, params, repository);
+				}
+				else
+				{
+					this.removeItem(taskId);
+				}
+			}
 		},
 
 		checkComment: function(data) {
@@ -1622,7 +1603,7 @@ BX(function() {
 			{
 				if (parameters.action === this.actions.taskUpdate)
 				{
-					this.placeToNearTasks(taskId, taskData, parameters);
+					this.placeToNearTasks(taskId, taskData, parameters, repository);
 				}
 				else
 				{
@@ -1716,7 +1697,7 @@ BX(function() {
 					this.getGrid().getRows().reset();
 
 					var moveRows = this.getGridMoveRows(rowId, parameters);
-					this.moveRow(rowId, moveRows.rowAfter, moveRows.rowBefore);
+					this.moveRow(rowId, moveRows.rowAfter);
 				}
 				this.highlightGridRow(rowId).then(function() {
 					this.colorPinnedRows();
@@ -1768,14 +1749,15 @@ BX(function() {
 			};
 		},
 
-		moveRow: function(rowId, after, before) {
+		moveRow: function(rowId, after) {
 			if (after)
 			{
 				this.getGrid().getRows().insertAfter(rowId, after);
 			}
-			else if (before)
+			else
 			{
-				this.getGrid().getRows().insertBefore(rowId, before);
+				const firstRow = this.getGrid().getRows().getBodyFirstChild();
+				this.getGrid().getRows().insertBefore(rowId, firstRow.getId());
 			}
 		},
 

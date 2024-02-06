@@ -182,7 +182,7 @@ class CCrmDocumentContact extends CCrmDocument implements IBPWorkflowDocument
 			'COMMENTS' => array(
 				'Name' => GetMessage('CRM_FIELD_COMMENTS'),
 				'Type' => 'text',
-				'ValueContentType' => 'html',
+				'ValueContentType' => 'bb',
 				'Filterable' => false,
 				'Editable' => true,
 				'Required' => false,
@@ -563,30 +563,12 @@ class CCrmDocumentContact extends CCrmDocument implements IBPWorkflowDocument
 			}
 			elseif ($fieldType == "file")
 			{
-				$arFileOptions = array('ENABLE_ID' => true);
-				foreach ($arFields[$key] as &$value)
-				{
-					//Issue #40380. Secure URLs and file IDs are allowed.
-					$file = false;
-					if (\CCrmFileProxy::TryResolveFile($value, $file, $arFileOptions))
-					{
-						global $USER_FIELD_MANAGER;
-						if ($USER_FIELD_MANAGER instanceof \CUserTypeManager)
-						{
-							$prevValue = $USER_FIELD_MANAGER->GetUserFieldValue(
-								\CCrmOwnerType::ResolveUserFieldEntityID(\CCrmOwnerType::Contact),
-								$key,
-								$arDocumentID['ID']
-							);
-							if ($prevValue)
-							{
-								$file['old_id'] = $prevValue;
-							}
-						}
-					}
-					$value = $file;
-				}
-				unset($value, $prevValue);
+				$arFields[$key] = static::castFileFieldValues(
+					$arDocumentID['ID'],
+					\CCrmOwnerType::Contact,
+					$key,
+					$arFields[$key],
+				);
 			}
 			elseif ($fieldType == "S:HTML")
 			{

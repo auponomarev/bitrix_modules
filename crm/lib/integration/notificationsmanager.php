@@ -8,7 +8,6 @@ use Bitrix\Crm\MessageSender\ICanSendMessage;
 use Bitrix\Crm\MessageSender\NotificationsPromoManager;
 use Bitrix\ImConnector;
 use Bitrix\ImOpenLines\Common;
-use Bitrix\Main\Error;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\PhoneNumber\Format;
@@ -142,9 +141,6 @@ class NotificationsManager implements ICanSendMessage
 		return null;
 	}
 
-	/**
-	 * @return array
-	 */
 	public static function getUsageErrors(): array
 	{
 		if (!static::canUse())
@@ -207,27 +203,6 @@ class NotificationsManager implements ICanSendMessage
 			return $result->addError(Channel\ErrorCode::getNotEnoughModulesError());
 		}
 
-		if (!self::isAvailable())
-		{
-			return $result->addError(Channel\ErrorCode::getNotAvailableError());
-		}
-
-		if (!self::isConnected())
-		{
-			return $result->addError(Channel\ErrorCode::getNotConnectedError());
-		}
-
-		$usageErrors = self::getUsageErrors();
-		if (!empty($usageErrors) && !NotificationsPromoManager::isPromoSession())
-		{
-			foreach ($usageErrors as $errorMessage)
-			{
-				$result->addError(new Error($errorMessage, Channel\ErrorCode::USAGE_ERROR));
-			}
-
-			return $result;
-		}
-
 		return $result;
 	}
 
@@ -251,7 +226,7 @@ class NotificationsManager implements ICanSendMessage
 		$templateCode = $messageFields['TEMPLATE_CODE'] ?? null;
 
 		$canSendMessage = (
-			$templateCode === GoToChat::NOTIFICATIONS_MESSAGE_CODE
+			is_string($templateCode) && self::checkTemplateCode($templateCode)
 				? static::canUse()
 				: static::canSendMessage()
 		);
@@ -271,6 +246,13 @@ class NotificationsManager implements ICanSendMessage
 
 	/**
 	 * @inheritDoc
+	 *
+	 * @param array{
+	 *     TEMPLATE_CODE: ?string,
+	 *     PLACEHOLDERS: Array<string, mixed>,
+	 *     LANGUAGE_ID: ?string,
+	 *     ACTIVITY_PROVIDER_TYPE_ID: ?int,
+	 * } $options
 	 */
 	public static function makeMessageFields(array $options, array $commonOptions): array
 	{
@@ -540,5 +522,19 @@ class NotificationsManager implements ICanSendMessage
 			Loader::includeModule('notifications')
 			&&  Settings::getScenarioAvailability(Settings::SCENARIO_CRM_PAYMENT) === FeatureStatus::AVAILABLE
 		;
+	}
+
+	private static function checkTemplateCode(string $templateCode): bool
+	{
+		$availableTemplates = [
+			GoToChat::NOTIFICATIONS_MESSAGE_CODE,
+			Calendar\Notification\NotificationService::TEMPLATE_SHARING_EVENT_INVITATION,
+			Calendar\Notification\NotificationService::TEMPLATE_SHARING_EVENT_AUTO_ACCEPTED,
+			Calendar\Notification\NotificationService::TEMPLATE_SHARING_EVENT_CANCELLED_LINK_ACTIVE,
+			Calendar\Notification\NotificationService::TEMPLATE_SHARING_EVENT_CANCELLED,
+			Calendar\Notification\NotificationService::TEMPLATE_SHARING_EVENT_EDITED,
+		];
+
+		return in_array($templateCode, $availableTemplates, true);
 	}
 }

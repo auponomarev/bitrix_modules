@@ -95,6 +95,16 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 	public const DEFAULT_WRAPPER_STYLE = ['block-default'];
 
 	/**
+	 * Maximum allowed number of favorite blocks
+	 */
+	public const FAVOURITE_BLOCKS_LIMIT = 5000;
+
+	/**
+	 * Maximum allowed number of favorite blocks with preview image
+	 */
+	public const FAVOURITE_BLOCKS_LIMIT_WITH_PREVIEW = 1000;
+
+	/**
 	 * Internal class.
 	 * @var string
 	 */
@@ -700,6 +710,22 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 		$codeOriginal = null;
 		$designed = 'N';
 		$content = $data['CONTENT'] ?? self::getContentFromRepository($code);
+		if (isset($data['PREPARE_BLOCK_DATA']['ACTION']))
+		{
+			if (
+				$data['PREPARE_BLOCK_DATA']['ACTION'] === 'changeComponentParams'
+				&& isset($data['PREPARE_BLOCK_DATA']['PARAMS'])
+				&& is_array($data['PREPARE_BLOCK_DATA']['PARAMS'])
+			)
+			{
+				foreach ($data['PREPARE_BLOCK_DATA']['PARAMS'] as $paramName => $paramValue)
+				{
+					$search = "'" . $paramName . "' => '',";
+					$replace = "'" . $paramName . "' => '". $paramValue . "',";
+					$content = str_replace($search, $replace, $content);
+				}
+			}
+		}
 		if (strpos($code, '@'))
 		{
 			$codeOriginal = $code;
@@ -743,7 +769,6 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 		$fields = array(
 			'LID' => $landing->getId(),
 			'CODE' => $code,
-			'CODE_ORIGINAL' => $codeOriginal,
 			'SOURCE_PARAMS' => $sourceParams,
 			'CONTENT' => $content,
 			'ACTIVE' => 'Y',
@@ -769,7 +794,10 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 			$manifest = $block->getManifest();
 			if (!$block->getLocalAnchor())
 			{
+				$historyActivity = History::isActive();
+				History::deactivate();
 				$block->setAnchor('b' . $block->getId());
+				$historyActivity ? History::activate() : History::deactivate();
 			}
 			Assets\PreProcessing::blockAddProcessing($block);
 			if (
@@ -1222,8 +1250,10 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 		}
 		$blocks += $blocksRepo;
 
-		$currentUser = Manager::getUserId();
 		// favorites block
+		$currentUser = Manager::getUserId();
+		$favoriteBlocks = [];
+		$favoriteMyBlocks = [];
 		$res = Internals\BlockTable::getList([
 			'select' => [
 				'ID', 'CODE', 'FAVORITE_META', 'CREATED_BY_ID'
@@ -1234,10 +1264,13 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 			],
 			'order' => [
 				'ID' => 'desc'
-			]
+			],
+			'limit' => self::FAVOURITE_BLOCKS_LIMIT,
 		]);
+		$countFavoriteBlocks = 0;
 		while ($row = $res->fetch())
 		{
+			$countFavoriteBlocks++;
 			if (isset($blocks[$row['CODE']]))
 			{
 				if (!is_array($row['FAVORITE_META']))
@@ -1248,7 +1281,7 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 				$meta['preview'] = $meta['preview'] ?? 0;
 				$meta['favorite'] = true;
 				$meta['favoriteMy'] = ((int)$row['CREATED_BY_ID'] === $currentUser);
-				if ($meta['preview'] > 0)
+				if ($meta['preview'] > 0 && $countFavoriteBlocks < self::FAVOURITE_BLOCKS_LIMIT_WITH_PREVIEW)
 				{
 					$meta['preview'] = File::getFilePath($meta['preview']);
 				}
@@ -1260,17 +1293,24 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 				{
 					$meta['section'] = (array)$meta['section'];
 				}
-				$blocks = [$row['CODE'] . '@' . $row['ID'] => $blocks[$row['CODE']]] + $blocks;
-				$blocks[$row['CODE'] . '@' . $row['ID']] = array_merge(
-					$blocks[$row['CODE'] . '@' . $row['ID']],
+
+				$item = array_merge(
+					$blocks[$row['CODE']],
 					$meta
 				);
-				if ($blocks[$row['CODE'] . '@' . $row['ID']]['type'] === 'null')
+				$code = $row['CODE'] . '@' . $row['ID'];
+				if ($item['type'] === 'null')
 				{
-					$blocks[$row['CODE'] . '@' . $row['ID']]['type'] = [];
+					$item['type'] = [];
 				}
+
+				$meta['favoriteMy']
+					? ($favoriteMyBlocks[$code] = $item)
+					: ($favoriteBlocks[$code] = $item)
+				;
 			}
 		}
+		$blocks = $favoriteMyBlocks + $blocks + $favoriteBlocks;
 
 		// create new section in repo
 		$createNewSection = function($item)
@@ -1629,7 +1669,7 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 			{
 				$manifest['requiredUserAction'] = $block->getRuntimeRequiredUserAction();
 			}
-			$sections = (array)$manifest['block']['section'];
+			$sections = (array)(($manifest['block']['section']) ?? null);
 			$return = array(
 				'id' => $id,
 				'sections' => implode(',', $sections),
@@ -2824,6 +2864,17 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 			$content = $this->content;
 		}
 
+		// replace in requisite page, marker to company title
+		if (mb_strpos($this->content, '#requisiteCompanyTitle') !== false)
+		{
+			$replace = Connector\Crm::getReplaceRequisiteCompanyNameForContent($landing->getXmlId());
+			$content = str_replace(
+				array_keys($replace),
+				array_values($replace),
+				$content
+			);
+		}
+
 		// @tmp bug with setInnerHTML save result
 		$content = preg_replace('/&amp;([^\s]{1})/is', '&$1', $content);
 		if ($edit)
@@ -2837,7 +2888,7 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 				{
 					$manifest['requiredUserAction'] = $this->runtimeRequiredUserAction;
 				}
-				$sections = (array)$manifest['block']['section'];
+				$sections = (array)($manifest['block']['section'] ?? null);
 				$designerRepository = $this->metaData['DESIGNER_MODE'] ? \Bitrix\Landing\Block\Designer::getRepository() : [];
 				$anchor = $this->anchor;
 				if (!$anchor)
@@ -3510,7 +3561,18 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 				array_fill_keys(['text', 'href', 'target'], ''),
 				$detailPage
 			);
-			\trimArr($detailPage, true);
+			foreach ($detailPage as $key => &$detailPageItem)
+			{
+				if (!is_array($detailPageItem))
+				{
+					$detailPageItem = trim($detailPageItem);
+				}
+				if (empty($detailPageItem))
+				{
+					unset($detailPage[$key]);
+				}
+			}
+			unset($detailPageItem);
 
 			if ($filterId && $elemId && $detailPage['href'])
 			{
@@ -4322,6 +4384,7 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 		foreach ($manifest['nodes'] as $selector => $node)
 		{
 			$isFind = false;
+			$dataSelector = [];
 			if (isset($data[$selector]))
 			{
 				if (!is_array($data[$selector]))
@@ -4330,22 +4393,37 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 						$data[$selector]
 					);
 				}
+				$dataSelector = $data[$selector];
 				$isFind = true;
 			}
 			if (!$isFind && ($node['isWrapper'] ?? false) === true)
 			{
-				$selector = '#wrapper';
-				if (!is_array($data[$selector]))
+				if (isset($data['#wrapper']) && $node['type'] === 'styleimg')
 				{
-					$data[$selector] = array(
-						$data[$selector]
-					);
+					if (!is_array($data['#wrapper']))
+					{
+						$data['#wrapper'] = array(
+							$data['#wrapper']
+						);
+					}
+					$dataSelector = $data['#wrapper'];
+				}
+				else
+				{
+					$selector = '#wrapper';
+					if (!is_array($data[$selector]))
+					{
+						$data[$selector] = array(
+							$data[$selector]
+						);
+					}
+					$dataSelector = $data[$selector];
 				}
 				$isFind = true;
 			}
 			if ($node['type'] === 'img')
 			{
-				$node = Img::prepareManifest($this, $node, $manifest);
+				$node = Img::changeNodeType($node, $this);
 			}
 			if ($isFind)
 			{
@@ -4356,7 +4434,7 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 					), array(
 						$this,
 						$selector,
-						$data[$selector],
+						$dataSelector,
 						$additional
 					));
 			}
@@ -4721,6 +4799,7 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 
 		// detects position
 		$positions = [];
+		$position = -1;
 		foreach ((array)$data as $selector => $item)
 		{
 			if (mb_strpos($selector, '@') !== false)
@@ -4826,29 +4905,25 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 								array_merge($stylesInline, $data[$relativeSelector]['style'])
 							);
 						}
-						else
+						else if (preg_match_all('/background-image:.*;/i', $resultNode->getAttribute('style'), $matches))
 						{
-							preg_match_all("/background-image:.*;/i", $resultNode->getAttribute('style'), $matches);
-							foreach ($matches[0] as $i => $match)
-							{
-								$styleOldContent .= $match;
-							}
 							$resultNode->removeAttribute('style');
-							$resultNode->setAttribute('style', $styleOldContent);
+							$resultNode->setAttribute('style', implode('', $matches[0]));
 						}
-					}
 
-					if (History::isActive())
-					{
-						$history = new History($this->getLandingId(), History::ENTITY_TYPE_LANDING);
-						$history->push('EDIT_STYLE', [
-							'block' => $this,
-							'selector' => $selector,
-							'position' => (int)$pos,
-							'affect' => $data[$relativeSelector]['affect'],
-							'contentBefore' => $contentBefore,
-							'contentAfter' => $resultNode->getOuterHTML(),
-						]);
+						if (History::isActive())
+						{
+							$history = new History($this->getLandingId(), History::ENTITY_TYPE_LANDING);
+							$history->push('EDIT_STYLE', [
+								'block' => $this,
+								'selector' => $selector,
+								'isWrapper' => ($selector === $wrapper),
+								'position' => $position >= 0 ? (int)$pos : -1,
+								'affect' => $data[$relativeSelector]['affect'],
+								'contentBefore' => $contentBefore,
+								'contentAfter' => $resultNode->getOuterHTML(),
+							]);
+						}
 					}
 				}
 			}
@@ -5007,25 +5082,37 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 							continue;
 						}
 						// attrs new data in each selector ([data-test] => value)
-						foreach ($attrData as $key => $val)
+						foreach ($attrData as $key => $value)
 						{
 							if (!in_array($key, $allowed))
 							{
 								continue;
 							}
+							$key = \htmlspecialcharsbx($key);
+							$value = is_array($value) ? json_encode($value) : $value;
+
 							// result nodes by main selector
 							foreach ($resultList as $pos => $resultNode)
 							{
 								// if position of node that we try to find
 								if ($attrKey == -1 || $attrKey == $pos)
 								{
+									$valueBefore = $resultNode->getAttribute($key);
 									// update node
-									$resultNode->setAttribute(
-										\htmlspecialcharsbx($key),
-										is_array($val)
-											? json_encode($val)
-											: $val
-									);
+									$resultNode->setAttribute($key, $value);
+									if (History::isActive())
+									{
+										$history = new History($this->getLandingId(), History::ENTITY_TYPE_LANDING);
+										$history->push('EDIT_ATTRIBUTES', [
+											'block' => $this,
+											'selector' => $selector,
+											'isWrapper' => ($selector === $wrapper),
+											'attribute' => $key,
+											'position' => (int)$attrKey,
+											'valueBefore' => $valueBefore,
+											'valueAfter' => $value,
+										]);
+									}
 								}
 							}
 						}
@@ -5464,6 +5551,7 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 		$result = [];
 
 		$filter['*%SEARCH_CONTENT'] = $query;
+		$filter['=DELETED'] = 'N';
 
 		$res = Internals\BlockTable::getList([
 			'select' => $select,
@@ -5638,23 +5726,32 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 	/**
 	 * Returns true if block's content contains needed string.
 	 *
-	 * @param int $blockId Block id.
+	 * @param int $entityId Block or landing id.
 	 * @param string $needed String for search.
+	 * @param bool $isLanding Set to true, if entity id is landing id.
 	 * @return bool
 	 */
-	public static function isContains(int $blockId, string $needed): bool
+	public static function isContains(int $entityId, string $needed, bool $isLanding = false): bool
 	{
+		$filter = [
+			'=ACTIVE' => 'Y',
+			'=DELETED' => 'N',
+			'CONTENT' => '%' . $needed . '%',
+		];
+		if ($isLanding)
+		{
+			$filter['LID'] = $entityId;
+		}
+		else
+		{
+			$filter['ID'] = $entityId;
+		}
 		$res = parent::getList([
 			'select' => [
 				'LID',
-				'SITE_ID' => 'LANDING.SITE_ID'
+				'SITE_ID' => 'LANDING.SITE_ID',
 			],
-			'filter' => [
-				'ID' => $blockId,
-				'=ACTIVE' => 'Y',
-				'=DELETED' => 'N',
-				'CONTENT' => '%' . $needed . '%'
-			]
+			'filter' => $filter,
 		]);
 		if ($row = $res->fetch())
 		{
@@ -5675,6 +5772,24 @@ class Block extends \Bitrix\Landing\Internals\BaseTable
 			{
 				return true;
 			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Temporary function for check components, when includeModule check is not enough
+	 * @return bool
+	 */
+	public static function checkComponentExists(string $componentName): bool
+	{
+		$path2Component = \CComponentEngine::MakeComponentPath($componentName);
+		if ($path2Component !== '')
+		{
+			$componentPath = getLocalPath("components" . $path2Component);
+			$componentFile = $_SERVER["DOCUMENT_ROOT"] . $componentPath . "/component.php";
+
+			return file_exists($componentFile) && is_file($componentFile);
 		}
 
 		return false;

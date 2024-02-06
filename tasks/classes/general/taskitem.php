@@ -12,11 +12,15 @@ use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 
 use Bitrix\Socialnetwork\Item\Workgroup;
+use Bitrix\Tasks\Access\TaskAccessController;
 use Bitrix\Tasks\CheckList\Task\TaskCheckListFacade;
 use Bitrix\Tasks\CheckList\Template\TemplateCheckListFacade;
 use Bitrix\Tasks\CheckList\Internals\CheckList;
 use Bitrix\Tasks\Comments\Task\CommentPoster;
 use \Bitrix\Tasks\Internals\Task\FavoriteTable;
+use Bitrix\Tasks\Internals\Task\MetaStatus;
+use Bitrix\Tasks\Internals\Task\Status;
+use Bitrix\Tasks\Internals\Task\TimeUnitType;
 use \Bitrix\Tasks\Task\DependenceTable;
 use \Bitrix\Tasks\Integration;
 use \Bitrix\Tasks\Integration\Rest\Task\UserField;
@@ -27,7 +31,6 @@ use \Bitrix\Tasks\Util\User;
 use \Bitrix\Tasks\ActionFailedException;
 use \Bitrix\Tasks\ActionNotAllowedException;
 use \Bitrix\Tasks\ActionRestrictedException;
-use \Bitrix\Tasks\Integration\Bizproc;
 use \Bitrix\Tasks\Access\ActionDictionary;
 
 Loc::loadMessages(__FILE__);
@@ -160,39 +163,6 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 
 	private static $accessController;
 	private static $allowedActions;
-
-	/**
-	 * Pin the task in the Kanban stage for users.
-	 * @param int $taskId Task id.
-	 * @param array $taskData Task data.
-	 * @return void
-	 */
-	private static function pinInStage($taskId, $taskData = array())
-	{
-		if (empty($taskData))
-		{
-			\Bitrix\Tasks\Kanban\StagesTable::pinInStage($taskId);
-		}
-		else
-		{
-			$newUsers = array();
-			foreach (array('CREATED_BY', 'RESPONSIBLE_ID', 'AUDITORS', 'ACCOMPLICES') as $code)
-			{
-				if (isset($taskData[$code]))
-				{
-					if (!is_array($taskData[$code]))
-					{
-						$taskData[$code] = array($taskData[$code]);
-					}
-					$newUsers = array_merge($newUsers, $taskData[$code]);
-				}
-			}
-			if (!empty($newUsers))
-			{
-				\Bitrix\Tasks\Kanban\StagesTable::pinInStage($taskId, $newUsers);
-			}
-		}
-	}
 
 	public function getLastOperationResultData($operation = false)
 	{
@@ -336,11 +306,23 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 			}
 		}
 
-		if (!\Bitrix\Tasks\Access\TaskAccessController::can($executiveUserId, ActionDictionary::ACTION_TASK_SAVE, null, \Bitrix\Tasks\Access\Model\TaskModel::createFromArray($arNewTaskData)))
+		if (!TaskAccessController::can($executiveUserId, ActionDictionary::ACTION_TASK_SAVE, null, \Bitrix\Tasks\Access\Model\TaskModel::createFromArray($arNewTaskData)))
 		{
 			throw new TasksException(
 				serialize(array(array('text' => GetMessage('TASKS_TASK_CREATE_ACCESS_DENIED'), 'id' => 'ERROR_TASK_CREATE_ACCESS_DENIED'))),
 				TasksException::TE_ACCESS_DENIED
+			);
+		}
+
+		$parentId = (int)($arNewTaskData['PARENT_ID'] ?? null);
+		if (
+			$parentId > 0 &&
+			!TaskAccessController::can($executiveUserId, ActionDictionary::ACTION_TASK_READ, $parentId)
+		)
+		{
+			throw new TasksException(
+				Loc::getMessage('TASKS_BAD_PARENT_ID'),
+				TasksException::TE_ACTION_NOT_ALLOWED
 			);
 		}
 
@@ -360,15 +342,9 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 			static::throwExceptionVerbose($o->GetErrors());
 		}
 
-		self::pinInStage($rc);
-
 		try
 		{
 			$newTaskItem = new CTaskItem( (int) $rc, $executiveUserId);
-			if (!isset($parameters['DISABLE_BIZPROC_RUN']))
-			{
-				Bizproc\Listener::onTaskAdd($rc, $newTaskItem->getData());
-			}
 		}
 		catch (TasksException | CTaskAssertException $e)
 		{
@@ -485,7 +461,7 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 
 			if($parameters['CLONE_CHECKLIST_ITEMS'])
 			{
-				list($arChecklistItems, $arMetaData) = CTaskCheckListItem::fetchList($this, array('SORT_INDEX' => 'ASC'));
+				[$arChecklistItems, $arMetaData] = CTaskCheckListItem::fetchList($this, array('SORT_INDEX' => 'ASC'));
 				unset($arMetaData);
 
 				foreach ($arChecklistItems as $oChecklistItem)
@@ -661,7 +637,7 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 	protected function duplicateChildTasksLambda($parentTaskInstance, &$queue)
 	{
 		// have to walk task tree recursively, because no tree structure is currently provided
-		list($items, $res) = static::fetchList($this->getExecutiveUserId(), array(), array('PARENT_ID' => $parentTaskInstance->getId()), array(), array('*', 'UF_*'));
+		[$items, $res] = static::fetchList($this->getExecutiveUserId(), array(), array('PARENT_ID' => $parentTaskInstance->getId()), array(), array('*', 'UF_*'));
 		unset($res);
 		foreach($items as $taskInstance)
 		{
@@ -732,7 +708,7 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 
 		// read template data
 
-		if(is_array($parameters['TEMPLATE_DATA']) && !empty($parameters['TEMPLATE_DATA']))
+		if(is_array($parameters['TEMPLATE_DATA'] ?? null) && !empty($parameters['TEMPLATE_DATA'] ?? null))
 		{
 			$arTemplate = $parameters['TEMPLATE_DATA'];
 		}
@@ -1194,6 +1170,8 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 
 	/**
 	 * Get task data (read from DB on demand)
+	 *
+	 * @throws TasksException
 	 */
 	public function getData($returnEscapedData = true, array $parameters = [], bool $bCheckPermissions = true)
 	{
@@ -1487,20 +1465,20 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 
     public static function getStatusMap()
     {
-        static $arStringsMap = array(
-            CTasks::METASTATE_VIRGIN_NEW          => 'METASTATE_VIRGIN_NEW',
-            CTasks::METASTATE_EXPIRED             => 'METASTATE_EXPIRED',
-            CTasks::METASTATE_EXPIRED_SOON             => 'METASTATE_EXPIRED_SOON',
-            CTasks::STATE_NEW                     => 'STATE_NEW',
-            CTasks::STATE_PENDING                 => 'STATE_PENDING',
-            CTasks::STATE_IN_PROGRESS             => 'STATE_IN_PROGRESS',
-            CTasks::STATE_SUPPOSEDLY_COMPLETED    => 'STATE_SUPPOSEDLY_COMPLETED',
-            CTasks::STATE_COMPLETED               => 'STATE_COMPLETED',
-            CTasks::STATE_DEFERRED                => 'STATE_DEFERRED',
-            CTasks::STATE_DECLINED                => 'STATE_DECLINED',
-        );
+	    static $arStringsMap = [
+		    MetaStatus::UNSEEN => 'METASTATE_VIRGIN_NEW',
+		    MetaStatus::EXPIRED => 'METASTATE_EXPIRED',
+		    MetaStatus::EXPIRED_SOON => 'METASTATE_EXPIRED_SOON',
+		    Status::NEW => 'STATE_NEW',
+		    Status::PENDING => 'STATE_PENDING',
+		    Status::IN_PROGRESS => 'STATE_IN_PROGRESS',
+		    Status::SUPPOSEDLY_COMPLETED => 'STATE_SUPPOSEDLY_COMPLETED',
+		    Status::COMPLETED => 'STATE_COMPLETED',
+		    Status::DEFERRED => 'STATE_DEFERRED',
+		    Status::DECLINED => 'STATE_DECLINED',
+	    ];
 
-        return $arStringsMap;
+	    return $arStringsMap;
     }
 
 	private function getAllowedActionsAsStrings($allowedActions = false): array
@@ -1530,7 +1508,7 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 	{
 		if (!self::$accessController || !array_key_exists($executiveUserId, self::$accessController))
 		{
-			self::$accessController[$executiveUserId] = new \Bitrix\Tasks\Access\TaskAccessController((int) $executiveUserId);
+			self::$accessController[$executiveUserId] = new TaskAccessController((int) $executiveUserId);
 		}
 		return self::$accessController[$executiveUserId];
 	}
@@ -1568,8 +1546,6 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 	}
 
 	/**
-	 * @param array $params
-	 *
 	 * @throws TasksException
 	 */
 	public function delete(array $params=array())
@@ -1595,8 +1571,6 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 				'PARAMETERS' => $params
 			]
 		);
-
-		self::pinInStage($this->getId(), ['RESPONSIBLE_ID' => $newResponsibleId]);
 	}
 
 
@@ -1658,20 +1632,14 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 		$this->proceedAction(self::ACTION_COMPLETE, ['PARAMETERS' => $params]);
 	}
 
-
+	/**
+	 * @throws TasksException
+	 */
 	public function update($arNewTaskData = [], array $parameters = array())
 	{
 		if (empty($arNewTaskData))
 		{
 			return;
-		}
-
-		if (
-			!array_key_exists('PIN_IN_STAGE', $parameters) ||
-			array_key_exists('PIN_IN_STAGE', $parameters) && $parameters['PIN_IN_STAGE']
-		)
-		{
-			self::pinInStage($this->getId(), $arNewTaskData);
 		}
 
 		$this->proceedAction(
@@ -1756,10 +1724,6 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 		{
 			$userId = $this->executiveUserId;
 		}
-
-		self::pinInStage($this->getId(), array(
-			'AUDITORS' => $userId
-		));
 
 		// Am I auditor?
 		if ( ! in_array($userId, $arTask['AUDITORS']))
@@ -1946,7 +1910,7 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 	public static function fetchList($userId, $arOrder, $arFilter, $arParams = array(), $arSelect = array())
 	{
 		$arItems = array();
-		list($arItemsData, $rsData) = static::fetchListArray($userId, $arOrder, $arFilter, $arParams, $arSelect);
+		[$arItemsData, $rsData] = static::fetchListArray($userId, $arOrder, $arFilter, $arParams, $arSelect);
 
 		if(is_array($arItemsData))
 		{
@@ -1996,9 +1960,15 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 			}
 
 			if (isset($arParams['nPageTop']))
+			{
 				$arParamsOut['nPageTop'] = $arParams['nPageTop'];
+			}
 			elseif (isset($arParams['NAV_PARAMS']))
+			{
 				$arParamsOut['NAV_PARAMS'] = $arParams['NAV_PARAMS'];
+			}
+
+			$arParamsOut['DISTINCT'] = $arParams['DISTINCT'] ?? false;
 
 			$arFilter['CHECK_PERMISSIONS'] = 'Y';	// Always check permissions
 
@@ -2171,6 +2141,10 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 		}
 	}
 
+	/**
+	 * @throws CTaskAssertException
+	 * @throws TasksException
+	 */
 	private function proceedActionEdit($arActionArguments, $arTaskData)
 	{
 		$this->lastOperationResultData['UPDATE'] = array();
@@ -2201,6 +2175,18 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 		{
 			throw new TasksException(
 				GetMessage('TASKS_ACCESS_DENIED_TO_TASK_UPDATE'),
+				TasksException::TE_ACTION_NOT_ALLOWED
+			);
+		}
+
+		$parentId = (int)($arFields['PARENT_ID'] ?? null);
+		if (
+			$parentId > 0 &&
+			!TaskAccessController::can($this->executiveUserId, ActionDictionary::ACTION_TASK_READ, $parentId)
+		)
+		{
+			throw new TasksException(
+				Loc::getMessage('TASKS_BAD_PARENT_ID'),
 				TasksException::TE_ACTION_NOT_ALLOWED
 			);
 		}
@@ -2411,7 +2397,7 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 		switch ($actionId)
 		{
 			case ActionDictionary::ACTION_TASK_ACCEPT:
-				$arNewFields['STATUS'] = CTasks::STATE_PENDING;
+				$arNewFields['STATUS'] = Status::PENDING;
 			break;
 
 			case ActionDictionary::ACTION_TASK_CHANGE_STATUS:
@@ -2419,7 +2405,7 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 			break;
 
 			case ActionDictionary::ACTION_TASK_DECLINE:
-				$arNewFields['STATUS'] = CTasks::STATE_DECLINED;
+				$arNewFields['STATUS'] = Status::DECLINED;
 
 				if (isset($arActionArguments['DECLINE_REASON']))
 					$arNewFields['DECLINE_REASON'] = $arActionArguments['DECLINE_REASON'];
@@ -2434,17 +2420,17 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 				$isCreatorDirector = User::isBoss($arTaskData['CREATED_BY'], $this->executiveUserId);
 
 				if (
-					(($isAdmin || $isCreatorDirector) && $arTaskData['STATUS'] == CTasks::STATE_SUPPOSEDLY_COMPLETED)
+					(($isAdmin || $isCreatorDirector) && (int)$arTaskData['STATUS'] === Status::SUPPOSEDLY_COMPLETED)
 					|| $isOnePersonTask
 					|| $isCreator
 					|| $arTaskData['TASK_CONTROL'] === 'N'
 				)
 				{
-					$arNewFields['STATUS'] = CTasks::STATE_COMPLETED;
+					$arNewFields['STATUS'] = Status::COMPLETED;
 				}
 				else
 				{
-					$arNewFields['STATUS'] = CTasks::STATE_SUPPOSEDLY_COMPLETED;
+					$arNewFields['STATUS'] = Status::SUPPOSEDLY_COMPLETED;
 				}
 
 				if (
@@ -2459,15 +2445,15 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 				break;
 
 			case ActionDictionary::ACTION_TASK_APPROVE:
-				$arNewFields['STATUS'] = CTasks::STATE_COMPLETED;
+				$arNewFields['STATUS'] = Status::COMPLETED;
 			break;
 
 			case ActionDictionary::ACTION_TASK_START:
-				$arNewFields['STATUS'] = CTasks::STATE_IN_PROGRESS;
+				$arNewFields['STATUS'] = Status::IN_PROGRESS;
 			break;
 
 			case ActionDictionary::ACTION_TASK_PAUSE:
-				$arNewFields['STATUS'] = CTasks::STATE_PENDING;
+				$arNewFields['STATUS'] = Status::PENDING;
 			break;
 
 			case ActionDictionary::ACTION_TASK_DELEGATE:
@@ -2483,7 +2469,7 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 					);
 				}
 
-				$arNewFields['STATUS'] = CTasks::STATE_PENDING;
+				$arNewFields['STATUS'] = Status::PENDING;
 				$arNewFields['RESPONSIBLE_ID'] = $newResponsibleId;
 
 				$isScrumTask = false;
@@ -2537,12 +2523,12 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 			break;
 
 			case ActionDictionary::ACTION_TASK_DEFER:
-				$arNewFields['STATUS'] = CTasks::STATE_DEFERRED;
+				$arNewFields['STATUS'] = Status::DEFERRED;
 			break;
 
 			case ActionDictionary::ACTION_TASK_DISAPPROVE:
 			case ActionDictionary::ACTION_TASK_RENEW:
-				$arNewFields['STATUS'] = CTasks::STATE_PENDING;
+				$arNewFields['STATUS'] = Status::PENDING;
 			break;
 
 			default:
@@ -3267,7 +3253,7 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 
 				/** @var CTaskItem[] $oTaskItems */
 				/** @noinspection PhpUnusedLocalVariableInspection */
-				list($oTaskItems, $rsData) = call_user_func_array(array('self', 'fetchList'), $argsParsed);
+				[$oTaskItems, $rsData] = call_user_func_array(array('self', 'fetchList'), $argsParsed);
 
 				$returnValue = array();
 
@@ -3348,7 +3334,7 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 
 		if ($this->arTaskFileAttachments === null)
 		{
-			list($items, $res) = static::fetchList($this->executiveUserId, array(), array('ID' => $this->taskId), array(), array('ID', 'UF_TASK_WEBDAV_FILES'));
+			[$items, $res] = static::fetchList($this->executiveUserId, array(), array('ID' => $this->taskId), array(), array('ID', 'UF_TASK_WEBDAV_FILES'));
 
 			$this->arTaskFileAttachments = array();
 			if(isset($items[0]))
@@ -4103,16 +4089,16 @@ final class CTaskItem implements CTaskItemInterface, ArrayAccess
 		}
 		catch (TasksException $e)
 		{
-			return CTasks::TIME_UNIT_TYPE_HOUR;
+			return TimeUnitType::HOUR;
 		}
 
-		if((string) $this->arTaskData['DURATION_TYPE'] == '' || !in_array($this->arTaskData['DURATION_TYPE'], array(
-			CTasks::TIME_UNIT_TYPE_DAY,
-			CTasks::TIME_UNIT_TYPE_HOUR,
-			CTasks::TIME_UNIT_TYPE_MINUTE
-		)))
+		if((string)$this->arTaskData['DURATION_TYPE'] === '' || !in_array((string)$this->arTaskData['DURATION_TYPE'], [
+			TimeUnitType::DAY,
+			TimeUnitType::HOUR,
+			TimeUnitType::MINUTE
+		], true))
 		{
-			return CTasks::TIME_UNIT_TYPE_HOUR;
+			return TimeUnitType::HOUR;
 		}
 
 		return $this->arTaskData['DURATION_TYPE'];

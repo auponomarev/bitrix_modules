@@ -25,6 +25,7 @@ class EntityCounterPanel extends CounterPanel
 	#filterManager: ?EntityCounterFilterManager;
 	#filterLastPresetId: String;
 	#filterLastPreset: Object;
+	#filterResponsibleFiledName: string
 
 	constructor(options: EntityCounterPanelOptions): void
 	{
@@ -50,6 +51,7 @@ class EntityCounterPanel extends CounterPanel
 		this.#userName = Type.isStringFilled(options.userName) ? options.userName : this.#userId;
 		this.#codes = Type.isArray(options.codes) ? options.codes : [];
 		this.#data = data;
+		this.#filterResponsibleFiledName = options.filterResponsibleFiledName;
 
 		if (BX.CrmEntityType.isDefined(this.#entityTypeId))
 		{
@@ -95,7 +97,7 @@ class EntityCounterPanel extends CounterPanel
 
 		if (!this.#processItemSelection(item))
 		{
-			return BX.PreventDefault(event);
+			return event.preventDefault()
 		}
 	}
 
@@ -131,7 +133,6 @@ class EntityCounterPanel extends CounterPanel
 	{
 		let isValueUpdated = false;
 
-		const isNoSliders = BX.SidePanel.Instance.getTopSlider() === null;
 		const data = this.#counterManager.getCounterData();
 		const parentItem = this.getItemById(EntityCounterPanel.getMenuParentItemId(this.#codes));
 
@@ -182,8 +183,6 @@ class EntityCounterPanel extends CounterPanel
 					BX.userOptions.save('crm', this.#filterLastPresetId, '', JSON.stringify(this.#filterLastPreset));
 				}
 
-				// BX.onCustomEvent(window, 'BX.CrmEntityCounterPanel:applyFilter', [this, eventArgs]);
-
 				const userId = isOtherUsersFilter ? EntityCounterFilterManager.FILTER_OTHER_USERS : this.#userId.toString();
 				const userName = isOtherUsersFilter ? Loc.getMessage('NEW_CRM_COUNTER_TYPE_OTHER') : this.#userName;
 				const counterTypeId = this.#prepareFilterTypeId(typeId);
@@ -197,21 +196,11 @@ class EntityCounterPanel extends CounterPanel
 						: { 0: counterTypeId }
 				};
 
-				if (this.#entityTypeId === BX.CrmEntityType.enumeration.order)
-				{
-					fields = {
-						...fields,
-						"RESPONSIBLE_ID": { 0: userId },
-						"RESPONSIBLE_ID_label": [ userName ],
-					}
-				}
-				else
-				{
-					fields = {
-						...fields,
-						"ASSIGNED_BY_ID": { 0: userId },
-						"ASSIGNED_BY_ID_label": [ userName ],
-					}
+				const responsibleField = this.#filterResponsibleFiledName;
+				fields = {
+					...fields,
+					[responsibleField]: { 0: userId },
+					[responsibleField + '_label']: [ userName ]
 				}
 
 				api.setFields(fields);
@@ -265,7 +254,15 @@ class EntityCounterPanel extends CounterPanel
 
 			const isOtherUsersFilter = item.id.endsWith(EntityCounterPanel.EXCLUDE_USERS_CODE_SUFFIX);
 
-			if (this.#filterManager.isFiltered(this.#userId, parseInt(record.TYPE_ID, 10), this.#entityTypeId, isOtherUsersFilter))
+			const isFiltered = this.#filterManager.isFiltered(
+				this.#userId,
+				parseInt(record.TYPE_ID, 10),
+				this.#entityTypeId,
+				isOtherUsersFilter,
+				this.#filterResponsibleFiledName
+			);
+
+			if (isFiltered)
 			{
 				item.activate(false);
 
@@ -365,12 +362,15 @@ class EntityCounterPanel extends CounterPanel
 
 					parentTotal += value;
 
-					let color = EntityCounterPanel.detectCounterItemColor(item.TYPE_NAME, value);
+					const color = EntityCounterPanel.detectCounterItemColor(item.TYPE_NAME, value);
 
 					return {
 						id: code,
 						title: Loc.getMessage('NEW_CRM_COUNTER_TYPE_OTHER_' + item.TYPE_NAME),
-						value: value,
+						value: {
+							value: value,
+							order: -1
+						},
 						color: color === 'THEME' ? 'GRAY' : color, // override color to correct display on different themes
 						parentId: parentItemId
 					};
@@ -381,7 +381,10 @@ class EntityCounterPanel extends CounterPanel
 			otherUsersItems = [{
 				id: parentItemId,
 				title: Loc.getMessage('NEW_CRM_COUNTER_TYPE_OTHER_TITLE'),
-				value: parentTotal,
+				value: {
+					value: parentTotal,
+					order: -1
+				},
 				isRestricted: isRestricted,
 				color: 'THEME'
 			}].concat(otherUsersItems);

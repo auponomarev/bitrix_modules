@@ -6,9 +6,10 @@ use Bitrix\Calendar\Core\Queue\Agent\AgentEntity;
 use Bitrix\Calendar\Core\Queue\Agent\EventAttendeesUpdateAgent;
 use Bitrix\Calendar\Core\Queue\Agent\EventDelayedSyncAgent;
 use Bitrix\Calendar\Core\Queue\Agent\EventsWithEntityAttendeesFindAgent;
+use Bitrix\Calendar\Core\Queue\Agent\SendingEmailNotificationAgent;
 use Bitrix\Calendar\Core\Queue\Examples\ConsumerClientExample;
 use Bitrix\Calendar\Core\Queue\Queue\QueueRegistry;
-use Bitrix\Calendar\Internals\SingletonTrait;
+use Bitrix\Calendar\Core\Base\SingletonTrait;
 use Bitrix\Calendar\Core\Queue;
 
 class Registry
@@ -86,6 +87,17 @@ class Registry
 			new AgentListener(
 				new AgentEntity(
 					EventAttendeesUpdateAgent::class . '::runAgent();',
+					'calendar',
+					1,
+				)
+			)
+		);
+
+		$this->registerListener(
+			QueueRegistry::QUEUE_LIST['SendingEmailNotification'],
+			new AgentListener(
+				new AgentEntity(
+					SendingEmailNotificationAgent::class . '::runAgent();',
 					'calendar',
 					1,
 				)

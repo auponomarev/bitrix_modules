@@ -1,25 +1,22 @@
 <?php
 namespace Bitrix\Imconnector\Update;
 
-use \Bitrix\Main\Loader,
-	\Bitrix\Main\Config\Option,
-	\Bitrix\Main\Update\Stepper,
-	\Bitrix\Main\Localization\Loc,
-	\Bitrix\ImConnector\Rest\Helper,
-	\Bitrix\Main\Entity\ReferenceField,
-	\Bitrix\ImConnector\Model\CustomConnectorsTable;
+use Bitrix\Main;
+use Bitrix\Main\Loader;
+use Bitrix\Main\Config\Option;
+use Bitrix\Main\ORM;
+use Bitrix\Rest;
+use Bitrix\ImConnector;
 
-Loc::loadMessages(__FILE__);
-
-final class Update2000 extends Stepper
+final class Update2000 extends Main\Update\Stepper
 {
 	private const PORTION = 30;
-	private const OPTION_NAME = 'imconnector_check_custom_connectors_to_delete';
+	private const OPTION_NAME = 'imconnector_check_custom_connectors';
 	protected static $moduleId = 'imconnector';
 
-	public function execute(array &$result): bool
+	public function execute(array &$option): bool
 	{
-		$return = false;
+		$return = self::FINISH_EXECUTION;
 
 		if (Loader::includeModule(self::$moduleId) && Loader::includeModule('rest'))
 		{
@@ -27,50 +24,61 @@ final class Update2000 extends Stepper
 
 			if ($status['count'] > 0)
 			{
-				$runtime[] = new ReferenceField(
-					'REST_APP',
-					'\Bitrix\Rest\AppTable',
-					['=ref.ID' => 'this.REST_APP_ID'],
-					['join_type' => 'LEFT']
-				);
+				$option['progress'] = 1;
+				$option['steps'] = '';
+				$option['count'] = $status['count'];
 
 				$found = false;
-				$cursor = CustomConnectorsTable::getList([
+				$cursor = ImConnector\Model\CustomConnectorsTable::getList([
 					'select' => [
 						'ID',
 						'ID_CONNECTOR',
 						'REST_APP_ID',
-						'REST_APP.ID'
+						'REST_APP_ACTIVE' => 'REST_APP.ACTIVE',
+						'REST_APP_INSTALLED' => 'REST_APP.INSTALLED',
 					],
-					'runtime' => $runtime,
+					'runtime' => [
+						new ORM\Fields\Relations\Reference(
+							'REST_APP',
+							Rest\AppTable::class,
+							['=ref.ID' => 'this.REST_APP_ID'],
+							['join_type' => 'LEFT']
+						)
+					],
 					'filter' => [
-						'REST_APP.ID' => null,
 						'>ID' => $status['lastId'],
 					],
-					'offset' => 0,
 					'limit' => self::PORTION,
-					'order' => array('ID' => 'ASC'),
+					'order' => ['ID' => 'ASC'],
 				]);
-
 				while ($row = $cursor->fetch())
 				{
-					Helper::unRegisterApp([
-						'ID' => $row['ID_CONNECTOR'],
-						'REST_APP_ID' => $row['REST_APP_ID'],
-					]);
+					if (
+						empty($row['REST_APP_ID'])
+						|| $row['REST_APP_ACTIVE'] != 'Y'
+						|| $row['REST_APP_INSTALLED'] != 'Y'
+					)
+					{
+						ImConnector\Rest\Helper::unRegisterApp([
+							'ID' => $row['ID_CONNECTOR'],
+							'REST_APP_ID' => $row['REST_APP_ID'],
+						]);
+					}
 
 					$status['lastId'] = $row['ID'];
 					$status['number']++;
 					$found = true;
 				}
 
+				$option['progress'] = floor($status['number'] * 100 / $status['count']);
+				$option['steps'] = $status['number'];
+
 				if ($found)
 				{
 					Option::set(self::$moduleId, self::OPTION_NAME, serialize($status));
-					$return = true;
+					$return = self::CONTINUE_EXECUTION;
 				}
-
-				if ($found === false)
+				else
 				{
 					Option::delete(self::$moduleId, ['name' => self::OPTION_NAME]);
 				}
@@ -80,7 +88,7 @@ final class Update2000 extends Stepper
 		return $return;
 	}
 
-	public function loadCurrentStatus()
+	private function loadCurrentStatus(): array
 	{
 		$status = Option::get(self::$moduleId, self::OPTION_NAME, '');
 		$status = ($status !== '' ? @unserialize($status, ['allowed_classes' => false]) : []);
@@ -91,7 +99,7 @@ final class Update2000 extends Stepper
 			$status = [
 				'lastId' => 0,
 				'number' => 0,
-				'count' => CustomConnectorsTable::getCount(),
+				'count' => ImConnector\Model\CustomConnectorsTable::getCount(),
 			];
 		}
 		return $status;

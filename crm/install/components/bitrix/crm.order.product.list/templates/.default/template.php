@@ -1,9 +1,13 @@
 <?php
+
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
+{
 	die();
+}
 
 use Bitrix\Main\Grid\Panel\Actions;
-use \Bitrix\Main\Localization\Loc;
+use Bitrix\Main\Localization\Loc;
+
 \Bitrix\Main\UI\Extension::load([
 	"ui.design-tokens",
 	"ui.fonts.opensans",
@@ -19,27 +23,32 @@ $rows = [];
 $productSkuValues = [];
 $basketItemsParams = [];
 $currencyList = \CCrmCurrencyHelper::PrepareListItems();
-$isSetItems = $arResult['IS_SET_ITEMS'];
+$isSetItems = $arResult['IS_SET_ITEMS'] ?? false;
 $isReadOnly = !$arResult['CAN_UPDATE_ORDER'] || $isSetItems;
 $code2Id = [];
 
-foreach($arResult['PRODUCTS'] as $product)
+foreach ($arResult['PRODUCTS'] as $product)
 {
 	$namePrefix = 'PRODUCT['.$product['BASKET_CODE'].']';
 	$code2Id[$product['BASKET_CODE']] = $product['PRODUCT_ID'];
-
-
 	//extract SKU props
 	$skuHtml = '';
 
-	if(is_array($product['SKU_PROPS_POSSIBLE_VALUES']))
+	if (
+		isset($product['SKU_PROPS_POSSIBLE_VALUES'])
+		&& is_array($product['SKU_PROPS_POSSIBLE_VALUES'])
+	)
 	{
 		foreach($product['SKU_PROPS_POSSIBLE_VALUES'] as $pSkuId => $possibleSku)
 		{
 			$skuItemType = [];
 			$skuItemHtml = '';
 
-			if(is_array($arResult['IBLOCKS_SKU_PARAMS_ORDER']) && !empty($arResult['IBLOCKS_SKU_PARAMS_ORDER']))
+			if (
+				isset($arResult['IBLOCKS_SKU_PARAMS_ORDER'])
+				&& is_array($arResult['IBLOCKS_SKU_PARAMS_ORDER'])
+				&& !empty($arResult['IBLOCKS_SKU_PARAMS_ORDER'])
+			)
 			{
 				foreach($arResult['IBLOCKS_SKU_PARAMS_ORDER'][$product['OFFERS_IBLOCK_ID']] as $skuId)
 				{
@@ -148,7 +157,11 @@ foreach($arResult['PRODUCTS'] as $product)
 	//region DISCOUNTS
 	$discountsHtml = '';
 
-	if(is_array($product['DISCOUNTS']) && !empty($product['DISCOUNTS']))
+	if (
+		isset($product['DISCOUNTS'])
+		&& is_array($product['DISCOUNTS'])
+		&& !empty($product['DISCOUNTS'])
+	)
 	{
 		foreach($product['DISCOUNTS'] as $discountId => $discount)
 		{
@@ -277,7 +290,7 @@ foreach($arResult['PRODUCTS'] as $product)
 	';
 	if (!$isReadOnly)
 	{
-		$mainInfo .= '<input type="hidden" name="'.$namePrefix.'[FIELDS_VALUES]" value="'.htmlspecialcharsbx($product['FIELDS_VALUES']).'">';
+		$mainInfo .= '<input type="hidden" name="'.$namePrefix.'[FIELDS_VALUES]" value="'.htmlspecialcharsbx($product['FIELDS_VALUES'] ?? '').'">';
 	}
 	//region Main Info
 
@@ -301,7 +314,9 @@ foreach($arResult['PRODUCTS'] as $product)
 	//region VAT
 	if ($isReadOnly)
 	{
-		$vatIncludedInnerHtml = ($product['VAT_INCLUDED'] == 'Y') ? Loc::getMessage('CRM_ORDER_PL_YES') : Loc::getMessage('CRM_ORDER_PL_NO');
+		$vatIncludedInnerHtml = isset($product['VAT_INCLUDED']) && $product['VAT_INCLUDED'] === 'Y'
+			? Loc::getMessage('CRM_ORDER_PL_YES')
+			: Loc::getMessage('CRM_ORDER_PL_NO');
 	}
 	else
 	{
@@ -531,7 +546,7 @@ $APPLICATION->IncludeComponent(
 		'AJAX_MODE' => $arParams['AJAX_MODE'],
 		'AJAX_OPTION_JUMP' => $arResult['AJAX_OPTION_JUMP'],
 		'AJAX_OPTION_HISTORY' => $arResult['AJAX_OPTION_HISTORY'],
-		'AJAX_LOADER' => isset($arParams['AJAX_LOADER']) ? $arParams['AJAX_LOADER'] : null,
+		'AJAX_LOADER' => $arParams['AJAX_LOADER'] ?? null,
 		'SHOW_PAGINATION' => $arResult['SHOW_PAGINATION'],
 		'SHOW_TOTAL_COUNTER' => $arResult['SHOW_TOTAL_COUNTER'],
 		'SHOW_PAGESIZE' => $arResult['SHOW_PAGESIZE'],
@@ -543,8 +558,8 @@ $APPLICATION->IncludeComponent(
 		'ENABLE_COLLAPSIBLE_ROWS' => true,
 		'TOTAL_ROWS_COUNT' => $arResult['TOTAL_ROWS_COUNT'],
 		'PRESERVE_HISTORY' => $arResult['PRESERVE_HISTORY'],
-		'NAME_TEMPLATE' => $arParams['NAME_TEMPLATE'],
-		'ACTION_PANEL' => $controlPanel,
+		'NAME_TEMPLATE' => $arParams['NAME_TEMPLATE'] ?? '',
+		'ACTION_PANEL' => $controlPanel ?? [],
 		'SHOW_ACTION_PANEL' => !empty($controlPanel),
 		'EXTENSION' => [
 			'ID' => $gridManagerID,
@@ -552,7 +567,7 @@ $APPLICATION->IncludeComponent(
 				'ownerTypeName' => 'ORDER_PRODUCT',
 				'gridId' => $arResult['GRID_ID'],
 				'serviceUrl' => '/bitrix/components/bitrix/crm.order.product.list/list.ajax.php?siteID='.SITE_ID.'&'.bitrix_sessid_get(),
-				'loaderData' => isset($arParams['AJAX_LOADER']) ? $arParams['AJAX_LOADER'] : null
+				'loaderData' => $arParams['AJAX_LOADER'] ?? null
 			],
 			'MESSAGES' => [
 				'deletionDialogTitle' => Loc::getMessage('CRM_ORDER_PL_DELETE_PRODUCT'),
@@ -761,7 +776,7 @@ if(is_array($arResult['COUPONS_LIST']))
 </script>
 
 <?
-if (!$arParams["INTERNAL_RELOAD"])
+if (empty($arParams["INTERNAL_RELOAD"]))
 {
 	?>
 	<script>

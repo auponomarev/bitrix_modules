@@ -1,5 +1,5 @@
 this.BX = this.BX || {};
-(function (exports,ui_designTokens,ui_fonts_opensans,currency,ui_layoutForm,ui_forms,ui_buttons,ui_common,ui_alerts,catalog_productSelector,ui_entitySelector,catalog_productModel,ui_vue_vuex,main_popup,main_loader,ui_label,ui_messagecard,ui_vue_components_hint,ui_notification,ui_infoHelper,main_qrcode,clipboard,helper,catalog_storeUse,ui_hint,ui_vue,main_core,main_core_events,currency_currencyCore,catalog_productCalculator) {
+(function (exports,ui_designTokens,ui_fonts_opensans,currency,ui_layoutForm,ui_forms,ui_buttons,ui_common,ui_alerts,catalog_productSelector,ui_entitySelector,catalog_productModel,ui_vue_vuex,main_popup,main_loader,ui_label,ui_messagecard,ui_vue_components_hint,ui_notification,ui_infoHelper,main_qrcode,clipboard,helper,ui_hint,ui_dialogs_messagebox,ui_vue,main_core,main_core_events,currency_currencyCore,catalog_productCalculator) {
 	'use strict';
 
 	class FormElementPosition {}
@@ -1722,9 +1722,6 @@ this.BX = this.BX || {};
 	  mounted() {
 	    this.$refs.label.appendChild(this.newLabel.render());
 	    this.$refs.message.appendChild(this.message.getLayout());
-	    if (!this.compilationOptions.hiddenInfoMessage) {
-	      this.showMessage();
-	    }
 	  },
 	  data() {
 	    return {
@@ -1876,6 +1873,9 @@ this.BX = this.BX || {};
 	    closeCreationStorePopup(creationStorePopup) {
 	      creationStorePopup.close();
 	    },
+	    onNewLabelClick(event) {
+	      event.preventDefault();
+	    },
 	    onLabelClick() {
 	      if (this.compilationOptions.isLimitedStore) {
 	        BX.UI.InfoHelper.show('limit_sites_number');
@@ -1904,7 +1904,6 @@ this.BX = this.BX || {};
 	        main_core.Dom.removeClass(this.$refs.hintIcon, 'catalog-pf-product-panel-message-arrow-target');
 	      }
 	      this.message.hide();
-	      this.$root.$app.changeFormOption('hiddenCompilationInfoMessage', 'Y');
 	    }
 	  },
 	  computed: {
@@ -1937,7 +1936,7 @@ this.BX = this.BX || {};
 								<span class="ui-hint-icon"></span>
 							</div>
 						</div>
-						<div ref="label"></div>
+						<div ref="label" @click="onNewLabelClick"></div>
 						<div class="tariff-lock" v-if="compilationOptions.isLimitedStore"></div>
 					</label>
 				</div>
@@ -1950,8 +1949,8 @@ this.BX = this.BX || {};
 					{{localize.CATALOG_FORM_COMPILATION_QR_LINK}}
 				</div>
 			</div>
-			<div class="catalog-pf-product-panel-compilation-price-info">{{localize.CATALOG_FORM_COMPILATION_PRICE_NOTIFICATION}}</div>
 			<div class="catalog-pf-product-panel-compilation-message" ref="message"></div>
+			<div class="catalog-pf-product-panel-compilation-price-info">{{localize.CATALOG_FORM_COMPILATION_PRICE_NOTIFICATION}}</div>
 		</div>
 	`
 	});
@@ -2088,51 +2087,17 @@ this.BX = this.BX || {};
 	      }
 	    },
 	    showDialogProductExists(params) {
-	      this.popup = new main_popup.Popup(null, null, {
-	        events: {
-	          onPopupClose: () => {
-	            this.popup.destroy();
-	          }
-	        },
-	        zIndex: 4000,
-	        autoHide: true,
-	        closeByEsc: true,
-	        closeIcon: true,
-	        titleBar: main_core.Loc.getMessage('CATALOG_FORM_BLOCK_PROD_EXIST_DLG_TITLE'),
-	        draggable: true,
-	        resizable: false,
-	        lightShadow: true,
-	        cacheable: false,
-	        overlay: true,
-	        content: main_core.Loc.getMessage('CATALOG_FORM_BLOCK_PROD_EXIST_DLG_TEXT_FOR_DOUBLE').replace('#NAME#', params.name),
-	        buttons: this.getButtons(params)
-	      });
-	      this.popup.show();
-	    },
-	    getButtons(product) {
-	      const buttons = [];
-	      const params = product;
-	      buttons.push(new BX.UI.SaveButton({
-	        text: main_core.Loc.getMessage('CATALOG_FORM_BLOCK_PROD_EXIST_DLG_OK'),
-	        onclick: () => {
-	          const productId = parseInt(params.id);
-	          const index = this.getInternalIndexByProductId(productId);
-	          if (index >= 0) {
-	            this.handleAddItem(productId, {
-	              ...params,
-	              isAddAnyway: true
-	            });
-	          }
-	          this.popup.destroy();
+	      ui_dialogs_messagebox.MessageBox.confirm(main_core.Loc.getMessage('CATALOG_FORM_BLOCK_PROD_EXIST_DLG_TEXT_FOR_DOUBLE').replace('#NAME#', params.name), main_core.Loc.getMessage('CATALOG_FORM_BLOCK_PROD_EXIST_DLG_TITLE'), messageBox => {
+	        const productId = parseInt(params.id, 10);
+	        const index = this.getInternalIndexByProductId(productId);
+	        if (index >= 0) {
+	          this.handleAddItem(productId, {
+	            ...params,
+	            isAddAnyway: true
+	          });
 	        }
-	      }));
-	      buttons.push(new BX.UI.CancelButton({
-	        text: main_core.Loc.getMessage('CATALOG_FORM_BLOCK_PROD_EXIST_DLG_NO'),
-	        onclick: () => {
-	          this.popup.destroy();
-	        }
-	      }));
-	      return buttons;
+	        messageBox.close();
+	      }, main_core.Loc.getMessage('CATALOG_FORM_BLOCK_PROD_EXIST_DLG_OK'), messageBox => messageBox.close(), main_core.Loc.getMessage('CATALOG_FORM_BLOCK_PROD_EXIST_DLG_NO'));
 	    },
 	    showDialogProductSearch() {
 	      const funcName = 'addBasketItemFromDialogProductSearch';
@@ -2162,20 +2127,6 @@ this.BX = this.BX || {};
 	      } else if (event.target.dataset.settingId === 'showTaxInputOption') {
 	        const value = event.target.checked ? 'Y' : 'N';
 	        this.$root.$app.changeFormOption('showTaxBlock', value);
-	      } else if (event.target.dataset.settingId === 'warehouseOption') {
-	        const value = event.target.checked ? 'Y' : 'N';
-	        if (value === 'Y') {
-	          this.popupMenu.close();
-	          new catalog_storeUse.Slider().open('/bitrix/components/bitrix/catalog.warehouse.master.clear/slider.php', {}).then(() => {
-	            main_core.ajax.runAction('catalog.config.isUsedInventoryManagement', {}).then(response => {
-	              const index = this.getSettingItems().findIndex(item => {
-	                return item.id === event.target.dataset.settingId;
-	              });
-	              this.options.warehouseOption = response.data === true;
-	              this.settings = this.getSettingItems();
-	            });
-	          });
-	        }
 	      }
 	    },
 	    getSettingItem(item) {
@@ -2216,15 +2167,6 @@ this.BX = this.BX || {};
 	      // },
 	      ];
 
-	      if (this.options.isCatalogSettingAccess) {
-	        items.push({
-	          id: 'warehouseOption',
-	          checked: this.options.warehouseOption,
-	          disabled: this.options.warehouseOption,
-	          title: this.localize.CATALOG_FORM_ADD_SHOW_WAREHOUSE_OPTION,
-	          hint: this.options.warehouseOption ? this.localize.CATALOG_FORM_ADD_SHOW_WAREHOUSE_HINT : ''
-	        });
-	      }
 	      return items;
 	    },
 	    prepareSettingsContent() {
@@ -2601,8 +2543,7 @@ this.BX = this.BX || {};
 	        type: options.compilationFormType,
 	        hasStore: settingsCollection.get('hasLandingStore'),
 	        isLimitedStore: settingsCollection.get('isLimitedLandingStore'),
-	        disabledSwitcher: settingsCollection.get('isLimitedLandingStore'),
-	        hiddenInfoMessage: settingsCollection.get('hiddenCompilationInfoMessage')
+	        disabledSwitcher: settingsCollection.get('isLimitedLandingStore')
 	      };
 	    } else {
 	      options.showCompilationModeSwitcher = false;
@@ -2756,22 +2697,20 @@ this.BX = this.BX || {};
 	      return;
 	    }
 	    this.options[optionName] = value;
-	    if (optionName !== 'hiddenCompilationInfoMessage') {
-	      const basket = this.store.getters['productList/getBasket']();
-	      basket.forEach((item, index) => {
-	        if (optionName === 'showDiscountBlock') {
-	          item.showDiscountBlock = value;
-	        } else if (optionName === 'showTaxBlock') {
-	          item.showTaxBlock = value;
-	        } else if (optionName === 'taxIncluded') {
-	          item.fields.taxIncluded = value;
-	        }
-	        this.store.dispatch('productList/changeItem', {
-	          index,
-	          fields: item
-	        });
+	    const basket = this.store.getters['productList/getBasket']();
+	    basket.forEach((item, index) => {
+	      if (optionName === 'showDiscountBlock') {
+	        item.showDiscountBlock = value;
+	      } else if (optionName === 'showTaxBlock') {
+	        item.showTaxBlock = value;
+	      } else if (optionName === 'taxIncluded') {
+	        item.fields.taxIncluded = value;
+	      }
+	      this.store.dispatch('productList/changeItem', {
+	        index,
+	        fields: item
 	      });
-	    }
+	    });
 	    main_core.ajax.runAction('catalog.productForm.setConfig', {
 	      data: {
 	        configName: optionName,
@@ -2912,5 +2851,5 @@ this.BX = this.BX || {};
 	exports.ProductForm = ProductForm;
 	exports.FormMode = FormMode;
 
-}((this.BX.Catalog = this.BX.Catalog || {}),BX,BX,BX,BX.UI,BX,BX.UI,BX,BX.UI,BX.Catalog,BX.UI.EntitySelector,BX.Catalog,BX,BX.Main,BX,BX.UI,BX.UI,window,BX,BX,BX,BX,BX,BX.Catalog.StoreUse,BX,BX,BX,BX.Event,BX.Currency,BX.Catalog));
+}((this.BX.Catalog = this.BX.Catalog || {}),BX,BX,BX,BX.UI,BX,BX.UI,BX,BX.UI,BX.Catalog,BX.UI.EntitySelector,BX.Catalog,BX,BX.Main,BX,BX.UI,BX.UI,window,BX,BX,BX,BX,BX,BX,BX.UI.Dialogs,BX,BX,BX.Event,BX.Currency,BX.Catalog));
 //# sourceMappingURL=product-form.bundle.js.map

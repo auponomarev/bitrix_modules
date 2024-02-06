@@ -3,6 +3,7 @@ import { RoomsManager, RoomsSection } from 'calendar.roomsmanager';
 import { CategoryManager } from 'calendar.categorymanager';
 import {EventEmitter} from 'main.core.events';
 import { Util } from 'calendar.util';
+import { SelectInput } from 'calendar.controls';
 
 export class Location
 {
@@ -39,7 +40,7 @@ export class Location
 		this.setViewMode(params.viewMode === true);
 		this.processValue();
 		this.setCategoryManager();
-		this.setValuesDebounced = BX.debounce(this.setValues.bind(this), 70);
+		this.setValuesDebounced = BX.debounce(this.setValues.bind(this), 100);
 	}
 
 	create()
@@ -117,9 +118,10 @@ export class Location
 
 		if (!this.categoryManagerFromDB)
 		{
-			this.setValuesDebounced?.();
+			this.setValuesDebounced();
 			return;
 		}
+
 		this.prohibitClick();
 
 		let
@@ -146,8 +148,10 @@ export class Location
 					type: 'mr'
 				});
 
-				if (this.value.type === 'mr'
-					&& parseInt(this.value.value) === room.ID)
+				if (
+					this.value.type === 'mr'
+					&& parseInt(this.value.value) === room.ID
+				)
 				{
 					selectedIndex = menuItemList.length - 1;
 				}
@@ -175,19 +179,21 @@ export class Location
 				type: 'calendar'
 			});
 
-			if (this.value.type === 'calendar'
-				&& parseInt(this.value.value) === parseInt(room.id))
+			if (
+				this.value.type === 'calendar'
+				&& parseInt(this.value.value) === parseInt(room.id)
+			)
 			{
 				selectedIndex = menuItemList.length - 1;
 			}
 		};
-//TODO think about delimiter draw
+
 		if (Type.isObject(this.categoriesWithRooms))
 		{
 			if (this.categoriesWithRooms.categories.length || this.categoriesWithRooms.default.length)
 			{
 				this.categoriesWithRooms.categories.forEach((category) => {
-					if(category.rooms.length)
+					if (category.rooms.length)
 					{
 						menuItemList.push({text: category.name, delimiter: true});
 						category.rooms.forEach((room) => pushRoomToItemList(room), this);
@@ -197,7 +203,7 @@ export class Location
 				if (this.categoriesWithRooms.default.length)
 				{
 					menuItemList.push({
-						text:"\0",
+						text: "\0",
 						className: 'calendar-popup-window-delimiter-default-category',
 						delimiter: true,
 					});
@@ -240,7 +246,7 @@ export class Location
 
 		this.processValue();
 
-		this.selectContol = new BX.Calendar.Controls.SelectInput({
+		this.selectContol = new SelectInput({
 			input: this.DOM.input,
 			values: menuItemList,
 			valueIndex: selectedIndex,
@@ -305,8 +311,6 @@ export class Location
 
 	setValuesDebounce()
 	{
-		this.setCategoryManager();
-
 		this.setValuesDebounced();
 	}
 
@@ -329,7 +333,7 @@ export class Location
 		}
 
 		this.DOM.removeLocationButton = null;
-		if(Type.isDomNode(this.DOM.inlineEditLink))
+		if (Type.isDomNode(this.DOM.inlineEditLink))
 		{
 			this.displayInlineEditControls();
 		}
@@ -420,10 +424,13 @@ export class Location
 	{
 		this.getLocationAccessibility(params.from, params.to)
 		.then(()=> {
-			let eventTsFrom;
-			let eventTsTo;
-			let fromTs = params.from.getTime();
-			let toTs = params.to.getTime();
+			const timezone = (params.timezone && params.timezone !== '')
+				? params.timezone
+				: Util.getUserSettings().timezoneName
+			;
+			const timezoneOffset = Util.getTimeZoneOffset(timezone) * 60 * 1000;
+			const fromTs = new Date(params.from.getTime() + timezoneOffset).getTime();
+			let toTs = new Date(params.to.getTime() + timezoneOffset).getTime();
 			if (params.fullDay)
 			{
 				toTs += Location.DAY_LENGTH;
@@ -435,7 +442,10 @@ export class Location
 				let roomId = Location.locationList[index].ID;
 				for (const date of this.datesRange)
 				{
-					if (Type.isUndefined(Location.accessibility[date][roomId]))
+					if (
+						Type.isUndefined(Location.accessibility[date])
+						|| !Type.isArrayFilled(Location.accessibility[date][roomId])
+					)
 					{
 						continue;
 					}
@@ -447,14 +457,15 @@ export class Location
 							continue;
 						}
 
-						eventTsFrom = Util.parseDate(event.DATE_FROM).getTime();
-						eventTsTo = Util.parseDate(event.DATE_TO).getTime();
-						if (event.DT_SKIP_TIME !== 'Y')
+						let eventTimezoneOffset = 0;
+						if (event.DT_SKIP_TIME === 'N')
 						{
-							eventTsFrom -= event['~USER_OFFSET_FROM'] * 1000;
-							eventTsTo -= event['~USER_OFFSET_TO'] * 1000;
+							eventTimezoneOffset = Util.getTimeZoneOffset(event.TZ_FROM) * 60 * 1000;
 						}
-						else
+
+						const eventTsFrom = new Date(Util.parseDate(event.DATE_FROM).getTime() + eventTimezoneOffset).getTime();
+						let eventTsTo = new Date(Util.parseDate(event.DATE_TO).getTime() + eventTimezoneOffset).getTime();
+						if (event.DT_SKIP_TIME === 'Y')
 						{
 							eventTsTo += Location.DAY_LENGTH;
 						}
@@ -540,7 +551,6 @@ export class Location
 	loadRoomSlider()
 	{
 		this.setRoomsManager();
-		this.setCategoryManager();
 	}
 
 	openRoomsSlider()
@@ -952,7 +962,7 @@ export class Location
 
 	setCategoryManager()
 	{
-		if(!this.categoryManagerFromDB)
+		if (!this.categoryManagerFromDB)
 		{
 			this.getCategoryManager()
 				.then(
@@ -1006,8 +1016,8 @@ export class Location
 
 	static getDatesRange(from, to)
 	{
-		let fromDate = new Date(from);
-		let toDate = new Date(to);
+		const fromDate = new Date(from.getTime() - Util.getDayLength());
+		const toDate = new Date(to.getTime() + Util.getDayLength());
 		let startDate = fromDate.setHours(0, 0, 0, 0);
 		let finishDate = toDate.setHours(0, 0, 0, 0);
 		let result = [];

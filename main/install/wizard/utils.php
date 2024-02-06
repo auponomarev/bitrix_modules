@@ -1,8 +1,8 @@
 <?php
 
-function InstallGetMessage($name)
+function InstallGetMessage($name, $aReplace=null)
 {
-	return GetMessage($name);
+	return GetMessage($name, $aReplace);
 }
 
 class BXInstallServices
@@ -292,12 +292,23 @@ class BXInstallServices
 
 	public static function GetDBTypes()
 	{
-		$arTypes = Array();
+		global $arWizardConfig;
+		$dbTypes = [];
 
-		if (file_exists($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/classes/mysql/database.php"))
-			$arTypes["mysql"] = (function_exists("mysql_connect") || function_exists("mysqli_connect"));
+		if (file_exists($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/classes/mysql/database.php'))
+		{
+			$dbTypes['mysql'] = function_exists('mysqli_connect');
+		}
 
-		return $arTypes;
+		if (isset($arWizardConfig['pgsql']) && $arWizardConfig['pgsql'] === 'yes')
+		{
+			if (file_exists($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/classes/pgsql/database.php'))
+			{
+				$dbTypes['pgsql'] = function_exists('pg_pconnect');
+			}
+		}
+
+		return $dbTypes;
 	}
 
 	public static function CheckDirPath($path, $dirPermissions = 0755)
@@ -362,33 +373,6 @@ class BXInstallServices
 		}
 		closedir($handle);
 		@rmdir($path);
-	}
-
-	public static function DeleteDbFiles($dbType)
-	{
-		if (defined("DEBUG_MODE"))
-			return;
-
-		$path = $_SERVER['DOCUMENT_ROOT']."/bitrix/modules";
-
-		if (!$handle = @opendir($path))
-			return;
-
-		while (($file = readdir($handle)) !== false)
-		{
-			if ($file == "." || $file == "..")
-				continue;
-
-			if (is_dir($path."/".$file))
-			{
-				BXInstallServices::DeleteDirRec($path."/".$file."/".$dbType);
-				BXInstallServices::DeleteDirRec($path."/".$file."/classes/".$dbType);
-				BXInstallServices::DeleteDirRec($path."/".$file."/install/".$dbType);
-				BXInstallServices::DeleteDirRec($path."/".$file."/install/db/".$dbType);
-			}
-		}
-
-		closedir($handle);
 	}
 
 	public static function VersionCompare($strCurver, $strMinver, $strMaxver = "0.0.0")
@@ -568,16 +552,7 @@ class BXInstallServices
 
 	public static function IsUTFString($string)
 	{
-		return preg_match('%^(?:
-			[\x09\x0A\x0D\x20-\x7E]             # ASCII
-			|[\xC2-\xDF][\x80-\xBF]             # non-overlong 2-byte
-			| \xE0[\xA0-\xBF][\x80-\xBF]        # excluding overlongs
-			|[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}  # straight 3-byte
-			| \xED[\x80-\x9F][\x80-\xBF]        # excluding surrogates
-			| \xF0[\x90-\xBF][\x80-\xBF]{2}     # planes 1-3
-			|[\xF1-\xF3][\x80-\xBF]{3}          # planes 4-15
-			| \xF4[\x80-\x8F][\x80-\xBF]{2}     # plane 16
-		)*$%xs', $string);
+		return preg_match('//u', $string);
 	}
 
 	public static function EncodeFile($filePath, $charsetFrom)
@@ -805,7 +780,7 @@ class BXInstallServices
 			fputs($fp, "Host: {$host}\r\n");
 			fputs($fp, "Content-type: application/x-www-form-urlencoded; charset=\"".$charset."\"\r\n");
 			fputs($fp, "User-Agent: bitrixKeyReq\r\n");
-			fputs($fp, "Content-length: ".(function_exists("mb_strlen")? mb_strlen($query, 'latin1') : strlen($query))."\r\n");
+			fputs($fp, "Content-length: " . strlen($query) . "\r\n");
 			fputs($fp, "Connection: close\r\n\r\n");
 			fputs($fp, $query."\r\n\r\n");
 			$headersEnded = 0;

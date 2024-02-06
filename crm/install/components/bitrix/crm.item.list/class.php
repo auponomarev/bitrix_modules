@@ -1,7 +1,9 @@
 <?php
 
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
 use Bitrix\Crm\Component\EntityList\FieldRestrictionManager;
 use Bitrix\Crm\Component\EntityList\FieldRestrictionManagerTypes;
+use Bitrix\Crm\Filter\FieldsTransform;
 use Bitrix\Crm\Filter\UiFilterOptions;
 use Bitrix\Crm\Integration;
 use Bitrix\Crm\Item;
@@ -14,13 +16,17 @@ use Bitrix\Crm\Service\Router;
 use Bitrix\Crm\Settings\HistorySettings;
 use Bitrix\Crm\UserField\Visibility\VisibilityManager;
 use Bitrix\Main\Grid;
+use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\UI\PageNavigation;
 use Bitrix\UI\Buttons;
 
-if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) die();
+if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
+{
+	die();
+}
 
-\Bitrix\Main\Loader::includeModule('crm');
+Loader::includeModule('crm');
 
 class CrmItemListComponent extends Bitrix\Crm\Component\ItemList
 {
@@ -81,9 +87,9 @@ class CrmItemListComponent extends Bitrix\Crm\Component\ItemList
 
 		$this->fieldRestrictionManager = new FieldRestrictionManager(
 			FieldRestrictionManager::MODE_GRID,
-			[FieldRestrictionManagerTypes::ACTIVITY]
+			[FieldRestrictionManagerTypes::OBSERVERS, FieldRestrictionManagerTypes::ACTIVITY],
+			$this->entityTypeId
 		);
-
 	}
 
 	public function executeComponent()
@@ -116,8 +122,10 @@ class CrmItemListComponent extends Bitrix\Crm\Component\ItemList
 
 		$listFilter = $this->getListFilter();
 
-		// transform ACTIVITY_COUNTER filter to real filter params
-		CCrmEntityHelper::applyCounterFilterWrapper(
+		FieldsTransform\UserBasedField::applyTransformWrapper($listFilter);
+
+		// transform ACTIVITY_COUNTER|ACTIVITY_RESPONSIBLE_IDS filter to real filter params
+		CCrmEntityHelper::applySubQueryBasedFiltersWrapper(
 			$this->entityTypeId,
 			$this->getGridId(),
 			\Bitrix\Crm\Counter\EntityCounter::internalizeExtras($_REQUEST),
@@ -131,6 +139,7 @@ class CrmItemListComponent extends Bitrix\Crm\Component\ItemList
 		$pageSize = (int)$navParams['nPageSize'];
 		$pageNavigation = $this->getPageNavigation($pageSize);
 		$entityTypeName = \CCrmOwnerType::ResolveName($this->entityTypeId);
+		$categoryId = $this->category ? $this->category->getId() : 0;
 		$this->arResult['grid'] = $this->prepareGrid(
 			$listFilter,
 			$pageNavigation,
@@ -140,24 +149,34 @@ class CrmItemListComponent extends Bitrix\Crm\Component\ItemList
 		$this->arResult['jsParams'] = [
 			'entityTypeId' => $this->entityTypeId,
 			'entityTypeName' => $entityTypeName,
-			'categoryId' => $this->category ? $this->category->getId() : 0,
+			'categoryId' => $categoryId,
 			'gridId' => $this->getGridId(),
 			'backendUrl' => $this->arParams['backendUrl'] ?? null,
-			'isUniversalActivityScenarioEnabled' => \Bitrix\Crm\Settings\Crm::isUniversalActivityScenarioEnabled(),
 			'smartActivityNotificationSupported' => $this->factory->isSmartActivityNotificationSupported(),
 			'isIframe' => $this->isIframe(),
 			'isEmbedded' => ($this->arParams['isEmbedded'] ?? false) === true,
+			'pingSettings' => (new TodoPingSettingsProvider($this->entityTypeId, $categoryId))->fetchAll(),
 		];
+		if (
+			\Bitrix\Crm\Integration\AI\AIManager::isAiCallAutomaticProcessingAllowed()
+			&& in_array($this->entityTypeId, \Bitrix\Crm\Integration\AI\AIManager::SUPPORTED_ENTITY_TYPE_IDS, true)
+			&& $this->userPermissions->isAdmin()
+			&& $this->category !== null
+		)
+		{
+			$this->arResult['jsParams']['aiAutostartSettings'] = \Bitrix\Main\Web\Json::encode(
+				\Bitrix\Crm\Integration\AI\Operation\AutostartSettings::get($this->entityTypeId, $this->category->getId())
+			);
+		}
 		$this->arResult['entityTypeName'] = $entityTypeName;
 		$this->arResult['categoryId'] = $this->category ? $this->category->getId() : 0;
 		$this->arResult['entityTypeDescription'] = $this->factory->getEntityDescription();
 
-		$restrictedFields = $this->fieldRestrictionManager->fetchRestrictedFields(
+		$this->arResult['RESTRICTED_FIELDS_ENGINE'] = $this->fieldRestrictionManager->fetchRestrictedFieldsEngine(
 			$this->getGridId() ?? '',
 			[],
-				$this->filter
+			$this->filter
 		);
-		$this->arResult = array_merge($this->arResult, $restrictedFields);
 
 		$this->includeComponentTemplate();
 	}
@@ -379,6 +398,15 @@ class CrmItemListComponent extends Bitrix\Crm\Component\ItemList
 		$filter = [];
 		$this->provider->prepareListFilter($filter, $requestFilter);
 		$this->ufProvider->prepareListFilter($filter, $filterFields, $requestFilter);
+
+		foreach ($requestFilter as $key => $item)
+		{
+			if (str_starts_with($key, 'ACTIVITY_FASTSEARCH_'))
+			{
+				$filter[$key] = $item;
+			}
+		}
+
 		if($this->category)
 		{
 			$filter = $this->category->getItemsFilter($filter);
@@ -453,7 +481,7 @@ class CrmItemListComponent extends Bitrix\Crm\Component\ItemList
 		{
 			$totalCount = $this->arParams['STEXPORT_TOTAL_ITEMS'];
 			$lastExportedId = $this->arParams['STEXPORT_LAST_EXPORTED_ID'];
-			$listFilter['>ID'] = $lastExportedId;
+			$listFilter['<ID'] = $lastExportedId;
 		}
 
 		$pageNavigation = new PageNavigation($this->navParamName);
@@ -467,7 +495,7 @@ class CrmItemListComponent extends Bitrix\Crm\Component\ItemList
 		$grid = $this->prepareGrid(
 			$listFilter,
 			$pageNavigation,
-			['sort' => ['ID' => 'asc']]
+			['sort' => ['ID' => 'desc']]
 		);
 
 		$this->arResult['HEADERS'] = [];
@@ -491,13 +519,11 @@ class CrmItemListComponent extends Bitrix\Crm\Component\ItemList
 		$this->arResult['LAST_EXPORT_PAGE'] = $pageNumber >= $lastPageNumber;
 		$this->includeComponentTemplate();
 
-		$returnValues = [
+		return [
 			'PROCESSED_ITEMS' => count($items),
 			'LAST_EXPORTED_ID' => $lastExportedId ?? 0,
 			'TOTAL_ITEMS' => $totalCount,
 		];
-
-		return $returnValues;
 	}
 
 	protected function getSelect(): array
@@ -790,6 +816,11 @@ class CrmItemListComponent extends Bitrix\Crm\Component\ItemList
 				else
 				{
 					$displayField = Display\Field::createFromBaseField($baseField->getName(), $baseField->toArray());
+
+					if ($fieldName === Item::FIELD_NAME_OBSERVERS)
+					{
+						$displayField->setIsMultiple(true);
+					}
 				}
 
 				$displayField->setContext($context);

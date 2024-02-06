@@ -1,6 +1,7 @@
 <?php
 
 use Bitrix\Disk\Configuration;
+use Bitrix\Disk\Integration\Socialnetwork\Context\Context;
 use Bitrix\Disk\Document\DocumentHandler;
 use Bitrix\Disk\Integration\Bitrix24Manager;
 use Bitrix\Disk\Search\Reindex\BaseObjectIndex;
@@ -225,6 +226,13 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 		}
 	}
 
+	/**
+	 * @throws \Bitrix\Main\ObjectException
+	 * @throws \Bitrix\Main\ArgumentNullException
+	 * @throws \Bitrix\Main\ArgumentTypeException
+	 * @throws \Bitrix\Main\LoaderException
+	 * @throws \Bitrix\Main\ArgumentOutOfRangeException
+	 */
 	protected function processActionDefault()
 	{
 		$errorsInGridActions = $this->processGridActions();
@@ -235,11 +243,13 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 
 		$connectedGroupObject = $this->getConnectedGroupObject();
 		$filterOptions = new \Bitrix\Main\UI\Filter\Options($this->gridOptions->getGridId());
+		$folderListFilter = new Ui\FolderListFilter($this->storage->getId(), $this->isTrashMode());
 
 		$this->arResult = array(
-			'GRID_INFORMATION' => $this->information,
+		'CONTEXT' => $this->arParams['CONTEXT'] ?? Context::DEFAULT,
+		'GRID_INFORMATION' => $this->information,
 			'ERRORS_IN_GRID_ACTIONS' => $errorsInGridActions->toArray(),
-			'FILTER' => $this->isTrashMode()? $this->getFilterForTrashMode() : $this->getFilter(),
+			'FILTER' => $folderListFilter->getConfig(),
 			'IS_RUNNING_FILTER' => !empty($filterOptions->getSearchString()),
 			'GRID' => $this->getGridData(),
 			'IS_BITRIX24' => ModuleManager::isModuleInstalled('bitrix24'),
@@ -292,6 +302,7 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 
 		if ($this->gridOptions->getViewMode() === FolderListOptions::VIEW_MODE_TILE)
 		{
+			$isEnabledObjectLock = Configuration::isEnabledObjectLock();
 			$this->arResult['TILE_ITEMS'] = [];
 			foreach ($this->arResult['GRID']['ROWS'] as $row)
 			{
@@ -310,10 +321,10 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 					'name' => $object->getName(),
 					'isFolder' => $object instanceof Folder,
 					'isFile' => $object instanceof File,
-					'canAdd' => $object instanceof Folder && $object->canAdd($securityContext),
+					'canAdd' => ($object instanceof Folder) && $object->canAdd($securityContext),
 					'link' => $row['data']['OPEN_URL'],
 					'isSymlink' => !empty($row['data']['SHARED']) || $object->isLink(),
-					'isLocked' => $object instanceof File && $object->getLock(),
+					'isLocked' => $isEnabledObjectLock && ($object instanceof File) && $object->getLock(),
 					'isDraggable' => !$this->isTrashMode(),
 					'isDroppable' => !$this->isTrashMode() && ($object instanceof Folder),
 					'formattedSize' => $row['columns']['FORMATTED_SIZE'],
@@ -430,7 +441,7 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 
 		$possibleToDownloadArchive = ZipNginx\Configuration::isEnabled();
 		$nowTime = time() + CTimeZone::getOffset();
-		$fullFormatWithoutSec = preg_replace('/:s$/', '', CAllDatabase::dateFormatToPHP(CSite::GetDateFormat("FULL")));
+		$fullFormatWithoutSec = preg_replace('/:s$/', '', CDatabase::dateFormatToPHP(CSite::GetDateFormat("FULL")));
 
 		$onlyRead = true;
 
@@ -448,7 +459,12 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 		}
 
 		$parameters = [
-			'select' => ['*', 'FILE_CONTENT_TYPE' => 'FILE_CONTENT.CONTENT_TYPE'],
+			'select' => [
+				'*',
+				'FILE_CONTENT_TYPE' => 'FILE_CONTENT.CONTENT_TYPE',
+				'FILE_WIDTH' => 'FILE_CONTENT.WIDTH',
+				'FILE_HEIGHT' => 'FILE_CONTENT.HEIGHT',
+			],
 			'with' => $this->buildWithByVisibleColumns($visibleColumns),
 			'filter' => [
 				'@ID' => $objectIds?: [0],
@@ -525,7 +541,7 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 						'icon' => '/bitrix/js/ui/actionpanel/images/ui_icon_actionpanel_open.svg',
 						'className' => 'disk-folder-list-context-menu-item',
 						'href' => $exportData['OPEN_URL'],
-						'onclick' => "BX.Disk['FolderListClass_{$this->componentId}'].openFolderContextMenu(this, event, {$objectId}, {
+						'onclick' => "BX.Disk['FolderListClass_{$this->componentId}'].openFolderByContextMenu(this, event, {$objectId}, {
 							id: {$objectId},
 							name: '" . CUtil::JSEscape($name) . "'
 						});",
@@ -536,10 +552,11 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 					$exportData['OPEN_URL'] = $urlManager->encodeUrn($detailPageFile);
 					$openAction = array(
 						'id' => 'open',
-						"text" => Loc::getMessage('DISK_FOLDER_LIST_ACT_DETAILS'),
+						'text' => Loc::getMessage('DISK_FOLDER_LIST_ACT_DETAILS'),
 						'icon' => '/bitrix/js/ui/actionpanel/images/ui_icon_actionpanel_open.svg',
 						'className' => 'disk-folder-list-context-menu-item',
-						"href" => $exportData['OPEN_URL'],
+						'href' => $exportData['OPEN_URL'],
+						'onclick' => "BX.SidePanel.Instance.open('" . CUtil::JSEscape($exportData['OPEN_URL']) . "'); event.preventDefault();",
 					);
 				}
 
@@ -611,6 +628,24 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 				}
 
 				$actionToShare = [];
+
+				$closeActionsMenu = "
+					(function() {
+						if (BX.Main.gridManager)
+						{
+							const grid = BX.Main.gridManager.getById('{$this->gridOptions->getGridId()}');
+							const row = grid.instance.getRows().getById('{$row['ID']}');
+							if (row) row.closeActionsMenu();
+						}
+						if (BX.Main.tileGridManager)
+						{
+							const instance = BX.Main.tileGridManager.getInstanceById('{$this->gridOptions->getGridId()}');
+							const item = instance.getItem('{$row['ID']}');
+							if (item) item.destroyActionsMenu();
+						}
+					})();
+				";
+
 				if(!$object->isDeleted() && Configuration::isPossibleToShowExternalLinkControl())
 				{
 					$actionToShare[] = array(
@@ -679,14 +714,14 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 						"onclick" =>
 							$this->filterB24Feature(
 								$isFolder? 'disk_folder_sharing' : 'disk_file_sharing',
-								"BX.Disk.showSharingDetailWithoutEdit({
+								"{$closeActionsMenu}BX.Disk.showSharingDetailWithoutEdit({
 									ajaxUrl: '/bitrix/components/bitrix/disk.folder.list/ajax.php',
 									object: {
 										id: {$objectId},
 										name: '" . CUtil::JSEscape($name) . "',
 										isFolder: " . ($isFolder? 'true' : 'false') . "
 									 }
-								})"
+								});"
 							),
 					);
 				}
@@ -699,13 +734,13 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 						"onclick" =>
 							$this->filterB24Feature(
 								$isFolder? 'disk_folder_sharing' : 'disk_file_sharing',
-								"BX.Disk['FolderListClass_{$this->componentId}'].showSharingDetailWithChangeRights({
+								"{$closeActionsMenu}BX.Disk['FolderListClass_{$this->componentId}'].showSharingDetailWithChangeRights({
 									object: {
 										id: {$objectId},
 										name: '" . CUtil::JSEscape($name) . "',
 										isFolder: " . ($isFolder? 'true' : 'false') . "
 									 }
-								})"
+								});"
 							),
 					);
 				}
@@ -718,13 +753,13 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 						"onclick" =>
 							$this->filterB24Feature(
 								$isFolder? 'disk_folder_sharing' : 'disk_file_sharing',
-								"BX.Disk['FolderListClass_{$this->componentId}'].showSharingDetailWithSharing({
+								"{$closeActionsMenu}BX.Disk['FolderListClass_{$this->componentId}'].showSharingDetailWithSharing({
 									object: {
 										id: {$objectId},
 										name: '" . CUtil::JSEscape($name) . "',
 										isFolder: " . ($isFolder? 'true' : 'false') . "
 									 }
-								})"
+								});"
 							),
 					);
 				}
@@ -904,7 +939,7 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 							<td style=\"width: 45px;\">
 								<div data-object-id=\"{$objectId}\" class=\"js-disk-grid-open-folder bx-file-icon-container-small {$iconClass}\"></div>
 							</td>
-							<td><a class=\"bx-disk-folder-title js-disk-grid-folder\" id=\"disk_obj_{$objectId}\" href=\"{$exportData['OPEN_URL']}\" data-object-id=\"{$objectId}\" data-can-add=\"{$object->canAdd($securityContext)}\">{$nameSpecialChars}</a></td>
+							<td><a class=\"bx-disk-folder-title js-disk-grid-folder\" id=\"disk_obj_{$objectId}\" href=\"{$exportData['OPEN_URL']}\" data-object-id=\"{$objectId}\" data-can-add=\"{$object->canAdd($securityContext)}\" onclick=\"BX.Disk['FolderListClass_{$this->componentId}'].openFolderByAnchor(this, event);\">{$nameSpecialChars}</a></td>
 					</tr></table>
 				";
 			}
@@ -914,6 +949,8 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 				$fileData = [
 					'ID' => $object->getFileId(),
 					'CONTENT_TYPE' => $row['FILE_CONTENT_TYPE'],
+					'WIDTH' => $row['FILE_WIDTH'],
+					'HEIGHT' => $row['FILE_HEIGHT'],
 					'ORIGINAL_NAME' => $object->getName(),
 					'FILE_SIZE' => $object->getSize(),
 				];
@@ -2229,186 +2266,6 @@ class CDiskFolderListComponent extends DiskComponent implements \Bitrix\Main\Eng
 
 
 		return $crumbs;
-	}
-
-	private function getFilter()
-	{
-		return array(
-			'FILTER_ID' => $this->gridOptions->getGridId(),
-			'FILTER' => array_filter(array(
-				array(
-					'id' => 'NAME',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_NAME'),
-					'default' => true,
-				),
-				//				array(
-				//					'id' => 'CREATED_BY',
-				//					'name' => Loc::getMessage('DISK_FOLDER_FILTER_CREATED_BY'),
-				//					'type' => 'number',
-				//				),
-				array(
-					'id' => 'ID',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_ID'),
-					'type' => 'number',
-				),
-				array(
-					'id' => 'CREATE_TIME',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_CREATE_TIME'),
-					'type' => 'date',
-					'time' => true,
-				),
-				array(
-					'id' => 'UPDATE_TIME',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_UPDATE_TIME'),
-					'type' => 'date',
-					'time' => true,
-				),
-				Configuration::allowUseExtendedFullText() && ExtendedIndex::isReady()? array(
-					'id' => 'SEARCH_BY_CONTENT',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_SEARCH_BY_CONTENT'),
-					'type' => 'checkbox',
-					'default' => true,
-					'valueType' => 'numeric',
-				) : null,
-				array(
-					'id' => 'SEARCH_IN_CURRENT_FOLDER',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_SEARCH_IN_CURRENT_FOLDER'),
-					'type' => 'checkbox',
-					'default' => true,
-					'valueType' => 'numeric',
-				),
-				array(
-					'id' => 'WITH_EXTERNAL_LINK',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_WITH_EXTERNAL_LINK'),
-					'type' => 'list',
-					'default' => false,
-					'items' => array(
-						self::FILTER_WITH_EXTERNAL_LINK => Loc::getMessage('DISK_FOLDER_FILTER_WITH_EXTERNAL_LINK_YES')
-					),
-				),
-				array(
-					'id' => 'SHARED',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_SHARED'),
-					'type' => 'list',
-					'default' => false,
-					'items' => array(
-						self::FILTER_SHARED_FROM_ME => Loc::getMessage('DISK_FOLDER_FILTER_SHARED_FROM_ME'),
-						self::FILTER_SHARED_TO_ME => Loc::getMessage('DISK_FOLDER_FILTER_SHARED_TO_ME'),
-					),
-				),
-			)),
-			'FILTER_PRESETS' => $this->getPresetFields(),
-			'ENABLE_LIVE_SEARCH' => true,
-			'ENABLE_LABEL' => true,
-			'RESET_TO_DEFAULT_MODE' => true,
-		);
-	}
-
-	private function getPresetFields()
-	{
-		\Bitrix\Main\UI\Filter\Options::calcDates(
-			'UPDATE_TIME',
-			array('UPDATE_TIME_datesel' => \Bitrix\Main\UI\Filter\DateType::CURRENT_WEEK),
-			$sevenDayBefore
-		);
-
-		return array(
-			'recently_updated' => array(
-				'name' => Loc::getMessage('DISK_FOLDER_FILTER_PRESETS_RECENTLY_UPDATED'),
-				'default' => false,
-				'fields' => $sevenDayBefore
-			),
-			'with_external_link' => array(
-				'name' => Loc::getMessage('DISK_FOLDER_FILTER_PRESETS_WITH_EXTERNAL_LINK'),
-				'default' => false,
-				'fields' => array(
-					'WITH_EXTERNAL_LINK' => self::FILTER_WITH_EXTERNAL_LINK
-				)
-			),
-			'shared_to_me' => array(
-				'name' => Loc::getMessage('DISK_FOLDER_FILTER_PRESETS_SHARED_TO_ME'),
-				'default' => false,
-				'fields' => array(
-					'SHARED' => self::FILTER_SHARED_TO_ME
-				)
-			),
-			'shared_from_me' => array(
-				'name' => Loc::getMessage('DISK_FOLDER_FILTER_PRESETS_SHARED_FROM_ME'),
-				'default' => false,
-				'fields' => array(
-					'SHARED' => self::FILTER_SHARED_FROM_ME
-				)
-			),
-		);
-	}
-
-	private function getFilterForTrashMode()
-	{
-		return array(
-			'FILTER_ID' => $this->gridOptions->getGridId(),
-			'FILTER' => array(
-				array(
-					'id' => 'NAME',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_NAME'),
-					'default' => true,
-				),
-				array(
-					'id' => 'ID',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_ID'),
-					'type' => 'number',
-				),
-				array(
-					'id' => 'CREATE_TIME',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_CREATE_TIME'),
-					'type' => 'date',
-					'time' => true,
-				),
-				array(
-					'id' => 'UPDATE_TIME',
-					'name' => Loc::getMessage('DISK_FOLDER_FILTER_UPDATE_TIME'),
-					'type' => 'date',
-					'time' => true,
-				),
-				array(
-					'id' => 'DELETE_TIME',
-					'name' => Loc::getMessage('DISK_TRASHCAN_FOLDER_FILTER_DELETE_TIME'),
-					'type' => 'date',
-					'time' => true,
-				),
-			),
-			'FILTER_PRESETS' => $this->getPresetFieldsForTrashMode(),
-			'ENABLE_LIVE_SEARCH' => true,
-			'ENABLE_LABEL' => true,
-			'RESET_TO_DEFAULT_MODE' => true,
-		);
-	}
-
-	private function getPresetFieldsForTrashMode()
-	{
-		\Bitrix\Main\UI\Filter\Options::calcDates(
-			'UPDATE_TIME',
-			array('UPDATE_TIME_datesel' => \Bitrix\Main\UI\Filter\DateType::CURRENT_WEEK),
-			$sevenDayBeforeUpdated
-		);
-
-		\Bitrix\Main\UI\Filter\Options::calcDates(
-			'DELETE_TIME',
-			array('DELETE_TIME_datesel' => \Bitrix\Main\UI\Filter\DateType::CURRENT_WEEK),
-			$sevenDayBeforeDeleted
-		);
-
-		return array(
-			'recently_deleted' => array(
-				'name' => Loc::getMessage('DISK_TRASHCAN_FOLDER_FILTER_PRESETS_RECENTLY_DELETED'),
-				'default' => false,
-				'fields' => $sevenDayBeforeDeleted
-			),
-			'recently_updated' => array(
-				'name' => Loc::getMessage('DISK_TRASHCAN_FOLDER_FILTER_PRESETS_RECENTLY_UPDATED'),
-				'default' => false,
-				'fields' => $sevenDayBeforeUpdated
-			),
-		);
 	}
 
 	private function getConfigurationOfCloudDocument()

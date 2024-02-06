@@ -110,17 +110,18 @@ $CCrmInvoice = new CCrmInvoice(false);
 
 $userID = CCrmSecurityHelper::GetCurrentUserID();
 $isAdmin = CCrmPerms::IsAdmin();
+$arParams['IS_RECURRING'] = $arParams['IS_RECURRING'] ?? null;
 
 $arResult['CURRENT_USER_ID'] = CCrmSecurityHelper::GetCurrentUserID();
 $arResult['INTERNAL_ADD_BTN_TITLE'] = empty($arParams['INTERNAL_ADD_BTN_TITLE']) ? GetMessage('CRM_INVOICE_INTERNAL_ADD_BTN_TITLE') : $arParams['INTERNAL_ADD_BTN_TITLE'];
-$arParams['PATH_TO_INVOICE_LIST'] = CrmCheckPath('PATH_TO_INVOICE_LIST', $arParams['PATH_TO_INVOICE_LIST'], $APPLICATION->GetCurPage());
-$arParams['PATH_TO_INVOICE_RECUR'] = CrmCheckPath('PATH_TO_INVOICE_RECUR', $arParams['PATH_TO_INVOICE_RECUR'], $APPLICATION->GetCurPage());
-$arParams['PATH_TO_INVOICE_SHOW'] = CrmCheckPath('PATH_TO_INVOICE_SHOW', $arParams['PATH_TO_INVOICE_SHOW'], $APPLICATION->GetCurPage().'?invoice_id=#invoice_id#&show');
-$arParams['PATH_TO_INVOICE_PAYMENT'] = CrmCheckPath('PATH_TO_INVOICE_PAYMENT', $arParams['PATH_TO_INVOICE_PAYMENT'], $APPLICATION->GetCurPage().'?invoice_id=#invoice_id#&payment');
-$arParams['PATH_TO_INVOICE_EDIT'] = CrmCheckPath('PATH_TO_INVOICE_EDIT', $arParams['PATH_TO_INVOICE_EDIT'], $APPLICATION->GetCurPage().'?invoice_id=#invoice_id#&edit');
-$arParams['PATH_TO_INVOICE_WIDGET'] = CrmCheckPath('PATH_TO_INVOICE_WIDGET', $arParams['PATH_TO_INVOICE_WIDGET'], $APPLICATION->GetCurPage());
-$arParams['PATH_TO_INVOICE_KANBAN'] = CrmCheckPath('PATH_TO_INVOICE_KANBAN', $arParams['PATH_TO_INVOICE_KANBAN'], $currentPage);
-$arParams['PATH_TO_USER_PROFILE'] = CrmCheckPath('PATH_TO_USER_PROFILE', $arParams['PATH_TO_USER_PROFILE'], '/company/personal/user/#user_id#/');
+$arParams['PATH_TO_INVOICE_LIST'] = CrmCheckPath('PATH_TO_INVOICE_LIST', $arParams['PATH_TO_INVOICE_LIST'] ?? '', $APPLICATION->GetCurPage());
+$arParams['PATH_TO_INVOICE_RECUR'] = CrmCheckPath('PATH_TO_INVOICE_RECUR', $arParams['PATH_TO_INVOICE_RECUR'] ?? '', $APPLICATION->GetCurPage());
+$arParams['PATH_TO_INVOICE_SHOW'] = CrmCheckPath('PATH_TO_INVOICE_SHOW', $arParams['PATH_TO_INVOICE_SHOW'] ?? '', $APPLICATION->GetCurPage().'?invoice_id=#invoice_id#&show');
+$arParams['PATH_TO_INVOICE_PAYMENT'] = CrmCheckPath('PATH_TO_INVOICE_PAYMENT', $arParams['PATH_TO_INVOICE_PAYMENT'] ?? '', $APPLICATION->GetCurPage().'?invoice_id=#invoice_id#&payment');
+$arParams['PATH_TO_INVOICE_EDIT'] = CrmCheckPath('PATH_TO_INVOICE_EDIT', $arParams['PATH_TO_INVOICE_EDIT'] ?? '', $APPLICATION->GetCurPage().'?invoice_id=#invoice_id#&edit');
+$arParams['PATH_TO_INVOICE_WIDGET'] = CrmCheckPath('PATH_TO_INVOICE_WIDGET', $arParams['PATH_TO_INVOICE_WIDGET'] ?? '', $APPLICATION->GetCurPage());
+$arParams['PATH_TO_INVOICE_KANBAN'] = CrmCheckPath('PATH_TO_INVOICE_KANBAN', $arParams['PATH_TO_INVOICE_KANBAN'] ?? '', $APPLICATION->GetCurPage());
+$arParams['PATH_TO_USER_PROFILE'] = CrmCheckPath('PATH_TO_USER_PROFILE', $arParams['PATH_TO_USER_PROFILE'] ?? '', '/company/personal/user/#user_id#/');
 $arParams['NAME_TEMPLATE'] = empty($arParams['NAME_TEMPLATE']) ? CSite::GetNameFormat(false) : str_replace(array("#NOBR#","#/NOBR#"), array("",""), $arParams["NAME_TEMPLATE"]);
 $arResult['PATH_TO_CURRENT_LIST'] = ($arParams['IS_RECURRING'] !== 'Y') ? $arParams['PATH_TO_INVOICE_LIST'] : $arParams['PATH_TO_INVOICE_RECUR'];
 $arResult['IS_AJAX_CALL'] = isset($_REQUEST['AJAX_CALL']) || isset($_REQUEST['ajax_request']) || !!CAjax::GetSession();
@@ -134,31 +135,14 @@ $arResult['NAVIGATION_CONTEXT_ID'] = isset($arParams['NAVIGATION_CONTEXT_ID']) ?
 $arResult['DISABLE_NAVIGATION_BAR'] = isset($arParams['DISABLE_NAVIGATION_BAR']) ? $arParams['DISABLE_NAVIGATION_BAR'] : 'N';
 $arResult['PRESERVE_HISTORY'] = isset($arParams['PRESERVE_HISTORY']) ? $arParams['PRESERVE_HISTORY'] : false;
 $arResult['CALL_LIST_UPDATE_MODE'] = isset($_REQUEST['call_list_context']) && isset($_REQUEST['call_list_id']) && IsModuleInstalled('voximplant');
-$arResult['CALL_LIST_CONTEXT'] = (string)$_REQUEST['call_list_context'];
-$arResult['CALL_LIST_ID'] = (int)$_REQUEST['call_list_id'];
+$arResult['CALL_LIST_CONTEXT'] = (string)($_REQUEST['call_list_context'] ?? '');
+$arResult['CALL_LIST_ID'] = (int)($_REQUEST['call_list_id'] ?? 0);
 if($arResult['CALL_LIST_UPDATE_MODE'])
 {
 	AddEventHandler('crm', 'onCrmInvoiceListItemBuildMenu', array('\Bitrix\Crm\CallList\CallList', 'handleOnCrmInvoiceListItemBuildMenu'));
 }
 
-if(LayoutSettings::getCurrent()->isSimpleTimeFormatEnabled())
-{
-	$arResult['TIME_FORMAT'] = array(
-		'tommorow' => 'tommorow',
-		's' => 'sago',
-		'i' => 'iago',
-		'H3' => 'Hago',
-		'today' => 'today',
-		'yesterday' => 'yesterday',
-		//'d7' => 'dago',
-		'-' => Main\Type\DateTime::convertFormatToPhp(FORMAT_DATE)
-	);
-}
-else
-{
-	$arResult['TIME_FORMAT'] = preg_replace('/:s$/', '', Main\Type\DateTime::convertFormatToPhp(FORMAT_DATETIME));
-}
-
+$arResult['TIME_FORMAT'] = CCrmDateTimeHelper::getDefaultDateTimeFormat();
 CUtil::InitJSCore(array('ajax', 'tooltip'));
 
 $arResult['GADGET'] = 'N';
@@ -401,8 +385,7 @@ else
 	);
 }
 
-$CCrmUserType->ListAddHeaders($arResult['HEADERS']);
-
+$CCrmUserType->appendGridHeaders($arResult['HEADERS']);
 
 // list all filds for export
 $exportAllFieldsList = array();
@@ -557,7 +540,7 @@ if (is_array($arFilter))
 	{
 		if (isset($arUserField['USER_TYPE_ID']) && $arUserField['USER_TYPE_ID'] === 'enumeration')
 		{
-			if (is_array($arFilter[$fieldName]) && !empty($arFilter[$fieldName]))
+			if (isset($arFilter[$fieldName]) && is_array($arFilter[$fieldName]) && !empty($arFilter[$fieldName]))
 				$arFilter[$fieldName] = array_values($arFilter[$fieldName]);
 		}
 	}
@@ -923,7 +906,7 @@ if (empty($arSelect))
 {
 	foreach ($arResult['HEADERS'] as $arHeader)
 	{
-		if ($arHeader['default'])
+		if ($arHeader['default'] ?? false)
 		{
 			$arSelect[] = $arHeader['id'];
 		}
@@ -1796,7 +1779,7 @@ if (!$isInExportMode)
 
 	$this->IncludeComponentTemplate();
 	include_once($_SERVER['DOCUMENT_ROOT'].'/bitrix/components/bitrix/crm.invoice/include/nav.php');
-	return $arResult['ROWS_COUNT'];
+	return $arResult['ROWS_COUNT'] ?? 0;
 }
 else
 {

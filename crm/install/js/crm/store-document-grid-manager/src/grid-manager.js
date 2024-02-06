@@ -1,8 +1,9 @@
-import {ajax, Loc} from 'main.core';
-import {Popup} from 'main.popup';
-import {Button, ButtonColor} from 'ui.buttons';
-import {BaseEvent, EventEmitter} from "main.core.events";
-import {DocumentManager} from "./document-manager"
+import { ajax, Dom, Event, Extension, Loc, Tag } from 'main.core';
+import { Popup } from 'main.popup';
+import { Button, ButtonColor } from 'ui.buttons';
+import { BaseEvent, EventEmitter } from 'main.core.events';
+import { DocumentManager } from './document-manager';
+import { MessageBox } from 'ui.dialogs.messagebox';
 
 export class GridManager
 {
@@ -14,175 +15,166 @@ export class GridManager
 		this.isConductDisabled = options.isConductDisabled;
 		this.masterSliderUrl = options.masterSliderUrl;
 		this.inventoryManagementSource = options.inventoryManagementSource;
+		this.isInventoryManagementDisabled = options.isInventoryManagementDisabled;
+		this.inventoryManagementFeatureCode = options.inventoryManagementFeatureCode;
 
 		window.top.BX.addCustomEvent('onEntityEditorDocumentOrderShipmentControllerDocumentSave', this.reloadGrid.bind(this));
 	}
 
 	getSelectedIds()
 	{
-		return this.grid.getRows().getSelectedIds()
+		return this.grid.getRows().getSelectedIds();
 	}
 
 	deleteDocument(documentId)
 	{
-		let popup = new Popup({
-			id: 'crm_delete_document_popup',
-			titleBar: Loc.getMessage('DOCUMENT_GRID_DOCUMENT_DELETE_TITLE'),
-			content: Loc.getMessage('DOCUMENT_GRID_DOCUMENT_DELETE_CONTENT'),
-			buttons: [
-				new Button({
-					text:  Loc.getMessage('DOCUMENT_GRID_CONTINUE'),
-					color: ButtonColor.SUCCESS,
-					onclick: (button, event) => {
-						ajax.runAction(
-							'crm.api.realizationdocument.setRealization',
-							{
-								data: {
-									id: documentId,
-									value: 'N',
-								},
-								analyticsLabel: {
-									action: 'delete',
-									inventoryManagementSource: this.inventoryManagementSource,
-								},
-							}
-						).then((response) => {
-							popup.destroy();
-							this.reloadGrid();
-						}).catch((response) => {
-							if (response.errors)
-							{
-								BX.UI.Notification.Center.notify({
-									content: BX.util.htmlspecialchars(response.errors[0].message),
-								});
-							}
-							popup.destroy();
-						});
+		if (this.isInventoryManagementDisabled && this.inventoryManagementFeatureCode)
+		{
+			top.BX.UI.InfoHelper.show(this.inventoryManagementFeatureCode);
+
+			return;
+		}
+
+		MessageBox.confirm(
+			Loc.getMessage('DOCUMENT_GRID_DOCUMENT_DELETE_CONTENT'),
+			(messageBox, button) => {
+				button.setWaiting();
+				ajax.runAction(
+					'crm.api.realizationdocument.setRealization',
+					{
+						data: {
+							id: documentId,
+							value: 'N',
+						},
+						analyticsLabel: {
+							action: 'delete',
+							inventoryManagementSource: this.inventoryManagementSource,
+						},
 					},
-				}),
-				new Button({
-					text: Loc.getMessage('DOCUMENT_GRID_CANCEL'),
-					color: ButtonColor.DANGER,
-					onclick: (button, event) => {
-						popup.destroy();
+				).then(() => {
+					messageBox.close();
+					this.reloadGrid();
+				}).catch((response) => {
+					if (response.errors)
+					{
+						BX.UI.Notification.Center.notify({
+							content: BX.util.htmlspecialchars(response.errors[0].message),
+						});
 					}
-				}),
-			],
-		});
-		popup.show();
+					messageBox.close();
+				});
+			},
+			Loc.getMessage('DOCUMENT_GRID_DOCUMENT_DELETE_BUTTON_CONFIRM'),
+			(messageBox) => messageBox.close(),
+			Loc.getMessage('DOCUMENT_GRID_BUTTON_BACK'),
+		);
 	}
 
 	conductDocument(documentId)
 	{
+		if (this.isInventoryManagementDisabled && this.inventoryManagementFeatureCode)
+		{
+			top.BX.UI.InfoHelper.show(this.inventoryManagementFeatureCode);
+
+			return;
+		}
+
 		if (this.isConductDisabled)
 		{
 			this.openStoreMasterSlider();
+
 			return;
 		}
-		let popup = new Popup({
-			id: 'crm_delete_document_popup',
-			titleBar: Loc.getMessage('DOCUMENT_GRID_DOCUMENT_CONDUCT_TITLE'),
-			content: Loc.getMessage('DOCUMENT_GRID_DOCUMENT_CONDUCT_CONTENT'),
-			buttons: [
-				new Button({
-					text:  Loc.getMessage('DOCUMENT_GRID_CONTINUE'),
-					color: ButtonColor.SUCCESS,
-					onclick: (button, event) => {
-						ajax.runAction(
-							'crm.api.realizationdocument.setShipped',
-							{
-								data: {
-									id: documentId,
-									value: 'Y',
-								},
-								analyticsLabel: {
-									action: 'deduct',
-									inventoryManagementSource: this.inventoryManagementSource,
-								},
-							}
-						).then((response) => {
-							popup.destroy();
-							this.reloadGrid();
-						}).catch((response) => {
-							if (response.errors)
-							{
-								BX.UI.Notification.Center.notify({
-									content: BX.util.htmlspecialchars(response.errors[0].message),
-								});
-							}
-							popup.destroy();
-						});
+
+		MessageBox.confirm(
+			Loc.getMessage('DOCUMENT_GRID_DOCUMENT_CONDUCT_CONTENT'),
+			(messageBox, button) => {
+				button.setWaiting();
+				ajax.runAction(
+					'crm.api.realizationdocument.setShipped',
+					{
+						data: {
+							id: documentId,
+							value: 'Y',
+						},
+						analyticsLabel: {
+							action: 'deduct',
+							inventoryManagementSource: this.inventoryManagementSource,
+						},
 					},
-				}),
-				new Button({
-					text: Loc.getMessage('DOCUMENT_GRID_CANCEL'),
-					color: ButtonColor.DANGER,
-					onclick: (button, event) => {
-						popup.destroy();
+				).then(() => {
+					messageBox.close();
+					this.reloadGrid();
+				}).catch((response) => {
+					if (response.errors)
+					{
+						BX.UI.Notification.Center.notify({
+							content: BX.util.htmlspecialchars(response.errors[0].message),
+						});
 					}
-				}),
-			],
-		});
-		popup.show();
+					messageBox.close();
+				});
+			},
+			Loc.getMessage('DOCUMENT_GRID_DOCUMENT_CONDUCT_BUTTON_CONFIRM'),
+			(messageBox) => messageBox.close(),
+			Loc.getMessage('DOCUMENT_GRID_BUTTON_BACK'),
+		);
 	}
 
 	cancelDocument(documentId)
 	{
+		if (this.isInventoryManagementDisabled && this.inventoryManagementFeatureCode)
+		{
+			top.BX.UI.InfoHelper.show(this.inventoryManagementFeatureCode);
+
+			return;
+		}
+
 		if (this.isConductDisabled)
 		{
 			this.openStoreMasterSlider();
+
 			return;
 		}
-		let popup = new Popup({
-			id: 'crm_delete_document_popup',
-			titleBar: Loc.getMessage('DOCUMENT_GRID_DOCUMENT_CANCEL_TITLE'),
-			content: Loc.getMessage('DOCUMENT_GRID_DOCUMENT_CANCEL_CONTENT'),
-			buttons: [
-				new Button({
-					text:  Loc.getMessage('DOCUMENT_GRID_CONTINUE'),
-					color: ButtonColor.SUCCESS,
-					onclick: (button, event) => {
-						ajax.runAction(
-							'crm.api.realizationdocument.setShipped',
-							{
-								data: {
-									id: documentId,
-									value: 'N',
-								},
-								analyticsLabel: {
-									action: 'cancelDeduct',
-									inventoryManagementSource: this.inventoryManagementSource,
-								},
-							}
-						).then((response) => {
-							popup.destroy();
-							this.reloadGrid();
-						}).catch((response) => {
-							if (response.errors)
-							{
-								BX.UI.Notification.Center.notify({
-									content: BX.util.htmlspecialchars(response.errors[0].message),
-								});
-							}
-							popup.destroy();
-						});
+
+		MessageBox.confirm(
+			Loc.getMessage('DOCUMENT_GRID_DOCUMENT_CANCEL_CONTENT'),
+			(messageBox, button) => {
+				button.setWaiting();
+				ajax.runAction(
+					'crm.api.realizationdocument.setShipped',
+					{
+						data: {
+							id: documentId,
+							value: 'N',
+						},
+						analyticsLabel: {
+							action: 'cancelDeduct',
+							inventoryManagementSource: this.inventoryManagementSource,
+						},
 					},
-				}),
-				new Button({
-					text: Loc.getMessage('DOCUMENT_GRID_CANCEL'),
-					color: ButtonColor.DANGER,
-					onclick: (button, event) => {
-						popup.destroy();
+				).then(() => {
+					messageBox.close();
+					this.reloadGrid();
+				}).catch((response) => {
+					if (response.errors)
+					{
+						BX.UI.Notification.Center.notify({
+							content: BX.util.htmlspecialchars(response.errors[0].message),
+						});
 					}
-				}),
-			],
-		});
-		popup.show();
+					messageBox.close();
+				});
+			},
+			Loc.getMessage('DOCUMENT_GRID_DOCUMENT_CANCEL_BUTTON_CONFIRM'),
+			(messageBox) => messageBox.close(),
+			Loc.getMessage('DOCUMENT_GRID_BUTTON_BACK'),
+		);
 	}
 
 	deleteSelectedDocuments()
 	{
-		let documentIds = this.getSelectedIds();
+		const documentIds = this.getSelectedIds();
 		ajax.runAction(
 			'crm.api.realizationdocument.setRealizationList',
 			{
@@ -194,7 +186,7 @@ export class GridManager
 					action: 'delete',
 					inventoryManagementSource: this.inventoryManagementSource,
 				},
-			}
+			},
 		).then((response) => {
 			this.reloadGrid();
 		}).catch((response) => {
@@ -215,12 +207,20 @@ export class GridManager
 
 	conductSelectedDocuments()
 	{
+		if (this.isInventoryManagementDisabled && this.inventoryManagementFeatureCode)
+		{
+			top.BX.UI.InfoHelper.show(this.inventoryManagementFeatureCode);
+
+			return;
+		}
+
 		if (this.isConductDisabled)
 		{
 			this.openStoreMasterSlider();
+
 			return;
 		}
-		let documentIds = this.getSelectedIds();
+		const documentIds = this.getSelectedIds();
 		ajax.runAction(
 			'crm.api.realizationdocument.setShippedList',
 			{
@@ -232,7 +232,7 @@ export class GridManager
 					inventoryManagementSource: this.inventoryManagementSource,
 					action: 'deduct',
 				},
-			}
+			},
 		).then((response) => {
 			this.reloadGrid();
 		}).catch((response) => {
@@ -253,12 +253,20 @@ export class GridManager
 
 	cancelSelectedDocuments()
 	{
+		if (this.isInventoryManagementDisabled && this.inventoryManagementFeatureCode)
+		{
+			top.BX.UI.InfoHelper.show(this.inventoryManagementFeatureCode);
+
+			return;
+		}
+
 		if (this.isConductDisabled)
 		{
 			this.openStoreMasterSlider();
+
 			return;
 		}
-		let documentIds = this.getSelectedIds();
+		const documentIds = this.getSelectedIds();
 		ajax.runAction(
 			'crm.api.realizationdocument.setShippedList',
 			{
@@ -270,7 +278,7 @@ export class GridManager
 					inventoryManagementSource: this.inventoryManagementSource,
 					action: 'cancelDeduct',
 				},
-			}
+			},
 		).then((response) => {
 			this.reloadGrid();
 		}).catch((response) => {
@@ -291,7 +299,7 @@ export class GridManager
 
 	applyFilter(options)
 	{
-		let filterManager = BX.Main.filterManager.getById(this.filterId);
+		const filterManager = BX.Main.filterManager.getById(this.filterId);
 		if (!filterManager)
 		{
 			return;
@@ -302,13 +310,14 @@ export class GridManager
 
 	processApplyButtonClick()
 	{
-		let actionValues = this.grid.getActionsPanel().getValues();
-		let selectedAction = actionValues['action_button_' + this.gridId];
+		const actionValues = this.grid.getActionsPanel().getValues();
+		const selectedAction = actionValues[`action_button_${this.gridId}`];
 
 		if (selectedAction === 'conduct')
 		{
 			this.conductSelectedDocuments();
 		}
+
 		if (selectedAction === 'cancel')
 		{
 			this.cancelSelectedDocuments();
@@ -317,9 +326,9 @@ export class GridManager
 
 	openHowToShipProducts()
 	{
-		if(top.BX.Helper)
+		if (top.BX.Helper)
 		{
-			top.BX.Helper.show("redirect=detail&code=14640548");
+			top.BX.Helper.show('redirect=detail&code=14640548');
 			event.preventDefault();
 		}
 	}
@@ -335,7 +344,7 @@ export class GridManager
 				},
 				events: {
 					onCloseComplete: function(event) {
-						let slider = event.getSlider();
+						const slider = event.getSlider();
 						if (!slider)
 						{
 							return;
@@ -345,9 +354,9 @@ export class GridManager
 						{
 							document.location.reload();
 						}
-					}
-				}
-			}
+					},
+				},
+			},
 		);
 	}
 

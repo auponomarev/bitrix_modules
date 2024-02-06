@@ -8,6 +8,7 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Tasks\Helper\RestrictionUrl;
 use Bitrix\Tasks\Integration\Bitrix24\User;
+use Bitrix\Tasks\Internals\Task\Priority;
 use Bitrix\Tasks\Util\Type;
 use Bitrix\Tasks\Util;
 use Bitrix\Tasks\Integration\CRM;
@@ -26,6 +27,17 @@ $APPLICATION->SetPageProperty(
 	'BodyClass',
 	($bodyClass ? $bodyClass.' ' : '').'no-all-paddings'
 );
+
+/** intranet-settings-support */
+if (($arResult['IS_TOOL_AVAILABLE'] ?? null) === false)
+{
+	$APPLICATION->IncludeComponent("bitrix:tasks.error", "limit", [
+		'LIMIT_CODE' => RestrictionUrl::TASK_LIMIT_OFF_SLIDER_URL,
+		'SOURCE' => 'templates',
+	]);
+
+	return;
+}
 
 if ($arParams['ENABLE_MENU_TOOLBAR'])
 {
@@ -180,7 +192,7 @@ if ($arParams['ENABLE_MENU_TOOLBAR'])
 			<?//////// TOP ///////////////////////////////////////////////?>
 
 			<?ob_start();?>
-			<input class="js-id-task-template-edit-title" type="text" name="<?=$inputPrefix?>[TITLE]" value="<?=htmlspecialcharsbx($template['TITLE'])?>" placeholder="<?=Loc::getMessage('TASKS_TASK_TEMPLATE_COMPONENT_TEMPLATE_WHAT_TO_BE_DONE')?>"/>
+			<input class="js-id-task-template-edit-title" type="text" name="<?=$inputPrefix?>[TITLE]" value="<?=htmlspecialcharsbx($template['TITLE'])?>" placeholder="<?=Loc::getMessage('TASKS_TASK_TEMPLATE_COMPONENT_TEMPLATE_WHAT_TO_BE_DONE_MSGVER_1')?>"/>
 			<?
 			$blocks['HEAD_TOP_LEFT'] = array(
 				'HTML' => ob_get_clean(),
@@ -191,11 +203,11 @@ if ($arParams['ENABLE_MENU_TOOLBAR'])
 			<input
 				class="js-id-task-template-edit-flag"
 				type="checkbox"
-				id="tasks-task-priority-cb" <?=($template['PRIORITY'] == CTasks::PRIORITY_HIGH ? 'checked' : '')?>
+				id="tasks-task-priority-cb" <?=((int)$template['PRIORITY'] === Priority::HIGH ? 'checked' : '')?>
 				data-target="priority"
 				data-flag-name="PRIORITY"
-				data-yes-value="<?=CTasks::PRIORITY_HIGH?>"
-				data-no-value="<?=CTasks::PRIORITY_LOW?>"
+				data-yes-value="<?= Priority::HIGH ?>"
+				data-no-value="<?= Priority::LOW ?>"
 			/>
 			<label for="tasks-task-priority-cb"><?=Loc::getMessage('TASKS_TASK_TEMPLATE_COMPONENT_TEMPLATE_PRIORITY')?></label>
 			<input class="js-id-task-template-edit-priority" type="hidden" name="<?=$inputPrefix?>[PRIORITY]" value="<?=intval($template['PRIORITY'])?>" />
@@ -807,6 +819,7 @@ if ($arParams['ENABLE_MENU_TOOLBAR'])
 								'bitrix:tasks.widget.related.selector',
 								'',
 								[
+									'TEMPLATE_ID' => $arResult['ITEM']->getId(),
 									'TEMPLATE_CONTROLLER_ID' => $helper->getId().'-parent',
 									'MAX' => 1,
 									'DATA' => $arResult['TEMPLATE_DATA']['TEMPLATE']['SE_PARENTITEM'],

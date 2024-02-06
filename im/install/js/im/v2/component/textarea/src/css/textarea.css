@@ -10,9 +10,17 @@
 .bx-im-send-panel__container {
 	display: flex;
 	align-items: flex-end;
-	padding: 0 3px 0 9px;
-	max-width: var(--im-content-chat__max-width_textarea_container);
 	width: 100%;
+}
+
+.bx-im-content-chat__container.--center-align .bx-im-send-panel__container {
+	max-width: var(--im-content-chat__max-width_textarea_container);
+	padding: 0 3px 0 9px;
+}
+
+.bx-im-content-chat__container.--left-align .bx-im-send-panel__container {
+	max-width: 100%;
+	padding: 0 33px 0;
 }
 
 .bx-im-send-panel__container > div {
@@ -92,6 +100,8 @@
 .bx-im-textarea__element::placeholder {
 	font: var(--im-font-size-lg)/var(--im-font-line-height-2xs) var(--im-font-family-system);
 	color: var(--im-textarea__font-color_placeholder);
+	white-space: nowrap;
+	overflow: hidden;
 }
 
 .bx-im-textarea__right {
@@ -149,6 +159,14 @@
 
 .bx-im-textarea__icon.--create.--active {
 	background-image: url(./images/create-active.svg);
+}
+
+.bx-im-textarea__icon.--create.--with-ai {
+	background-image: url(./images/create-with-ai.svg);
+}
+
+.bx-im-textarea__icon.--create.--with-ai.--active {
+	background-image: url(./images/create-with-ai-active.svg);
 }
 
 .bx-im-textarea__icon.--smile {

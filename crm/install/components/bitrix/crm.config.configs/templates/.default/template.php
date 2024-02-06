@@ -1,6 +1,8 @@
 <?if(!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED!==true)
 	die();
 
+\Bitrix\Main\UI\Extension::load("ui.hint");
+
 CCrmComponentHelper::RegisterScriptLink('/bitrix/js/crm/common.js');
 
 if($arResult['ENABLE_CONTROL_PANEL'])
@@ -64,13 +66,16 @@ $arTabs[] = array(
 	'fields' => $arResult['FIELDS']['tab_history']
 );
 
-$arTabs[] = array(
-	'id' => 'tab_livefeed',
-	'name' => GetMessage('CRM_TAB_LIVEFEED2'),
-	'title' => GetMessage('CRM_TAB_LIVEFEED_TITLE2'),
-	'icon' => '',
-	'fields' => $arResult['FIELDS']['tab_livefeed']
-);
+if (\Bitrix\Crm\Integration\Socialnetwork\Livefeed\AvailabilityHelper::isAvailable())
+{
+	$arTabs[] = array(
+		'id' => 'tab_livefeed',
+		'name' => GetMessage('CRM_TAB_LIVEFEED2'),
+		'title' => GetMessage('CRM_TAB_LIVEFEED_TITLE2'),
+		'icon' => '',
+		'fields' => $arResult['FIELDS']['tab_livefeed']
+	);
+}
 
 $arTabs[] = array(
 	'id' => 'tab_status_config',
@@ -111,9 +116,9 @@ $APPLICATION->IncludeComponent(
 		'TABS' => $arTabs,
 		'BUTTONS' => array(
 			'standard_buttons' =>  true,
-			'back_url' => $arResult['BACK_URL']
+			'back_url' => $arResult['BACK_URL'] ?? null
 		),
-		'DATA' => $arResult['ELEMENT'],
+		'DATA' => $arResult['ELEMENT'] ?? null,
 		'SHOW_SETTINGS' => 'N'
 	),
 	$component,
@@ -187,6 +192,8 @@ endif;
 						BX.CrmInterfaceFormUtil.showFormRow(productPriceEditSetting.checked, productPriceSaveSetting);
 					});
 				}
+
+				BX.UI.Hint.init(BX('form_CRM_SM_CONFIG'));
 			}
 	);
 </script>

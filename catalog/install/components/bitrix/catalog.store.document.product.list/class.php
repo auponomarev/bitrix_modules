@@ -8,6 +8,8 @@ use Bitrix\Catalog\Access\AccessController;
 use Bitrix\Catalog\Access\ActionDictionary;
 use Bitrix\Catalog\Access\Permission\PermissionDictionary;
 use Bitrix\Catalog\Component\ImageInput;
+use Bitrix\Catalog\Config\Feature;
+use Bitrix\Catalog\Config\State;
 use Bitrix\Catalog\GroupTable;
 use Bitrix\Catalog\StoreBarcodeTable;
 use Bitrix\Catalog\StoreDocumentBarcodeTable;
@@ -336,6 +338,7 @@ final class CatalogStoreDocumentProductListComponent
 		$params['ALLOW_EDIT'] = isset($params['ALLOW_EDIT']) && $params['ALLOW_EDIT'] === 'Y';
 		$params['ALLOW_ADD_PRODUCT'] = isset($params['ALLOW_ADD_PRODUCT']) && $params['ALLOW_ADD_PRODUCT'] === 'Y';
 		$params['ALLOW_CREATE_NEW_PRODUCT'] = isset($params['ALLOW_CREATE_NEW_PRODUCT']) && $params['ALLOW_CREATE_NEW_PRODUCT'] === 'Y';
+		$params['CALCULATE_STORE_PURCHASING_PRICE'] = ($params['CALCULATE_STORE_PURCHASING_PRICE'] ?? 'N') === 'Y';
 
 		if (!$params['ALLOW_EDIT'])
 		{
@@ -1586,14 +1589,14 @@ final class CatalogStoreDocumentProductListComponent
 					return [
 						'MAIN_INFO','PURCHASING_PRICE', 'BASE_PRICE',
 						'AMOUNT', 'STORE_TO_INFO', 'STORE_TO_AMOUNT', 'BARCODE_INFO',
-						'TOTAL_PRICE',
+						'TOTAL_PRICE', 'COMMENT',
 					];
 				}
 
 				return [
 					'MAIN_INFO', 'BARCODE_INFO', 'PURCHASING_PRICE', 'BASE_PRICE',
 					'AMOUNT', 'STORE_TO_INFO', 'STORE_TO_AMOUNT',
-					'TOTAL_PRICE',
+					'TOTAL_PRICE', 'COMMENT',
 				];
 			case StoreDocumentTable::TYPE_DEDUCT:
 				if ($this->isReadOnly())
@@ -1602,7 +1605,7 @@ final class CatalogStoreDocumentProductListComponent
 						'MAIN_INFO',
 						'STORE_FROM_INFO', 'STORE_FROM_AMOUNT', 'AMOUNT',
 						'PURCHASING_PRICE', 'BASE_PRICE', 'BARCODE_INFO',
-						'TOTAL_PRICE',
+						'TOTAL_PRICE', 'COMMENT',
 					];
 				}
 
@@ -1610,7 +1613,7 @@ final class CatalogStoreDocumentProductListComponent
 					'MAIN_INFO', 'BARCODE_INFO', 'AMOUNT',
 					'STORE_FROM_INFO', 'STORE_FROM_AMOUNT',
 					'PURCHASING_PRICE', 'BASE_PRICE',
-					'TOTAL_PRICE',
+					'TOTAL_PRICE', 'COMMENT',
 				];
 			case StoreDocumentTable::TYPE_MOVING:
 				if ($this->isReadOnly())
@@ -1620,7 +1623,7 @@ final class CatalogStoreDocumentProductListComponent
 						'STORE_FROM_INFO', 'STORE_FROM_AVAILABLE_AMOUNT', 'STORE_FROM_AMOUNT',
 						'STORE_TO_INFO', 'STORE_TO_AVAILABLE_AMOUNT', 'STORE_TO_AMOUNT', 'AMOUNT',
 						'PURCHASING_PRICE', 'BASE_PRICE', 'BARCODE_INFO',
-						'TOTAL_PRICE',
+						'TOTAL_PRICE', 'COMMENT',
 					];
 				}
 
@@ -1629,7 +1632,7 @@ final class CatalogStoreDocumentProductListComponent
 					'STORE_FROM_INFO', 'STORE_FROM_AVAILABLE_AMOUNT', 'STORE_FROM_AMOUNT',
 					'STORE_TO_INFO', 'STORE_TO_AVAILABLE_AMOUNT', 'STORE_TO_AMOUNT',
 					'PURCHASING_PRICE', 'BASE_PRICE',
-					'TOTAL_PRICE',
+					'TOTAL_PRICE', 'COMMENT',
 				];
 		}
 
@@ -1674,18 +1677,28 @@ final class CatalogStoreDocumentProductListComponent
 			&& !(
 				$this->getDocumentType() === StoreDocumentTable::TYPE_MOVING
 				|| $this->getDocumentType() === StoreDocumentTable::TYPE_DEDUCT
+				|| $this->getDocumentType() === StoreDocumentTable::TYPE_SALES_ORDERS
 			)
 		;
 
-		$result['PURCHASING_PRICE'] = [
-			'id' => 'PURCHASING_PRICE',
-			'name' => $purchasingPriceName,
-			'title' => $purchasingPriceName,
-			'sort' => 'PURCHASING_PRICE',
-			'default' => true,
-			'editable' => $purchasingPriceEditable ? $priceEditable : false,
-			'width' => $columnDefaultWidth,
-		];
+		if (
+			$this->getDocumentType() !== StoreDocumentTable::TYPE_MOVING
+			&& (
+				$this->getDocumentType() !== StoreDocumentTable::TYPE_SALES_ORDERS
+				|| (Feature::isStoreBatchEnabled() && State::isProductBatchMethodSelected())
+			)
+		)
+		{
+			$result['PURCHASING_PRICE'] = [
+				'id' => 'PURCHASING_PRICE',
+				'name' => $purchasingPriceName,
+				'title' => $purchasingPriceName,
+				'sort' => 'PURCHASING_PRICE',
+				'default' => true,
+				'editable' => $purchasingPriceEditable ? $priceEditable : false,
+				'width' => $columnDefaultWidth,
+			];
+		}
 
 		$result['BASE_PRICE'] = [
 			'id' => 'BASE_PRICE',
@@ -1829,6 +1842,22 @@ final class CatalogStoreDocumentProductListComponent
 			'width' => $columnDefaultWidth,
 		];
 
+		$result['COMMENT'] = [
+			'id' => 'COMMENT',
+			'name' => Loc::getMessage('CATALOG_DOCUMENT_PRODUCT_LIST_COLUMN_COMMENT'),
+			'title' => Loc::getMessage('CATALOG_DOCUMENT_PRODUCT_LIST_COLUMN_COMMENT'),
+			'sort' => null,
+			'default' => false,
+			'editable' => true,
+			'width' => $columnDefaultWidth,
+		];
+		if ($this->getDocumentType() === StoreDocumentTable::TYPE_DEDUCT)
+		{
+			$result['COMMENT']['name'] = Loc::getMessage('CATALOG_DOCUMENT_PRODUCT_LIST_COLUMN_COMMENT_DEDUCT');
+			$result['COMMENT']['title'] = Loc::getMessage('CATALOG_DOCUMENT_PRODUCT_LIST_COLUMN_COMMENT_DEDUCT');
+			$result['COMMENT']['default'] = true;
+		}
+
 		foreach ($result as &$item)
 		{
 			if (empty($item['editable']))
@@ -1944,6 +1973,7 @@ final class CatalogStoreDocumentProductListComponent
 			'productUrlBuilderContext' => htmlspecialcharsbx($this->arParams['BUILDER_CONTEXT']),
 
 			'restrictedProductTypes' => $this->getRestrictedProductTypesForSelector(),
+			'isCalculableStorePurchasingPrice' => $this->arParams['CALCULATE_STORE_PURCHASING_PRICE'],
 		];
 	}
 
@@ -2585,6 +2615,22 @@ final class CatalogStoreDocumentProductListComponent
 		}
 
 		return $response;
+	}
+
+	/** @noinspection PhpUnused
+	 *
+	 * @param array $products
+	 * @param string currencyId
+	 * @return null|array
+	 */
+	public function calculateStoreCostPriceAction(int $productId, float $quantity, string $currency, int $storeId): ?float
+	{
+		if (!$this->checkModules())
+		{
+			return null;
+		}
+
+		return (new \Bitrix\Catalog\Product\Store\BatchManager($productId))->calculateCostPrice($quantity, $storeId, $currency);
 	}
 
 	private function getRestrictedProductTypesForSelector(): array

@@ -82,6 +82,44 @@ class ActivityController extends EntityController
 			}
 		}
 
+		if (!isset($fields['CREATED']))
+		{
+			$fields['CREATED'] = (new DateTime())->toString();
+		}
+
+		$enableSchedulePush =
+			($params['ENABLE_PUSH'] ?? true)
+			&& self::isActivitySupported($fields)
+			&& $status === \CCrmActivityStatus::Waiting
+		;
+
+		if ($enableSchedulePush)
+		{
+			$pullEventData = [$ownerID => $fields];
+			\Bitrix\Crm\Timeline\EntityController::loadCommunicationsAndMultifields(
+				$pullEventData,
+				Crm\Service\Container::getInstance()
+					->getUserPermissions($params['CURRENT_USER'] ?? null)
+					->getCrmPermissions(),
+				[
+					'ENABLE_PERMISSION_CHECK' => false,
+				]
+			);
+
+			foreach($bindings as $binding)
+			{
+				$entityItemIdentifier = Crm\ItemIdentifier::createFromArray($binding);
+				if ($entityItemIdentifier)
+				{
+					$this->sendPullEventOnAddScheduled(
+						$entityItemIdentifier,
+						$pullEventData[$ownerID],
+						$params['CURRENT_USER'] ?? null
+					);
+				}
+			}
+		}
+
 		$historyEntryID = 0;
 		if($typeID === \CCrmActivityType::Email)
 		{
@@ -177,63 +215,30 @@ class ActivityController extends EntityController
 					$params['CURRENT_USER'] ?? null
 				);
 			}
-
-
 		}
 
-		if(isset($params['ENABLE_PUSH']) && $params['ENABLE_PUSH'] === false)
-		{
-			return;
-		}
+		$enableHistoryPush =
+			($params['ENABLE_PUSH'] ?? true)
+			&& $historyEntryID > 0
+		;
 
-		$enableHistoryPush = $historyEntryID > 0;
-		$enableSchedulePush = self::isActivitySupported($fields) && $status === \CCrmActivityStatus::Waiting;
-
-		if (!isset($fields['CREATED']))
+		if ($enableHistoryPush)
 		{
-			$fields['CREATED'] = (new DateTime())->toString();
-		}
-		$pullEventData = [$ownerID => $fields];
-
-		if ($enableSchedulePush)
-		{
-			\Bitrix\Crm\Timeline\EntityController::loadCommunicationsAndMultifields(
-				$pullEventData,
-				Crm\Service\Container::getInstance()
-					->getUserPermissions($params['CURRENT_USER'] ?? null)
-					->getCrmPermissions(),
-				[
-					'ENABLE_PERMISSION_CHECK' => false,
-				]
-			);
-		}
-
-		foreach($bindings as $binding)
-		{
-			$entityItemIdentifier = Crm\ItemIdentifier::createFromArray($binding);
-			if (!$entityItemIdentifier)
+			foreach($bindings as $binding)
 			{
-				continue;
-			}
-
-			if ($enableSchedulePush)
-			{
-				$this->sendPullEventOnAddScheduled(
-					$entityItemIdentifier,
-					$pullEventData[$ownerID],
-					$params['CURRENT_USER'] ?? null
-				);
-			}
-			if ($enableHistoryPush)
-			{
-				$this->sendPullEventOnAdd(
-					$entityItemIdentifier,
-					$historyEntryID,
-					$params['CURRENT_USER'] ?? null
-				);
+				$entityItemIdentifier = Crm\ItemIdentifier::createFromArray($binding);
+				if ($entityItemIdentifier)
+				{
+					$this->sendPullEventOnAdd(
+						$entityItemIdentifier,
+						$historyEntryID,
+						$params['CURRENT_USER'] ?? null
+					);
+				}
 			}
 		}
 	}
+
 	public function onModify($ownerID, array $params)
 	{
 		if(!is_int($ownerID))
@@ -334,6 +339,7 @@ class ActivityController extends EntityController
 						Activity\Provider\Zoom::getId(),
 						Activity\Provider\Tasks\Task::getId(),
 						Activity\Provider\Tasks\Comment::getId(),
+						Activity\Provider\OpenLine::getId(),
 					]
 				)
 			)
@@ -706,7 +712,7 @@ class ActivityController extends EntityController
 			'Y-m-d H:i:s',
 			$createdTimestamp
 		);
-		if ($data['IS_INCOMING_CHANNEL'] === 'Y')
+		if (($data['IS_INCOMING_CHANNEL'] ?? 'N') === 'Y')
 		{
 			// incoming channel activities have a negative timestamp because they must be first in the list
 			// and must be sorted in reverse order:
@@ -862,15 +868,19 @@ class ActivityController extends EntityController
 	}
 	public static function prepareEntityDataModel($ID, array $fields, array $options = null)
 	{
-		if(!is_array($options))
+		if (!is_array($options))
 		{
-			$options = array();
+			$options = [];
 		}
 
-		$typeID = isset($fields['TYPE_ID']) ? (int)$fields['TYPE_ID'] : 0;
-		$providerID = isset($fields['PROVIDER_ID']) ? $fields['PROVIDER_ID'] : '';
+		$typeID = (int)($fields['TYPE_ID'] ?? 0);
+		$providerID = $fields['PROVIDER_ID'] ?? '';
 
-		if ($providerID !== Activity\Provider\ToDo::getId())
+		if ($providerID === Activity\Provider\ToDo::getId())
+		{
+			$fields['PING_OFFSETS'] = Activity\Provider\ToDo::getPingOffsets($ID);
+		}
+		else
 		{
 			$notLimitedDescriptionProviders = [
 				Activity\Provider\Call::getId(),
@@ -931,7 +941,7 @@ class ActivityController extends EntityController
 			$smsFields = Integration\SmsManager::getMessageFields($fields['ASSOCIATED_ENTITY_ID']);
 			if (!$smsFields)
 			{
-				$smsFields = $fields['SETTINGS']['ORIGINAL_MESSAGE']; // check message fields stored in CRM
+				$smsFields = $fields['SETTINGS']['ORIGINAL_MESSAGE'] ?? ''; // check message fields stored in CRM
 			}
 
 			if (!empty($smsFields) && is_array($smsFields))
@@ -1254,6 +1264,16 @@ class ActivityController extends EntityController
 		if (empty($scheduledData))
 		{
 			return null;
+		}
+
+		$activityId = (int)$scheduledData['ID'];
+		if (!array_key_exists('IS_INCOMING_CHANNEL', $scheduledData))
+		{
+			$scheduledData['IS_INCOMING_CHANNEL'] = \Bitrix\Crm\Activity\IncomingChannel::getInstance()->isIncomingChannel($activityId) ? 'Y' : 'N';
+		}
+		if (!array_key_exists('LIGHT_COUNTER_AT', $scheduledData))
+		{
+			$scheduledData['LIGHT_COUNTER_AT'] = ServiceLocator::getInstance()->get('crm.activity.actcounterlighttimerepo')->queryLightTimeByActivityId($activityId);
 		}
 
 		return Container::getInstance()->getTimelineScheduledItemFactory()::createItem(

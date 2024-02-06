@@ -95,6 +95,11 @@ class Category extends Controller
 		{
 			\CUserOptions::SetOption('crm', 'current_deal_category', $categoryId);
 		}
+		else if (\CCrmOwnerType::isPossibleDynamicTypeId($entityTypeId) && $categoryId >= 0)
+		{
+			$optionName = 'current_' . mb_strtolower($factory->getEntityName()) . '_category';
+			\CUserOptions::SetOption('crm', $optionName, $categoryId);
+		}
 
 		$entity = Entity::getInstance(\CCrmOwnerType::ResolveName($entityTypeId));
 		$userId = (int)$this->getCurrentUser()->getId();
@@ -190,6 +195,7 @@ class Category extends Controller
 
 		return new Dto\Category([
 			'id' => 0,
+			'categoryId' => 0,
 			'name' => $factory->getEntityDescriptionInPlural(),
 			'isDefault' => true,
 			'editable' => $this->canUserEditCategory(),
@@ -459,8 +465,7 @@ class Category extends Controller
 
 			$entity = $kanban->getEntity()->setGridIdInstance(new GridId($entityTypeId), $entityTypeId);
 
-			$mobileEntity = Entity\KanbanEntity::getInstance($entityTypeName)->prepare($prepareParams);
-			$mobileEntity->prepareFilter($entity);
+			Entity::getInstance($entityTypeName)->prepare($prepareParams)->prepareFilter($entity);
 		}
 
 		return $filterParams;
@@ -543,10 +548,12 @@ class Category extends Controller
 
 			$categoryData = [
 				'id' => $categoryId,
+				'categoryId' => $categoryId,
 				'name' => $category->getName(),
 				'sort' => $category->getSort(),
 				'isDefault' => $category->getIsDefault(),
 				'tunnels' => $sortedTunnelsByCategory[$categoryId] ?? [],
+				'categoriesEnabled' => $factory->isCategoriesEnabled(),
 			];
 
 			if (Counter\EntityCounterFactory::isEntityTypeSupported($factory->getEntityTypeId()))
@@ -669,6 +676,7 @@ class Category extends Controller
 
 		return new Dto\Category([
 			'id' => $category->getId(),
+			'categoryId' => $category->getId(),
 			'name' => $categoriesEnabled ? $category->getName() : $factory->getEntityDescriptionInPlural(),
 			'isDefault' => $category->getIsDefault(),
 			'editable' => $this->canUserEditCategory(),
@@ -925,6 +933,13 @@ class Category extends Controller
 			];
 		}
 
+		if (!empty($tunnel['robot']['Delay']))
+		{
+			$basisId = $this->extractDelayBasisId($tunnel['robot']['Delay']['basis']);
+			$robotDelayBasisName = $this->getTunnelDocumentFields($factory->getEntityTypeId())[$basisId] ?? null;
+			$tunnel['robot']['Delay']['basisName'] = $robotDelayBasisName['name'] ?? null;
+		}
+
 		return [
 			'dstStageId' => $dstStage->getId(),
 			'dstStageStatusId' => $dstStage->getStatusId(),
@@ -950,6 +965,20 @@ class Category extends Controller
 				],
 			],
 		];
+	}
+
+	private function extractDelayBasisId(string $basis): string
+	{
+		$startString = '{=Document:';
+		$endString = '}';
+		$startPos = strpos($basis, $startString);
+		$endPos = strpos($basis, $endString, $startPos + strlen($startString));
+
+		if ($startPos !== false && $endPos !== false) {
+			return substr($basis, $startPos + strlen($startString), $endPos - $startPos - strlen($startString));
+		}
+
+		return '';
 	}
 
 	private function getStageColors(EO_Status_Collection $stageObjects): array

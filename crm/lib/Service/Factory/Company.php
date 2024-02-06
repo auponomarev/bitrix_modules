@@ -7,6 +7,7 @@ use Bitrix\Crm\Category\Entity\Category;
 use Bitrix\Crm\Category\Entity\ClientDefaultCategory;
 use Bitrix\Crm\Category\Entity\ItemCategory;
 use Bitrix\Crm\CompanyTable;
+use Bitrix\Crm\ContactTable;
 use Bitrix\Crm\Field;
 use Bitrix\Crm\Item;
 use Bitrix\Crm\Model\ItemCategoryTable;
@@ -75,6 +76,11 @@ final class Company extends Service\Factory
 		return true;
 	}
 
+	public function isObserversEnabled(): bool
+	{
+		return true;
+	}
+
 	public function isMultiFieldsEnabled(): bool
 	{
 		return true;
@@ -98,15 +104,17 @@ final class Company extends Service\Factory
 				->setBoundEntities(Item::FIELD_NAME_CONTACTS)
 		;
 
-		$item->addImplementation(
-			new Item\FieldImplementation\Binding(
-				$entityObject,
-				\CCrmOwnerType::Contact,
-				$fieldNameMap,
-				ContactCompanyTable::getEntity(),
-				Container::getInstance()->getContactBroker(),
-			)
+		$implementation = new Item\FieldImplementation\Binding(
+			$entityObject,
+			\CCrmOwnerType::Contact,
+			$fieldNameMap,
+			ContactCompanyTable::getEntity(),
+			Container::getInstance()->getContactBroker(),
 		);
+
+		$implementation->configureUpdatingRefIdInBoundEntity(ContactTable::getEntity(), 'COMPANY_ID');
+
+		$item->addImplementation($implementation);
 	}
 
 	/**
@@ -121,6 +129,7 @@ final class Company extends Service\Factory
 			Item::FIELD_NAME_UPDATED_BY => 'MODIFY_BY_ID',
 			Item::FIELD_NAME_TYPE_ID => 'COMPANY_TYPE',
 			Item::FIELD_NAME_CONTACT_IDS => 'CONTACT_ID',
+			Item::FIELD_NAME_OBSERVERS => 'OBSERVER_IDS',
 		];
 	}
 
@@ -192,10 +201,9 @@ final class Company extends Service\Factory
 			],
 			Item::FIELD_NAME_COMMENTS => [
 				'TYPE' => Field::TYPE_TEXT,
+				'VALUE_TYPE' => Field::VALUE_TYPE_BB,
 				'ATTRIBUTES' => [],
-				'SETTINGS' => [
-					'isFlexibleContentType' => true,
-				],
+				'CLASS' => Field\Comments::class,
 			],
 			Item::FIELD_NAME_HAS_PHONE => [
 				'TYPE' => Field::TYPE_BOOLEAN,
@@ -281,6 +289,11 @@ final class Company extends Service\Factory
 				'TYPE' => Field::TYPE_CRM_MULTIFIELD,
 				'ATTRIBUTES' => [\CCrmFieldInfoAttr::Multiple],
 				'CLASS' => Field\Multifield::class,
+			],
+			Item::FIELD_NAME_OBSERVERS => [
+				'TYPE' => Field::TYPE_USER,
+				'ATTRIBUTES' => [\CCrmFieldInfoAttr::Multiple],
+				'CLASS' => Field\Observers::class,
 			],
 		];
 	}
@@ -403,6 +416,14 @@ final class Company extends Service\Factory
 					[Item::FIELD_NAME_TITLE],
 				)
 			)
+			->addAction(
+				Operation::ACTION_AFTER_SAVE,
+				new Operation\Action\FillEntityFieldsContext()
+			)
+			->addAction(
+				Operation::ACTION_AFTER_SAVE,
+				new Operation\Action\ResetEntityCommunicationSettingsInActivities(),
+			)
 		;
 
 		if ($operation->getItem()->getCategoryId() === 0)
@@ -448,6 +469,10 @@ final class Company extends Service\Factory
 			->addAction(
 				Operation::ACTION_AFTER_SAVE,
 				new Operation\Action\Compatible\SendEvent\Delete('OnAfterCrmCompanyDelete')
+			)
+			->addAction(
+				Operation::ACTION_AFTER_SAVE,
+				new Operation\Action\DeleteEntityFieldsContext()
 			)
 		;
 

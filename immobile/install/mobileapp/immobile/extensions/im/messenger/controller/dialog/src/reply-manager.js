@@ -5,8 +5,8 @@
  * @module im/messenger/controller/dialog/reply-manager
  */
 jn.define('im/messenger/controller/dialog/reply-manager', (require, exports, module) => {
-
 	const { Loc } = require('loc');
+	const { Type } = require('type');
 	const { clone } = require('utils/object');
 	const {
 		MessageType,
@@ -29,6 +29,7 @@ jn.define('im/messenger/controller/dialog/reply-manager', (require, exports, mod
 		constructor({ store, dialogView })
 		{
 			this.store = store;
+			/** @type {DialogView} */
 			this.dialogView = dialogView;
 
 			this.quoteMessage = null;
@@ -36,6 +37,8 @@ jn.define('im/messenger/controller/dialog/reply-manager', (require, exports, mod
 			this._isQuoteInProcess = false;
 			this._isQuoteInBackground = false;
 			this._isEditInProcess = false;
+			/** @type {DraftManager} */
+			this.draftManager = null;
 
 			this.editMessage = null;
 		}
@@ -55,28 +58,42 @@ jn.define('im/messenger/controller/dialog/reply-manager', (require, exports, mod
 			return this._isEditInProcess;
 		}
 
+		/**
+		 * @param {DraftManager} draftManager
+		 */
+		setDraftManager(draftManager)
+		{
+			this.draftManager = draftManager;
+		}
+
 		setQuoteMessage(message)
 		{
-			const modelMessage = this.store.getters['messagesModel/getMessageById'](message.id);
+			const modelMessage = this.store.getters['messagesModel/getById'](message.id);
 
+			const quoteMessage = clone(message);
 			const isSystemMessage = modelMessage.authorId === 0;
-			const isAudioMessage = message.type === MessageType.audio;
-			const isEmptyText = !modelMessage.text || modelMessage.text === '';
+			// const isAudioMessage = message.type === MessageType.audio;
+			// const isEmptyText = !modelMessage.text || modelMessage.text === '';
 
 			if (isSystemMessage)
 			{
-				message.username = Loc.getMessage('IMMOBILE_MESSENGER_DIALOG_QUOTE_DEFAULT_TITLE');
+				quoteMessage.username = Loc.getMessage('IMMOBILE_MESSENGER_DIALOG_QUOTE_DEFAULT_TITLE');
 			}
 
-			if (isAudioMessage && isEmptyText)
-			{
-				message.message = {
-					type: 'text',
-					text: Loc.getMessage('IMMOBILE_MESSENGER_DIALOG_MESSAGE_FIELD_VOICE'),
-				};
-			}
+			// if (isAudioMessage && isEmptyText)
+			// {
+			// 	quoteMessage.message = {
+			// 		type: 'text',
+			// 		text: Loc.getMessage('IMMOBILE_MESSENGER_DIALOG_MESSAGE_FIELD_VOICE'),
+			// 	};
+			// }
 
-			this.quoteMessage = message;
+			quoteMessage.message = [{
+				type: 'text',
+				text: parser.simplifyMessage(modelMessage),
+			}];
+
+			this.quoteMessage = quoteMessage;
 		}
 
 		getQuoteMessage()
@@ -84,24 +101,28 @@ jn.define('im/messenger/controller/dialog/reply-manager', (require, exports, mod
 			return this.quoteMessage;
 		}
 
-		getQuoteText()
+		getQuoteText(message = this.getQuoteMessage())
 		{
-			const modelMessage = this.store.getters['messagesModel/getMessageById'](this.getQuoteMessage().id);
+			const modelMessage = this.store.getters['messagesModel/getById'](message.id);
+			if (Type.isUndefined(modelMessage) || (Type.isObject(modelMessage) && !('id' in modelMessage)))
+			{
+				return '';
+			}
 
 			let quoteTitle = Loc.getMessage('IMMOBILE_MESSENGER_DIALOG_QUOTE_DEFAULT_TITLE');
 			const isSystemMessage = modelMessage.authorId === 0;
 			if (!isSystemMessage && modelMessage.authorId)
 			{
-				const user = this.store.getters['usersModel/getUserById'](modelMessage.authorId);
+				const user = this.store.getters['usersModel/getById'](modelMessage.authorId);
 				quoteTitle = user.name;
 			}
 
 			const quoteDate = DateFormatter.getQuoteFormat(modelMessage.date);
 			const quoteText = parser.prepareQuote(modelMessage);
 
-			let quoteContext;
+			let quoteContext = '';
 			const dialog = this.store.getters['dialoguesModel/getByChatId'](modelMessage.chatId);
-			if (dialog && dialog.type === DialogType.user)
+			if (dialog && (dialog.type === DialogType.user || dialog.type === DialogType.private))
 			{
 				quoteContext = `#${dialog.dialogId}:${MessengerParams.getUserId()}/${modelMessage.id}`;
 			}
@@ -120,20 +141,25 @@ jn.define('im/messenger/controller/dialog/reply-manager', (require, exports, mod
 
 		setEditMessage(message)
 		{
-			const modelMessage = this.store.getters['messagesModel/getMessageById'](message.id);
-			message.username = Loc.getMessage('IMMOBILE_MESSENGER_DIALOG_MESSAGE_EDIT_FIELD');
+			const modelMessage = this.store.getters['messagesModel/getById'](message.id);
+			const editMessage = clone(message);
+			editMessage.username = Loc.getMessage('IMMOBILE_MESSENGER_DIALOG_MESSAGE_EDIT_FIELD');
 
 			const isAudioMessage = message.type === MessageType.audio;
 			const isEmptyText = !modelMessage.message || modelMessage.message === '';
-			if (isAudioMessage && isEmptyText)
-			{
-				message.message = {
-					type: 'text',
-					text: Loc.getMessage('IMMOBILE_MESSENGER_DIALOG_MESSAGE_FIELD_VOICE'),
-				};
-			}
+			// if (isAudioMessage && isEmptyText)
+			// {
+			// 	message.message = {
+			// 		type: 'text',
+			// 		text: Loc.getMessage('IMMOBILE_MESSENGER_DIALOG_MESSAGE_FIELD_VOICE'),
+			// 	};
+			// }
+			editMessage.message = [{
+				type: 'text',
+				text: parser.simplifyMessage(modelMessage),
+			}];
 
-			this.editMessage = message;
+			this.editMessage = editMessage;
 		}
 
 		getEditMessage()
@@ -151,7 +177,7 @@ jn.define('im/messenger/controller/dialog/reply-manager', (require, exports, mod
 				return;
 			}
 
-			//this.inputTextBuffer will be filled if we replied to the message, but did not send it,
+			// this.inputTextBuffer will be filled if we replied to the message, but did not send it,
 			// but opened the message editing on top.
 			if (this.inputTextBuffer !== null)
 			{
@@ -176,50 +202,49 @@ jn.define('im/messenger/controller/dialog/reply-manager', (require, exports, mod
 			this._isQuoteInProcess = true;
 			this._isQuoteInBackground = false;
 
-			const modelMessage = clone(this.store.getters['messagesModel/getMessageById'](this.getQuoteMessage().id));
-			const quoteMessage = clone(this.getQuoteMessage());
-			quoteMessage.message = [{
-				type: 'text',
-				text: parser.simplifyMessage(modelMessage),
-			}];
+			const quoteMessage = this.getQuoteMessage();
 
 			this.dialogView.setInputQuote(quoteMessage, InputQuoteType.reply);
+			if (this.draftManager)
+			{
+				this.draftManager.setQuotMessageInStore(quoteMessage, InputQuoteType.reply, this.dialogView.getInput());
+			}
 		}
 
 		startEditingMessage(message)
 		{
-			//TODO: remove setTimeout 0 after fixing dialogView.getInput method. Works only on the UI thread.
-			setTimeout(() => {
-				const inputText = this.dialogView.getInput();
-				if (!this.isEditInProcess && inputText !== '')
-				{
-					this.inputTextBuffer = inputText;
-				}
+			// TODO: remove setTimeout 0 after fixing dialogView.getInput method. Works only on the UI thread.
+			const inputText = this.dialogView.getInput();
+			if (!this.isEditInProcess && inputText !== '')
+			{
+				this.inputTextBuffer = inputText;
+			}
 
-				if (this._isQuoteInProcess)
-				{
-					this._isQuoteInBackground = true;
-				}
+			if (this._isQuoteInProcess)
+			{
+				this._isQuoteInBackground = true;
+			}
 
-				this.setEditMessage(message);
-				this._isEditInProcess = true;
+			this.setEditMessage(message);
+			this._isEditInProcess = true;
 
-				const modelMessage = clone(this.store.getters['messagesModel/getMessageById'](Number(message.id)));
-				const editMessage = clone(this.getEditMessage());
-				editMessage.message = [{
-					type: 'text',
-					text: parser.simplifyMessage(modelMessage),
-				}];
-				this.dialogView.setInputQuote(editMessage, InputQuoteType.edit);
+			const modelMessage = clone(this.store.getters['messagesModel/getById'](Number(message.id)));
+			const editMessage = this.getEditMessage();
 
-				const editMessageText = modelMessage.text || '';
-				this.dialogView.setInput(editMessageText);
-			}, 0);
+			this.dialogView.setInputQuote(editMessage, InputQuoteType.edit);
+
+			const editMessageText = modelMessage.text || '';
+			this.dialogView.setInput(editMessageText);
+			if (this.draftManager)
+			{
+				this.draftManager.setQuotMessageInStore(editMessage, InputQuoteType.edit, editMessageText);
+			}
 		}
 
 		finishQuotingMessage()
 		{
 			this._isQuoteInProcess = false;
+			this.draftManager.cancelReply();
 
 			return this.dialogView.removeInputQuote();
 		}
@@ -228,9 +253,11 @@ jn.define('im/messenger/controller/dialog/reply-manager', (require, exports, mod
 		{
 			this._isEditInProcess = false;
 			this.dialogView.clearInput();
+			this.draftManager.saveDraft('');
 			if (this.inputTextBuffer !== null)
 			{
 				this.dialogView.setInput(this.inputTextBuffer);
+				this.draftManager.saveDraft(this.inputTextBuffer);
 			}
 
 			this.dialogView.removeInputQuote().then(() => {
@@ -239,6 +266,30 @@ jn.define('im/messenger/controller/dialog/reply-manager', (require, exports, mod
 					this.startQuotingMessage(this.getQuoteMessage());
 				}
 			});
+		}
+
+		initializeEditingMessage(message)
+		{
+			this.setEditMessage(message);
+			this._isEditInProcess = true;
+			this.dialogView.setInputQuote(message, InputQuoteType.edit, false);
+		}
+
+		initializeQuotingMessage(message)
+		{
+			this.setQuoteMessage(message);
+			this._isQuoteInProcess = true;
+			this.dialogView.setInputQuote(message, InputQuoteType.reply, false);
+		}
+
+		/**
+		 * @desc Check is having reply id in the message
+		 * @param {MessagesModelState} message
+		 * @return {boolean}
+		 */
+		isHasQuote(message)
+		{
+			return message.params.replyId;
 		}
 	}
 

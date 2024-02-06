@@ -182,7 +182,8 @@ this.BX = this.BX || {};
 	          appCode: this.result.APP.CODE
 	        },
 	        analyticsLabel: {
-	          viewMode: 'detail'
+	          viewMode: 'detail',
+	          appCode: this.result.APP.CODE
 	        }
 	      }).then(response => {
 	        if (response.data && typeof response.data.total !== 'undefined' && BX.type.isString(response.data.currentValue)) {
@@ -441,9 +442,8 @@ this.BX = this.BX || {};
 					</div>
 					<div class="market-detail__header-info_description"
 						 :title="result.APP.SHORT_DESC"
-					>
-						{{ result.APP.SHORT_DESC }}
-					</div>
+						 v-html="result.APP.SHORT_DESC"
+					></div>
 					<div class="market-detail__header-info_block-btn">
 						<button class="ui-btn ui-btn-success ui-btn-md"
 								v-if="showUpdateButton"

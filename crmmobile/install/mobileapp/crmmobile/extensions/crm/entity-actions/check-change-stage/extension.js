@@ -10,15 +10,11 @@ jn.define('crm/entity-actions/check-change-stage', (require, exports, module) =>
 
 	const actionCheckChangeStage = (props) => new Promise((resolve, reject) => {
 		const {
-			uid,
-			category,
-			entityId,
 			entityTypeId,
-			activeStageId,
-			selectedStageId,
+			isSelectedStageFinalConverted,
+			isActiveStageFinalConverted,
 		} = props;
 
-		const customEventEmitter = EventEmitter.createWithUid(uid);
 		const isLead = TypeId.Lead === entityTypeId;
 
 		if (!isLead)
@@ -26,28 +22,12 @@ jn.define('crm/entity-actions/check-change-stage', (require, exports, module) =>
 			return resolve();
 		}
 
-		const isFinalConvertedStage = (stageId) => category && category.successStages.find(({ id, statusId }) => id === stageId && statusId === 'CONVERTED');
-
-		const { onAction } = getActionToConversion();
-		if (isFinalConvertedStage(selectedStageId))
+		if (isSelectedStageFinalConverted)
 		{
-			onAction({
-				entityId,
-				entityTypeId,
-				onFinishConverted: () => {
-					customEventEmitter.emit('DetailCard::reloadTabs');
-					reject();
-
-					return Promise.resolve();
-				},
-			}).then((menu) => {
-				menu.show();
-			});
-
-			return;
+			return showConversion(props);
 		}
 
-		if (isFinalConvertedStage(activeStageId) && !isFinalConvertedStage(selectedStageId))
+		if (isActiveStageFinalConverted && !isSelectedStageFinalConverted)
 		{
 			Alert.confirm(
 				Loc.getMessage('M_CRM_ENTITY_ACTION_CONFIRM_CHANGE_STAGE_TITLE'),
@@ -63,12 +43,33 @@ jn.define('crm/entity-actions/check-change-stage', (require, exports, module) =>
 					},
 				],
 			);
-
-			return;
 		}
 
 		return resolve();
 	});
+
+	const showConversion = async (props) => {
+		const { uid, entityTypeId, entityId } = props;
+		const customEventEmitter = EventEmitter.createWithUid(uid);
+
+		const { onAction } = getActionToConversion();
+
+		const conversionAction = await onAction({
+			entityId,
+			entityTypeId,
+			onFinishConverted: () => {
+				customEventEmitter.emit('DetailCard::reloadTabs');
+				customEventEmitter.emit('DetailCard::onUpdate', [{
+					entityId,
+					entityTypeId,
+				}]);
+
+				return Promise.resolve();
+			},
+		});
+
+		return conversionAction();
+	};
 
 	module.exports = { actionCheckChangeStage };
 });

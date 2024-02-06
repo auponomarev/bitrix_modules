@@ -5,9 +5,7 @@ namespace Bitrix\Crm\Component\EntityDetails;
 use Bitrix\Crm\Attribute\FieldAttributeManager;
 use Bitrix\Crm\Category\Entity\Category;
 use Bitrix\Crm\Component\ComponentError;
-use Bitrix\Crm\Component\EntityDetails\Traits;
 use Bitrix\Crm\Controller\Entity;
-use Bitrix\Crm\Entity\FieldContentType;
 use Bitrix\Crm\EO_Status;
 use Bitrix\Crm\Field;
 use Bitrix\Crm\Format\Money;
@@ -51,6 +49,7 @@ use CLists;
 abstract class FactoryBased extends BaseComponent implements Controllerable, SupportsEditorProvider
 {
 	use Traits\EditorInitialMode;
+	use Traits\InitializeAdditionalFieldsData;
 
 	public const TAB_NAME_EVENT = 'tab_event';
 	public const TAB_NAME_PRODUCTS = 'tab_products';
@@ -82,8 +81,8 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 
 	public function onPrepareComponentParams($arParams): array
 	{
-		$arParams['ENTITY_TYPE_ID'] = (int) $arParams['ENTITY_TYPE_ID'];
-		$arParams['ENTITY_ID'] = (int) $arParams['ENTITY_ID'];
+		$arParams['ENTITY_TYPE_ID'] = (int)($arParams['ENTITY_TYPE_ID'] ?? \CCrmOwnerType::Undefined);
+		$arParams['ENTITY_ID'] = (int)($arParams['ENTITY_ID'] ?? 0);
 
 		$this->fillParameterFromRequest('categoryId', $arParams);
 		$this->fillParameterFromRequest('parentId', $arParams);
@@ -115,7 +114,7 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 
 	public function getEntityTypeID(): int
 	{
-		return (int) $this->arParams['ENTITY_TYPE_ID'];
+		return (int)($this->arParams['ENTITY_TYPE_ID'] ?? \CCrmOwnerType::Undefined);
 	}
 
 	public function setEntityID($entityID): void
@@ -183,7 +182,7 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 		{
 			if($this->item->isNew())
 			{
-				$categoryId = $this->arParams['categoryId'];
+				$categoryId = $this->arParams['categoryId'] ?? $this->categoryId;
 				if($categoryId > 0)
 				{
 					$this->category = $this->factory->getCategory($categoryId);
@@ -343,10 +342,13 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 
 		$this->arResult['jsParams']['item'] = $this->item->jsonSerialize();
 
-		if (!$this->item->isNew() && \Bitrix\Crm\Settings\HistorySettings::getCurrent()->isViewEventEnabled())
+		if (!$this->item->isNew())
 		{
-			$trackedObject = $this->factory->getTrackedObject($this->item);
-			Container::getInstance()->getEventHistory()->registerView($trackedObject);
+			if (\Bitrix\Crm\Settings\HistorySettings::getCurrent()->isViewEventEnabled())
+			{
+				$trackedObject = $this->factory->getTrackedObject($this->item);
+				Container::getInstance()->getEventHistory()->registerView($trackedObject);
+			}
 
 			$this->arResult['jsParams']['pullTag'] = Container::getInstance()->getPullManager()->subscribeOnItemUpdate(
 				$this->getEntityTypeID(),
@@ -669,7 +671,7 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 				'id' => static::TAB_NAME_ORDERS,
 				'name' => \CCrmOwnerType::GetCategoryCaption(\CCrmOwnerType::Order),
 				'loader' => [
-					'serviceUrl' => '/bitrix/components/bitrix/crm.order.list/lazyload.ajax.php?&site'.SITE_ID.'&'.bitrix_sessid_get(),
+					'serviceUrl' => '/bitrix/components/bitrix/crm.order.list/lazyload.ajax.php?&site='.SITE_ID.'&'.bitrix_sessid_get(),
 					'componentData' => [
 						'template' => '',
 						'signedParameters' => \CCrmInstantEditorHelper::signComponentParams([
@@ -681,7 +683,7 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 							'GRID_ID_SUFFIX' => $this->getGuid(),
 							'TAB_ID' => static::TAB_NAME_ORDERS,
 							'PRESERVE_HISTORY' => true,
-							'BUILDER_CONTEXT' => ProductBuilder::TYPE_ID
+							'BUILDER_CONTEXT' => ProductBuilder::TYPE_ID,
 						], 'crm.order.list')
 					]
 				],
@@ -983,8 +985,23 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 					if (isset($client['advancedInfo']['multiFields']))
 					{
 						// it is better this way than multiple queries to FieldMultiTable
+						$multifieldsItem = $client['advancedInfo']['multiFields'];
+
+						foreach ($multifieldsItem as &$multifieldItem)
+						{
+							if($multifieldItem['TYPE_ID'] === 'PHONE' || $multifieldItem['TYPE_ID'] === 'EMAIL')
+							{
+								$multifieldItem['OWNER'] = [
+									'ID' => $client['id'],
+									'TYPE_ID' => \CCrmOwnerType::ResolveID($client['typeName']),
+									'TITLE' => $client['title'],
+								];
+							}
+						}
+						unset($multifieldItem);
+
 						/** @noinspection SlowArrayOperationsInLoopInspection */
-						$multiFields = array_merge($multiFields, $client['advancedInfo']['multiFields']);
+						$multiFields = array_merge($multiFields, $multifieldsItem);
 					}
 				}
 			}
@@ -1040,6 +1057,7 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 			'ENTITY_CONTROLLERS' => $this->getEntityControllers(),
 			'ENTITY_FIELDS' => $this->editorAdapter->getEntityFields(),
 			'ENTITY_DATA' => $this->editorAdapter->getEntityData(),
+			'ADDITIONAL_FIELDS_DATA' => $this->getAdditionalFieldsData(),
 			'ENABLE_SECTION_EDIT' => true,
 			'ENABLE_SECTION_CREATION' => true,
 			'ENABLE_PAGE_TITLE_CONTROLS' => true,
@@ -1300,7 +1318,18 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 
 		$beforeSaveData = $this->item->getData();
 
-		$result = $this->getOperation()->launch();
+		$operation = $this->getOperation();
+		$eventId = $data['EVENT_ID'] ?? null;
+		if (!empty($eventId) && is_string($eventId))
+		{
+			$context = clone Container::getInstance()->getContext();
+			$context->setEventId($eventId);
+
+			$operation->setContext($context);
+		}
+
+		$result = $operation->launch();
+
 		if(!$result->isSuccess())
 		{
 			$checkErrors = [];
@@ -1349,6 +1378,7 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 		$result = [
 			'ENTITY_ID' => $this->item->getId(),
 			'ENTITY_DATA' => $this->editorAdapter->getEntityData(),
+			'ADDITIONAL_FIELDS_DATA' => $this->getAdditionalFieldsData(),
 		];
 
 		if($isNew)
@@ -1360,7 +1390,7 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 		}
 
 		$conversionWizard = $this->getConversionWizard();
-		if ($this->isConversionMode() && !is_null($conversionWizard))
+		if ($this->isConversionMode() && $conversionWizard !== null)
 		{
 			$conversionWizard->attachNewlyCreatedEntity($this->factory->getEntityName(), $this->item->getId());
 			$conversionRedirectUrl = $conversionWizard->getRedirectUrl();
@@ -1368,6 +1398,7 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 			{
 				// override redirect url
 				$result['REDIRECT_URL'] = $conversionRedirectUrl;
+				$result['OPEN_IN_NEW_SLIDE'] = true;
 				$result['EVENT_PARAMS'] = $conversionWizard->getClientEventParams();
 			}
 		}
@@ -1388,6 +1419,7 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 		$result = [
 			'ENTITY_ID' => $this->item->getId(),
 			'ENTITY_DATA' => $this->editorAdapter->getEntityData(),
+			'ADDITIONAL_FIELDS_DATA' => $this->getAdditionalFieldsData(),
 		];
 
 		return $result;
@@ -1471,11 +1503,7 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 			$setData[$name] = $value;
 		}
 
-		return FieldContentType::prepareFieldsFromDetailsToSave(
-			$this->item->getEntityTypeId(),
-			$this->item->getId(),
-			$setData,
-		);
+		return $setData;
 	}
 
 	public function compatibleAction(int $entityTypeId, int $entityId): ?Json
@@ -1564,19 +1592,13 @@ abstract class FactoryBased extends BaseComponent implements Controllerable, Sup
 	{
 		if($this->operation === null)
 		{
-			$context = clone Container::getInstance()->getContext();
-			$context->setItemOption(
-				'PRESERVE_CONTENT_TYPE',
-				FieldContentType::shouldPreserveContentTypeInDetails($this->item->getEntityTypeId(), $this->item->getId()),
-			);
-
 			if($this->item->getId() > 0)
 			{
-				$this->operation = $this->factory->getUpdateOperation($this->item, $context);
+				$this->operation = $this->factory->getUpdateOperation($this->item);
 			}
 			else
 			{
-				$this->operation = $this->factory->getAddOperation($this->item, $context);
+				$this->operation = $this->factory->getAddOperation($this->item);
 			}
 		}
 

@@ -26,7 +26,20 @@ use Bitrix\Main\ORM\Query\Result;
  * </ul>
  *
  * @package Bitrix\Crm\Reservation\Internals
- **/
+ *
+ * DO NOT WRITE ANYTHING BELOW THIS
+ *
+ * <<< ORMENTITYANNOTATION
+ * @method static EO_ProductRowReservation_Query query()
+ * @method static EO_ProductRowReservation_Result getByPrimary($primary, array $parameters = [])
+ * @method static EO_ProductRowReservation_Result getById($id)
+ * @method static EO_ProductRowReservation_Result getList(array $parameters = [])
+ * @method static EO_ProductRowReservation_Entity getEntity()
+ * @method static \Bitrix\Crm\Reservation\ProductRowReservation createObject($setDefaultValues = true)
+ * @method static \Bitrix\Crm\Reservation\Internals\EO_ProductRowReservation_Collection createCollection()
+ * @method static \Bitrix\Crm\Reservation\ProductRowReservation wakeUpObject($row)
+ * @method static \Bitrix\Crm\Reservation\Internals\EO_ProductRowReservation_Collection wakeUpCollection($rows)
+ */
 class ProductRowReservationTable extends DataManager
 {
 	use DeleteByFilterTrait;
@@ -101,6 +114,11 @@ class ProductRowReservationTable extends DataManager
 				ProductRowReservation::PRODUCT_ROW_NAME,
 				ProductRowTable::class,
 				Join::on('this.ROW_ID', 'ref.ID')
+			),
+			new Reference(
+				'PRODUCT_RESERVATION_MAP',
+				ProductReservationMapTable::class,
+				Join::on('this.ROW_ID', 'ref.PRODUCT_ROW_ID')
 			),
 		];
 	}

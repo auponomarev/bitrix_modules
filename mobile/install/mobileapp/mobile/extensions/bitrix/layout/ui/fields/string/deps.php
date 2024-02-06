@@ -2,6 +2,8 @@
 
 return [
 	'extensions' => [
+		'apptheme',
+		'in-app-url',
 		'layout/ui/fields/base',
 		'layout/ui/fields/focus-manager',
 		'utils',

@@ -13,7 +13,6 @@ use Bitrix\Main\Entity\ReferenceField;
 
 use Bitrix\Im\User;
 use Bitrix\Im\Color;
-use Bitrix\Im\Recent;
 use Bitrix\Im\Model\ChatTable;
 use Bitrix\Im\Model\RelationTable;
 
@@ -147,15 +146,20 @@ class Chat
 	{
 		$isSession = true;
 
-		if(self::parseLinesChatEntityId($chat['ENTITY_ID'])['connectorId'] === 'telegrambot')
+		if (self::parseLinesChatEntityId($chat['ENTITY_ID'])['connectorId'] === 'telegrambot')
 		{
-			$isSession = (bool)SessionTable::getList([
+			$session = SessionTable::getList([
 				'select' => ['ID'],
 				'filter' => [
 					'=CHAT_ID' => $chat['ID'],
 				],
 				'limit' => 1
 			])->fetch();
+
+			if ($session === false)
+			{
+				$isSession = false;
+			}
 		}
 
 		if ($isSession === false)
@@ -362,9 +366,18 @@ class Chat
 					$relations = \CIMChat::GetRelationById($this->chat['ID'], false, true, false);
 					foreach ($relations as $relation)
 					{
-						if(
-							$userId != $relation['USER_ID'] &&
+						if ($userId == $relation['USER_ID'])
+						{
+							continue;
+						}
+
+						if (
 							Queue::isRealOperator($relation['USER_ID'])
+							|| (
+								$session
+								&& $session->getConfig('WELCOME_BOT_ID') == $relation['USER_ID']
+								&& $session->getConfig('WELCOME_BOT_LEFT') === Config::BOT_LEFT_QUEUE
+							)
 						)
 						{
 							$chat->DeleteUser($this->chat['ID'], $relation['USER_ID'], false, true);
@@ -565,6 +578,7 @@ class Chat
 						'SYSTEM' => 'Y',
 					]);
 
+					$session->update(['STATUS' => Session::STATUS_SKIP]);
 					$session->transferToNextInQueue(false);
 
 					$result =  true;
@@ -723,6 +737,12 @@ class Chat
 					}
 				}
 
+				if ((int)$session->getData('STATUS') < Session::STATUS_ANSWER)
+				{
+					$fakeRelation = new Relation((int)$this->chat['ID']);
+					$fakeRelation->removeAllRelations(true);
+				}
+
 				if ($queueId == 0)
 				{
 					$queueId = $lineFromId;
@@ -760,6 +780,30 @@ class Chat
 
 				$session->update($updateData);
 
+				if (isset($params['CHANGE_LINE_ONLY']) && $params['CHANGE_LINE_ONLY'] === true)
+				{
+					return true;
+				}
+
+				if ($session->getData('STATUS') < Session::STATUS_ANSWER)
+				{
+					if ($session->getConfig('QUEUE_TYPE') === Config::QUEUE_TYPE_ALL)
+					{
+						$queueManager = Queue::initialization($session);
+						$allOperators = $queueManager->getAllOperatorsQueue();
+
+						foreach ($allOperators['OPERATOR_LIST'] as $operatorId)
+						{
+							\Bitrix\ImOpenLines\Recent::setRecent(
+								$operatorId,
+								$this->chat['ID'],
+								$this->chat['LAST_MESSAGE_ID'],
+								$session->getData('ID')
+							);
+						}
+					}
+				}
+
 				$lineTo = $session->getConfig('LINE_NAME');
 
 				if ($params['TO']  === 'queue')
@@ -783,7 +827,7 @@ class Chat
 
 				$session->transferToNextInQueue(false);
 
-				Im::addMessage([
+				$messageId = Im::addMessage([
 					'TO_CHAT_ID' => $this->chat['ID'],
 					'MESSAGE' => $message,
 					'SYSTEM' => 'Y',
@@ -812,6 +856,11 @@ class Chat
 
 		if ($this->isDataLoaded())
 		{
+			$fakeRelation = false;
+			if ($session->getData('STATUS') < Session::STATUS_ANSWER)
+			{
+				$fakeRelation = new Relation((int)$this->chat['ID']);
+			}
 			$transferUserId = (int)$params['TO'];
 
 			if (
@@ -824,22 +873,36 @@ class Chat
 			)
 			{
 				$chat = new \CIMChat(0);
-				$relations = \CIMChat::GetRelationById($this->chat['ID'], false, true, false);
-				foreach ($relations as $relation)
+				if ($fakeRelation)
 				{
-					if (
-						$relation['USER_ID'] != $params['FROM']
-						&& !User::getInstance($relation['USER_ID'])->isConnector()
-						&& !User::getInstance($relation['USER_ID'])->isBot()
-					)
+					$fakeRelation->removeAllRelations();
+				}
+				else
+				{
+					$relations = \CIMChat::GetRelationById($this->chat['ID'], false, true, false);
+					foreach ($relations as $relation)
 					{
-						$chat->DeleteUser($this->chat['ID'], $relation['USER_ID'], false, true);
+						if (
+							$relation['USER_ID'] != $params['FROM']
+							&& !User::getInstance($relation['USER_ID'])->isConnector()
+							&& !User::getInstance($relation['USER_ID'])->isBot()
+						)
+						{
+							$chat->DeleteUser($this->chat['ID'], $relation['USER_ID'], false, true);
+						}
 					}
 				}
 
 				if ($params['FROM'] > 0 && $selfExit)
 				{
-					$chat->DeleteUser($this->chat['ID'], $params['FROM'], false, true);
+					if ($fakeRelation)
+					{
+						$fakeRelation->removeRelation((int)$params['FROM']);
+					}
+					else
+					{
+						$chat->DeleteUser($this->chat['ID'], $params['FROM'], false, true);
+					}
 				}
 
 				$sessionField = $this->getFieldData(self::FIELD_SESSION);
@@ -862,7 +925,10 @@ class Chat
 				}
 				if ($transferUserId > 0)
 				{
-					$chat->AddUser($this->chat['ID'], $transferUserId, false, true);
+					if (!$fakeRelation || in_array($mode, [self::TRANSFER_MODE_MANUAL], true))
+					{
+						$chat->AddUser($this->chat['ID'], $transferUserId, false, true);
+					}
 				}
 
 				$userFrom = User::getInstance($params['FROM']);
@@ -906,10 +972,19 @@ class Chat
 					'TRANSFER_USER_ID' => $transferUserId
 				]);
 
+				if (
+					in_array($mode, [self::TRANSFER_MODE_MANUAL], true)
+					&& $session->getData('STATUS') < Session::STATUS_ANSWER
+				)
+				{
+					$session->update(['STATUS' => Session::STATUS_ANSWER]);
+				}
+
 				Im::addMessage([
 					"TO_CHAT_ID" => $this->chat['ID'],
 					"MESSAGE" => $message,
 					"SYSTEM" => 'Y',
+					'FAKE_RELATION' => $session->getData('STATUS') < Session::STATUS_ANSWER ? $transferUserId : null,
 				]);
 
 				$updateDataSession = [
@@ -926,7 +1001,11 @@ class Chat
 
 				if ($mode === self::TRANSFER_MODE_MANUAL)
 				{
-					$this->answer($transferUserId, false, true, true);
+					$answerResult = $this->answer($transferUserId, false, true, true);
+					if ($answerResult->isSuccess())
+					{
+						$fakeRelation = false;
+					}
 					$updateDataSession['DATE_MODIFY'] = new DateTime();
 					$updateDataSession['SKIP_DATE_CLOSE'] = true;
 				}
@@ -936,6 +1015,11 @@ class Chat
 				}
 
 				$session->update($updateDataSession);
+
+				if ($transferUserId && $fakeRelation)
+				{
+					$fakeRelation->addRelation($transferUserId);
+				}
 
 				$result = true;
 			}
@@ -1000,7 +1084,25 @@ class Chat
 
 				if(!empty($addUsers))
 				{
-					$result = $chat->AddUser($this->chat['ID'], $addUsers, false, true);
+					$session = new Session();
+					$session->setChat($this);
+					if (
+						$this->isDataLoaded()
+						&& $session->load([
+							'USER_CODE' => $this->chat['ENTITY_ID'],
+							'SKIP_CREATE' => 'Y'
+						])
+						&& $session->getData('STATUS') < Session::STATUS_ANSWER
+					)
+					{
+						$skipRelation = true;
+					}
+					else
+					{
+						$skipRelation = false;
+					}
+
+					$result = $chat->AddUser($this->chat['ID'], $addUsers, false, true, false, $skipRelation);
 
 					$options['SESSION_ID'] = (int)$sessionId;
 					$options['CHAT_DATA'] = ChatTable::getList([
@@ -1026,7 +1128,7 @@ class Chat
 
 					foreach($addUsers as $userId)
 					{
-						Recent::show('chat'.$this->chat['ID'], $options, $userId);
+						\Bitrix\Im\Recent::show('chat'.$this->chat['ID'], $options, $userId);
 					}
 				}
 
@@ -1051,14 +1153,27 @@ class Chat
 	 * @param bool $skipRecent
 	 * @return bool
 	 */
-	public function join($userId, $skipMessage = true, $skipRecent = false)
+	public function join($userId, $skipMessage = true, $skipRecent = false, $skipRelation = false)
 	{
 		$result = false;
 
 		if($this->isDataLoaded() && !empty($userId))
 		{
 			$chat = new \CIMChat($this->joinByUserId);
-			$result = $chat->AddUser($this->chat['ID'], $userId, false, $skipMessage, $skipRecent);
+			$result = $chat->AddUser($this->chat['ID'], $userId, false, $skipMessage, $skipRecent, $skipRelation);
+		}
+
+		return $result;
+	}
+
+	public function joinAll($userIds)
+	{
+		$result = false;
+
+		if($this->isDataLoaded() && !empty($userIds))
+		{
+			$chat = new \CIMChat($this->joinByUserId);
+			$result = $chat->AddUser($this->chat['ID'], $userIds, true, true, true);
 		}
 
 		return $result;
@@ -1744,11 +1859,13 @@ class Chat
 							'SYSTEM' => 'Y',
 							'IMPORTANT_CONNECTOR' => 'Y',
 							'NO_SESSION_OL' => 'Y',
+							'RECENT_ADD' => (int)$session->getData('STATUS') === Session::STATUS_WAIT_CLIENT ? 'Y' : 'N',
 							'PARAMS' => [
 								'CLASS' => 'bx-messenger-content-item-ol-output',
 								'IMOL_FORM' => 'offline',
 								'TYPE' => 'lines',
 								'COMPONENT_ID' => 'bx-imopenlines-message',
+								'NOTIFY' => 'N',
 							],
 						]);
 						if (!empty($messageId))
@@ -1897,7 +2014,11 @@ class Chat
 
 							if ($session->getData('EXTRA_TARIFF'))
 							{
+								$sessionUpdate['EXTRA_REGISTER'] = $session->getData('EXTRA_REGISTER');
 								$sessionUpdate['EXTRA_TARIFF'] = $session->getData('EXTRA_TARIFF');
+								$sessionUpdate['EXTRA_USER_LEVEL'] = $session->getData('EXTRA_USER_LEVEL');
+								$sessionUpdate['EXTRA_PORTAL_TYPE'] = $session->getData('EXTRA_PORTAL_TYPE');
+								$sessionUpdate['EXTRA_URL'] = $session->getData('EXTRA_URL');
 							}
 
 							$newSession->update($sessionUpdate);
@@ -2023,6 +2144,18 @@ class Chat
 									'MESSAGE' => Loc::getMessage('IMOL_CHAT_ASSIGN_OFF'),
 									'SYSTEM' => 'Y',
 								]);
+
+								if (
+									$session->getConfig('CHECK_AVAILABLE') === 'Y'
+									&& (int)$session->getData('STATUS') < Session::STATUS_OPERATOR
+								)
+								{
+									$queueManager = Queue::initialization($session);
+									if (!$queueManager->isOperatorAvailable($params['USER_ID']))
+									{
+										Queue::returnSessionToQueue((int)$session->getData('ID'), Queue::REASON_OPERATOR_DAY_END_SILENT);
+									}
+								}
 							}
 
 							$queueManager->stopLock();
@@ -2079,7 +2212,7 @@ class Chat
 						&& $session->getData('OPERATOR_ID') == $userId
 					)
 					{
-						$crmManager = new Crm($session);
+						$crmManager = $session->getCrmManager();
 						if ($crmManager->isLoaded())
 						{
 							$crmManager
@@ -2566,9 +2699,7 @@ class Chat
 						));
 						if($loadSession)
 						{
-							$crmManager = new Crm($session);
-
-							$crmManager->setOperatorId($fields['AUTHOR_ID'], false);
+							$session->getCrmManager()->setOperatorId($fields['AUTHOR_ID'], false);
 						}
 					}
 					//END CRM
@@ -2669,48 +2800,75 @@ class Chat
 		return self::$fieldAssoc[$field];
 	}
 
+	public static function sendMessageFromUser(string $message, int $chatId, int $userId): int
+	{
+		$attach = new \CIMMessageParamAttach();
+		$attach->AddMessage(Loc::getMessage('IMOL_CHAT_MESSAGE_SENT_AUTOMATICALLY'));
+		$messageFields = [
+			'MESSAGE_TYPE' => IM_MESSAGE_CHAT,
+			'TO_CHAT_ID' => $chatId,
+			'MESSAGE' => $message,
+			'FROM_USER_ID' => $userId,
+			'ATTACH' => $attach,
+		];
+
+		return (int)\CIMMessenger::Add($messageFields);
+	}
+
 	/**
 	 * @param $userList
 	 * @param bool $userCrm
-	 * @return bool|int
+	 * @param int $fakeRelation
+	 * @param int $fakeMessageId
+	 * @return int
 	 */
-	public function sendJoinMessage($userList, $userCrm = false)
+	public function sendJoinMessage($userList, $userCrm = false, $fakeRelation = 0, $sessionId = 0, $fakeMessageId = 0)
 	{
-		$result = false;
+		$messageId = 0;
 
 		if (!empty($userList) && $this->isDataLoaded())
 		{
-			if (count($userList) == 1)
+			if (!$fakeMessageId)
 			{
-				$toUserId = $userList[0];
-				$userName = User::getInstance($toUserId)->getFullName(false);
-
-				if($userCrm === true)
+				if (count($userList) == 1)
 				{
-					$message = Loc::getMessage('IMOL_CHAT_ASSIGN_OPERATOR_CRM_NEW', ['#USER#' => '[USER='.$toUserId.'][/USER]']);
+					$toUserId = $userList[0];
+
+					if($userCrm === true)
+					{
+						$message = Loc::getMessage('IMOL_CHAT_ASSIGN_OPERATOR_CRM_NEW', ['#USER#' => '[USER='.$toUserId.'][/USER]']);
+					}
+					else
+					{
+						$message = Loc::getMessage('IMOL_CHAT_ASSIGN_OPERATOR_NEW', ['#USER#' => '[USER='.$toUserId.'][/USER]']);
+					}
 				}
 				else
 				{
-					$message = Loc::getMessage('IMOL_CHAT_ASSIGN_OPERATOR_NEW', ['#USER#' => '[USER='.$toUserId.'][/USER]']);
+					$message = Loc::getMessage('IMOL_CHAT_ASSIGN_OPERATOR_LIST_NEW');
 				}
+
+				$messageId = Im::addMessage([
+					"TO_CHAT_ID" => $this->chat['ID'],
+					"FROM_USER_ID" => 0,
+					"MESSAGE" => $message,
+					"SYSTEM" => 'Y',
+					"IMPORTANT_CONNECTOR" => 'N',
+					'FAKE_RELATION' => $fakeRelation
+				]);
 			}
 			else
 			{
-				$message = Loc::getMessage('IMOL_CHAT_ASSIGN_OPERATOR_LIST_NEW');
+				$messageId = $fakeMessageId;
 			}
 
-			$messageId = Im::addMessage([
-				"TO_CHAT_ID" => $this->chat['ID'],
-				"FROM_USER_ID" => 0,
-				"MESSAGE" => $message,
-				"SYSTEM" => 'Y',
-				"IMPORTANT_CONNECTOR" => 'N'
-			]);
-
-			$result = $messageId;
+			if ($fakeRelation && $sessionId && $messageId)
+			{
+				\Bitrix\ImOpenLines\Recent::setRecent($fakeRelation, $this->chat['ID'], $messageId, $sessionId);
+			}
 		}
 
-		return $result;
+		return (int)$messageId;
 	}
 
 	/**
@@ -3078,7 +3236,7 @@ class Chat
 			return false;
 		}
 
-		$chat = ChatTable::getByPrimary($chatId, ['select' => ['TYPE', 'ENTITY_TYPE', 'ENTITY_DATA_1']])->fetch();
+		$chat = ChatTable::getByPrimary($chatId, ['select' => ['TYPE', 'ENTITY_ID', 'ENTITY_TYPE', 'ENTITY_DATA_1']])->fetch();
 		if (!$chat)
 		{
 			return false;
@@ -3091,6 +3249,9 @@ class Chat
 		{
 			return false;
 		}
+
+		$parsedUserCode = Session\Common::parseUserCode($chat['ENTITY_ID']);
+		$lineId = $parsedUserCode['CONFIG_ID'];
 
 		$crmEntityType = null;
 		$crmEntityId = null;
@@ -3105,7 +3266,7 @@ class Chat
 			}
 		}
 
-		return Config::canJoin($chatId, $crmEntityType, $crmEntityId);
+		return Config::canJoin($lineId, $crmEntityType, $crmEntityId);
 	}
 
 	public static function getChatIdBySession(int $sessionId)
@@ -3173,7 +3334,7 @@ class Chat
 		{
 			$readService = new ReadService();
 			$counters = $readService->getCounterService()->getByChatForEachUsers($chatId, $users);
-			$lastId = $readService->getViewedService()->getLastMessageIdInChat($chatId) ?? 0;
+			$lastId = $readService->getLastMessageIdInChat($chatId);
 			$lastMessageInChat = new Message();
 			$lastMessageInChat->setMessageId($lastId)->setChatId($chatId);
 
@@ -3191,5 +3352,15 @@ class Chat
 		}
 
 		return $result;
+	}
+
+	/**
+	 * @param int $chatId
+	 * @param mixed $title
+	 * @return string
+	 */
+	public static function getUrlImChat(int $chatId, $title): string
+	{
+		return '[CHAT=' . $chatId . ']' . $title . '[/CHAT]';
 	}
 }

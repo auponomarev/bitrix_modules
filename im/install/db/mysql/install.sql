@@ -25,9 +25,13 @@ CREATE TABLE `b_im_chat`
 	`LAST_MESSAGE_ID` int(18) null,
 	`LAST_MESSAGE_STATUS` varchar(50) DEFAULT 'received',
 	`DATE_CREATE` datetime null,
-	`MANAGE_USERS` varchar(255) not null default 'ALL',
-	`MANAGE_UI` varchar(255) not null default 'ALL',
+	`MANAGE_USERS` varchar(255) not null default 'MEMBER',
+	`MANAGE_USERS_ADD` varchar(255) not null default 'MEMBER',
+	`MANAGE_USERS_DELETE` varchar(255) not null default 'MANAGER',
+	`MANAGE_UI` varchar(255) not null default 'MEMBER',
 	`MANAGE_SETTINGS` varchar(255) not null default 'OWNER',
+	`DISAPPEARING_TIME` int(18) null,
+	`CAN_POST` varchar(255) not null default 'MEMBER',
 	PRIMARY KEY (`ID`),
 	KEY `IX_IM_CHAT_1` (`AUTHOR_ID`, `TYPE`),
 	KEY `IX_IM_CHAT_2` (`ENTITY_TYPE`, `ENTITY_ID`, `AUTHOR_ID`),
@@ -139,13 +143,16 @@ CREATE TABLE `b_im_relation`
 	`MANAGER` char(1) DEFAULT 'N',
 	`COUNTER` int(18) DEFAULT 0,
 	`START_COUNTER` int(18) DEFAULT 0,
+	`LAST_SEND_MESSAGE_ID` int(18) DEFAULT 0,
 	PRIMARY KEY (`ID`),
 	KEY `IX_IM_REL_2` (`USER_ID`, `MESSAGE_TYPE`, `STATUS`),
 	KEY `IX_IM_REL_3` (`USER_ID`, `MESSAGE_TYPE`, `CHAT_ID`),
 	KEY `IX_IM_REL_4` (`USER_ID`, `STATUS`),
 	KEY `IX_IM_REL_5` (`MESSAGE_TYPE`, `STATUS`),
 	KEY `IX_IM_REL_6` (`CHAT_ID`, `USER_ID`),
-	KEY `IX_IM_REL_8` (`STATUS`, `COUNTER`)
+	KEY `IX_IM_REL_8` (`STATUS`, `COUNTER`),
+	KEY `IX_IM_REL_9` (`USER_ID`, `CHAT_ID`),
+	KEY `IX_IM_REL_10` (`CHAT_ID`, `LAST_SEND_MESSAGE_ID`)
 );
 
 CREATE TABLE `b_im_recent`
@@ -162,11 +169,14 @@ CREATE TABLE `b_im_recent`
 	`DATE_MESSAGE` datetime null,
 	`DATE_UPDATE` datetime null,
 	`MARKED_ID` int(18) null,
+	`PIN_SORT` int(18) null,
 	PRIMARY KEY (`USER_ID`, `ITEM_TYPE`, `ITEM_ID`),
 	KEY `IX_IM_REC_1` (`ITEM_TYPE`, `ITEM_ID`),
 	KEY `IX_IM_REC_2` (`DATE_UPDATE`),
 	KEY `IX_IM_REC_3` (`ITEM_RID`),
-	KEY `IX_IM_REC_4` (`ITEM_MID`)
+	KEY `IX_IM_REC_4` (`ITEM_MID`),
+	KEY `IX_IM_REC_5` (`USER_ID`, `ITEM_CID`),
+	KEY `IX_IM_REC_6` (`PINNED`, `USER_ID`, `PIN_SORT`)
 );
 
 CREATE TABLE `b_im_last_search`
@@ -202,6 +212,7 @@ CREATE TABLE `b_im_bot`
 	`APP_ID` varchar(128) null,
 	`VERIFIED` char(1) DEFAULT 'N',
 	`OPENLINE` char(1) DEFAULT 'N',
+	`HIDDEN` char(1) DEFAULT 'N',
 	PRIMARY KEY `PK_B_IM_BOT` (`BOT_ID`)
 );
 
@@ -340,6 +351,9 @@ CREATE TABLE `b_im_call`
 	`END_DATE` datetime,
 	`CHAT_ID` int,
 	`LOG_URL` varchar(2000),
+	`UUID` varchar (36),
+	`SECRET_KEY` varchar (10),
+	`ENDPOINT` varchar (255),
 	PRIMARY KEY `PK_B_IM_CALL`(`ID`),
 	UNIQUE KEY `IX_B_IM_CALL_PID`(`PUBLIC_ID`),
 	INDEX `IX_B_IM_CALL_ENT_ID_2`(`ENTITY_TYPE`, `ENTITY_ID`, `TYPE`, `PROVIDER`, `END_DATE`),
@@ -565,6 +579,7 @@ CREATE TABLE `b_im_link_task`
 	`DATE_CREATE` DATETIME not null,
 	PRIMARY KEY (`ID`),
 	KEY `IX_B_IM_LINK_TASK_1` (`CHAT_ID`, `TASK_ID`),
+	KEY `IX_B_IM_LINK_TASK_2` (`MESSAGE_ID`),
 	UNIQUE KEY `UIX_B_IM_LINK_TASK_1` (`TASK_ID`)
 );
 
@@ -608,7 +623,8 @@ CREATE TABLE `b_im_link_calendar`
 	KEY `IX_B_IM_LINK_CALENDAR_1` (`CHAT_ID`, `AUTHOR_ID`, `ID`),
 	KEY `IX_B_IM_LINK_CALENDAR_2` (`CHAT_ID`, `DATE_CREATE`, `ID`),
 	KEY `IX_B_IM_LINK_CALENDAR_3` (`CHAT_ID`, `CALENDAR_DATE_FROM`, `CALENDAR_DATE_TO`, `ID`),
-	KEY `IX_B_IM_LINK_CALENDAR_4` (`CHAT_ID`, `ID`)
+	KEY `IX_B_IM_LINK_CALENDAR_4` (`CHAT_ID`, `ID`),
+	KEY `IX_B_IM_LINK_CALENDAR_5` (`MESSAGE_ID`)
 );
 
 CREATE TABLE `b_im_link_calendar_index`
@@ -656,5 +672,32 @@ CREATE TABLE `b_im_reaction`
 	PRIMARY KEY (`ID`),
 	UNIQUE KEY `UIX_B_IM_REACTION_1` (`MESSAGE_ID`, `REACTION`, `USER_ID`),
 	KEY `IX_B_IM_REACTION_1` (`MESSAGE_ID`, `REACTION`, `ID`),
-	KEY `IX_B_IM_REACTION_2` (`USER_ID`, `MESSAGE_ID`, `REACTION`)
+	KEY `IX_B_IM_REACTION_2` (`USER_ID`, `MESSAGE_ID`, `REACTION`),
+	KEY `IX_B_IM_REACTION_3` (`MESSAGE_ID`)
+);
+
+CREATE TABLE b_im_message_disappearing
+(
+	`MESSAGE_ID` INT NOT NULL,
+	`DATE_CREATE` DATETIME NOT NULL,
+	`DATE_REMOVE` DATETIME NOT NULL,
+	UNIQUE KEY `UIX_B_IM_MESSAGE_DISAPPEARING_1` (MESSAGE_ID)
+);
+
+
+
+CREATE TABLE `b_im_log`
+(
+	`ID` INT AUTO_INCREMENT,
+	`USER_ID` INT not null,
+	`ENTITY_TYPE` varchar(50) null,
+	`ENTITY_ID` INT null,
+	`EVENT` varchar(50) not null,
+	`DATE_CREATE` datetime not null,
+	`DATE_DELETE` datetime null,
+	PRIMARY KEY (`ID`),
+	UNIQUE KEY `UIX_B_IM_LOG_1` (`USER_ID`, `ENTITY_TYPE`, `ENTITY_ID`),
+	KEY `IX_B_IM_LOG_1` (`USER_ID`, `DATE_CREATE`),
+	KEY `IX_B_IM_LOG_2` (`USER_ID`),
+	KEY `IX_B_IM_LOG_4` (`DATE_DELETE`)
 );

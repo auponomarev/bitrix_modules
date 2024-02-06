@@ -193,9 +193,11 @@ class Helper
 	 * Get filter user fields.
 	 *
 	 * @param integer $entityTypeId Entity type ID.
+	 * @param bool $checkAccessRights
+	 *
 	 * @return array
 	 */
-	public static function getFilterUserFields($entityTypeId)
+	public static function getFilterUserFields(int $entityTypeId, bool $checkAccessRights = true): array
 	{
 		$list = array();
 		$ufManager = is_object($GLOBALS['USER_FIELD_MANAGER']) ? $GLOBALS['USER_FIELD_MANAGER'] : null;
@@ -207,8 +209,14 @@ class Helper
 		$ufEntityId = \CCrmOwnerType::resolveUserFieldEntityID($entityTypeId);
 		$crmUserType = new \CCrmUserType($ufManager, $ufEntityId);
 		$logicFilter = array();
-		$crmUserType->prepareListFilterFields($list, $logicFilter);
-		$originalList = $crmUserType->getFields();
+		$fieldsParams = [];
+
+		if (!$checkAccessRights)
+		{
+			$fieldsParams = ['skipUserFieldVisibilityCheck' => true];
+		}
+		$crmUserType->prepareListFilterFields($list, $logicFilter, $fieldsParams);
+		$originalList = $crmUserType->getFields($fieldsParams);
 		$restrictedTypes = ['address', 'file', 'crm', 'resourcebooking'];
 
 		$list = array_filter(
@@ -368,11 +376,15 @@ class Helper
 		$column = $entityDbName ? 'CRM_ENTITY_ID' : 'ID';
 
 		$entityTypeName = $entityName ?? mb_strtoupper($query->getEntity()->getName());
+
+		$sqlHelper = Application::getConnection()->getSqlHelper();
+		$regexp = "'^imol\\\\|(" . implode('|', $codes) . ")'";
+
 		$filterImolSql = "SELECT FM.VALUE " .
 			"FROM b_crm_field_multi FM " .
 			"WHERE FM.ENTITY_ID = '$entityTypeName' AND FM.ELEMENT_ID = ?#.{$column} " .
 			"AND FM.TYPE_ID = 'IM' " .
-			"AND FM.VALUE NOT REGEXP '^imol\\\\|(" . implode('|', $codes) . ")' " .
+			"AND NOT {$sqlHelper->getRegexpOperator('FM.VALUE', $regexp)} " .
 			"ORDER BY FM.ID LIMIT 1";
 
 		return new SqlExpression($filterImolSql, $query->getInitAlias());
@@ -682,7 +694,12 @@ class Helper
 
 	protected static function getIdFilter($value, &$filter)
 	{
-		$filter['@CRM_ENTITY_ID'] = array_map('trim', explode(",", $value[0]));
+		if (is_array($value))
+		{
+			$value = $value[0];
+		}
+
+		$filter['@CRM_ENTITY_ID'] = array_map('trim', explode(",", $value));
 	}
 
 	protected static function getNoPurchasesFilter($value, &$filter, $extraCallbackParams = [])

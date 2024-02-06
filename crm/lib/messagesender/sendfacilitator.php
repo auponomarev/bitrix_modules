@@ -37,6 +37,18 @@ abstract class SendFacilitator
 
 	final public function send(): Result
 	{
+		$channelCheckResult = $this->channel->checkChannel();
+		if (!$channelCheckResult->isSuccess())
+		{
+			return $channelCheckResult;
+		}
+
+		$checkCommunicationsResult = $this->channel->checkCommunications();
+		if (!$checkCommunicationsResult->isSuccess())
+		{
+			return $checkCommunicationsResult;
+		}
+
 		$fields = $this->channel->getSender()::makeMessageFields(
 			array_merge(
 				$this->prepareMessageOptions(),
@@ -71,11 +83,13 @@ abstract class SendFacilitator
 	 * Use it if you want to get some additional info in 'message sent' and 'message delivered' events.
 	 *
 	 * @param array $additionalFields
-	 * @return void
+	 * @return SendFacilitator
 	 */
-	public function setAdditionalFields(array $additionalFields): void
+	public function setAdditionalFields(array $additionalFields): self
 	{
 		$this->additionalFields = $additionalFields;
+
+		return $this;
 	}
 
 	abstract protected function getActivityProviderTypeId(): string;
@@ -119,21 +133,21 @@ abstract class SendFacilitator
 			return $this->from;
 		}
 
-		$first = null;
+		$firstAvailable = null;
 		foreach ($this->channel->getFromList() as $from)
 		{
-			if (!$first)
+			if (!$firstAvailable && $from->isAvailable())
 			{
-				$first = $from;
+				$firstAvailable = $from;
 			}
 
-			if ($from->isDefault())
+			if ($from->isDefault() && $from->isAvailable())
 			{
 				return $from;
 			}
 		}
 
-		return $first;
+		return $firstAvailable;
 	}
 
 	final protected function getTo(): ?To

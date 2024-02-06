@@ -6,6 +6,7 @@ this.BX.UI = this.BX.UI || {};
 	/**
 	 * @namespace {BX.UI.IconSet}
 	 */
+
 	const Actions = Object.freeze({
 	  ARROW_RIGHT: 'arrow-right',
 	  ARROW_LEFT: 'arrow-left',
@@ -29,18 +30,23 @@ this.BX.UI = this.BX.UI || {};
 	  PLAY: 'play',
 	  LEFT_SEMICIRCULAR_ANTICLOCKWISE_ARROW_1: 'left-semicircular-anticlockwise-arrow-1',
 	  DOUBLE_SHEVRONS_RIGHT: 'double-shevrons-right',
+	  NEXT: 'next',
+	  DOWNLOAD_3: 'download-3',
+	  UPLOAD: 'upload',
 	  SWAP: 'swap',
 	  SORT: 'sort',
 	  LEFT_SEMICIRCULAR_ANTICLOCKWISE_ARROW_3: 'left-semicircular-anticlockwise-arrow-3',
 	  LEFT_SEMICIRCULAR_ANTICLOCKWISE_ARROW_4: 'left-semicircular-anticlockwise-arrow-4',
 	  DOWNLOAD: 'download',
 	  DOWNLOAD_2: 'download-2',
+	  DOWNLOAD_DOUBLE: 'download-double',
 	  ARROW_TOP_2: 'arrow-top-2',
 	  CONVERSION_1: 'conversion-1',
 	  CONVERSION_2: 'conversion-2',
 	  FORWARD_3: 'forward-3',
 	  REPLY: 'reply',
 	  FORWARD_2_1: 'forward-2-1',
+	  REPLAY_ALL: 'replay-all',
 	  OPEN_IN_50: 'open-in-50',
 	  OPEN_IN_40: 'open-in-40',
 	  OPEN_IN_30: 'open-in-30',
@@ -56,6 +62,8 @@ this.BX.UI = this.BX.UI || {};
 	  REFRESH_7: 'refresh-7',
 	  REFRESH_8: 'refresh-8',
 	  SYNC_SETTINGS: 'sync-settings',
+	  REFRESH_CLOSED: 'refresh-closed',
+	  REFRESH_10: 'refresh-10',
 	  CROSS_CIRCLE_50: 'cross-circle-50',
 	  CROSS_CIRCLE_60: 'cross-circle-60',
 	  CROSS_CIRCLE_70: 'cross-circle-70',
@@ -74,6 +82,7 @@ this.BX.UI = this.BX.UI || {};
 	  MINUS_40: 'minus-40',
 	  MINUS_50: 'minus-50',
 	  MINUS_60: 'minus-60',
+	  LINE: 'line',
 	  PLUS_20: 'plus-20',
 	  PLUS_30: 'plus-30',
 	  PLUS_40: 'plus-40',
@@ -97,6 +106,7 @@ this.BX.UI = this.BX.UI || {};
 	  PENCIL_50: 'pencil-50',
 	  PENCIL_40: 'pencil-40',
 	  BRUSH: 'brush',
+	  PEN: 'pen',
 	  KEYBOARD: 'keyboard',
 	  KEYBOARD_2: 'keyboard-2',
 	  CONNECTION: 'connection',
@@ -167,6 +177,7 @@ this.BX.UI = this.BX.UI || {};
 	  PERSON_DESCENDING: 'person-descending',
 	  PERSON_3_STICKS: 'person-3-sticks',
 	  PERSON_2_CHECKS: 'person-2-checks',
+	  PERSON_PLUS_3: 'person-plus-3',
 	  CLOUD_SYNC: 'cloud-sync',
 	  CLOUD_TRANSFER_DATA: 'cloud-transfer-data',
 	  CLOUD_PAUSE: 'cloud-pause',
@@ -196,6 +207,7 @@ this.BX.UI = this.BX.UI || {};
 	  MESSAGE_CHAT_WITH_ARROW: 'message-chat-with-arrow',
 	  CHAT_BUTTON: 'chat-button',
 	  FEEDBACK: 'feedback',
+	  ADD_CHAT: 'add-chat',
 	  BOOKMARK_1: 'bookmark-1',
 	  FOLDER_CURVED_ARROW: 'folder-curved-arrow',
 	  FOLDER_24: 'folder-24',
@@ -229,6 +241,9 @@ this.BX.UI = this.BX.UI || {};
 	  STOPWATCH: 'stopwatch',
 	  ALARM: 'alarm',
 	  BLACK_CLOCK: 'black-clock',
+	  SPEED_METER: 'speed-meter',
+	  WATCH: 'watch',
+	  SMART_PROCESS: 'smart-process',
 	  SEARCH_1: 'search-1',
 	  SEARCH_2: 'search-2',
 	  TASKS: 'tasks',
@@ -260,6 +275,8 @@ this.BX.UI = this.BX.UI || {};
 	  MUSIC_NOTE_3: 'music-note-3',
 	  MUSIC_NOTE_1: 'music-note-1',
 	  MARKET_1: 'market-1',
+	  COPILOT_AI: 'copilot-ai',
+	  INFO_CIRCLE_PLUS: 'info-circle-plus',
 	  SCREEN_BLACK_WHITE: 'screen-black-white',
 	  BELL_1: 'bell-1',
 	  HEART: 'heart',
@@ -282,7 +299,7 @@ this.BX.UI = this.BX.UI || {};
 	  SEND: 'send',
 	  SUITCASE: 'suitcase',
 	  SPANNER: 'spanner',
-	  LOCATION_1: 'location-1',
+	  IDEA_LAMP: 'idea-lamp',
 	  BOOK_CLOSED: 'book-closed',
 	  EDIT_PENCIL: 'edit-pencil',
 	  COMPASS: 'compass',
@@ -290,7 +307,8 @@ this.BX.UI = this.BX.UI || {};
 	  FUNNEL: 'funnel',
 	  BRIGHTNESS: 'brightness',
 	  EARTH_LANGUAGE: 'earth-language',
-	  LOW_WI_FI: 'low-wi-fi',
+	  OBSERVER: 'observer',
+	  OBSERVER_CLOSED: 'observer-closed',
 	  BARCODE_1: 'barcode-1',
 	  DOOR_OPENED: 'door-opened',
 	  SHIELD: 'shield',
@@ -304,7 +322,9 @@ this.BX.UI = this.BX.UI || {};
 	  CIRCLE_PLUS: 'circle-plus',
 	  UNAVAILABLE: 'unavailable',
 	  CALENDAR_2: 'calendar-2',
+	  LOCATION_1: 'location-1',
 	  LOCATION_2: 'location-2',
+	  LOCATION_PLUS: 'location-plus',
 	  MAP: 'map',
 	  PIN_2: 'pin-2',
 	  DOUBLE_RHOMBUS: 'double-rhombus',
@@ -317,6 +337,7 @@ this.BX.UI = this.BX.UI || {};
 	  CUBES_3: 'cubes-3',
 	  DRAWER: 'drawer',
 	  CUBE_PLUS: 'cube-plus',
+	  CALENDAR_SLOTS: 'calendar-slots',
 	  PAYMENT_TERMINAL: 'payment-terminal',
 	  CALENDAR_SHARING: 'calendar-sharing',
 	  TARGET_TIMER: 'target-timer',
@@ -356,6 +377,7 @@ this.BX.UI = this.BX.UI || {};
 	  GANTT_GRAPHS: 'gantt-graphs',
 	  FILTER_PLUS: 'filter-plus',
 	  BACKSPACE: 'backspace',
+	  ELEMENTS: 'elements',
 	  BOOK_OPENED_WITH_ARROW: 'book-opened-with-arrow',
 	  DOUBLE_ARROW_COUNTER_CLOCKWISE_SCRUM: 'double-arrow-counter-clockwise-scrum',
 	  BARCODE: 'barcode',
@@ -383,6 +405,8 @@ this.BX.UI = this.BX.UI || {};
 	  ROCKET: 'rocket',
 	  CITY: 'city',
 	  MAGIC_WAND: 'magic-wand',
+	  MAGIC_IMAGE: 'magic-image',
+	  AI: 'ai',
 	  EARTH: 'earth',
 	  SHARE_1: 'share-1',
 	  SHARE_2: 'share-2',
@@ -468,7 +492,13 @@ this.BX.UI = this.BX.UI || {};
 	  COLLABORATION: 'collaboration',
 	  DOCUMENT: 'document',
 	  CHECK_RECEIPT: 'check-receipt',
-	  CALCULATOR: 'calculator'
+	  CALCULATOR: 'calculator',
+	  SWITCH: 'switch',
+	  SEQUENTIAL_QUEUE: 'sequential-queue',
+	  PARALLEL_QUEUE: 'parallel-queue',
+	  CONDITION: 'condition',
+	  COMPLETE: 'complete',
+	  TRANSLATION: 'translation'
 	});
 	const ContactCenter = Object.freeze({
 	  DIAL_5: 'dial-5',
@@ -533,7 +563,7 @@ this.BX.UI = this.BX.UI || {};
 	  ACTIVITY: 'activity',
 	  CUSTOMER_CARD_1: 'customer-card-1',
 	  DEAL_PLUS: 'deal-plus',
-	  PERSON_PLUS: 'person-plus',
+	  PERSON_PLUS_2: 'person-plus-2',
 	  CITY_PLUS: 'city-plus',
 	  CUSTOMER_CARD_PLUS: 'customer-card-plus',
 	  CHAT_1: 'chat-1',
@@ -612,11 +642,15 @@ this.BX.UI = this.BX.UI || {};
 	  SPEED_1_2: 'speed-1-2',
 	  SPEED_1_5: 'speed-1-5',
 	  SPEED_1_7: 'speed-1-7',
-	  SPEED_2_0: 'speed-2-0'
+	  SPEED_2_0: 'speed-2-0',
+	  MAKE_LONGER: 'make-longer',
+	  MAKE_SHORTER: 'make-shorter'
 	});
-	const Special = Object.freeze({// : '',
+	const Special = Object.freeze({
+	  // : '',
 	});
-	const Set = Object.freeze({ ...Actions,
+	const Set = Object.freeze({
+	  ...Actions,
 	  ...Social,
 	  ...Main,
 	  ...ContactCenter,
@@ -626,7 +660,7 @@ this.BX.UI = this.BX.UI || {};
 	});
 
 	let _ = t => t,
-	    _t;
+	  _t;
 	class Icon {
 	  constructor(params = {}) {
 	    this.validateParams(params);
@@ -635,57 +669,45 @@ this.BX.UI = this.BX.UI || {};
 	    this.color = params.color || null;
 	    this.iconElement = null;
 	  }
-
 	  validateParams(params) {
 	    if (!params.icon) {
 	      throw new Error('IconSet: property "icon" not set.');
 	    }
-
 	    if (!Object.values(Set).includes(params.icon)) {
 	      throw new Error('IconSet: "icon" is not exist.');
 	    }
-
 	    if (params.size && !main_core.Type.isNumber(params.size)) {
 	      throw new Error('IconSet: "size" is not a number.');
 	    }
-
 	    if (params.color && !main_core.Type.isString(params.color)) {
 	      throw new Error('IconSet: "color" is not a string.');
 	    }
 	  }
-
 	  renderTo(node) {
 	    if (!main_core.Type.isElementNode(node)) {
 	      throw new Error('IconSet: node is not a htmlElement.');
 	    }
-
 	    main_core.Dom.append(this.render(), node);
 	  }
-
 	  render() {
 	    let className = 'ui-icon-set' + ` --${this.icon}`;
 	    this.iconElement = main_core.Tag.render(_t || (_t = _`<div class="${0}"></div>`), className);
-
 	    if (this.size) {
 	      main_core.Dom.style(this.iconElement, '--ui-icon-set__icon-size', `${this.size}px`);
 	    }
-
 	    if (this.color) {
 	      main_core.Dom.style(this.iconElement, `--ui-icon-set__icon-color`, `${this.color}`);
 	    }
-
 	    return this.iconElement;
 	  }
+
 	  /**
 	   *
 	   * @param color
 	   */
-
-
 	  setColor(color) {
 	    main_core.Dom.style(this.iconElement, `--ui-icon-set__icon-color`, `${color}`);
 	  }
-
 	}
 
 	exports.Icon = Icon;

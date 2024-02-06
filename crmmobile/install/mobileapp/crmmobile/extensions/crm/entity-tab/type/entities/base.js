@@ -2,7 +2,10 @@
  * @module crm/entity-tab/type/entities/base
  */
 jn.define('crm/entity-tab/type/entities/base', (require, exports, module) => {
-	const { TimelineScheduler } = require('crm/timeline/scheduler');
+	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
+	const { EmptyScreen } = require('layout/ui/empty-screen');
+	const { openChat } = require('crm/entity-tab/type/traits/open-chat');
 
 	/**
 	 * @class Base
@@ -45,18 +48,16 @@ jn.define('crm/entity-tab/type/entities/base', (require, exports, module) => {
 
 		/**
 		 * @return {{
-		 * 	image: ImageProps,
-		 * 	title: string|Function,
-		 * 	description: string|Function,
+		 * image: ImageProps,
+		 * title: string|Function,
+		 * description: string|Function,
 		 * }}
 		 */
 		getEmptyEntityScreenConfig()
 		{
 			const image = this.getEmptyImage();
 			const text = this.getEmptyEntityScreenDescriptionText();
-			const entityTypeName = (this.getName() || 'COMMON');
-
-			const title = BX.message(`M_CRM_ENTITY_TAB_ENTITY_EMPTY_TITLE_${entityTypeName}`);
+			const title = this.getEmptyScreenTitle();
 
 			return {
 				image,
@@ -65,14 +66,14 @@ jn.define('crm/entity-tab/type/entities/base', (require, exports, module) => {
 					value: text,
 					linksUnderline: false,
 					style: {
-						color: '#525c69',
+						color: AppTheme.colors.base2,
 						fontSize: 15,
 						textAlign: 'center',
 						lineHeightMultiple: 1.2,
 					},
 					onLinkClick: (url) => {
 						qrauth.open({
-							title: BX.message('M_CRM_ENTITY_TAB_ENTITY_EMPTY_DESCRIPTION_REDIRECT_TITLE'),
+							title: Loc.getMessage('M_CRM_ENTITY_TAB_ENTITY_EMPTY_DESCRIPTION_REDIRECT_TITLE'),
 							redirectUrl: url,
 							layout,
 						});
@@ -81,30 +82,64 @@ jn.define('crm/entity-tab/type/entities/base', (require, exports, module) => {
 			};
 		}
 
+		getEmptyScreenTitle()
+		{
+			const entityTypeName = (this.getName() || 'COMMON');
+
+			return this.getLastMessageVer(`M_CRM_ENTITY_TAB_ENTITY_EMPTY_TITLE2_${entityTypeName}`);
+		}
+
 		getEmptyColumnScreenConfig(data)
 		{
-			const entityTypeName = this.getName();
 			const screenConfig = {
-				title: BX.message(`M_CRM_ENTITY_TAB_COLUMN_EMPTY_${entityTypeName}_TITLE`),
+				title: this.getEmptyColumnScreenTitle(),
 				image: this.getEmptyImage(),
 			};
 
 			const { column } = data;
 			if (column && column.semantics === 'P')
 			{
-				screenConfig.description = BX.message(`M_CRM_ENTITY_TAB_COLUMN_EMPTY_${entityTypeName}_DESCRIPTION`);
+				screenConfig.description = this.getEmptyColumnScreenDescription();
 			}
 
 			return screenConfig;
 		}
 
-		getUnsuitableStageScreenConfig(data)
+		getEmptyColumnScreenTitle()
+		{
+			const entityTypeName = this.getName();
+
+			return this.getLastMessageVer(`M_CRM_ENTITY_TAB_COLUMN_EMPTY_${entityTypeName}_TITLE`);
+		}
+
+		getEmptyColumnScreenDescription()
+		{
+			const entityTypeName = this.getName();
+
+			return this.getLastMessageVer(`M_CRM_ENTITY_TAB_COLUMN_EMPTY_${entityTypeName}_DESCRIPTION`);
+		}
+
+		getUnsuitableStageScreenConfig()
 		{
 			return {
-				title: BX.message(`M_CRM_ENTITY_TAB_COLUMN_USUITABLE_FOR_FILTER_TITLE_${this.getName()}`),
-				description: BX.message(`M_CRM_ENTITY_TAB_COLUMN_USUITABLE_FOR_FILTER_DESCRIPTION_${this.getName()}`),
+				title: this.getColumnUnsuitableForFilterTitle(),
+				description: this.getColumnUnsuitableForFilterDescription(),
 				image: this.getEmptyImage(),
 			};
+		}
+
+		getColumnUnsuitableForFilterTitle()
+		{
+			const entityTypeName = this.getName();
+
+			return this.getLastMessageVer(`M_CRM_ENTITY_TAB_COLUMN_USUITABLE_FOR_FILTER_TITLE_${entityTypeName}`);
+		}
+
+		getColumnUnsuitableForFilterDescription()
+		{
+			const entityTypeName = this.getName();
+
+			return this.getLastMessageVer(`M_CRM_ENTITY_TAB_COLUMN_USUITABLE_FOR_FILTER_DESCRIPTION_${entityTypeName}`);
 		}
 
 		getEmptyImage()
@@ -114,23 +149,20 @@ jn.define('crm/entity-tab/type/entities/base', (require, exports, module) => {
 					width: 218,
 					height: 178,
 				},
-				uri: this.getPathToIcon(),
+				svg: {
+					uri: this.getPathToIcon(),
+				},
 			};
 		}
 
 		getPathToIcon()
 		{
-			return `${this.getPathToImages() + this.getName().toLowerCase()}.png`;
+			return EmptyScreen.makeLibraryImagePath(`${this.getIconName()}.svg`, 'crm');
 		}
 
-		/**
-		 * @returns {String}
-		 */
-		getPathToImages()
+		getIconName()
 		{
-			const pathToExtension = `${currentDomain}/bitrix/mobileapp/crmmobile/extensions/crm/entity-tab/type/`;
-
-			return `${pathToExtension}images/`;
+			return 'kanban';
 		}
 
 		/**
@@ -138,11 +170,11 @@ jn.define('crm/entity-tab/type/entities/base', (require, exports, module) => {
 		 */
 		getItemActions(permissions)
 		{
-			return [
+			const actions = [
 				{
 					id: 'activity',
 					sort: 200,
-					title: BX.message('M_CRM_ENTITY_TAB_ACTION_ACTIVITY'),
+					title: Loc.getMessage('M_CRM_ENTITY_TAB_ACTION_ACTIVITY'),
 					showActionLoader: false,
 					showArrow: true,
 					onClickCallback: this.addActivity.bind(this),
@@ -153,61 +185,82 @@ jn.define('crm/entity-tab/type/entities/base', (require, exports, module) => {
 					isDisabled: !permissions.update,
 				},
 			];
+			if (this.params.isChatSupported)
+			{
+				actions.push({
+					id: 'chat',
+					title: BX.message('M_CRM_ENTITY_TAB_ACTION_CHAT'),
+					sort: 1050,
+					onClickCallback: openChat.bind(this, { entityTypeId: this.getId() }),
+					onDisableClick: this.showForbiddenActionNotification.bind(this),
+					data: {
+						svgIcon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M16.5672 6.14844C18.0699 6.14844 19.2881 7.36662 19.2881 8.86932V15.0831C19.2881 16.5858 18.0699 17.804 16.5672 17.804L11.9749 17.805C10.3779 19.6811 9.4145 20.6515 9.08477 20.716C8.51327 20.8277 8.19352 19.8574 8.12551 17.805L7.4328 17.804C5.9301 17.804 4.71191 16.5858 4.71191 15.0831V8.86932C4.71191 7.36662 5.9301 6.14844 7.4328 6.14844H16.5672ZM16.371 8.15775H7.62902C7.09234 8.15775 6.65727 8.59281 6.65727 9.12949V14.7962C6.65727 15.3329 7.09234 15.7679 7.62902 15.7679H16.371C16.9077 15.7679 17.3427 15.3329 17.3427 14.7962V9.12949C17.3427 8.59281 16.9077 8.15775 16.371 8.15775Z" fill="#525C69"/></svg>',
+					},
+					sectionCode: 'additional',
+					showArrow: true,
+					isRawIcon: true,
+					isDisabled: false, // !permissions.exclude,
+				});
+			}
+
+			return actions;
 		}
 
-		addActivity(action, itemId, { parentWidget } = {})
+		async addActivity(action, itemId, { parentWidget } = {})
 		{
-			let promise = Promise.resolve();
+			const { TimelineScheduler } = await requireLazy('crm:timeline/scheduler');
 
 			if (parentWidget)
 			{
-				promise = promise.then(() => new Promise((resolve) => {
+				await new Promise((resolve) => {
 					parentWidget.close(resolve);
-				}));
+				});
 			}
 
-			promise
-				.then(() => {
-					(new TimelineScheduler({
-						entity: {
-							id: itemId,
-							typeId: this.getId(),
-							categoryId: this.getCategoryId(),
-						},
-						user: this.getUserInfo(),
-					})).openActivityEditor();
-				})
-				.catch(console.error)
-			;
+			await (new TimelineScheduler({
+				entity: {
+					id: itemId,
+					typeId: this.getId(),
+					categoryId: this.getCategoryId(),
+					reminders: this.params.reminders,
+				},
+				user: this.getUserInfo(),
+			})).openActivityEditor();
 		}
 
 		showForbiddenActionNotification()
 		{
-			const title = BX.message('M_CRM_ENTITY_TAB_ACTION_FORBIDDEN_TITLE');
-			const text = BX.message('M_CRM_ENTITY_TAB_ACTION_FORBIDDEN_TEXT');
+			const title = Loc.getMessage('M_CRM_ENTITY_TAB_ACTION_FORBIDDEN_TITLE');
+			const text = Loc.getMessage('M_CRM_ENTITY_TAB_ACTION_FORBIDDEN_TEXT');
 
 			Notify.showUniqueMessage(text, title, { time: 3 });
 		}
 
 		/**
 		 * @return {{
-		 * 	image: ImageProps,
-		 * 	title: string|Function,
-		 * 	description: string|Function,
+		 * image: ImageProps,
+		 * title: string|Function,
+		 * description: string|Function,
 		 * }}
 		 */
 		getEmptySearchScreenConfig()
 		{
 			const image = this.getEmptyImage();
-			const entityTypeName = (this.getName() || 'COMMON');
-			const title = BX.message(`M_CRM_ENTITY_TAB_SEARCH_EMPTY_${entityTypeName}_TITLE`);
-			const description = BX.message('M_CRM_ENTITY_TAB_SEARCH_EMPTY_DESCRIPTION');
+			const title = this.getEmptySearchScreenTitle();
+			const description = Loc.getMessage('M_CRM_ENTITY_TAB_SEARCH_EMPTY_DESCRIPTION');
 
 			return {
 				image,
 				title,
 				description,
 			};
+		}
+
+		getEmptySearchScreenTitle()
+		{
+			const entityTypeName = (this.getName() || 'COMMON');
+
+			return this.getLastMessageVer(`M_CRM_ENTITY_TAB_SEARCH_EMPTY_${entityTypeName}_TITLE2`);
 		}
 
 		/**
@@ -220,29 +273,57 @@ jn.define('crm/entity-tab/type/entities/base', (require, exports, module) => {
 
 		getEmptyEntityScreenDescriptionText()
 		{
-			const url = this.getCommunicationChannelsRedirectUrl();
-			const entityTypeName = (this.getName() || 'COMMON');
-			const manyEntityTypeTitle = BX.message(`M_CRM_ENTITY_TAB_ENTITY_EMPTY_MANY_${entityTypeName}`);
-			const singleEntityTypeTitle = BX.message(`M_CRM_ENTITY_TAB_ENTITY_EMPTY_SINGLE_${entityTypeName}`);
+			return Loc.getMessage('M_CRM_ENTITY_TAB_ENTITY_EMPTY_DESCRIPTION', {
+				'#URL#': this.getCommunicationChannelsRedirectUrl(),
+				'#MANY_ENTITY_TYPE_TITLE#': this.getManyEntityTypeTitle(),
+				'#SINGLE_ENTITY_TYPE_TITLE#': this.getSingleEntityTypeTitle(),
+			});
+		}
 
-			return (
-				BX.message('M_CRM_ENTITY_TAB_ENTITY_EMPTY_DESCRIPTION')
-					.replace('#URL#', url)
-					.replace('#MANY_ENTITY_TYPE_TITLE#', manyEntityTypeTitle)
-					.replace('#SINGLE_ENTITY_TYPE_TITLE#', singleEntityTypeTitle)
-			);
+		getManyEntityTypeTitle()
+		{
+			const entityTypeName = (this.getName() || 'COMMON');
+
+			return this.getLastMessageVer(`M_CRM_ENTITY_TAB_ENTITY_EMPTY_MANY_${entityTypeName}`);
+		}
+
+		getSingleEntityTypeTitle()
+		{
+			const entityTypeName = (this.getName() || 'COMMON');
+
+			return this.getLastMessageVer(`M_CRM_ENTITY_TAB_ENTITY_EMPTY_SINGLE_${entityTypeName}`);
 		}
 
 		getMenuActions()
 		{
 			return [];
 		}
+
+		getLastMessageVer(messageCode, verLimit = 5)
+		{
+			if (Loc.hasMessage(messageCode))
+			{
+				return Loc.getMessage(messageCode);
+			}
+
+			const messageWithVerText = `${messageCode}_MSGVER_`;
+			for (let ver = 1; ver <= verLimit; ver++)
+			{
+				if (Loc.hasMessage(messageWithVerText + ver.toString()))
+				{
+					return Loc.getMessage(messageWithVerText + ver.toString());
+				}
+			}
+
+			return null;
+		}
 	}
 
 	function abstract(msg)
 	{
-		msg = msg || 'Abstract method must be implemented in child class';
-		throw new Error(msg);
+		const message = msg || 'Abstract method must be implemented in child class';
+
+		throw new Error(message);
 	}
 
 	module.exports = { Base };

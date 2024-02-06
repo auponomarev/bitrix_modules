@@ -1,29 +1,30 @@
-import {Core} from 'im.v2.application.core';
-import {Avatar, AvatarSize, UserStatus, UserStatusSize} from 'im.v2.component.elements';
-import {Utils} from 'im.v2.lib.utils';
+import { MenuManager } from 'main.popup';
 
-import {ButtonPanel} from './button-panel';
-import {UserStatusPopup} from '../status/user-status-popup';
-import {BackgroundPopup} from '../background/background-popup';
-import {VersionService} from '../../classes/version-service';
+import { Core } from 'im.v2.application.core';
+import { Avatar, AvatarSize, UserStatus, UserStatusSize, ScrollWithGradient } from 'im.v2.component.elements';
+import { DesktopApi, DesktopFeature } from 'im.v2.lib.desktop-api';
+import { Utils } from 'im.v2.lib.utils';
+import { DesktopManager } from 'im.v2.lib.desktop';
+import { PopupType, Settings, UserStatus as UserStatusType } from 'im.v2.const';
+
+import { ButtonPanel } from './button-panel';
+import { UserStatusPopup } from '../status/user-status-popup';
+import { DesktopAccountList } from './desktop-account-list/desktop-account-list';
 
 import 'ui.buttons';
 import 'ui.feedback.form';
 
-import type {ImModelUser} from 'im.v2.model';
-import {UserStatus as UserStatusType} from 'im.v2.const';
+import type { ImModelUser } from 'im.v2.model';
 
 // @vue/component
 export const UserSettingsContent = {
 	name: 'UserSettingsContent',
-	components: {Avatar, UserStatus, ButtonPanel, UserStatusPopup, BackgroundPopup},
+	components: { Avatar, UserStatus, ButtonPanel, UserStatusPopup, DesktopAccountList, ScrollWithGradient },
 	emits: ['closePopup', 'enableAutoHide', 'disableAutoHide'],
-	data()
+	data(): Object
 	{
 		return {
 			showStatusPopup: false,
-			showBackgroundPopup: false,
-			isChangingVersion: false
 		};
 	},
 	computed:
@@ -42,9 +43,9 @@ export const UserSettingsContent = {
 		{
 			return this.$store.getters['users/getPosition'](this.currentUserId);
 		},
-		currentUserStatus(): string
+		userStatus(): string
 		{
-			const status = this.$store.getters['users/getStatus'](this.currentUserId);
+			const status = this.$store.getters['application/settings/get'](Settings.user.status);
 			if (status)
 			{
 				return status;
@@ -58,22 +59,15 @@ export const UserSettingsContent = {
 		},
 		userStatusText(): string
 		{
-			return Utils.user.getStatusText(this.currentUser.status);
+			return Utils.user.getStatusText(this.userStatus);
 		},
-		profileUri(): string
+		isDesktopAccountManagementAvailable(): boolean
 		{
-			return Utils.user.getProfileLink(this.currentUserId);
-		}
+			return DesktopApi.isFeatureSupported(DesktopFeature.accountManagement.id);
+		},
 	},
 	methods:
 	{
-		onBackToOldChatClick()
-		{
-			this.isChangingVersion = true;
-			this.getVersionService().disableV2Version().then(() => {
-				window.location.replace('/online/');
-			});
-		},
 		onStatusClick()
 		{
 			this.showStatusPopup = true;
@@ -84,49 +78,14 @@ export const UserSettingsContent = {
 			this.showStatusPopup = false;
 			this.$emit('enableAutoHide');
 		},
-		onBackgroundSelectClick()
-		{
-			this.showBackgroundPopup = true;
-			this.$emit('disableAutoHide');
-		},
-		onBackgroundPopupClose()
-		{
-			this.showBackgroundPopup = false;
-			this.$emit('enableAutoHide');
-		},
-		onHelpClick()
-		{
-			const ARTICLE_CODE = 17373696;
-			BX.Helper?.show(`redirect=detail&code=${ARTICLE_CODE}`);
-			this.$emit('closePopup');
-		},
-		onFeedbackClick()
-		{
-			BX.UI.Feedback.Form.open({
-				id: 'im-v2-feedback',
-				forms: [
-					{zones: ['ru'], id: 550, sec: '50my2x', lang: 'ru'},
-					{zones: ['en'], id: 560, sec: '621lbr', lang: 'ru'},
-				],
-				presets: {
-					sender_page: 'profile'
-				},
-			});
-			this.$emit('closePopup');
-		},
-		getVersionService(): VersionService
-		{
-			if (!this.versionService)
-			{
-				this.versionService = new VersionService();
-			}
-
-			return this.versionService;
-		},
 		loc(phraseCode: string): string
 		{
 			return this.$Bitrix.Loc.getMessage(phraseCode);
-		}
+		},
+		onScroll()
+		{
+			MenuManager.getMenuById(PopupType.desktopItemMenu)?.close();
+		},
 	},
 	template: `
 		<div class="bx-im-user-settings-popup__scope bx-im-user-settings-popup__container">
@@ -138,66 +97,37 @@ export const UserSettingsContent = {
 					<div class="bx-im-user-settings-popup__domain">{{ currentHost }}</div>
 					<div class="bx-im-user-settings-popup__user_name" :title="currentUser.name">{{ currentUser.name }}</div>
 					<div class="bx-im-user-settings-popup__user_title" :title="currentUserPosition">{{ currentUserPosition }}</div>
-					<a :href="profileUri" target="_blank">
-						<ButtonPanel @openProfile="$emit('closePopup')" />
-					</a>
+					<ButtonPanel 
+						:isDesktopAccountManagementAvailable="isDesktopAccountManagementAvailable"
+						@openProfile="$emit('closePopup')" 
+					/>
 				</div>
 			</div>
-			<div class="bx-im-user-settings-popup__list">
-				<div class="bx-im-user-settings-popup__separator"></div>
-				<!-- Status select -->
-				<div @click="onStatusClick" class="bx-im-user-settings-popup__list-item --with-icon">
-					<div class="bx-im-user-settings-popup__list-item_left">
-						<div class="bx-im-user-settings-popup__list-item_status">
-							<UserStatus :status="currentUserStatus" :size="UserStatusSize.M" />
+			<ScrollWithGradient :containerMaxHeight="328" :gradientHeight="24" @scroll="onScroll">
+				<div class="bx-im-user-settings-popup__list">
+					<div class="bx-im-user-settings-popup__separator"></div>
+					<!-- Status select -->
+					<div @click="onStatusClick" class="bx-im-user-settings-popup__list-item --with-icon">
+						<div class="bx-im-user-settings-popup__list-item_left">
+							<div class="bx-im-user-settings-popup__list-item_status">
+								<UserStatus :status="userStatus" :size="UserStatusSize.M" />
+							</div>
+							<div class="bx-im-user-settings-popup__list-item_text">{{ userStatusText }}</div>
 						</div>
-						<div class="bx-im-user-settings-popup__list-item_text">{{ userStatusText }}</div>
-					</div>
-					<div class="bx-im-user-settings-popup__list-item_icon --chevron" ref="status-select"></div>
-				</div>
-				<div class="bx-im-user-settings-popup__separator"></div>
-				<!-- Background select -->
-				<div @click="onBackgroundSelectClick" class="bx-im-user-settings-popup__list-item --with-icon">
-					<div class="bx-im-user-settings-popup__list-item_left">
-						<div class="bx-im-user-settings-popup__list-item_icon --background"></div>
-						<div class="bx-im-user-settings-popup__list-item_text">{{ loc('IM_USER_SETTINGS_CHAT_BACKGROUND') }}</div>
-					</div>
-					<div class="bx-im-user-settings-popup__list-item_icon --chevron" ref="background-select"></div>
-				</div>
-				<div class="bx-im-user-settings-popup__separator"></div>
-				<!-- Help -->
-				<div @click="onHelpClick" class="bx-im-user-settings-popup__list-item">
-					<div class="bx-im-user-settings-popup__list-item_left">
-						<div class="bx-im-user-settings-popup__list-item_icon --help"></div>
-						<div class="bx-im-user-settings-popup__list-item_text">{{ loc('IM_USER_SETTINGS_HELP') }}</div>
+						<div class="bx-im-user-settings-popup__list-item_icon --chevron" ref="status-select"></div>
 					</div>
 				</div>
 				<div class="bx-im-user-settings-popup__separator"></div>
-				<!-- Feedback -->
-				<div @click="onFeedbackClick" class="bx-im-user-settings-popup__list-item">
-					<div class="bx-im-user-settings-popup__list-item_left">
-						<div class="bx-im-user-settings-popup__list-item_icon --feedback"></div>
-						<div class="bx-im-user-settings-popup__list-item_text">{{ loc('IM_USER_SETTINGS_FEEDBACK') }}</div>
-					</div>
-				</div>
-			</div>
-			<!-- Back to old chat -->
-			<div :class="{'--loading': isChangingVersion}" class="bx-im-user-settings-popup__old-chat">
-				<div class="bx-im-user-settings-popup__list-item_icon --arrow-left"></div>
-				<div @click="onBackToOldChatClick" class="bx-im-user-settings-popup__old-chat_text">
-					{{ loc('IM_USER_SETTINGS_OLD_CHAT') }}
-				</div>
-			</div>
+				<DesktopAccountList 
+					v-if="isDesktopAccountManagementAvailable"
+					@openContextMenu="$emit('disableAutoHide')"
+				/>
+			</ScrollWithGradient>
 		</div>
 		<UserStatusPopup
 			v-if="showStatusPopup"
 			:bindElement="$refs['status-select'] || {}"
 			@close="onStatusPopupClose"
 		/>
-		<BackgroundPopup
-			v-if="showBackgroundPopup"
-			:bindElement="$refs['background-select'] || {}"
-			@close="onBackgroundPopupClose"
-		/>
-	`
+	`,
 };

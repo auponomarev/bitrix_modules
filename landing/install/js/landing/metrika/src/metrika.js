@@ -1,10 +1,13 @@
-import { Dom, Event } from 'main.core';
+import {Dom, Type, Text, Event, Runtime} from 'main.core';
+import type {AnalyticsOptions} from './types';
 
 /**
  * @memberOf BX.Landing
  */
 export class Metrika
 {
+	static TOOL_NAME = 'landing';
+
 	formSelector: string;
 	widgetBlockItemSelector: string;
 	siteType: ?string;
@@ -31,10 +34,10 @@ export class Metrika
 		this.widgetOpened = false;
 		this.widgetBlockHover = false;
 
-		if (this.isFormsExists())
+		/*if (this.isFormsExists())
 		{
 			this.waitForForms();
-		}
+		}*/
 		this.waitForWidget();
 		this.detectAnchor();
 	}
@@ -202,5 +205,36 @@ export class Metrika
 			(this.siteType ? '&siteType=' + this.siteType : '') +
 			'&time=' + (new Date().getTime())
 		});
+	}
+
+	/**
+	 * For new analytic scheme
+	 * @param data
+	 */
+	sendData(data: AnalyticsOptions): void
+	{
+		Runtime.loadExtension('ui.analytics')
+			.then(exports => {
+				data.tool = Metrika.TOOL_NAME;
+				if (data.params && Type.isObject(data.params))
+				{
+					let i = 1;
+					const maxParams = 5;
+					for (let param in data.params)
+					{
+						if (i <= maxParams)
+						{
+							const key = 'p' + i++;
+							Text.toCamelCase(param);
+							data[key] = Text.toCamelCase(param) + '_' + Text.toCamelCase(data.params[param]);
+						}
+					}
+					delete data.params;
+				}
+
+				const {sendData} = exports;
+				sendData(data);
+			})
+		;
 	}
 }

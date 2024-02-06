@@ -1,15 +1,16 @@
-import { Tag, Event, Loc, Type, Dom } from 'main.core';
+import { Tag, Event, Loc, Type, Dom, Text } from 'main.core';
 import { EventEmitter } from 'main.core.events';
 import { MenuManager } from "main.popup";
 import WithEditor from "./witheditor";
 import { Guide } from "ui.tour";
 import Context from "../context";
 import { DialogNew } from 'calendar.sharing.interface';
+import { ConditionChecker, Types as SenderTypes, OpenLineCodes } from 'crm.messagesender';
 
 /** @memberof BX.Crm.Timeline.MenuBar */
 export default class Sharing extends WithEditor
 {
-	HELPDESK_CODE = -1;
+	HELPDESK_CODE = 17502612;
 
 	/**
 	 * @override
@@ -19,19 +20,43 @@ export default class Sharing extends WithEditor
 		const config = settings.config;
 
 		this.link = config.link;
-
+		this.calendarSettings = config.calendarSettings;
+		this.isResponsible = config.isResponsible;
 		this.setContacts(config.contacts);
-
+		this.isNotificationsAvailable = config.isNotificationsAvailable;
 		this.areCommunicationChannelsAvailable = config.areCommunicationChannelsAvailable;
+		this.setCommunicationChannels(config.communicationChannels, config.selectedChannelId);
 		this.doPayAttentionToNewFeature = config.doPayAttentionToNewFeature;
 
 		super.initialize(context, settings);
-		this.bindEvents();
+
+		if (this.getSetting('isAvailable'))
+		{
+			this.bindEvents();
+		}
+	}
+
+	activate()
+	{
+		if (this.getSetting('isAvailable'))
+		{
+			this.setVisible(true);
+		}
+		else
+		{
+			BX.UI?.InfoHelper?.show('limit_crm_calendar_free_slots');
+		}
+	}
+
+	supportsLayout(): Boolean
+	{
+		return this.getSetting('isAvailable');
 	}
 
 	bindEvents()
 	{
 		EventEmitter.subscribe('CalendarSharing:LinkCopied', () => this.onLinkCopied());
+		EventEmitter.subscribe('CalendarSharing:RuleUpdated', () => this.onRuleUpdated());
 		EventEmitter.subscribe('BX.Crm.MessageSender.ReceiverRepository:OnReceiversChanged', this.onContactsChangedHandler.bind(this));
 	}
 
@@ -57,7 +82,7 @@ export default class Sharing extends WithEditor
 		};
 
 		return Tag.render`
-			<div class="crm-entity-stream-content-sharing --hidden">
+			<div class="crm-entity-stream-content-sharing crm-entity-stream-content-wait-detail --hidden">
 				<div id="_sharing_content_container">
 					<div class="crm-entity-stream-calendar-sharing-container">
 						<div class="crm-entity-stream-calendar-sharing-main">
@@ -135,7 +160,7 @@ export default class Sharing extends WithEditor
 	createSendButton()
 	{
 		this.DOM.sendButton = Tag.render`
-			<button class="ui-btn ui-btn-xs ui-btn-primary">
+			<button class="ui-btn ui-btn-xs ui-btn-primary ui-btn-round">
 				${Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_SEND_BUTTON')}
 			</button>
 		`;
@@ -182,18 +207,66 @@ export default class Sharing extends WithEditor
 		this.showSettingsPopup();
 	}
 
-	onSendButtonClick()
+	async onSendButtonClick()
 	{
-		if (!this.areCommunicationChannelsAvailable)
-		{
-			this.showWarningNoCommunicationChannels();
-			return;
-		}
-
 		if (!this.isContactAvailable())
 		{
 			this.showWarningNoContact();
+
 			return;
+		}
+
+		if (
+			!this.areCommunicationChannelsAvailable
+			&& this.isNotificationsAvailable
+			&& this.isChannelsAvailable()
+		)
+		{
+			const bitrix24Channel = this.channels.find((channel) => {
+				return this.isChannelBitrix24(channel);
+			});
+
+			if (bitrix24Channel)
+			{
+				const isApproved = await this.isBitrix24Approved();
+
+				if (isApproved)
+				{
+					this.channel = bitrix24Channel;
+					this.updateSenderList();
+					this.onSaveButtonClick();
+
+					return;
+				}
+			}
+		}
+
+		if (!this.areCommunicationChannelsAvailable)
+		{
+			this.showWarningNoCommunicationChannels();
+
+			return;
+		}
+
+		if (
+			this.isNotificationsAvailable
+			&& this.isChannelBitrix24(this.channel)
+		)
+		{
+			const isApproved = await this.isBitrix24Approved();
+
+			if (isApproved)
+			{
+				this.onSaveButtonClick();
+
+				return;
+			}
+			else
+			{
+				this.showWarningNoCommunicationChannels();
+
+				return;
+			}
 		}
 
 		this.onSaveButtonClick();
@@ -204,6 +277,11 @@ export default class Sharing extends WithEditor
 		this.saveLinkAction({
 			isActionCopy: true,
 		});
+	}
+
+	onRuleUpdated()
+	{
+		this.onRuleUpdatedAction();
 	}
 
 	onMoreInfoButtonClick()
@@ -218,7 +296,11 @@ export default class Sharing extends WithEditor
 			this.newDialog = new DialogNew({
 				bindElement: this.DOM.configureSlotsButton,
 				sharingUrl: this.link.url,
+				sharingRule: this.link.rule,
+				linkHash: this.link.hash,
 				context: "crm",
+				readOnly: !this.isResponsible,
+				calendarSettings: this.calendarSettings,
 			});
 		}
 		this.newDialog.show();
@@ -241,18 +323,56 @@ export default class Sharing extends WithEditor
 
 	getSettingsMenu()
 	{
+		const items = [this.getSharingReceiverItem()];
+
+		if (this.areCommunicationChannelsAvailable && this.isChannelsAvailable())
+		{
+			items.push(this.getSharingChannelsItem());
+		}
+
+		if (this.currentFromList)
+		{
+			items.push(this.getSharingSenderItem());
+		}
+
 		return MenuManager.create({
 			id: 'crm-calendar-sharing-settings',
 			bindElement: this.DOM.settingsButton,
-			items: [
-				{
-					text: Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_RECEIVER'),
-					items: this.contacts.map((contact) => {
-						return this.getContactMenuItem(contact);
-					}),
-				},
-			],
+			items: items
 		});
+	}
+
+	getSharingReceiverItem()
+	{
+		return {
+			id: 'sharing_receiver',
+			text: Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_RECEIVER'),
+			items: this.contacts.map((contact) => {
+				return this.getContactMenuItem(contact);
+			})
+		};
+	}
+
+	getSharingChannelsItem()
+	{
+		return {
+			id: 'sharing_channels',
+			text: Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_COMMUNICATION_CHANNELS'),
+			items: this.channels.map((channel) => {
+				return this.getChannelMenuItem(channel);
+			}),
+		}
+	}
+
+	getSharingSenderItem()
+	{
+		return {
+			id: 'sharing_sender',
+			text: Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_SENDER'),
+			items: this.currentFromList.map((from) => {
+				return this.getFromMenuItem(from);
+			}),
+		};
 	}
 
 	getContactMenuItem(contact)
@@ -260,7 +380,7 @@ export default class Sharing extends WithEditor
 		const isSelected = contact.entityId === this.contact.entityId && contact.entityTypeId === this.contact.entityTypeId;
 		const itemHtml = Tag.render`
 			<div class="crm-entity-stream-calendar-sharing-settings-check">
-				<div>${contact.name} (${contact.phone})</div>
+				<div>${Text.encode(`${contact.name} (${contact.phone})`)}</div>
 			</div>
 		`;
 		contact.check = Tag.render`
@@ -274,18 +394,81 @@ export default class Sharing extends WithEditor
 				Dom.removeClass(this.contact.check, '--show');
 				Dom.addClass(contact.check, '--show');
 				this.contact = contact;
-			}
+			},
+		};
+	}
+
+	getChannelMenuItem(channel)
+	{
+		const isSelected = channel.id === this.channel.id;
+		const itemHtml = Tag.render`
+			<div class="crm-entity-stream-calendar-sharing-settings-check">
+				<div>${Text.encode(channel.name)}</div>
+			</div>
+		`;
+		channel.check = Tag.render`
+			<div class="crm-entity-stream-calendar-sharing-settings-check-icon ${isSelected ? '--show' : ''}"></div>
+		`;
+		itemHtml.append(channel.check);
+
+		return {
+			html: itemHtml,
+			onclick: () => {
+				Dom.removeClass(this.channel.check, '--show');
+				Dom.addClass(channel.check, '--show');
+				this.channel = channel;
+
+				this.updateSenderList();
+			},
+		};
+	}
+
+	getFromMenuItem(from)
+	{
+		const isSelected = from.id === this.currentFrom.id;
+		const itemHtml = Tag.render`
+			<div class="crm-entity-stream-calendar-sharing-settings-check">
+				<div>${Text.encode(from.name)}</div>
+			</div>
+		`;
+		from.check = Tag.render`
+			<div class="crm-entity-stream-calendar-sharing-settings-check-icon ${isSelected ? '--show' : ''}"></div>
+		`;
+		itemHtml.append(from.check);
+
+		return {
+			html: itemHtml,
+			onclick: () => {
+				Dom.removeClass(this.currentFrom.check, '--show');
+				Dom.addClass(from.check, '--show');
+				this.currentFrom = from;
+			},
 		};
 	}
 
 	showWarningNoCommunicationChannels()
 	{
-		const title = Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_NO_COMMUNICATION_CHANNELS_WARNING_TITLE');
-		const text = `
-			<div>${Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_NO_COMMUNICATION_CHANNELS_WARNING_TEXT_1')}</div>
-			</br>
-			<div>${Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_NO_COMMUNICATION_CHANNELS_WARNING_TEXT_2')}</div>
-		`;
+		let title;
+		let text;
+
+		if (this.isNotificationsAvailable)
+		{
+			title = Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_NO_COMMUNICATION_CHANNELS_WARNING_TITLE');
+			text = `
+				<div>${Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_NO_COMMUNICATION_CHANNELS_WARNING_TEXT_1')}</div>
+				</br>
+				<div>${Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_NO_COMMUNICATION_CHANNELS_WARNING_TEXT_2')}</div>
+			`;
+		}
+		else
+		{
+			title = Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_NO_CUSTOM_COMMUNICATION_CHANNELS_WARNING_TITLE');
+			text = `
+				<div>${Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_NO_CUSTOM_COMMUNICATION_CHANNELS_WARNING_TITLE_1').replaceAll('/marketplace/', Loc.getMessage('MARKET_BASE_PATH'))}</div>
+				</br>
+				<div>${Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_NO_COMMUNICATION_CHANNELS_WARNING_TEXT_2')}</div>
+			`;
+		}
 
 		const noCommunicationChannelsWarningGuide = this.getWarningGuide(title, text);
 		noCommunicationChannelsWarningGuide.showNextStep();
@@ -305,6 +488,19 @@ export default class Sharing extends WithEditor
 		const text = Loc.getMessage('CRM_TIMELINE_CALENDAR_SHARING_NO_CONTACT_WARNING_TEXT');
 		const noContactWarningGuide = this.getWarningGuide(title, text);
 		noContactWarningGuide.showNextStep();
+	}
+
+	updateSenderList()
+	{
+		this.currentFromList = this.channel.fromList;
+		this.currentFrom = this.channel.fromList[0];
+
+		if (this.settingsMenu)
+		{
+			this.settingsMenu.removeMenuItem('sharing_sender');
+			const item = this.getSharingSenderItem();
+			this.settingsMenu.addMenuItem(item);
+		}
 	}
 
 	copyLink(link)
@@ -330,13 +526,16 @@ export default class Sharing extends WithEditor
 		let data = {
 			ownerId: this.getEntityId(),
 			ownerTypeId: this.getEntityTypeId(),
+			ruleArray: this.getSharingRule(),
 		};
 
-		if (this.isContactAvailable() && !options.isActionCopy)
+		if (this.isContactAvailable() && this.isChannelsAvailable() && !options.isActionCopy)
 		{
 			action = 'crm.api.timeline.calendar.sharing.sendLink';
 			data.contactId = this.contact.entityId || null;
 			data.contactTypeId = this.contact.entityTypeId || null;
+			data.channelId = this.channel.id || null;
+			data.senderId = this.currentFrom.id || null;
 		}
 		else
 		{
@@ -356,6 +555,25 @@ export default class Sharing extends WithEditor
 			console.error(error);
 			return false;
 		});
+	}
+
+	onRuleUpdatedAction()
+	{
+		return BX.ajax.runAction('crm.api.timeline.calendar.sharing.onRuleUpdated', {
+			data: {
+				linkHash: this.link.hash,
+				ownerId: this.getEntityId(),
+				ownerTypeId: this.getEntityTypeId(),
+			},
+		}).then((response) => {}, (error) => {
+			console.error(error);
+			return false;
+		});
+	}
+
+	getSharingRule()
+	{
+		return this.newDialog?.getSettingsControlRule() ?? this.link.rule;
 	}
 
 	onContactsChangedHandler(event)
@@ -408,14 +626,54 @@ export default class Sharing extends WithEditor
 		}) ?? this.contacts[0];
 	}
 
+	setCommunicationChannels(channels, selectedId)
+	{
+		this.channels = channels || [];
+
+		if (selectedId)
+		{
+			this.channel = channels.find((channel) => {
+				return channel.id === selectedId
+			}) ?? this.channels[0];
+		}
+		else
+		{
+			this.channel = this.channels ? this.channels[0] : null;
+		}
+
+		if (this.channel && this.channel.fromList)
+		{
+			this.currentFromList = this.channel.fromList;
+			this.currentFrom = this.channel.fromList[0];
+		}
+	}
+
 	isContactAvailable()
 	{
 		return Type.isArrayFilled(this.contacts);
 	}
 
+	isChannelsAvailable()
+	{
+		return Type.isArrayFilled(this.channels);
+	}
+
+	isChannelBitrix24(channel)
+	{
+		return channel.id === SenderTypes.bitrix24;
+	}
+
+	async isBitrix24Approved()
+	{
+		return await ConditionChecker.checkIsApproved({
+			openLineCode: OpenLineCodes.notifications,
+			senderType: SenderTypes.bitrix24,
+		});
+	}
+
 	openHelpDesk()
 	{
-		if(top.BX.Helper)
+		if (top.BX.Helper)
 		{
 			top.BX.Helper.show(`redirect=detail&code=${this.HELPDESK_CODE}`);
 		}

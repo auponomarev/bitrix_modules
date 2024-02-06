@@ -1,76 +1,90 @@
 import 'ui.design-tokens';
+import 'main.polyfill.intersectionobserver';
 
-import {Core} from 'im.v2.application.core';
-import {DialogType, Settings, OpenTarget, ApplicationName} from 'im.v2.const';
-import {Utils} from 'im.v2.lib.utils';
-import {RecentService} from 'im.v2.provider.service';
-import {RecentLoadingState} from 'im.v2.component.elements';
-import {RecentMenu} from 'im.v2.lib.menu';
-import {DraftManager} from 'im.v2.lib.draft';
-import {Messenger} from 'im.public';
+import { BaseEvent } from 'main.core.events';
 
-import {RecentItem} from './components/recent-item';
-import {ActiveCall} from './components/active-call';
+import { Core } from 'im.v2.application.core';
+import { ChatType, Settings } from 'im.v2.const';
+import { Utils } from 'im.v2.lib.utils';
+import { RecentService } from 'im.v2.provider.service';
+import { RecentLoadingState } from 'im.v2.component.elements';
+import { RecentMenu } from 'im.v2.lib.menu';
+import { DraftManager } from 'im.v2.lib.draft';
+import { CreateChatManager } from 'im.v2.lib.create-chat';
+import { Messenger } from 'im.public';
 
-import {BroadcastManager} from './classes/broadcast-manager';
-import {LikeManager} from './classes/like-manager';
+import { RecentItem } from './components/recent-item';
+import { ActiveCall } from './components/active-call';
+import { CreateChat } from './components/create-chat';
+import { EmptyState } from './components/empty-state';
+
+import { BroadcastManager } from './classes/broadcast-manager';
+import { LikeManager } from './classes/like-manager';
 
 import './css/recent-list.css';
 import './css/recent-compact.css';
 import './css/recent-context-menu.css';
 
-import type {ImModelRecentItem, ImModelCallItem} from 'im.v2.model';
+import type { JsonObject } from 'main.core';
+import type { ImModelRecentItem, ImModelCallItem } from 'im.v2.model';
 
 // @vue/component
 export const RecentList = {
 	name: 'RecentList',
-	components: {LoadingState: RecentLoadingState, RecentItem, ActiveCall},
+	components: { LoadingState: RecentLoadingState, RecentItem, ActiveCall, CreateChat, EmptyState },
 	directives: {
 		'recent-list-observer':
 		{
 			mounted(element, binding)
 			{
 				binding.instance.observer.observe(element);
-			}
-		}
+			},
+		},
 	},
 	props: {
 		compactMode: {
 			type: Boolean,
-			default: false
+			default: false,
 		},
 		recentService: {
 			type: Object,
 			required: false,
-			default: null
-		}
+			default(): null {
+				return null;
+			},
+		},
 	},
 	emits: ['chatClick'],
-	data()
+	data(): JsonObject
 	{
 		return {
 			isLoading: false,
 			visibleElements: new Set(),
-			listIsScrolled: false
+			listIsScrolled: false,
+			isCreatingChat: false,
 		};
 	},
-	computed: {
+	computed:
+	{
 		collection(): ImModelRecentItem[]
 		{
 			return this.getRecentService().getCollection();
 		},
 		preparedItems(): ImModelRecentItem[]
 		{
-			const filteredCollection = this.collection.filter(item => {
+			const filteredCollection = this.collection.filter((item) => {
 				if (!this.showBirthdays && item.options.birthdayPlaceholder)
 				{
 					return false;
 				}
 
-				const dialog = this.$store.getters['dialogues/get'](item.dialogId, true);
-				const isUser = dialog.type === DialogType.user;
+				const dialog = this.$store.getters['chats/get'](item.dialogId, true);
+				const isUser = dialog.type === ChatType.user;
 				const hasBirthday = isUser && this.showBirthdays && this.$store.getters['users/hasBirthday'](item.dialogId);
-				if (!this.showInvited && item.options.defaultUserRecord && !hasBirthday)
+
+				const isInvited = item.options.defaultUserRecord === true;
+				const needToShowInvited = this.showInvited || hasBirthday;
+				if (isInvited && !needToShowInvited)
 				{
 					return false;
 				}
@@ -91,13 +105,13 @@ export const RecentList = {
 		},
 		pinnedItems(): ImModelRecentItem[]
 		{
-			return this.preparedItems.filter(item => {
+			return this.preparedItems.filter((item) => {
 				return item.pinned === true;
 			});
 		},
 		generalItems(): ImModelRecentItem[]
 		{
-			return this.preparedItems.filter(item => {
+			return this.preparedItems.filter((item) => {
 				return item.pinned === false;
 			});
 		},
@@ -109,10 +123,10 @@ export const RecentList = {
 		{
 			return this.$store.getters['application/settings/get'](Settings.recent.showInvited);
 		},
-		containerClasses()
+		containerClasses(): Object<string, boolean>
 		{
-			return {'--compact': this.compactMode};
-		}
+			return { '--compact': this.compactMode };
+		},
 	},
 	created()
 	{
@@ -123,14 +137,17 @@ export const RecentList = {
 		this.initLikeManager();
 		this.initObserver();
 		this.initBirthdayCheck();
+		this.initCreateChatManager();
 		this.managePreloadedList();
 
 		this.isLoading = true;
 		const ignorePreloadedItems = !this.compactMode;
-		this.getRecentService().loadFirstPage({ignorePreloadedItems}).then(() => {
-			this.isLoading = false;
-			DraftManager.getInstance().initDraftHistory();
-		});
+		// eslint-disable-next-line promise/catch-or-return
+		this.getRecentService().loadFirstPage({ ignorePreloadedItems })
+			.then(() => {
+				this.isLoading = false;
+				DraftManager.getInstance().initDraftHistory();
+			});
 	},
 	beforeUnmount()
 	{
@@ -138,8 +155,10 @@ export const RecentList = {
 		this.clearBirthdayCheck();
 		this.destroyBroadcastManager();
 		this.destroyLikeManager();
+		this.destroyCreateChatManager();
 	},
-	methods: {
+	methods:
+	{
 		onScroll(event)
 		{
 			this.listIsScrolled = event.target.scrollTop > 0;
@@ -147,19 +166,21 @@ export const RecentList = {
 			this.contextMenuManager.close();
 			if (!this.oneScreenRemaining(event) || !this.getRecentService().hasMoreItemsToLoad)
 			{
-				return false;
+				return;
 			}
 
 			this.isLoading = true;
+			// eslint-disable-next-line promise/catch-or-return
 			this.getRecentService().loadNextPage().then(() => {
 				this.isLoading = false;
 			});
 		},
-		onClick(item)
+		onClick(item, event)
 		{
 			if (this.compactMode)
 			{
 				Messenger.openChat(item.dialogId);
+
 				return;
 			}
 
@@ -167,38 +188,40 @@ export const RecentList = {
 		},
 		onRightClick(item, event)
 		{
-			if (event.altKey && event.shiftKey)
+			if (Utils.key.isCombination(event, 'Alt+Shift'))
 			{
 				return;
 			}
 
-			const target = !this.compactMode || event.altKey? OpenTarget.current: OpenTarget.auto;
 			const context = {
 				...item,
 				compactMode: this.compactMode,
-				target
 			};
 
 			this.contextMenuManager.openMenu(context, event.currentTarget);
 
 			event.preventDefault();
 		},
-		onCallClick({item, $event})
+		onCallClick({ item, $event })
 		{
 			this.onClick(item, $event);
 		},
-		onCallRightClick({item, $event})
+		onCallRightClick({ item, $event })
 		{
 			this.onRightClick(item, $event);
 		},
-		oneScreenRemaining(event)
+		oneScreenRemaining(event): boolean
 		{
-			return event.target.scrollTop + event.target.clientHeight >= event.target.scrollHeight - event.target.clientHeight;
+			const bottomPointOfVisibleContent = event.target.scrollTop + event.target.clientHeight;
+			const containerHeight = event.target.scrollHeight;
+			const oneScreenHeight = event.target.clientHeight;
+
+			return bottomPointOfVisibleContent >= containerHeight - oneScreenHeight;
 		},
 		initObserver()
 		{
 			this.observer = new IntersectionObserver(((entries) => {
-				entries.forEach(entry => {
+				entries.forEach((entry) => {
 					if (entry.isIntersecting && entry.intersectionRatio === 1)
 					{
 						this.visibleElements.add(entry.target.dataset.id);
@@ -208,7 +231,7 @@ export const RecentList = {
 						this.visibleElements.delete(entry.target.dataset.id);
 					}
 				});
-			}), {threshold: [0, 1]});
+			}), { threshold: [0, 1] });
 		},
 		initBroadcastManager()
 		{
@@ -234,8 +257,8 @@ export const RecentList = {
 		},
 		initBirthdayCheck()
 		{
-			const fourHours = 60000*60*4;
-			const day = 60000*60*24;
+			const fourHours = 60000 * 60 * 4;
+			const day = 60000 * 60 * 24;
 			this.birthdayCheckTimeout = setTimeout(() => {
 				this.getRecentService().loadFirstPage();
 				this.birthdayCheckInterval = setInterval(() => {
@@ -248,12 +271,34 @@ export const RecentList = {
 			clearTimeout(this.birthdayCheckTimeout);
 			clearInterval(this.birthdayCheckInterval);
 		},
+		initCreateChatManager()
+		{
+			if (CreateChatManager.getInstance().isCreating())
+			{
+				this.isCreatingChat = true;
+			}
+
+			this.onCreationStatusChange = (event: BaseEvent<boolean>) => {
+				this.isCreatingChat = event.getData();
+			};
+			CreateChatManager.getInstance().subscribe(
+				CreateChatManager.events.creationStatusChange,
+				this.onCreationStatusChange,
+			);
+		},
+		destroyCreateChatManager()
+		{
+			CreateChatManager.getInstance().unsubscribe(
+				CreateChatManager.events.creationStatusChange,
+				this.onCreationStatusChange,
+			);
+		},
 		managePreloadedList()
 		{
-			const {preloadedList} = Core.getApplicationData(ApplicationName.quickAccess);
+			const { preloadedList } = Core.getApplicationData();
 			if (!preloadedList || !this.compactMode)
 			{
-				return false;
+				return;
 			}
 
 			this.getRecentService().setPreloadedData(preloadedList);
@@ -266,7 +311,7 @@ export const RecentList = {
 		loc(phraseCode: string): string
 		{
 			return this.$Bitrix.Loc.getMessage(phraseCode);
-		}
+		},
 	},
 	template: `
 		<div class="bx-im-list-recent__scope bx-im-list-recent__container" :class="containerClasses">
@@ -279,6 +324,7 @@ export const RecentList = {
 					@click="onCallClick"
 				/>
 			</div>
+			<CreateChat v-if="isCreatingChat && !compactMode"></CreateChat>
 			<div @scroll="onScroll" class="bx-im-list-recent__scroll-container">
 				<div v-if="pinnedItems.length > 0" class="bx-im-list-recent__pinned_scope bx-im-list-recent__pinned_container">
 					<RecentItem
@@ -305,10 +351,8 @@ export const RecentList = {
 					/>
 				</div>	
 				<LoadingState v-if="isLoading" :compactMode="compactMode" />
-				<div v-if="collection.length === 0" class="bx-im-list-recent__empty">
-					{{ loc('IM_LIST_RECENT_EMPTY') }}
-				</div>
+				<EmptyState v-if="collection.length === 0" :compactMode="compactMode" />
 			</div>
 		</div>
-	`
+	`,
 };

@@ -1,11 +1,15 @@
 <?php
 
-use Bitrix\Crm\Service\Container;
-use Bitrix\Main\Loader;
-use Bitrix\Main\Localization\Loc;
+use Bitrix\Catalog;
+use Bitrix\Crm\Component\ControlPanel\ControlPanelMenuMapper;
 use Bitrix\Crm\Counter\EntityCounterFactory;
 use Bitrix\Crm\Counter\EntityCounterType;
 use Bitrix\Crm\Integration\Catalog\Contractor\CategoryRepository;
+use Bitrix\Crm\Service\Container;
+use Bitrix\Crm\Service\Factory\SmartDocument;
+use Bitrix\Intranet;
+use Bitrix\Main\Loader;
+use Bitrix\Main\Localization\Loc;
 
 if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true)
 {
@@ -14,15 +18,20 @@ if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true)
 
 class CrmControlPanel extends CBitrixComponent
 {
-	public const MENU_ID_CRM_CLIENT = 'crm_clients';
-	public const MENU_ID_CRM_CONTACT = 'menu_crm_contact';
-	public const MENU_ID_CRM_COMPANY = 'menu_crm_company';
-	public const MENU_ID_CRM_STORE_CONTRACTORS = 'menu_crm_store_contractors';
-	public const MENU_ID_CRM_SIGN_COUNTERPARTY = 'menu_crm_counterparty';
-	public const MENU_ID_CRM_SIGN_COUNTERPARTY_CONTACTS = 'menu_crm_counterparty_contacts';
-	public const MENU_ID_CRM_STORE_CONTRACTORS_COMPANIES = 'menu_crm_store_contractors_companies';
-	public const MENU_ID_CRM_STORE_CONTRACTORS_CONTACTS = 'menu_crm_store_contractors_contacts';
-	public const MENU_ID_CRM_CONTACT_CENTER = 'menu_contact_center';
+	/**
+	 * @deprecated consts deprecated,
+	 * @see ControlPanelMenuMapper
+	 */
+	public const MENU_ID_CRM_CLIENT = ControlPanelMenuMapper::MENU_ID_CRM_CLIENT;
+	public const MENU_ID_CRM_CONTACT = ControlPanelMenuMapper::MENU_ID_CRM_CONTACT;
+	public const MENU_ID_CRM_COMPANY = ControlPanelMenuMapper::MENU_ID_CRM_COMPANY;
+	public const MENU_ID_CRM_STORE_CONTRACTORS = ControlPanelMenuMapper::MENU_ID_CRM_STORE_CONTRACTORS;
+	public const MENU_ID_CRM_SIGN_COUNTERPARTY = ControlPanelMenuMapper::MENU_ID_CRM_SIGN_COUNTERPARTY;
+	public const MENU_ID_CRM_SIGN_COUNTERPARTY_CONTACTS = ControlPanelMenuMapper::MENU_ID_CRM_SIGN_COUNTERPARTY_CONTACTS;
+	public const MENU_ID_CRM_STORE_CONTRACTORS_COMPANIES = ControlPanelMenuMapper::MENU_ID_CRM_STORE_CONTRACTORS_COMPANIES;
+	public const MENU_ID_CRM_STORE_CONTRACTORS_CONTACTS = ControlPanelMenuMapper::MENU_ID_CRM_STORE_CONTRACTORS_CONTACTS;
+	public const MENU_ID_CRM_CONTACT_CENTER = ControlPanelMenuMapper::MENU_ID_CRM_CONTACT_CENTER;
+
 	protected $oldMenuStructure;
 
 	protected array $contractorCategories = [];
@@ -33,22 +42,22 @@ class CrmControlPanel extends CBitrixComponent
 		parent::__construct($component);
 
 		$this->contractorCategories = [
-			\CCrmOwnerType::Company => CategoryRepository::getIdByEntityTypeId(
-				\CCrmOwnerType::Company
+			CCrmOwnerType::Company => CategoryRepository::getIdByEntityTypeId(
+				CCrmOwnerType::Company
 			),
-			\CCrmOwnerType::Contact => CategoryRepository::getIdByEntityTypeId(
-				\CCrmOwnerType::Contact
+			CCrmOwnerType::Contact => CategoryRepository::getIdByEntityTypeId(
+				CCrmOwnerType::Contact
 			),
 		];
 
 		$counterPartyCategory = Container::getInstance()
-			->getFactory(\CCrmOwnerType::Contact)
-			->getCategoryByCode(\Bitrix\Crm\Service\Factory\SmartDocument::CONTACT_CATEGORY_CODE)
+			->getFactory(CCrmOwnerType::Contact)
+			->getCategoryByCode(SmartDocument::CONTACT_CATEGORY_CODE)
 		;
 		if ($counterPartyCategory)
 		{
 			$this->counterPartyCategories = [
-				\CCrmOwnerType::Contact => $counterPartyCategory->getId(),
+				CCrmOwnerType::Contact => $counterPartyCategory->getId(),
 			];
 		}
 	}
@@ -71,16 +80,13 @@ class CrmControlPanel extends CBitrixComponent
 			['ID' => 'LEAD'],
 			['ID' => 'DEAL'],
 			[
-				'ID' => 'crm_catalogue',
+				'ID' => ControlPanelMenuMapper::MENU_ID_CRM_CATALOGUE,
 				'TEXT' => Loc::getMessage('CRM_CTRL_PANEL_ITEM_CATALOGUE_STORE_DOCS'),
 				'IS_DISABLED' => $this->isCatalogSectionDisabled(),
-				'SUB_ITEMS' => [
-					['ID' => 'CATALOGUE'],
-					['ID' => 'STORE_DOCUMENTS'],
-				],
+				'SUB_ITEMS' => $this->getCatalogSubItems(),
 			],
 			[
-				'ID' => self::MENU_ID_CRM_CLIENT,
+				'ID' => ControlPanelMenuMapper:: MENU_ID_CRM_CLIENT,
 				'TEXT' => Loc::getMessage('CRM_CTRL_PANEL_ITEM_CLIENTS'),
 				'SUB_ITEMS' => [
 					['ID' => 'CONTACT'],
@@ -91,7 +97,7 @@ class CrmControlPanel extends CBitrixComponent
 				],
 			],
 			[
-				'ID' => 'crm_sales',
+				'ID' => ControlPanelMenuMapper::MENU_ID_CRM_SALES,
 				'TEXT' => Loc::getMessage('CRM_CTRL_PANEL_ITEM_SALES'),
 				'SUB_ITEMS' => [
 					['ID' => 'SMART_INVOICE'],
@@ -102,7 +108,25 @@ class CrmControlPanel extends CBitrixComponent
 				],
 			],
 			[
-				'ID' => 'crm_analytics',
+				'ID' => ControlPanelMenuMapper::MENU_ID_CRM_BI,
+				'TEXT' => Loc::getMessage('CRM_CTRL_PANEL_ITEM_BI'),
+				'URL' => '',
+				'SUB_ITEMS' => [
+					['ID' => 'BI_REPORT_DEALS'],
+					['ID' => 'BI_REPORT_LEADS'],
+					['ID' => 'BI_REPORT_SALES'],
+					['ID' => 'BI_REPORT_SALES_STRUCT'],
+					['ID' => 'BI_REPORT_TELEPHONY'],
+					['IS_DELIMITER' => true],
+					['ID' => 'BI_REPORT_LIST'],
+					['IS_DELIMITER' => true],
+					['ID' => 'BI_REPORT_MARKET'],
+					['ID' => 'BI_REPORT_ORDER'],
+					['ID' => 'BI_REPORT_SETTINGS'],
+				],
+			],
+			[
+				'ID' => ControlPanelMenuMapper::MENU_ID_CRM_ANALYTICS,
 				'TEXT' => Loc::getMessage('CRM_CTRL_PANEL_ITEM_ANALYTICS'),
 				'URL' => '',
 				'SUB_ITEMS' => [
@@ -112,11 +136,11 @@ class CrmControlPanel extends CBitrixComponent
 					['ID' => 'ANALYTICS_DIALOGS'],
 					['ID' => 'CRM_TRACKING', 'SLIDER_MODE' => true],
 					['ID' => 'REPORT'],
-					['ID' => 'ANALYTICS_BI', 'SLIDER_MODE' => true],
+					['ID' => 'ANALYTICS_BI'],
 				],
 			],
 			[
-				'ID' => 'crm_integrations',
+				'ID' => ControlPanelMenuMapper::MENU_ID_CRM_INTEGRATIONS,
 				'TEXT' => Loc::getMessage('CRM_CTRL_PANEL_ITEM_INTEGRATIONS'),
 				'IS_DISABLED' => $this->isOldMenuStructure(),
 				'SUB_ITEMS' => [
@@ -133,9 +157,9 @@ class CrmControlPanel extends CBitrixComponent
 					['ID' => 'DEVOPS', 'SLIDER_MODE' => true],
 				],
 			],
-			['ID' => 'DYNAMIC_ADD'],
+			['ID' => 'DYNAMIC_ITEMS'],
 			[
-				'ID' => 'crm_settings',
+				'ID' => ControlPanelMenuMapper::MENU_ID_CRM_SETTINGS,
 				'TEXT' => Loc::getMessage('CRM_CTRL_PANEL_ITEM_SETTINGS'),
 				'IS_DISABLED' => $this->isOldMenuStructure(),
 				'SUB_ITEMS' => [
@@ -150,7 +174,6 @@ class CrmControlPanel extends CBitrixComponent
 					],
 					['ID' => 'SALES_CENTER_PAYMENT', 'SLIDER_MODE' => true],
 					['ID' => 'SALES_CENTER_DELIVERY', 'SLIDER_MODE' => true],
-					['ID' => 'DYNAMIC_LIST'],
 				],
 			],
 			['ID' => 'RECYCLE_BIN'],
@@ -159,62 +182,6 @@ class CrmControlPanel extends CBitrixComponent
 			['ID' => 'START'],
 			['ID' => 'STREAM'],
 		];
-	}
-
-	private function createMenuItems($mapItems, $standardItems): array
-	{
-		$result = [];
-		foreach ($mapItems as $mapItem)
-		{
-			if (!is_array($mapItem))
-			{
-				continue;
-			}
-
-			$item = $standardItems[$mapItem['ID']] ?? $mapItem;
-			if (!isset($item['NAME']) && !isset($item['TEXT']) && !isset($item['IS_DELIMITER']))
-			{
-				continue;
-			}
-
-			if (empty($mapItem['SUB_ITEMS']) && empty($item['SUB_ITEMS']))
-			{
-				$item['IS_ACTIVE'] = $this->arParams["ACTIVE_ITEM_ID"] === $item['ID'];
-				$item['TEXT'] = $item['TEXT'] ?? $item['NAME'];
-
-				if (isset($mapItem['SLIDER_MODE']) && $mapItem['SLIDER_MODE'] === true)
-				{
-					$item['ON_CLICK'] = 'BX.SidePanel.Instance.open("' . CUtil::JSEscape($item['URL']) . '");';
-					$item['ON_CLICK'] .= 'return false;';
-				}
-
-				if (isset($item['SLIDER_ONLY']) && $item['SLIDER_ONLY'] === true)
-				{
-					$item['URL'] = '';
-				}
-
-				$result[] = $item;
-			}
-			else
-			{
-				$subItems = $this->createMenuItems($mapItem['SUB_ITEMS'] ?? $item['SUB_ITEMS'], $standardItems);
-				if (!empty($subItems))
-				{
-					//$firstSubItem = $subItems[0];
-					$result[] = [
-						'IS_ACTIVE' => $this->arParams["ACTIVE_ITEM_ID"] === $item['ID'],
-						'ID' => $item['ID'],
-						'TEXT' => $item['TEXT'] ?? $item['NAME'],
-						'ITEMS' => $subItems,
-						'IS_DISABLED' => $item['IS_DISABLED'] ?? false,
-						// 'URL' => $item['URL'] ?? $firstSubItem['URL'],
-						// 'ON_CLICK' => $item['ON_CLICK'] ?? $firstSubItem['ON_CLICK'],
-					];
-				}
-			}
-		}
-
-		return $result;
 	}
 
 	protected function createFileMenuItems($items, $depthLevel = 1): array
@@ -226,14 +193,14 @@ class CrmControlPanel extends CBitrixComponent
 
 			$result[] = [
 				$item['NAME'] ?? $item['TEXT'],
-				$item['URL'],
+				$item['URL'] ?? '',
 				[],
 				[
 					'DEPTH_LEVEL' => $depthLevel,
 					'FROM_IBLOCK' => true,
 					'IS_PARENT' => $hasChildren,
 					'onclick' => $item['ON_CLICK'] ?? null,
-				]
+				],
 			];
 
 			if ($hasChildren)
@@ -250,7 +217,7 @@ class CrmControlPanel extends CBitrixComponent
 		$result = [];
 		$routerService = Container::getInstance()->getRouter();
 		$userPermissionsService = Container::getInstance()->getUserPermissions();
-		$factory =  Container::getInstance()->getFactory($entityTypeId);
+		$factory = Container::getInstance()->getFactory($entityTypeId);
 		if (!$factory || !$factory->isCategoriesSupported())
 		{
 			return $result;
@@ -277,7 +244,7 @@ class CrmControlPanel extends CBitrixComponent
 					'CATEGORY_ID' => $categoryId,
 				]
 			);
-			$menuId =  \CCrmOwnerType::ResolveName($entityTypeId) . '_C' . $categoryId;
+			$menuId = CCrmOwnerType::ResolveName($entityTypeId) . '_C' . $categoryId;
 			$actions = [];
 			if ($userPermissionsService->checkAddPermissions($entityTypeId, $categoryId))
 			{
@@ -295,7 +262,7 @@ class CrmControlPanel extends CBitrixComponent
 				'URL' => $routerService->getItemListUrl($entityTypeId, $categoryId)->getLocator(),
 				'COUNTER' => $counter->getValue(),
 				'COUNTER_ID' => $counter->getCode(),
-				'ACTIONS' => $actions
+				'ACTIONS' => $actions,
 			];
 		}
 
@@ -352,6 +319,7 @@ class CrmControlPanel extends CBitrixComponent
 	protected function resolveCounterpartyMenuId($entityTypeId)
 	{
 		$categoryId = $this->counterPartyCategories[$entityTypeId];
+
 		return CCrmComponentHelper::getMenuActiveItemId(
 			CCrmOwnerType::ResolveName($entityTypeId),
 			$categoryId
@@ -371,17 +339,17 @@ class CrmControlPanel extends CBitrixComponent
 	protected function prepareItem(array $item)
 	{
 		$itemActions = isset($item['ACTIONS']) ? [
-			'CLASS' => $item['ACTIONS'][0]['ID'] === 'CREATE' ? 'crm-menu-plus-btn' : '',
-			'URL' => $item['ACTIONS'][0]['URL'],
+			'CLASS' => ($item['ACTIONS'][0]['ID'] ?? null) === 'CREATE' ? 'crm-menu-plus-btn' : '',
+			'URL' => $item['ACTIONS'][0]['URL'] ?? '',
 		] : false;
 
 		unset($item['ACTIONS']);
 
-		$item['TEXT'] = $item['TEXT'] ?? $item['NAME'];
-		$item['IS_ACTIVE'] = $this->arResult['ACTIVE_ITEM_ID'] === $item['ID'];
-		$item['ID'] = $item['MENU_ID'] ?? $item['ID'];
+		$item['TEXT'] = $item['TEXT'] ?? ($item['NAME'] ?? '');
+		$item['IS_ACTIVE'] = $this->arResult['ACTIVE_ITEM_ID'] === ($item['ID'] ?? null);
+		$item['ID'] = $item['MENU_ID'] ?? ($item['ID'] ?? null);
 		$item['SUB_LINK'] = $itemActions;
-		$item['COUNTER'] = (isset($item['COUNTER']) && (int) $item['COUNTER'] > 0) ? $item['COUNTER'] : false;
+		$item['COUNTER'] = (isset($item['COUNTER']) && (int)$item['COUNTER'] > 0) ? $item['COUNTER'] : false;
 		$item['COUNTER_ID'] = $item['COUNTER_ID'] ?? '';
 		$item['IS_LOCKED'] = $item['IS_LOCKED'] ?? false;
 
@@ -426,21 +394,18 @@ class CrmControlPanel extends CBitrixComponent
 		if ($this->isOldMenuStructure())
 		{
 			$menuSettings = $this->getMenuSettings();
-			$storeDocs = 'crm_control_panel_menu_menu_crm_store_docs';
-			$catalog = 'crm_control_panel_menu_menu_crm_catalog';
+			$storeDocs = ControlPanelMenuMapper::getCrmTabMenuIdById('STORE_DOCUMENTS', true); // 'crm_control_panel_menu_menu_crm_store_docs';
+			$catalog = ControlPanelMenuMapper::getCrmTabMenuIdById('CATALOG', true); //'crm_control_panel_menu_menu_crm_catalog';
 			$products = 'crm_control_panel_menu_menu_crm_product';
 
 			$storeDocsHidden =
-				isset($menuSettings[$storeDocs]['isDisabled']) && $menuSettings[$storeDocs]['isDisabled'] === true
-			;
+				isset($menuSettings[$storeDocs]['isDisabled']) && $menuSettings[$storeDocs]['isDisabled'] === true;
 
 			$catalogHidden =
-				isset($menuSettings[$catalog]['isDisabled']) && $menuSettings[$catalog]['isDisabled'] === true
-			;
+				isset($menuSettings[$catalog]['isDisabled']) && $menuSettings[$catalog]['isDisabled'] === true;
 
 			$productsHidden =
-				isset($menuSettings[$products]['isDisabled']) && $menuSettings[$products]['isDisabled'] === true
-			;
+				isset($menuSettings[$products]['isDisabled']) && $menuSettings[$products]['isDisabled'] === true;
 
 			return $storeDocsHidden && ($catalogHidden || $productsHidden);
 		}
@@ -458,13 +423,13 @@ class CrmControlPanel extends CBitrixComponent
 		$this->oldMenuStructure = false;
 		if ($this->isOldPortal())
 		{
-			$option = \CUserOptions::getOption('intranet', 'crm_old_menu_structure', null);
+			$option = CUserOptions::getOption('intranet', 'crm_old_menu_structure', null);
 			if ($option === null)
 			{
 				// First Hit
 				$menuSettings = $this->getMenuSettings();
 				$this->oldMenuStructure = !empty($menuSettings);
-				\CUserOptions::setOption('intranet', 'crm_old_menu_structure', $this->oldMenuStructure ? 'Y' : 'N');
+				CUserOptions::setOption('intranet', 'crm_old_menu_structure', $this->oldMenuStructure ? 'Y' : 'N');
 			}
 			else if ($option === 'Y')
 			{
@@ -473,7 +438,7 @@ class CrmControlPanel extends CBitrixComponent
 				if (empty($menuSettings))
 				{
 					// Old structure was reset
-					\CUserOptions::setOption('intranet', 'crm_old_menu_structure', 'N');
+					CUserOptions::setOption('intranet', 'crm_old_menu_structure', 'N');
 					$this->oldMenuStructure = false;
 				}
 			}
@@ -485,7 +450,7 @@ class CrmControlPanel extends CBitrixComponent
 	protected function getMenuSettings(): array
 	{
 		$menuSettings = [];
-		$userOptions = \CUserOptions::getOption('ui', 'crm_control_panel_menu');
+		$userOptions = CUserOptions::getOption('ui', ControlPanelMenuMapper::CONTROL_PANEL_CODE_NAME);
 		if (is_array($userOptions) && isset($userOptions['settings']) && !empty($userOptions['settings']))
 		{
 			$menuSettings = json_decode($userOptions['settings'], true);
@@ -496,7 +461,7 @@ class CrmControlPanel extends CBitrixComponent
 
 	protected function isOldPortal(): bool
 	{
-		if (\COption::getOptionString('intranet', 'new_portal_structure', 'N') === 'Y')
+		if (COption::getOptionString('intranet', 'new_portal_structure', 'N') === 'Y')
 		{
 			return false;
 		}
@@ -504,7 +469,7 @@ class CrmControlPanel extends CBitrixComponent
 		if (Loader::includeModule('bitrix24'))
 		{
 			$targetTime = strtotime('2022-06-24');
-			$createTime = \CBitrix24::getCreateTime();
+			$createTime = CBitrix24::getCreateTime();
 			if ($createTime && $createTime > $targetTime)
 			{
 				return false;
@@ -512,6 +477,71 @@ class CrmControlPanel extends CBitrixComponent
 		}
 
 		return true;
+	}
+
+	private function createMenuItems($mapItems, $standardItems): array
+	{
+		$result = [];
+		foreach ($mapItems as $mapItem)
+		{
+			if (!is_array($mapItem))
+			{
+				continue;
+			}
+
+			if (
+				class_exists('Bitrix\Intranet\Settings\Tools\ToolsManager')
+				&& isset($mapItem['ID'])
+				&& !Intranet\Settings\Tools\ToolsManager::getInstance()->checkAvailabilityByMenuId($mapItem['ID'])
+			)
+			{
+				continue;
+			}
+
+			$item = $standardItems[$mapItem['ID'] ?? null] ?? $mapItem;
+			if (!isset($item['NAME']) && !isset($item['TEXT']) && !isset($item['IS_DELIMITER']))
+			{
+				continue;
+			}
+
+			if (empty($mapItem['SUB_ITEMS']) && empty($item['SUB_ITEMS']))
+			{
+				$item['IS_ACTIVE'] = $this->arParams["ACTIVE_ITEM_ID"] === ($item['ID'] ?? null);
+				$item['TEXT'] = $item['TEXT'] ?? ($item['NAME'] ?? '');
+
+				if (isset($mapItem['SLIDER_MODE']) && $mapItem['SLIDER_MODE'] === true)
+				{
+					$item['ON_CLICK'] = 'BX.SidePanel.Instance.open("' . CUtil::JSEscape($item['URL']) . '");';
+					$item['ON_CLICK'] .= 'return false;';
+				}
+
+				if (isset($item['SLIDER_ONLY']) && $item['SLIDER_ONLY'] === true)
+				{
+					$item['URL'] = '';
+				}
+
+				$result[] = $item;
+			}
+			else
+			{
+				$subItems = $this->createMenuItems($mapItem['SUB_ITEMS'] ?? $item['SUB_ITEMS'], $standardItems);
+				if (!empty($subItems))
+				{
+					//$firstSubItem = $subItems[0];
+					$result[] = [
+						'IS_ACTIVE' => $this->arParams["ACTIVE_ITEM_ID"] === $item['ID'],
+						'ID' => $item['ID'],
+						'TEXT' => $item['TEXT'] ?? $item['NAME'],
+						'ITEMS' => $subItems,
+						'IS_DISABLED' => $item['IS_DISABLED'] ?? false,
+						// 'URL' => $item['URL'] ?? $firstSubItem['URL'],
+						// 'ON_CLICK' => $item['ON_CLICK'] ?? $firstSubItem['ON_CLICK'],
+					];
+				}
+			}
+		}
+
+		return $result;
 	}
 
 	/**
@@ -522,35 +552,35 @@ class CrmControlPanel extends CBitrixComponent
 		$result = [];
 
 		if (
-			isset($this->contractorCategories[\CCrmOwnerType::Company])
-			|| isset($this->contractorCategories[\CCrmOwnerType::Contact])
+			isset($this->contractorCategories[CCrmOwnerType::Company])
+			|| isset($this->contractorCategories[CCrmOwnerType::Contact])
 		)
 		{
 			$subItems = [];
 
-			if (isset($this->contractorCategories[\CCrmOwnerType::Company]))
+			if (isset($this->contractorCategories[CCrmOwnerType::Company]))
 			{
 				$subItems[] = [
 					'ID' => CCrmComponentHelper::getMenuActiveItemId(
-						CCrmOwnerType::ResolveName(\CCrmOwnerType::Company),
-						$this->contractorCategories[\CCrmOwnerType::Company]
-					)
+						CCrmOwnerType::ResolveName(CCrmOwnerType::Company),
+						$this->contractorCategories[CCrmOwnerType::Company]
+					),
 				];
 			}
 
-			if (isset($this->contractorCategories[\CCrmOwnerType::Contact]))
+			if (isset($this->contractorCategories[CCrmOwnerType::Contact]))
 			{
 				$subItems[] = [
 					'ID' => CCrmComponentHelper::getMenuActiveItemId(
-						CCrmOwnerType::ResolveName(\CCrmOwnerType::Contact),
-						$this->contractorCategories[\CCrmOwnerType::Contact]
-					)
+						CCrmOwnerType::ResolveName(CCrmOwnerType::Contact),
+						$this->contractorCategories[CCrmOwnerType::Contact]
+					),
 				];
 			}
 
 			$result = [
 				[
-					'ID' => self::MENU_ID_CRM_STORE_CONTRACTORS,
+					'ID' => ControlPanelMenuMapper::MENU_ID_CRM_STORE_CONTRACTORS,
 					'TEXT' => Loc::getMessage('CRM_CTRL_PANEL_ITEM_CONTRACTORS'),
 					'SUB_ITEMS' => $subItems,
 				],
@@ -559,6 +589,7 @@ class CrmControlPanel extends CBitrixComponent
 
 		return $result;
 	}
+
 	/**
 	 * @return array|array[]
 	 */
@@ -566,17 +597,37 @@ class CrmControlPanel extends CBitrixComponent
 	{
 		$result = [];
 
-		if (isset($this->counterPartyCategories[\CCrmOwnerType::Contact]))
+		if (isset($this->counterPartyCategories[CCrmOwnerType::Contact]))
 		{
 			$result = [
 				[
-					'ID' => self::MENU_ID_CRM_SIGN_COUNTERPARTY,
+					'ID' => ControlPanelMenuMapper::MENU_ID_CRM_SIGN_COUNTERPARTY,
 					'TEXT' => Loc::getMessage('CRM_CTRL_PANEL_ITEM_SIGN_COUNTERPARTY'),
-					'SUB_ITEMS' => [['ID' => $this->resolveCounterpartyMenuId(\CCrmOwnerType::Contact),]],
+					'SUB_ITEMS' => [['ID' => $this->resolveCounterpartyMenuId(CCrmOwnerType::Contact),]],
 				],
 			];
 		}
 
 		return $result;
+	}
+
+	private function getCatalogSubItems(): array
+	{
+		$items = [
+			['ID' => 'CATALOGUE'],
+		];
+
+		if (Loader::includeModule('catalog'))
+		{
+			$isInventoryManagementEnabled = Catalog\Restriction\ToolAvailabilityManager::getInstance()
+				->checkInventoryManagementAvailability()
+			;
+			if ($isInventoryManagementEnabled)
+			{
+				$items[] = ['ID' => 'STORE_DOCUMENTS'];
+			}
+		}
+
+		return $items;
 	}
 }

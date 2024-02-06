@@ -17,6 +17,7 @@ use Bitrix\Main\UI\PageNavigation;
 use Bitrix\Main\Web\Json;
 use Bitrix\Tasks\Integration\SocialNetwork\Group;
 use Bitrix\Tasks\Internals\Registry\TaskRegistry;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Scrum\Form\EpicForm;
 use Bitrix\Tasks\Scrum\Service\EpicService;
 use Bitrix\Tasks\Scrum\Service\ItemService;
@@ -206,7 +207,6 @@ class Epic extends Controller
 		}
 
 		$inputEpic->setDescription($post['description']);
-		$inputEpic->setCreatedBy($post['createdBy'] ?? $userId);
 		$inputEpic->setModifiedBy($post['modifiedBy'] ?? $userId);
 		$inputEpic->setColor($post['color']);
 
@@ -453,7 +453,7 @@ class Epic extends Controller
 		];
 		if ($completed)
 		{
-			$filter['=STATUS'] = \CTasks::STATE_COMPLETED;
+			$filter['=STATUS'] = Status::COMPLETED;
 		}
 
 		$taskIds = $taskService->getTaskIdsByFilter($filter, $nav);

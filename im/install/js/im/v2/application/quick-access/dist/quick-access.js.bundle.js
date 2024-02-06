@@ -1,7 +1,8 @@
+/* eslint-disable */
 this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
-(function (exports,im_v2_application_core,im_v2_component_quickAccess,im_v2_const) {
+(function (exports,im_v2_application_core,im_v2_component_quickAccess,im_v2_const,im_public) {
 	'use strict';
 
 	var _applicationName = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("applicationName");
@@ -22,33 +23,50 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    });
 	    this.params = params;
 	    this.rootNode = this.params.node || document.createElement('div');
-	    this.initCore().then(() => this.initComponent()).then(() => this.initComplete());
+
+	    // eslint-disable-next-line promise/catch-or-return
+	    this.initCore().then(() => this.initComponent()).then(() => this.initComplete()).then(() => this.checkGetParams());
 	  }
-	  initCore() {
-	    return new Promise(resolve => {
-	      im_v2_application_core.Core.ready().then(controller => {
-	        this.controller = controller;
-	        im_v2_application_core.Core.setApplicationData(im_v2_const.ApplicationName.quickAccess, this.params);
-	        resolve();
-	      });
-	    });
+	  async initCore() {
+	    im_v2_application_core.Core.setApplicationData(this.params);
+	    this.controller = await im_v2_application_core.Core.ready();
+	    return true;
 	  }
-	  initComponent() {
-	    return this.controller.createVue(this, {
+	  async initComponent() {
+	    this.vueInstance = await this.controller.createVue(this, {
 	      name: babelHelpers.classPrivateFieldLooseBase(this, _applicationName)[_applicationName],
 	      el: this.rootNode,
 	      components: {
 	        QuickAccess: im_v2_component_quickAccess.QuickAccess
 	      },
-	      template: `<QuickAccess :compactMode="true"/>`
-	    }).then(vue => {
-	      this.vueInstance = vue;
-	      return Promise.resolve();
+	      template: '<QuickAccess :compactMode="true"/>'
 	    });
+	    return true;
 	  }
 	  initComplete() {
 	    this.inited = true;
 	    this.initPromiseResolver(this);
+	    return Promise.resolve();
+	  }
+	  checkGetParams() {
+	    const urlParams = new URLSearchParams(window.location.search);
+	    if (urlParams.has(im_v2_const.GetParameter.openNotifications)) {
+	      im_public.Messenger.openNotifications();
+	    } else if (urlParams.has(im_v2_const.GetParameter.openHistory)) {
+	      const dialogId = urlParams.get(im_v2_const.GetParameter.openHistory);
+	      im_public.Messenger.openLinesHistory(dialogId);
+	    } else if (urlParams.has(im_v2_const.GetParameter.openLines)) {
+	      const dialogId = urlParams.get(im_v2_const.GetParameter.openLines);
+	      im_public.Messenger.openLines(dialogId);
+	    } else if (urlParams.has(im_v2_const.GetParameter.openChat)) {
+	      const dialogId = urlParams.get(im_v2_const.GetParameter.openChat);
+	      im_public.Messenger.openChat(dialogId);
+	    } else if (urlParams.has(im_v2_const.GetParameter.openSettings)) {
+	      const settingsSection = urlParams.get(im_v2_const.GetParameter.openSettings);
+	      im_public.Messenger.openSettings({
+	        onlyPanel: settingsSection == null ? void 0 : settingsSection.toLowerCase()
+	      });
+	    }
 	  }
 	  ready() {
 	    if (this.inited) {
@@ -60,5 +78,5 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 
 	exports.QuickAccessApplication = QuickAccessApplication;
 
-}((this.BX.Messenger.v2.Application = this.BX.Messenger.v2.Application || {}),BX.Messenger.v2.Application,BX.Messenger.v2.Component,BX.Messenger.v2.Const));
+}((this.BX.Messenger.v2.Application = this.BX.Messenger.v2.Application || {}),BX.Messenger.v2.Application,BX.Messenger.v2.Component,BX.Messenger.v2.Const,BX.Messenger.v2.Lib));
 //# sourceMappingURL=quick-access.js.bundle.js.map

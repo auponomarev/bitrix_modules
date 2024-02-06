@@ -12,7 +12,7 @@ $MESS['M_CRM_TIMELINE_SCHEDULER_TASK_MENU_FULL_TITLE'] = 'Поставить з�
 $MESS['M_CRM_TIMELINE_SCHEDULER_TASK_MENU_TITLE'] = 'Задача';
 $MESS['M_CRM_TIMELINE_SCHEDULER_MAIL_MENU_FULL_TITLE'] = 'Написать письмо';
 $MESS['M_CRM_TIMELINE_SCHEDULER_MAIL_MENU_DISABLED'] = 'Почта не подключена';
-$MESS['M_CRM_TIMELINE_SCHEDULER_MAIL_MENU_TITLE'] = 'Письмо';
+$MESS['M_CRM_TIMELINE_SCHEDULER_MAIL_MENU_TITLE_MSGVER_1'] = 'Письмо';
 $MESS['M_CRM_TIMELINE_SCHEDULER_COMMENT_MENU_FULL_TITLE'] = 'Оставить комментарий';
 $MESS['M_CRM_TIMELINE_SCHEDULER_COMMENT_MENU_TITLE'] = 'Комментарий';
 $MESS['M_CRM_TIMELINE_SCHEDULER_CALL_MENU_TITLE'] = 'Звонок';
@@ -38,7 +38,7 @@ $MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_DEADLINE'] = 'Крайний срок';
 $MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_SAVE'] = 'Сохранить';
 $MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_SAVE_PROGRESS'] = 'Сохранение...';
 
-$MESS['M_CRM_TIMELINE_SCHEDULER_COMMENT_PLACEHOLDER'] = 'Напишите что-нибудь';
+$MESS['M_CRM_TIMELINE_SCHEDULER_COMMENT_PLACEHOLDER_2'] = 'Оставьте комментарий';
 $MESS['M_CRM_TIMELINE_SCHEDULER_COMMENT_CREATE'] = 'Отправить';
 $MESS['M_CRM_TIMELINE_SCHEDULER_COMMENT_CREATE_PROGRESS'] = 'Отправка...';
 
@@ -61,13 +61,13 @@ $MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_BANNER_DESCRIPTION'] = 'Соз
 
 $MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_DEFAULT_TEXT'] = 'Связаться с клиентом';
 
-$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE'] = 'Не предлагать';
-$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE_LEAD'] = 'Не предлагать (для всех лидов)';
-$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE_DEAL'] = 'Не предлагать (для всех сделок воронки)';
-$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE_CONTACT'] = 'Не предлагать (для всех контактов)';
-$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE_COMPANY'] = 'Не предлагать (для всех компаний)';
-$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE_QUOTE'] = 'Не предлагать (для всех предложений)';
-$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE_SMART_INVOICE'] = 'Не предлагать (для всех счетов)';
+$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE2'] = 'Не предлагать';
+$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE2_LEAD'] = 'Не предлагать (для всех лидов)';
+$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE2_DEAL'] = 'Не предлагать (для всех сделок воронки)';
+$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE2_CONTACT'] = 'Не предлагать (для всех контактов)';
+$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE2_COMPANY'] = 'Не предлагать (для всех компаний)';
+$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE2_QUOTE_MSGVER_1'] = 'Не предлагать (для всех предложений)';
+$MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_TITLE2_SMART_INVOICE'] = 'Не предлагать (для всех счетов)';
 
 $MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_DAY'] = 'Сегодня';
 $MESS['M_CRM_TIMELINE_SCHEDULER_ACTIVITY_REMINDER_SKIP_WEEK'] = 'На этой неделе';
@@ -78,3 +78,10 @@ $MESS['M_CRM_TIMELINE_SCHEDULER_DOCUMENT_PREVIOUS_NUMBER_TITLE'] = 'Выбери
 $MESS['M_CRM_TIMELINE_SCHEDULER_DOCUMENT_PREVIOUS_NUMBER_BODY'] = 'У вас уже есть документ по этому шаблону. Создать для нового документа новый номер или использовать предыдущий?';
 $MESS['M_CRM_TIMELINE_SCHEDULER_DOCUMENT_PREVIOUS_NUMBER_OLD_BUTTON'] = 'Использовать предыдущий';
 $MESS['M_CRM_TIMELINE_SCHEDULER_DOCUMENT_PREVIOUS_NUMBER_NEW_BUTTON'] = 'Создать новый';
+
+$MESS['M_CRM_TIMELINE_SCHEDULER_SHARING_TITLE'] = 'Создать встречу с клиентом';
+$MESS['M_CRM_TIMELINE_SCHEDULER_SHARING_MENU_FULL_TITLE'] = 'Отправить слоты';
+$MESS['M_CRM_TIMELINE_SCHEDULER_SHARING_MENU_TITLE'] = 'Слоты';
+
+$MESS['M_CRM_TIMELINE_SCHEDULER_REMINDERS_EMPTY'] = 'нет напоминаний';
+$MESS['M_CRM_TIMELINE_SCHEDULER_REMINDERS_TITLE_MSGVER_1'] = 'Напоминания';

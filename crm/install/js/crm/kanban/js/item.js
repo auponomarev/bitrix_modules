@@ -1,3 +1,5 @@
+/* eslint-disable */
+
 (function() {
 
 "use strict";
@@ -295,65 +297,7 @@ BX.CRM.Kanban.Item.prototype = {
 			}
 		}
 
-		BX.Dom.clean(this.lastActivityTime);
-		BX.Dom.clean(this.lastActivityBy);
-		const lastActivity = data.lastActivity;
-		if (BX.Type.isPlainObject(lastActivity) && BX.CRM.Kanban.Restriction.Instance.isLastActivityInfoInKanbanItemAvailable())
-		{
-			const timestamp = BX.Text.toInteger(lastActivity.timestamp);
-			if (timestamp > 0)
-			{
-				const userNow = BX.Crm.DateTime.Factory.getUserNow();
-				const userNowTimestamp = Math.round(userNow.getTime() / 1000);
-
-				const ago = (
-					userNowTimestamp - timestamp <= 60
-						? BX.Text.encode(BX.Loc.getMessage('CRM_KANBAN_JUST_NOW'))
-						: this.getFormattedLastActiveDateTime(timestamp, userNowTimestamp)
-				);
-
-				BX.Dom.append(
-					BX.Tag.render`<span class="crm-kanban-item-last-activity-time-ago">${ago}</span>`,
-					this.lastActivityTime,
-				);
-			}
-
-			const lastActivityBy = lastActivity.user;
-			if (BX.Type.isPlainObject(lastActivityBy))
-			{
-				let pictureStyle = '';
-				if (BX.Type.isStringFilled(lastActivityBy.picture))
-				{
-					const currentUrl = new BX.Uri(window.location.href);
-					const pictureUrl = new BX.Uri(lastActivityBy.picture);
-
-					if (
-						//relative url
-						pictureUrl.getHost() === ''
-						|| currentUrl.getHost() === pictureUrl.getHost()
-					)
-					{
-						pictureStyle = `style="background-image: url(${encodeURI(BX.Text.encode(pictureUrl.toString()))})"`;
-					}
-				}
-
-				let href = '#';
-				if (BX.Type.isStringFilled(lastActivityBy.link) && lastActivityBy.link.startsWith('/'))
-				{
-					href = lastActivityBy.link;
-				}
-
-				BX.Dom.append(
-					BX.Tag.render`<a
- 						class="crm-kanban-item-last-activity-by-userpic"
- 						href="${BX.Text.encode(href)}"
- 						bx-tooltip-user-id="${BX.Text.toInteger(lastActivityBy.id)}"
-						${pictureStyle}></a>`
-					,
-					this.lastActivityBy
-				);
-			}
-		}
+		this.appendLastActivity(data);
 
 		if (this.needRenderFields())
 		{
@@ -367,6 +311,87 @@ BX.CRM.Kanban.Item.prototype = {
 		layout = this.container;
 
 		return layout;
+	},
+
+	appendLastActivity: function(data)
+	{
+		BX.Dom.clean(this.lastActivityTime);
+		BX.Dom.clean(this.lastActivityBy);
+
+		const lastActivity = data.lastActivity;
+		if (
+			!BX.Type.isPlainObject(lastActivity)
+			|| !BX.CRM.Kanban.Restriction.Instance.isLastActivityInfoInKanbanItemAvailable()
+		)
+		{
+			return;
+		}
+
+		this.appendLastActivityTime(lastActivity);
+		this.appendLastActivityUser(lastActivity);
+	},
+
+	appendLastActivityTime: function(lastActivity)
+	{
+		const timestamp = BX.Text.toInteger(lastActivity.timestamp);
+		if (timestamp <= 0)
+		{
+			return;
+		}
+
+		const serverNow = BX.Crm.DateTime.Factory.getServerNow();
+		const serverNowTimestamp = Math.round(serverNow.getTime() / 1000);
+
+		const timestampInServerTimeZone = Math.round(
+			BX.Crm.DateTime.Factory.createFromTimestampInServerTimezone(timestamp).getTime() / 1000
+		);
+
+		const ago = (
+			serverNowTimestamp - timestampInServerTimeZone <= 60
+				? BX.Text.encode(BX.Loc.getMessage('CRM_KANBAN_JUST_NOW'))
+				: this.getFormattedLastActiveDateTime(timestampInServerTimeZone, serverNowTimestamp)
+		);
+
+		const timeAgo = BX.Tag.render`
+			<span class="crm-kanban-item-last-activity-time-ago">${ago}</span>
+		`;
+
+		BX.Dom.append(timeAgo, this.lastActivityTime);
+	},
+
+	appendLastActivityUser: function(lastActivity)
+	{
+		const lastActivityBy = lastActivity.user;
+		if (!BX.Type.isPlainObject(lastActivityBy))
+		{
+			return;
+		}
+
+		let pictureStyle = '';
+		if (BX.Type.isStringFilled(lastActivityBy.picture))
+		{
+			const pictureUrl = new BX.Uri(lastActivityBy.picture);
+			const backgroundUrl = encodeURI(BX.Text.encode(pictureUrl.toString()));
+
+			pictureStyle = `style="background-image: url(${backgroundUrl})"`;
+		}
+
+		const hasLink = (
+			BX.Type.isStringFilled(lastActivityBy.link)
+			&& lastActivityBy.link.startsWith('/')
+		);
+		const href = (hasLink ? lastActivityBy.link : '#');
+
+		const userPic = BX.Tag.render`
+			<a
+				class="crm-kanban-item-last-activity-by-userpic"
+				href="${BX.Text.encode(href)}"
+			 	bx-tooltip-user-id="${BX.Text.toInteger(lastActivityBy.id)}"
+				${pictureStyle}
+			></a>
+		`;
+
+		BX.Dom.append(userPic, this.lastActivityBy);
 	},
 
 	getFormattedLastActiveDateTime: function(timestamp, userNow)
@@ -385,8 +410,8 @@ BX.CRM.Kanban.Item.prototype = {
 		const formattedDateTime = BX.Main.DateTimeFormat.format(
 			[
 				['i', 'idiff'],
-				['yesterday', 'yesterday, ' + shortTimeFormat],
-				['today', 'today, ' + shortTimeFormat],
+				['yesterday', `yesterday, ${shortTimeFormat}`],
+				['today', `today ${shortTimeFormat}`],
 				['-', defaultFormat],
 			],
 			timestamp,
@@ -395,7 +420,7 @@ BX.CRM.Kanban.Item.prototype = {
 
 		return formattedDateTime
 			.replaceAll('\\', '')
-			.replace(/(^|\s)(.)/g, firstLetter => firstLetter.toLocaleUpperCase())
+			.replaceAll(/(^|\s)(.)/g, (firstLetter) => firstLetter.toLocaleUpperCase())
 		;
 	},
 
@@ -526,6 +551,11 @@ BX.CRM.Kanban.Item.prototype = {
 						? this.data.fields[i].value.join(delimiter)
 						: this.data.fields[i].value
 					;
+
+					if (params['html'].includes('<b>'))
+					{
+						params.props.className = params.props.className + ' --normal-weight';
+					}
 				}
 				else
 				{
@@ -1253,7 +1283,8 @@ BX.CRM.Kanban.Item.prototype = {
 	getActivityMessage: function(type) {
 		const content = BX.create("span");
 		const typeTranslateCode = /DYNAMIC_(\d+)/.test(type) ? 'DYNAMIC' : type;
-		content.innerHTML = BX.message("CRM_KANBAN_ACTIVITY_CHANGE_" + typeTranslateCode);
+		content.innerHTML = BX.message(`CRM_KANBAN_ACTIVITY_CHANGE_${typeTranslateCode}_MSGVER_1`)
+			|| BX.message(`CRM_KANBAN_ACTIVITY_CHANGE_${typeTranslateCode}_MSGVER_2`);
 
 		const eventLink = content.querySelector(".crm-kanban-item-activity-link");
 		BX.bind(eventLink, "click", function() {
@@ -1549,14 +1580,26 @@ BX.CRM.Kanban.Item.prototype = {
 		}
 		else if (item.type === "task")
 		{
-			if (typeof window["taskIFramePopup"] !== "undefined")
+			const taskData = {
+				UF_CRM_TASK: [BX.CrmOwnerTypeAbbr.resolve(gridData.entityType) + "_" + this.getId()],
+				TITLE: "CRM: ",
+				TAGS: "crm"
+			};
+
+			let taskCreatePath = BX.message("CRM_TASK_CREATION_PATH");
+			taskCreatePath = taskCreatePath.replace("#user_id#", BX.message("USER_ID"));
+			taskCreatePath = BX.util.add_url_param(
+				taskCreatePath,
+				taskData
+			);
+
+			if (BX.SidePanel)
 			{
-				var taskData = {
-					UF_CRM_TASK: [BX.CrmOwnerTypeAbbr.resolve(gridData.entityType) + "_" + this.getId()],
-					TITLE: "CRM: ",
-					TAGS: "crm"
-				};
-				window["taskIFramePopup"].add(taskData);
+				BX.SidePanel.Instance.open(taskCreatePath);
+			}
+			else
+			{
+				window.top.location.href = taskCreatePath;
 			}
 		}
 		else if (item.type === "visit")
@@ -1631,12 +1674,15 @@ BX.CRM.Kanban.Item.prototype = {
 				this.disabledItem();
 			}
 
+			const pingSettings = this.getData().pingSettings || this.getGridData().pingSettings;
+
 			if (!this.activityAddingPopup)
 			{
 				this.activityAddingPopup = new BX.Crm.Activity.AddingPopup(
 					this.getGridData().entityTypeInt,
 					id,
 					this.getCurrentUser(),
+					pingSettings,
 					{
 						events: {
 							onSave: function() {
@@ -1748,76 +1794,160 @@ BX.CRM.Kanban.Item.prototype = {
 		}
 	},
 
-	setActivityExistInnerHtml: function()
+	/**
+	 * Description what the counter fields mean you can see
+	 * at crm/lib/kanban/entityactivitycounter.php::appendToEntityItems
+	 */
+	setActivityExistInnerHtml()
 	{
 		if (this.activityExist !== undefined)
 		{
-			var data = this.getData();
-			var column = this.getColumn();
-			var columnData = column.getData();
+			const data = this.getData();
+			const column = this.getColumn();
+			const columnData = column.getData();
 
 			if (columnData.type !== 'PROGRESS')
 			{
 				return;
 			}
 
-			var html = '';
-
 			this.activityExist.classList.remove(...this.activityExist.classList);
 			this.activityExist.classList.add('crm-kanban-item-activity');
 
 			const userId = this.getGrid().getData().userId;
 
-			if (userId !== BX.prop.getNumber(this.data, 'assignedBy', 0))
-			{
-				html = this.getActivityCounterHtml(data.activityCounterTotal);
-				if (data.activityProgress && !data.activityCounterTotal)
-				{
-					html += this.getActivitiesIndicatorHtml(data, userId);
-				}
+			const errorCounterByActivityResponsible = this.getGrid().getData().showErrorCounterByActivityResponsible || false;
 
-				this.activityExist.classList.add(this.itemActivityZeroClass);
-			}
-			else
-			{
-				if (data.activityErrorTotal && data.activityIncomingTotal)
-				{
-					html = this.getActivityCounterHtml(
-						data.activityCounterTotal,
-						'crm-kanban-item-activity-all-counters'
-					);
-				}
-				else if (data.activityErrorTotal)
-				{
-					html = this.getActivityCounterHtml(
-						data.activityErrorTotal,
-						'crm-kanban-item-activity-deadline-counter'
-					);
-				}
-				else if (data.activityIncomingTotal)
-				{
-					html = this.getActivityCounterHtml(
-						data.activityIncomingTotal,
-						'crm-kanban-item-activity-incoming-counter'
-					);
-				}
-				else
-				{
-					html = this.getActivityCounterHtml(0);
-					this.activityExist.classList.add(this.itemActivityZeroClass);
+			const html = errorCounterByActivityResponsible
+				? this.makeCounterHtmlByActivityResponsible(data, userId)
+				: this.makeCounterHtmlByEntityResponsible(data, userId);
 
-					if (data.activityProgress && !data.activityCounterTotal)
-					{
-						html += this.getActivitiesIndicatorHtml(data, userId);
-					}
-				}
-			}
-
-			if (html.length)
+			if (html.length > 0)
 			{
 				this.activityExist.innerHTML = html;
 			}
 		}
+	},
+
+	makeCounterHtmlByActivityResponsible(data, userId)
+	{
+		let html = '';
+
+		const userActStat = data.activitiesByUser[userId] || {};
+
+		const userActivityError = userActStat.activityError || 0;
+		const userActivityIncoming = userActStat.incoming || 0;
+		const userActivityProgress = userActStat.activityProgress || 0;
+		const userActivityCounterTotal = userActStat.activityCounterTotal || 0;
+
+		if (userActivityIncoming > 0 && userActivityError > 0)
+		{
+			html = this.getActivityCounterHtml(
+				userActivityCounterTotal,
+				'crm-kanban-item-activity-all-counters',
+			);
+		}
+		else if (userActivityError > 0)
+		{
+			html = this.getActivityCounterHtml(
+				userActivityError,
+				'crm-kanban-item-activity-deadline-counter',
+			);
+		}
+		else if (userActivityIncoming > 0)
+		{
+			html = this.getActivityCounterHtml(
+				userActivityIncoming,
+				'crm-kanban-item-activity-incoming-counter',
+			);
+		}
+		else if (userActivityProgress > 0)
+		{
+			html = this.getActivityCounterHtml(0);
+			this.activityExist.classList.add(this.itemActivityZeroClass);
+			html += '<span class="crm-kanban-item-activity-indicator"></span>';
+		}
+		else
+		{
+			if (data.activityCounterTotal > 0)
+			{
+				html = this.getActivityCounterHtml(data.activityCounterTotal);
+			}
+			else
+			{
+				html = this.getActivityCounterHtml(0);
+				html += '<span class="crm-kanban-item-activity-indicator crm-kanban-item-activity-indicator--grey"></span>';
+			}
+			this.activityExist.classList.add(this.itemActivityZeroClass);
+		}
+
+		return html;
+	},
+
+	makeCounterHtmlByEntityResponsible(data, userId)
+	{
+		let html = '';
+		const isCurrentUserResponsibleToElement = userId === BX.prop.getNumber(this.data, 'assignedBy', 0);
+
+		const activityProgress = data.activityProgress || 0;
+		const activityError = data.activityError || 0;
+		const activityIncomingTotal = data.activityIncomingTotal || 0;
+		const activityCounterTotal = data.activityCounterTotal || 0;
+
+		if (isCurrentUserResponsibleToElement)
+		{
+			if (activityIncomingTotal > 0 && activityError > 0)
+			{
+				html = this.getActivityCounterHtml(
+					activityCounterTotal,
+					'crm-kanban-item-activity-all-counters',
+				);
+			}
+			else if (activityError > 0)
+			{
+				html = this.getActivityCounterHtml(
+					activityError,
+					'crm-kanban-item-activity-deadline-counter',
+				);
+			}
+			else if (activityIncomingTotal > 0)
+			{
+				html = this.getActivityCounterHtml(
+					activityIncomingTotal,
+					'crm-kanban-item-activity-incoming-counter',
+				);
+			}
+			else if (activityProgress > 0)
+			{
+				html = this.getActivityCounterHtml(0);
+				this.activityExist.classList.add(this.itemActivityZeroClass);
+				html += '<span class="crm-kanban-item-activity-indicator"></span>';
+			}
+			else
+			{
+				html = this.getActivityCounterHtml(0);
+				this.activityExist.classList.add(this.itemActivityZeroClass);
+			}
+		}
+		else
+		{
+			if (activityCounterTotal > 0)
+			{
+				html = this.getActivityCounterHtml(data.activityCounterTotal);
+			}
+			else if (activityProgress > 0)
+			{
+				html = this.getActivityCounterHtml(0);
+				html += '<span class="crm-kanban-item-activity-indicator crm-kanban-item-activity-indicator--grey"></span>';
+			}
+			else
+			{
+				html = this.getActivityCounterHtml(0);
+			}
+			this.activityExist.classList.add(this.itemActivityZeroClass);
+		}
+
+		return html;
 	},
 
 	getActivityCounterHtml(value, additionalClass = '')
@@ -1834,7 +1964,9 @@ BX.CRM.Kanban.Item.prototype = {
 
 		return `
 			<span class="crm-kanban-item-activity-counter ${additionalClass}">
+				<span class="item-activity-counter__before"></span>
 				${value}
+				<span class="item-activity-counter__after"></span>
 			</span>
 		`;
 	},

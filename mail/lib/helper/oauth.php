@@ -4,13 +4,23 @@ namespace Bitrix\Mail\Helper;
 
 use Bitrix\Main;
 use Bitrix\Mail;
+use Bitrix\Main\Web\Uri;
+use Bitrix\Mail\Helper\OAuth\UserData;
+
 
 abstract class OAuth
 {
 
+	/**
+	 * @var \CSocServOAuthTransport
+	 */
 	protected $oauthEntity;
 
 	protected $service, $storedUid;
+
+	public const WEB_TYPE = 'web';
+	public const MOBILE_TYPE = 'mobile';
+	protected UserData $publicUserData;
 
 	/**
 	 * Returns the list of supported services
@@ -41,7 +51,7 @@ abstract class OAuth
 	 * @param string $service Service name.
 	 * @return \Bitrix\Mail\Helper\OAuth|false
 	 */
-	public static function getInstance($service = null)
+	public static function getInstance($service = null): bool|OAuth
 	{
 		if (get_called_class() != get_class())
 		{
@@ -186,9 +196,11 @@ abstract class OAuth
 	 * Returns token by packed metadata
 	 *
 	 * @param string $meta Packed metadata.
+	 * @param int $expireGapSeconds Gap needed for using token, to ensure when we use token it still alive
+	 *
 	 * @return string|null
 	 */
-	public static function getTokenByMeta($meta)
+	public static function getTokenByMeta($meta, int $expireGapSeconds = 10)
 	{
 		if ($meta = static::parseMeta($meta))
 		{
@@ -196,7 +208,7 @@ abstract class OAuth
 			{
 				if ($oauthHelper = self::getInstance($meta['service']))
 				{
-					return $oauthHelper->getStoredToken($meta['key']) ?: false;
+					return $oauthHelper->getStoredToken($meta['key'], $expireGapSeconds) ?: false;
 				}
 			}
 			else if ('oauth' == $meta['type'])
@@ -266,13 +278,14 @@ abstract class OAuth
 	 */
 	public function getRedirect(bool $final = true): string
 	{
-		if(isModuleInstalled('bitrix24') && !$final)
+		if (isModuleInstalled('bitrix24') && defined('BX24_HOST_NAME') && !$final)
 		{
 			return $this->getControllerUrl() . '/redirect.php';
 		}
 		else
 		{
-			return Main\Engine\UrlManager::getInstance()->getHostUrl().'/bitrix/tools/mail_oauth.php';
+			$uri = new Uri(Main\Engine\UrlManager::getInstance()->getHostUrl().'/bitrix/tools/mail_oauth.php');
+			return $uri->getLocator();
 		}
 	}
 
@@ -281,11 +294,11 @@ abstract class OAuth
 	 *
 	 * @return string
 	 */
-	public function getUrl()
+	public function getUrl(): string
 	{
 		global $APPLICATION;
 
-		if (isModuleInstalled('bitrix24'))
+		if (isModuleInstalled('bitrix24') && defined('BX24_HOST_NAME'))
 		{
 			$state = sprintf(
 				'%s?%s',
@@ -333,9 +346,11 @@ abstract class OAuth
 	 * Returns token by instance UID
 	 *
 	 * @param string $uid Instance UID.
+	 * @param int $expireGapSeconds Gap needed for using token, to ensure when we use token it still alive
+	 *
 	 * @return string|null
 	 */
-	public function getStoredToken($uid = null)
+	public function getStoredToken($uid = null, int $expireGapSeconds = 10)
 	{
 		$token = null;
 
@@ -350,8 +365,9 @@ abstract class OAuth
 		{
 			$this->oauthEntity->setToken($token = $item['TOKEN']);
 			$this->oauthEntity->setRefreshToken($item['REFRESH_TOKEN']);
+			$expireThreshold = time() + $expireGapSeconds;
 
-			if (empty($token) || $item['TOKEN_EXPIRES'] > 0 && $item['TOKEN_EXPIRES'] < time())
+			if (empty($token) || $item['TOKEN_EXPIRES'] > 0 && $item['TOKEN_EXPIRES'] < $expireThreshold)
 			{
 				$this->oauthEntity->setToken(null);
 
@@ -445,13 +461,7 @@ abstract class OAuth
 		throw new Main\ObjectException('abstract');
 	}
 
-	/**
-	 * Handles service response
-	 *
-	 * @param array $state Response data.
-	 * @return void
-	 */
-	public function handleResponse($state)
+    public function saveResponse($state): bool
 	{
 		$this->storedUid = $state['uid'];
 
@@ -466,12 +476,12 @@ abstract class OAuth
 
 			if ($userData = $this->getUserData(false))
 			{
-				$fields = array(
+				$fields = [
 					'UID' => $this->getStoredUid(),
 					'TOKEN' => $userData['__data']['access_token'],
 					'REFRESH_TOKEN' => $userData['__data']['refresh_token'],
 					'TOKEN_EXPIRES' => $userData['__data']['expires_in'],
-				);
+				];
 
 				if (empty($item))
 				{
@@ -482,42 +492,91 @@ abstract class OAuth
 					Mail\Internals\OAuthTable::update($item['ID'], $fields);
 				}
 
-				if(isset($userData['__data']['emailIsIntended']))
+				$userDataObject = new UserData(
+					(string) $userData['email'],
+					(string) $userData['first_name'],
+					(string) $userData['last_name'],
+					(string) $userData['full_name'],
+					(string) $userData['image']
+				);
+
+				if (isset($userData['__data']['emailIsIntended']))
 				{
-					$userData['emailIsIntended'] = $userData['__data']['emailIsIntended'];
+					$userDataObject->setEmailIsIntended((bool)$userData['__data']['emailIsIntended']);
 				}
 				else
 				{
-					$userData['emailIsIntended'] = false;
+					$userDataObject->setEmailIsIntended(false);
 				}
 
-				unset($userData['__data']);
+				if (isset($userData['__data']['userPrincipalName']))
+				{
+					$userDataObject->setUserPrincipalName((string)$userData['__data']['userPrincipalName']);
+				}
 
+				$this->setPublicUserData($userDataObject);
+
+				return true;
+			}
+		}
+
+        return false;
+	}
+
+	protected function setPublicUserData(UserData $userData): void
+	{
+		$this->publicUserData = $userData;
+	}
+
+	public function getPublicUserData(): UserData
+	{
+		return $this->publicUserData;
+	}
+
+	/**
+	 * Handles service response
+	 *
+	 * @param array $state Response data.
+	 * @return void
+	 */
+	public function handleResponse(array $state, $context = self::WEB_TYPE): void
+	{
+        if ($this->saveResponse($state))
+        {
+			if ($context === self::WEB_TYPE)
+			{
 				?>
 
 				<script type="text/javascript">
 
-				targetWindow = window.opener ? window.opener : window;
+					targetWindow = window.opener ? window.opener : window;
 
-				targetWindow.BX.onCustomEvent(
-					'OnMailOAuthBCompleted',
-					[
-						'<?=\CUtil::jsEscape($this->getStoredUid()) ?>',
-						'<?=\CUtil::jsEscape($this->getUrl()) ?>',
-						<?=Main\Web\Json::encode($userData) ?>
-					]
-				);
+					targetWindow.BX.onCustomEvent(
+						'OnMailOAuthBCompleted',
+						[
+							'<?=\CUtil::jsEscape($this->getStoredUid()) ?>',
+							'<?=\CUtil::jsEscape($this->getUrl()) ?>',
+							<?=$this->getPublicUserData()->getJson() ?>
+						]
+					);
 
-				if (targetWindow !== window)
-				{
-					window.close();
-				}
+					if (targetWindow !== window)
+					{
+						window.close();
+					}
 
 				</script>
 
 				<?
 			}
-		}
-	}
-
+			else if ($context === self::MOBILE_TYPE)
+			{
+				$params = http_build_query([
+					'storedUid' => \CUtil::jsEscape($this->getStoredUid()),
+					'email' => $this->getPublicUserData()->getEmail(),
+				]);
+				header('Location: bitrix24://?'.$params);
+			}
+        }
+    }
 }

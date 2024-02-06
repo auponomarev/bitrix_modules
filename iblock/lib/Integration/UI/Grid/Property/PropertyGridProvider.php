@@ -5,7 +5,9 @@ namespace Bitrix\Iblock\Integration\UI\Grid\Property;
 use Bitrix\Iblock\Helpers\Admin\Property;
 use Bitrix\Iblock\Integration\UI\Grid\General\BaseProvider;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\Text\HtmlFilter;
 use Bitrix\Main\Type\Collection;
+
 use CIBlockProperty;
 
 class PropertyGridProvider extends BaseProvider
@@ -226,5 +228,22 @@ class PropertyGridProvider extends BaseProvider
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Prepare row.
+	 *
+	 * @param array $rawRow
+	 *
+	 * @return array
+	 */
+	public function prepareRow(array $rawRow): array
+	{
+		if (isset($rawRow['NAME']))
+		{
+			$rawRow['NAME'] = HtmlFilter::encode($rawRow['NAME']);
+		}
+
+		return parent::prepareRow($rawRow);
 	}
 }

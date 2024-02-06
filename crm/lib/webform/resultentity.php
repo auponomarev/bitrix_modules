@@ -20,6 +20,7 @@ use Bitrix\Crm\Order\TradingPlatform;
 use Bitrix\Main;
 use Bitrix\Main\Config\Option;
 use Bitrix\Main\Context;
+use Bitrix\Main\Event;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Crm\WebForm\Internals\ResultEntityTable;
@@ -672,13 +673,17 @@ class ResultEntity
 			if($isEntityDynamic)
 			{
 				$entityFields['WEBFORM_ID'] = $this->formId;
-				$dynamicFactory = Crm\Service\Container::getInstance()->getFactory(\CCrmOwnerType::resolveID($entityName));
+				$dynamicFactory = Crm\Service\Container::getInstance()->getFactory($entityTypeId);
 				$dynamicItem = $dynamicFactory->createItem();
 				$dynamicItem->setFromCompatibleData($entityFields);
 				if (empty($entityFields['STAGE_ID']) && !empty($entityFields['CATEGORY_ID']))
 				{
 					$dynamicStageId = $dynamicFactory->getStages($entityFields['CATEGORY_ID'])->getStatusIdList()[0] ?? null;
-					if ($dynamicStageId)
+					if (
+						$dynamicStageId
+						&& $dynamicFactory->isStagesEnabled()
+						&& $dynamicFactory->isCategoriesEnabled()
+					)
 					{
 						$dynamicItem->setStageId($dynamicStageId);
 					}
@@ -1030,7 +1035,7 @@ class ResultEntity
 			}
 		}
 
-		$builder = Crm\Order\Builder\Factory::createDefaultBuilder();
+		$builder = Crm\Order\Builder\Factory::createBuilderForPayment();
 
 		try
 		{
@@ -1146,28 +1151,6 @@ class ResultEntity
 			}
 		}
 
-		$shipmentCollection = $order->getShipmentCollection();
-		$shipment = $shipmentCollection->getNotSystemItems()->current();
-		if (!$shipment)
-		{
-			$delivery = Sale\Delivery\Services\Manager::getObjectById(
-				$formData['SHIPMENT']['DELIVERY_ID'] ?? EmptyDeliveryService::getEmptyDeliveryServiceId()
-			);
-
-			/**
-			 * @var Shipment $shipment
-			 */
-			$shipment = $shipmentCollection->createItem($delivery);
-			$shipment->setField('ALLOW_DELIVERY', 'Y');
-
-			$shipmentItems = $shipment->getShipmentItemCollection();
-			foreach ($order->getBasket() as $basketItem)
-			{
-				$shipmentItem = $shipmentItems->createItem($basketItem);
-				$shipmentItem->setQuantity($basketItem->getQuantity());
-			}
-		}
-
 		if ($order->isChanged())
 		{
 			$result = $order->save();
@@ -1238,14 +1221,7 @@ class ResultEntity
 		}
 
 		$formData = [
-			'PRODUCT' => [],
 			'RESPONSIBLE_ID' => $this->assignedById,
-			'SHIPMENT' => [
-				[
-					'DELIVERY_ID' => EmptyDeliveryService::getEmptyDeliveryServiceId(),
-					'ALLOW_DELIVERY' => 'Y',
-				]
-			]
 		];
 
 		$paySystem = $this->getDefaultOrderPaySystem();
@@ -1536,6 +1512,18 @@ class ResultEntity
 				$entity['ENTITY_TYPE_ID'],
 				$entity['ENTITY_ID']
 			);
+
+			$event = new Event(
+				'crm',
+				'onGetAnalyticsAfterAppendEntity',
+				[
+					'trace' => $this->trace,
+					'entityType' => $entity['ENTITY_TYPE_ID'],
+					'entityId' => $entity['ENTITY_ID'],
+				]
+			);
+
+			$event->send();
 		}
 	}
 
@@ -1747,10 +1735,18 @@ class ResultEntity
 					);
 				}
 
-				if (isset($mainEntityLink) && isset($mainEntityName))
+				if (
+					isset($mainEntityLink)
+					&& isset($mainEntityName)
+					&& is_string($mainEntityName)
+				)
 				{
-					$imNotifyMessage .= "\n";
-					$imNotifyMessage .= $this->getEntityLink($mainEntityLink, $mainEntityName);
+					$additionalEntityInfo = $this->getAdditionalEntityInfo($mainEntityLink, $mainEntityName);
+					if ($additionalEntityInfo !== null)
+					{
+						$imNotifyMessage .= "\n";
+						$imNotifyMessage .= $additionalEntityInfo;
+					}
 				}
 
 				$imNotifyMessageOut = $imNotifyMessage . " (". $serverName . $url . ")";
@@ -2405,9 +2401,11 @@ class ResultEntity
 	}
 
 	/**
+	 * @param string $link
+	 * @param string $entityName
 	 * @return string|null
 	 */
-	private function getEntityLink(string $link, string $entityName): string
+	private function getAdditionalEntityInfo(string $link, string $entityName): ?string
 	{
 		return Loc::getMessage('CRM_WEBFORM_RESULT_ENTITY_NOTIFY_MESSAGE_LINK', [
 			'#ENTITY_LINK#' => '<a href="' . $link . '">' . htmlspecialcharsbx($entityName) . '</a>',

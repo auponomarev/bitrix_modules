@@ -700,6 +700,17 @@
 			this.reloadTable('POST', data);
 		},
 
+		sendRowAction: function(action, data)
+		{
+			if(!BX.type.isPlainObject(data))
+			{
+				data = {};
+			}
+
+			data[this.getActionKey()] = action;
+
+			this.reloadTable('POST', data);
+		},
 
 		/**
 		 * @return {?BX.Grid.ActionPanel}
@@ -1095,8 +1106,18 @@
 			return rows;
 		},
 
+		hasEmptyRow(): boolean
+		{
+			return this.getAllRows().some((row) => BX.hasClass(row, 'main-grid-row-empty'));
+		},
+
 		initStickedColumns: function()
 		{
+			if (this.hasEmptyRow())
+			{
+				return;
+			}
+
 			[].slice.call(this.getAllRows()[0].children).forEach(function(cell, index) {
 				if (cell.classList.contains('main-grid-sticked-column'))
 				{

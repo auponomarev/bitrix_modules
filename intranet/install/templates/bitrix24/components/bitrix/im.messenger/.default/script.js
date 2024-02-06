@@ -62,6 +62,10 @@ BX.namespace("BX.Intranet.Bitrix24.ImBar");
 			BX.Messenger.Public.openNotifications();
 		});
 
+		BX.bind(BX("bx-im-bar-copilot"), "click", function(){
+			BX.Messenger.Public.openCopilot();
+		});
+
 		BX.bind(BX("bx-im-bar-search"), "click", function(){
 			BX.Messenger.Public.openRecentSearch();
 		});
@@ -72,7 +76,9 @@ BX.namespace("BX.Intranet.Bitrix24.ImBar");
 
 		BX.bind(BX("bx-im-btn-call"), "click", function(e){
 			if (typeof(BXIM) == 'undefined') return false;
-			BXIM.webrtc.openKeyPad(e);
+			BXIM.webrtc.openKeyPad({
+				bindElement: BX("bx-im-btn-call")
+			});
 		});
 
 		BX.bind(window, "scroll", function(){

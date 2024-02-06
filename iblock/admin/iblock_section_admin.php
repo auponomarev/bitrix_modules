@@ -278,7 +278,7 @@ $filterFields[] = array(
 );
 $filterFields[] = array(
 	"id" => "EXTERNAL_ID",
-	"name" => GetMessage("IBSEC_A_XML_ID"),
+	"name" => GetMessage("IBSEC_A_XML_ID_MSGVER_1"),
 	"filterable" => ""
 );
 
@@ -593,7 +593,7 @@ $arHeaders = array(
 	),
 	array(
 		"id" => "XML_ID",
-		"content" => GetMessage("IBSEC_A_XML_ID"),
+		"content" => GetMessage("IBSEC_A_XML_ID_MSGVER_1"),
 		"sort" => "xml_id",
 	),
 	array(
@@ -769,7 +769,8 @@ while ($arRes = $rsData->Fetch())
 	$USER_FIELD_MANAGER->AddUserFields($entity_id, $arRes, $row);
 
 	$row->AddViewField("ID", '<a href="'.$edit_url.'" title="'.GetMessage("IBSEC_A_EDIT").'">'.$arRes["ID"].'</a>');
-	$row->AddViewField("NAME", '<a href="'.CHTTP::URN2URI($sec_list_url).'" '.($useTree ? 'style="padding-left:'.(($arRes["DEPTH_LEVEL"] - 1) * 22).'px"' : '').' class="adm-list-table-icon-link" title="'.GetMessage("IBSEC_A_LIST").'"><span class="adm-submenu-item-link-icon adm-list-table-icon iblock-section-icon"></span><span class="adm-list-table-link">'.htmlspecialcharsbx($arRes["NAME"]).'</span></a>');
+	$margin = max((int)$arRes['DEPTH_LEVEL'], 1) - 1;
+	$row->AddViewField("NAME", '<a href="'.CHTTP::URN2URI($sec_list_url).'" '.($useTree ? 'style="padding-left:'.($margin * 22).'px"' : '').' class="adm-list-table-icon-link" title="'.GetMessage("IBSEC_A_LIST").'"><span class="adm-submenu-item-link-icon adm-list-table-icon iblock-section-icon"></span><span class="adm-list-table-link">'.htmlspecialcharsbx($arRes["NAME"]).'</span></a>');
 	if (isset($arVisibleColumnsMap["ELEMENT_CNT"]))
 	{
 		$elementSectionFilter['SECTION_ID'] = $arRes['ID'];

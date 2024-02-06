@@ -8,8 +8,8 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 use Bitrix\Main\Web\Json;
 use Bitrix\Intranet\Integration\Templates\Bitrix24\ThemePicker;
 
-/** @var $this \CBitrixComponentTemplate */
-/** @var \CAllMain $APPLICATION */
+/** @var $this CBitrixComponentTemplate */
+/** @var CMain $APPLICATION */
 /** @var array $arResult*/
 /** @var array $arParams*/
 
@@ -40,6 +40,31 @@ $this->addExternalJs($this->GetFolder() . '/template.js');
 			}
 		</script>
 		<?php
+	}
+
+	if ($arParams['USE_FAST_WAY_CLOSE_LOADER'])
+	{
+		//The fastest way to close Slider Loader.
+		\Bitrix\Main\Page\Asset::getInstance()->setJsToBody(true);
+		\Bitrix\Main\Page\Asset::getInstance()->addString("
+				<script>
+				(function() {
+					const slider = (
+						top.BX
+						&& top.BX.SidePanel
+						&& top.BX.SidePanel.Instance.getSliderByWindow(window)
+					);
+					if (slider)
+					{
+						slider.closeLoader();
+						if (slider.setPrintable)
+						{
+							slider.setPrintable(true);
+						}
+					}
+				})();
+				</script>
+			", false, \Bitrix\Main\Page\AssetLocation::AFTER_CSS);
 	}
 
 	$APPLICATION->ShowHead();
@@ -146,7 +171,6 @@ if ($arResult["SHOW_BITRIX24_THEME"] === "Y")
 					false
 				);
 			}
-
 		?></div>
 		<div class="ui-side-panel-toolbar<?if (!$arParams['USE_UI_TOOLBAR_MARGIN']):?> --no-margin<?endif?>">
 		<?php

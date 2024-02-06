@@ -8,8 +8,8 @@ use Bitrix\Calendar\Core\Base\Date;
 use Bitrix\Calendar\Core\Event\Event;
 use Bitrix\Calendar\Core\Handlers\UpdateMasterExdateHandler;
 use Bitrix\Calendar\Core\Managers\Compare\EventCompareManager;
-use Bitrix\Calendar\Internals\FlagRegistry;
-use Bitrix\Calendar\Internals\HandleStatusTrait;
+use Bitrix\Calendar\Sync\Util\FlagRegistry;
+use Bitrix\Calendar\Sync\Util\HandleStatusTrait;
 use Bitrix\Calendar\Sync;
 use Bitrix\Calendar\Sync\Connection\Connection;
 use Bitrix\Calendar\Sync\Entities\SyncEvent;
@@ -353,7 +353,6 @@ class VendorDataExchangeManager
 	 */
 	public function handleDeleteInstance(Sync\Entities\SyncEvent $syncEvent): void
 	{
-		// $event = $syncEvent->getEvent();
 		$masterSyncEvent = $this->getMasterSyncEvent($syncEvent);
 		if (!$masterSyncEvent)
 		{
@@ -367,8 +366,6 @@ class VendorDataExchangeManager
 
 		if ($masterSyncEvent->getId() === null)
 		{
-			//todo look log and check scenario
-			AddMessage2Log('Master event has not id. instance id = ' . $syncEvent->getVendorEventId());
 			return;
 		}
 
@@ -425,13 +422,10 @@ class VendorDataExchangeManager
 			$this->handleDeleteSingleEvent($syncEvent);
 		}
 
-		$this->eventMapper->delete(
-			$event,
-			[
-				'softDelete' => true,
-				'originalFrom' => $syncEvent->getEventConnection()->getConnection()->getVendor()->getCode(),
-			]
-		);
+		$this->eventMapper->delete($event, [
+			'softDelete' => true,
+			'originalFrom' => $syncEvent->getEventConnection()->getConnection()->getVendor()->getCode(),
+		]);
 
 		$this->eventConnectionMapper->delete($syncEvent->getEventConnection());
 
@@ -554,7 +548,6 @@ class VendorDataExchangeManager
 	 */
 	private function exchangeEvents(): void
 	{
-		// $syncSectionForImport = $this->isFullSync ? $this->syncSectionMap : $this->importedSyncSectionMap;
 		$eventImporter = (new ImportEventManager($this->factory, $this->syncSectionMap))->import();
 		$this->handleImportedEvents($eventImporter->getEvents());
 
@@ -566,7 +559,6 @@ class VendorDataExchangeManager
 			$this->updateExportedEvents($savedSyncEventMap);
 		}
 
-		// update tokens for sections
 		$this->handleSectionsToLocalStorage($this->syncSectionMap);
 	}
 
@@ -1112,22 +1104,19 @@ class VendorDataExchangeManager
 			/** @var Sync\Entities\SyncEvent $existsExternalSyncEvent */
 			$existsExternalSyncEvent = $this->syncEventMap->getItem($key);
 
-			// TODO: implement logic of saving attendees events
 			if (!$this->validateSyncEventChange($syncEvent, $existsExternalSyncEvent))
 			{
 				continue;
 			}
 
-			$masterSyncEvent = null;
+			$masterSyncEvent = $this->getMasterSyncEvent($syncEvent);
 			if (
-				($syncEvent->isInstance() || $syncEvent->getVendorRecurrenceId())
-				&& $masterSyncEvent = $this->getMasterSyncEvent($syncEvent)
+				$masterSyncEvent
+				&& ($syncEvent->isInstance() || $syncEvent->getVendorRecurrenceId())
+				&& $masterSyncEvent->getId() !== $masterSyncEvent->getParentId()
 			)
 			{
-				if ($masterSyncEvent->getId() !== $masterSyncEvent->getParentId())
-				{
-					continue;
-				}
+				continue;
 			}
 
 			$this->handleSyncEvent($syncEvent, $syncEvent->getVendorEventId(), $masterSyncEvent);
@@ -1163,7 +1152,9 @@ class VendorDataExchangeManager
 	 */
 	private function getMasterSyncEvent(Sync\Entities\SyncEvent $syncEvent): ?Sync\Entities\SyncEvent
 	{
+		$recurrenceId = [];
 		$eventConnection = $syncEvent->getEventConnection();
+
 		if ($eventConnection === null)
 		{
 			throw new BaseException('you should set EventConnection in SyncEvent');
@@ -1174,8 +1165,13 @@ class VendorDataExchangeManager
 			return $masterSyncEvent;
 		}
 
+		if ($eventConnection->getRecurrenceId())
+		{
+			$recurrenceId[] = $eventConnection->getRecurrenceId();
+		}
+
 		return $this->syncEventFactory->getSyncEventCollectionByVendorIdList(
-			[$eventConnection->getRecurrenceId()],
+			$recurrenceId,
 			$this->factory->getConnection()->getId()
 		)->fetch();
 	}
@@ -1634,7 +1630,7 @@ class VendorDataExchangeManager
 	private function removeDeprecatedInstances(
 		Sync\Entities\SyncEvent $existsExternalSyncEvent,
 		Sync\Entities\SyncEvent $syncEvent
-	)
+	): void
 	{
 		if ($existsExternalSyncEvent->hasInstances())
 		{
@@ -1644,7 +1640,11 @@ class VendorDataExchangeManager
 				if (!$syncEvent->hasInstances() || empty($syncEvent->getInstanceMap()->getItem($key)))
 				{
 					$this->eventConnectionMapper->delete($oldInstance->getEventConnection(), ['softDelete' => false]);
-					$this->eventMapper->delete($oldInstance->getEvent(), ['softDelete' => false]);
+					$this->eventMapper->delete($oldInstance->getEvent(), [
+						'softDelete' => false,
+						'originalFrom' => $syncEvent->getEventConnection()?->getConnection()->getVendor()->getCode(),
+						'recursionMode' => 'this',
+					]);
 				}
 			}
 		}
@@ -1741,66 +1741,6 @@ class VendorDataExchangeManager
 				]
 			);
 		}
-	}
-
-	/**
-	 * @param Event $baseEvent
-	 * @param Event $importedEvent
-	 *
-	 * @return bool
-	 *
-	 * @throws ObjectException
-	 */
-	private function checkAttendeesAccessibility(
-		Event $baseEvent,
-		Event $importedEvent
-	): bool
-	{
-		if (
-			$importedEvent->getStart()->format('c') === $baseEvent->getStart()->format('c')
-			&& $importedEvent->getEnd()->format('c') === $baseEvent->getEnd()->format('c')
-		)
-		{
-			return true;
-		}
-
-		$codes = $baseEvent->getAttendeesCollection()->getAttendeesCodes();
-		if (count($codes) > 1)
-		{
-			$userIds = CCalendar::GetDestinationUsers($codes);
-			if ($userIds = array_filter($userIds))
-			{
-				$localTime = new \DateTime();
-				$start = clone $importedEvent->getStart();
-				$end = clone $importedEvent->getEnd();
-				$accessibility = CCalendar::GetAccessibilityForUsers([
-					'users' => $userIds,
-					'from' => $start->setTimezone($localTime->getTimezone())->setTime(0,0,0)->toString(),
-					'to' => $end->setTimezone($localTime->getTimezone())->setTime(23,59,59)->toString(),
-					'curEventId' => $baseEvent->getId(),
-					'checkPermissions' => false,
-				]);
-
-				foreach ($accessibility as $events)
-				{
-					foreach ($events as $eventData)
-					{
-						$eventFrom  = new Date(new DateTime($eventData['DATE_FROM']));
-						$eventTo  = new Date(new DateTime($eventData['DATE_TO']));
-						if ($eventFrom >= $importedEvent->getEnd() || $eventTo <=$importedEvent->getStart())
-						{
-							continue;
-						}
-						if ($eventData['ACCESSIBILITY'] === 'busy')
-						{
-							return false;
-						}
-					}
-				}
-			}
-		}
-
-		return true;
 	}
 
 	/**

@@ -18,6 +18,7 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    this.withUpdateButton = options.withUpdateButton;
 	    this.node = options.node;
 	    this.id = options.id;
+	    this.isGoogleApplicationRefused = options.isGoogleApplicationRefused;
 	    this.init();
 	  }
 	  static createInstance(options) {
@@ -56,6 +57,10 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	      const options = {};
 	      options.syncTime = this.getFormattedTime(connection.getSyncDate());
 	      options.classStatus = connection.getSyncStatus() ? 'calendar-sync-popup-item-status-success' : 'calendar-sync-popup-item-status-fail';
+	      if (connection.id === 'google' && !connection.getSyncStatus() && this.isGoogleApplicationRefused) {
+	        options.classStatus = 'calendar-sync-popup-item-status-refused';
+	        options.syncTime = null;
+	      }
 	      options.classLable = 'calendar-sync-popup-item-text-' + connection.getClassLabel();
 	      options.title = connection.getConnectionName();
 	      const block = this.getSyncElement(options);
@@ -167,6 +172,8 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	}
 	SyncStatusPopup.IS_RUN_REFRESH = false;
 
+	let _$1 = t => t,
+	  _t$1;
 	class SyncButton {
 	  constructor(options) {
 	    this.BUTTON_SIZE = BX.UI.Button.Size.EXTRA_SMALL;
@@ -175,6 +182,7 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    this.wrapper = options.wrapper;
 	    this.userId = options.userId;
 	    this.status = options.status;
+	    this.isGoogleApplicationRefused = options.isGoogleApplicationRefused;
 	    this.buttonEnterTimeout = null;
 	    this.buttonLeaveTimeout = null;
 	  }
@@ -199,6 +207,34 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    });
 	    this.button.renderTo(this.wrapper);
 	  }
+	  showGoogleApplicationRefusedPopup() {
+	    const popup = new main_popup.Popup({
+	      bindElement: this.button.getContainer(),
+	      borderRadius: '3px',
+	      className: 'calendar-popup-ui-tour-animate',
+	      content: main_core.Tag.render(_t$1 || (_t$1 = _$1`
+				<div class="calendar-sync-popup-status-refused">
+					<div class="calendar-sync-popup-status-refused-title">
+						${0}
+					</div>
+					<div class="calendar-sync-popup-status-refused-text">
+						${0}
+					</div>
+				</div>
+			`), main_core.Loc.getMessage('CAL_SYNC_INFO_STATUS_REFUSED_POPUP_TITLE'), main_core.Loc.getMessage('CAL_SYNC_INFO_STATUS_REFUSED_POPUP_TEXT')),
+	      width: 400,
+	      angle: {
+	        offset: this.button.getContainer().offsetWidth / 2,
+	        position: 'top'
+	      },
+	      closeIcon: true,
+	      autoHide: true
+	    });
+	    setTimeout(() => {
+	      popup.show();
+	      BX.ajax.runAction('calendar.api.syncajax.disableShowGoogleApplicationRefused');
+	    }, 1000);
+	  }
 	  showPopup(button) {
 	    if (this.status !== 'not_connected') {
 	      const connections = [];
@@ -217,7 +253,8 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	        connections: connections,
 	        withUpdateButton: true,
 	        node: button.getContainer(),
-	        id: 'calendar-sync-button-status'
+	        id: 'calendar-sync-button-status',
+	        isGoogleApplicationRefused: this.isGoogleApplicationRefused
 	      });
 	      this.popup.show();
 	      this.popup.getPopup().getPopupContainer().addEventListener('mouseenter', e => {
@@ -239,19 +276,13 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    const buttonData = this.getButtonData();
 	    this.button.setColor(buttonData.color);
 	    this.button.setText(buttonData.text);
-	    this.button.removeClass('ui-btn-icon-fail ui-btn-icon-success ui-btn-clock');
+	    this.button.removeClass('ui-btn-icon-fail ui-btn-icon-success ui-btn-clock calendar-sync-btn-icon-refused');
 	    this.button.addClass(buttonData.iconClass);
 	  }
 	  handleClick() {
 	    clearTimeout(this.buttonEnterTimeout);
 	    (window.top.BX || window.BX).Runtime.loadExtension('calendar.sync.interface').then(exports => {
 	      if (!main_core.Dom.hasClass(this.button.button, 'ui-btn-clock')) {
-	        BX.ajax.runAction('calendar.api.calendarajax.analytical', {
-	          analyticsLabel: {
-	            sync_button_click: 'Y',
-	            has_active_connection: this.status === 'not_connected' ? 'N' : 'Y'
-	          }
-	        });
 	        this.syncPanel = new exports.SyncPanel({
 	          connectionsProviders: this.connectionsProviders,
 	          userId: this.userId,
@@ -281,6 +312,13 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    }, 500);
 	  }
 	  getButtonData() {
+	    if (this.status === 'refused') {
+	      return {
+	        text: main_core.Loc.getMessage('STATUS_BUTTON_SYNCHRONIZATION'),
+	        color: BX.UI.Button.Color.LIGHT_BORDER,
+	        iconClass: 'calendar-sync-btn-icon-refused'
+	      };
+	    }
 	    if (this.status === 'success') {
 	      return {
 	        text: main_core.Loc.getMessage('STATUS_BUTTON_SYNCHRONIZATION'),
@@ -395,10 +433,11 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    this.STATUS_SYNCHRONIZING = 'synchronizing';
 	    this.STATUS_SUCCESS = 'success';
 	    this.STATUS_FAILED = 'failed';
+	    this.STATUS_REFUSED = 'refused';
 	    this.STATUS_PENDING = 'pending';
 	    this.STATUS_NOT_CONNECTED = 'not_connected';
 	    this.ERROR_CODE = 'error';
-	    this.STATUS_LIST = [this.STATUS_SYNCHRONIZING, this.STATUS_SUCCESS, this.STATUS_FAILED, this.STATUS_PENDING, this.STATUS_NOT_CONNECTED];
+	    this.STATUS_LIST = [this.STATUS_SYNCHRONIZING, this.STATUS_SUCCESS, this.STATUS_FAILED, this.STATUS_REFUSED, this.STATUS_PENDING, this.STATUS_NOT_CONNECTED];
 	    this.WAITING_MODE_MAX_TIME = 360000;
 	    this.setEventNamespace('BX.Calendar.Sync.Manager.ConnectionProvider');
 	    this.status = options.status;
@@ -513,7 +552,11 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	      return 'synchronizing';
 	    }
 	    if (this.connected) {
-	      return this.status ? "success" : "failed";
+	      const status = this.status ? 'success' : 'failed';
+	      if (status === 'failed' && this.isGoogleApplicationRefused) {
+	        return 'refused';
+	      }
+	      return status;
 	    } else if (this.pendingStatus) {
 	      return 'pending';
 	    } else {
@@ -731,6 +774,7 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    this.connectionName = main_core.Loc.getMessage('CALENDAR_TITLE_GOOGLE');
 	    this.isSetSyncGoogleSettings = options.isSetSyncGoogleSettings;
 	    this.syncLink = options.syncLink;
+	    this.isGoogleApplicationRefused = options.isGoogleApplicationRefused;
 	    this.setSyncDate(options.syncInfo.syncOffset);
 	    this.setSections(options.sections);
 	    this.setConnections();
@@ -748,7 +792,11 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	      var _response$data;
 	      if ((response == null ? void 0 : (_response$data = response.data) == null ? void 0 : _response$data.status) === this.ERROR_CODE) {
 	        var _response$data2, _response$data2$googl;
-	        this.setStatus(this.STATUS_FAILED);
+	        if (this.isGoogleApplicationRefused) {
+	          this.setStatus(this.STATUS_REFUSED);
+	        } else {
+	          this.setStatus(this.STATUS_FAILED);
+	        }
 	        this.setWizardState({
 	          status: this.ERROR_CODE,
 	          vendorName: this.type,
@@ -768,7 +816,11 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	        }
 	      }));
 	    }, response => {
-	      this.setStatus(this.STATUS_FAILED);
+	      if (this.isGoogleApplicationRefused) {
+	        this.setStatus(this.STATUS_REFUSED);
+	      } else {
+	        this.setStatus(this.STATUS_FAILED);
+	      }
 	      this.setWizardState({
 	        status: this.ERROR_CODE,
 	        vendorName: this.type
@@ -806,13 +858,32 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	  hasSetSyncOffice365Settings() {
 	    return this.isSetSyncOffice365Settings;
 	  }
-	  removeConnection(id) {
-	    BX.ajax.runAction('calendar.api.syncajax.deactivateConnection', {
-	      data: {
-	        connectionId: id
-	      }
-	    }).then(() => {
-	      BX.reload();
+	  saveConnection() {
+	    return new Promise(resolve => {
+	      BX.ajax.runAction('calendar.api.syncajax.createOffice365Connection').then(response => {
+	        var _response$data, _response$data2;
+	        if ((response == null ? void 0 : (_response$data = response.data) == null ? void 0 : _response$data.status) === this.provider.ERROR_CODE) {
+	          this.setStatus(this.provider.STATUS_FAILED);
+	          this.setWizardState({
+	            status: this.provider.ERROR_CODE,
+	            vendorName: this.provider.type
+	          });
+	        } else if (response != null && (_response$data2 = response.data) != null && _response$data2.connectionId) {
+	          this.setStatus(this.provider.STATUS_SUCCESS);
+	          this.getConnection().setId(response.data.connectionId);
+	          this.getConnection().setStatus(true);
+	          this.getConnection().setConnected(true);
+	          this.getConnection().setSyncDate(new Date());
+	        }
+	        resolve(response.data);
+	      }, response => {
+	        this.setStatus(this.provider.STATUS_FAILED);
+	        this.setWizardState({
+	          status: this.provider.ERROR_CODE,
+	          vendorName: this.provider.type
+	        });
+	        resolve(response.errors);
+	      });
 	    });
 	  }
 	}
@@ -1129,6 +1200,7 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    this.status = 'not_connected';
 	    this.STATUS_SUCCESS = 'success';
 	    this.STATUS_FAILED = 'failed';
+	    this.STATUS_REFUSED = 'refused';
 	    this.STATUS_NOT_CONNECTED = 'not_connected';
 	    this.WIZARD_SYNC_MODE = 'wizard_sync_mode';
 	    this.STATUS_SYNCHRONIZING = 'synchronizing';
@@ -1137,6 +1209,8 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    this.REFRESH_CONTENT_DELAY = 300;
 	    this.WIZARD_SLIDER_PREFIX = 'calendar:sync-wizard';
 	    this.setEventNamespace('BX.Calendar.Sync.Manager.Manager');
+	    this.isGoogleApplicationRefused = options.calendar.util.config.isGoogleApplicationRefused === 'Y';
+	    this.showGoogleApplicationRefused = options.calendar.util.config.showGoogleApplicationRefused === 'Y';
 	    this.wrapper = options.wrapper;
 	    this.setSyncInfo(options.syncInfo);
 	    this.userId = options.userId;
@@ -1170,9 +1244,14 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	      status: this.status,
 	      wrapper: this.wrapper,
 	      connectionsProviders: this.connectionsProviders,
-	      userId: this.userId
+	      userId: this.userId,
+	      isGoogleApplicationRefused: this.isGoogleApplicationRefused
 	    });
 	    this.syncButton.show();
+	    if (this.needToShowGoogleRefusedPopup()) {
+	      this.syncButton.showGoogleApplicationRefusedPopup();
+	      this.showGoogleApplicationRefused = false;
+	    }
 	  }
 	  init() {
 	    this.connectionsProviders = {};
@@ -1201,8 +1280,8 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	    }
 	    this.connectionsProviders = {
 	      google: this.getGoogleProvider(),
-	      office365: this.getOffice365Provider(),
 	      icloud: this.getIcloudProvider(),
+	      office365: this.getOffice365Provider(),
 	      caldav: this.getCaldavProvider(caldavConnections),
 	      iphone: this.getIphoneProvider(),
 	      android: this.getAndroidProvider(),
@@ -1288,6 +1367,10 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	      }).then(response => {
 	        this.setSyncInfo(response.data);
 	        this.status = this.getSummarySyncStatus();
+	        if (this.needToShowGoogleRefusedPopup()) {
+	          this.syncButton.showGoogleApplicationRefusedPopup();
+	          this.showGoogleApplicationRefused = false;
+	        }
 	        const activePopup = event && event.getTarget ? event.getTarget() : null;
 	        this.refreshContent(activePopup);
 	        resolve();
@@ -1525,7 +1608,23 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	        }
 	      }
 	    }
+	    if (status === this.STATUS_NOT_CONNECTED && this.hasRefusedStatus()) {
+	      status = this.STATUS_REFUSED;
+	    }
 	    return status;
+	  }
+	  needToShowGoogleRefusedPopup() {
+	    return this.syncButton && this.isGoogleApplicationRefused && this.showGoogleApplicationRefused && this.hasRefusedStatus();
+	  }
+	  hasRefusedStatus() {
+	    for (const providerName in this.connectionsProviders) {
+	      if (this.connectionsProviders.hasOwnProperty(providerName)) {
+	        if (this.connectionsProviders[providerName].getStatus() === this.STATUS_REFUSED) {
+	          return true;
+	        }
+	      }
+	    }
+	    return false;
 	  }
 	  getGoogleProvider() {
 	    if (!this.googleProvider) {
@@ -1534,7 +1633,8 @@ this.BX.Calendar.Sync = this.BX.Calendar.Sync || {};
 	        sections: this.sectionsByType.google || {},
 	        syncLink: this.syncLinks.google || null,
 	        isSetSyncGoogleSettings: this.isSetSyncGoogleSettings,
-	        mainPanel: true
+	        mainPanel: true,
+	        isGoogleApplicationRefused: this.isGoogleApplicationRefused
 	      });
 	    } else {
 	      this.googleProvider.refresh({

@@ -2,8 +2,10 @@
 
 return [
 	'extensions' => [
-		'utils/console',
 		'type',
+		'apptheme',
+		'utils/console',
+		'utils/object',
 	],
 	'bundle' => [
 		'./test-suite',
@@ -13,5 +15,5 @@ return [
 		'./matchers',
 		'./report',
 		'./printers',
-	]
+	],
 ];

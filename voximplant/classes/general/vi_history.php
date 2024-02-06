@@ -286,7 +286,7 @@ class CVoxImplantHistory
 		if ($params['URL'] != '')
 		{
 			$attachToCrm = $call->isCrmEnabled();
-			$recordUrl = \Bitrix\Main\Web\Uri::urnEncode($params['URL']);
+			$recordUrl = \Bitrix\Main\Web\Uri::urnEncode((string)$params['URL']);
 			self::DownloadAgent($insertResult->getId(), $recordUrl, $attachToCrm);
 		}
 
@@ -380,11 +380,18 @@ class CVoxImplantHistory
 
 		try
 		{
-			$http->download($recordUrl, $tempPath);
+			$isDownloadSuccess = $http->download($recordUrl, $tempPath);
+
+			if (!$isDownloadSuccess)
+			{
+				self::DownloadAgentRequestErrorHandler($historyID, $recordUrl, $attachToCrm, $retryOnFailure, $http, "Call record download unsuccessful. Url: ");
+
+				return false;
+			}
 
 			if ($http->getStatus() !== 200)
 			{
-				self::DownloadAgentRequestErrorHandler($historyID, $recordUrl, $attachToCrm, $retryOnFailure, $http);
+				self::DownloadAgentRequestErrorHandler($historyID, $recordUrl, $attachToCrm, $retryOnFailure, $http, "Call record download error. Url: ");
 
 				return false;
 			}
@@ -399,6 +406,12 @@ class CVoxImplantHistory
 				if(mb_strpos($recordFile['name'], '.') === false)
 				{
 					$recordFile['name'] .= '.mp3';
+				}
+
+				$isCorrectFileResult = VI\Security\RecordFile::isCorrectFromArray($recordFile);
+				if (!$isCorrectFileResult->isSuccess())
+				{
+					return false;
 				}
 
 				$history = VI\StatisticTable::getById($historyID);
@@ -420,7 +433,8 @@ class CVoxImplantHistory
 		string $recordUrl,
 		bool $attachToCrm,
 		bool $retryOnFailure,
-		\Bitrix\Main\Web\HttpClient $httpClient
+		\Bitrix\Main\Web\HttpClient $httpClient,
+		string $logMessage
 	)
 	{
 		if($retryOnFailure)
@@ -444,7 +458,7 @@ class CVoxImplantHistory
 		}
 		$error = !empty($errors) ? implode("; " , $errors) : $httpClient->getStatus();
 
-		static::WriteToLog("Call record download error. Url: " . $recordUrl . "; Error: " . $error);
+		static::WriteToLog($logMessage . $recordUrl . "; Error: " . $error);
 	}
 
 	public static function AttachRecord($callId, array $recordFileFields)
@@ -662,6 +676,15 @@ class CVoxImplantHistory
 	 */
 	public static function GetMessageForChat($callFields, $hasRecord = false, $prependPlus = true)
 	{
+		$crmEntityType = $callFields['CRM_ENTITY_TYPE'] ?? '';
+		$crmEntityId = (int)($callFields['CRM_ENTITY_ID'] ?? 0);
+		$callInfoMessage = '';
+		$crmEntityUrl = '';
+		if ($crmEntityType !== '' && $crmEntityId > 0 && \Bitrix\Main\Loader::includeModule('crm'))
+		{
+			$crmEntityUrl = \CCrmOwnerType::GetEntityShowPath(\CCrmOwnerType::ResolveID($crmEntityType), $crmEntityId);
+			$callInfoMessage = "[URL={$crmEntityUrl}]" . GetMessage('VI_CALL_INFO') . '[/URL]';
+		}
 		$result = '';
 		if ($callFields["PHONE_NUMBER"] <> '' && $callFields["PORTAL_USER_ID"] > 0 && $callFields["CALL_FAILED_CODE"] != 423)
 		{
@@ -698,7 +721,7 @@ class CVoxImplantHistory
 				{
 					$result = GetMessage('VI_OUT_CALL_END', Array(
 						'#NUMBER#' => $formattedNumber,
-						'#INFO#' => '[PCH='.$callFields['ID'].']'.GetMessage('VI_CALL_INFO').'[/PCH]',
+						'#INFO#' => $callInfoMessage,
 					));
 				}
 			}
@@ -730,14 +753,14 @@ class CVoxImplantHistory
 				}
 				else if ($callFields['CALL_FAILED_CODE'] == 304)
 				{
-					$subMessage = '[PCH='.$callFields['ID'].']'.GetMessage('VI_CALL_INFO').'[/PCH]';
+					$subMessage = $callInfoMessage;
 					$result = GetMessage('VI_CALLBACK_SKIP', Array('#NUMBER#' => $formattedNumber, '#INFO#' => $subMessage));
 				}
 				else
 				{
 					$result = GetMessage('VI_CALLBACK_END', Array(
 						'#NUMBER#' => $formattedNumber,
-						'#INFO#' => '[PCH='.$callFields['ID'].']'.GetMessage('VI_CALL_INFO').'[/PCH]',
+						'#INFO#' => $callInfoMessage,
 					));
 				}
 			}
@@ -745,10 +768,10 @@ class CVoxImplantHistory
 			{
 				if ($callFields['CALL_FAILED_CODE'] == 304)
 				{
-					if ($hasRecord)
-						$subMessage = GetMessage('VI_CALL_VOICEMAIL', Array('#LINK_START#' => '[PCH='.$callFields['ID'].']', '#LINK_END#' => '[/PCH]',));
+					if ($hasRecord && $crmEntityUrl !== '')
+						$subMessage = GetMessage('VI_CALL_VOICEMAIL', Array('#LINK_START#' => "[URL={$crmEntityUrl}]", '#LINK_END#' => '[/URL]',));
 					else
-						$subMessage = '[PCH='.$callFields['ID'].']'.GetMessage('VI_CALL_INFO').'[/PCH]';
+						$subMessage = $callInfoMessage;
 
 					$result = GetMessage('VI_IN_CALL_SKIP', Array(
 						'#NUMBER#' => $formattedNumber,
@@ -759,7 +782,7 @@ class CVoxImplantHistory
 				{
 					$result = GetMessage('VI_IN_CALL_END', Array(
 						'#NUMBER#' => $formattedNumber,
-						'#INFO#' => '[PCH='.$callFields['ID'].']'.GetMessage('VI_CALL_INFO').'[/PCH]',
+						'#INFO#' => $callInfoMessage,
 					));
 				}
 			}
@@ -882,18 +905,16 @@ class CVoxImplantHistory
 		}
 		else if (is_object($data))
 		{
-			if ($data->HASH)
+			if (property_exists($data, 'HASH') && $data->HASH)
 			{
 				$data->HASH = '';
 			}
-			if ($data->BX_HASH)
+			if (property_exists($data, 'BX_HASH') && $data->BX_HASH)
 			{
 				$data->BX_HASH = '';
 			}
 		}
-		$f=fopen($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/voximplant.log", "a+t");
-		$w=fwrite($f, "\n------------------------\n".date("Y.m.d G:i:s")."\n".($title <> ''? $title: 'DEBUG')."\n".print_r($data, 1)."\n------------------------\n");
-		fclose($f);
+		AddMessage2Log(print_r($data, true), 'voximplant', 0);
 
 		return true;
 	}
@@ -1027,13 +1048,15 @@ class CVoxImplantHistory
 		$config = CVoxImplantConfig::GetConfigBySearchId($params['ACCOUNT_SEARCH_ID']);
 
 		$call = VI\Call::create([
-			'CALL_ID' => $params['CALL_ID'],
-			'CONFIG_ID' => $config['ID'],
+			'CALL_ID' => $params['CALL_ID'] ?? null,
+			'CONFIG_ID' => $config['ID'] ?? null,
 			'DATE_CREATE' => \Bitrix\Main\Type\DateTime::createFromTimestamp($params['CALL_START_TS']),
-			'INCOMING' => $params['INCOMING'],
-			'CALLER_ID' => $params['PHONE_NUMBER'],
-			'USER_ID' => $params['PORTAL_USER_ID'],
-			'SESSION_ID' => $params['SESSION_ID']
+			'INCOMING' => $params['INCOMING'] ?? null,
+			'CALLER_ID' => $params['PHONE_NUMBER'] ?? null,
+			'USER_ID' => $params['PORTAL_USER_ID'] ?? null,
+			'SESSION_ID' => $params['SESSION_ID'] ?? null,
+			'LAST_PING' => null,
+			'QUEUE_ID' => null
 		]);
 
 		$crmData = CVoxImplantCrmHelper::getCrmEntities($call);
@@ -1076,24 +1099,18 @@ class CVoxImplantHistory
 	 * @param string $callId
 	 * @return bool
 	 */
-	public static function getLock($callId)
+	public static function getLock($callId): bool
 	{
-		$sqlHelper = Application::getConnection()->getSqlHelper();
-		$lockName = $sqlHelper->forSql(self::CALL_LOCK_PREFIX . "_" . $callId);
-		$lockRow = Application::getConnection()->query("SELECT GET_LOCK('{$lockName}', 0) as L")->fetch();
-		return $lockRow["L"] == "1";
+		return Application::getConnection()->lock(self::CALL_LOCK_PREFIX . "_" . $callId);
 	}
 
 	/**
 	 * @param string $callId
 	 * @return bool
 	 */
-	public static function releaseLock($callId)
+	public static function releaseLock($callId): bool
 	{
-		$sqlHelper = Application::getConnection()->getSqlHelper();
-		$lockName = $sqlHelper->forSql(self::CALL_LOCK_PREFIX . "_" . $callId);
-		Application::getConnection()->query("SELECT RELEASE_LOCK('{$lockName}')");
-		return true;
+		return Application::getConnection()->unlock(self::CALL_LOCK_PREFIX . "_" . $callId);
 	}
 
 	public static function setLastPaidCallTimestamp($ts)

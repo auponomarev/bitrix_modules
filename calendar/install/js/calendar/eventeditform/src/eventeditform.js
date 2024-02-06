@@ -80,11 +80,21 @@ export class EventEditForm
 			this.formDataValue.description = options.entryDescription;
 		}
 
+		if (options.jumpToControl)
+		{
+			this.jumpToControl = options.jumpToControl;
+		}
+
 		this.refreshPlanner = Runtime.debounce(this.refreshPlannerState, 100, this);
 		this.state = this.STATE.READY;
-		this.sliderOnClose = this.hide.bind(this);
+		this.doShowConfirmPopup = true;
+		this.sliderOnClose = this.hideWithConfirm.bind(this);
 		this.handlePullBind = this.handlePull.bind(this);
 		this.keyHandlerBind = this.keyHandler.bind(this);
+
+		this.lastUsedSaveOptions = {};
+		this.timezoneHint = '';
+		this.isAvailable = true;
 	}
 
 	initInSlider(slider, promiseResolve)
@@ -175,10 +185,32 @@ export class EventEditForm
 		this.DOM.content = this.slider.layout.content;
 		this.sliderId = this.slider.getUrl();
 
+		if (!this.isAvailable)
+		{
+			return;
+		}
+
 		// Used to execute javasctipt and attach CSS from ajax responce
 		this.BX.html(this.slider.layout.content, this.slider.getData().get("sliderContent"));
 		this.initControls(this.uid);
 		this.setFormValues();
+		if (Type.isStringFilled(this.jumpToControl))
+		{
+			if (this.jumpToControl === 'userSelector')
+			{
+				const attendeesSelectorWrap = this.DOM.content.querySelector(`#${this.uid}_attendees_selector`);
+				Dom.style(attendeesSelectorWrap, 'transition', '300ms background ease');
+				setTimeout(() => this.highlightField(attendeesSelectorWrap), 900);
+			}
+			if (this.jumpToControl === 'location')
+			{
+				const fieldWrap = document.querySelector(`[data-bx-block-placeholer=${this.jumpToControl}]`);
+				Dom.style(fieldWrap, 'transition', '300ms background ease');
+				setTimeout(() => this.highlightField(fieldWrap), 900);
+			}
+		}
+
+		Event.bind(this.DOM.content, 'wheel', () => this.highlightFieldScrollAnimation?.stop());
 	}
 
 	close()
@@ -192,7 +224,10 @@ export class EventEditForm
 
 	save(options = {})
 	{
-		if (this.state === this.STATE.REQUEST)
+		if (
+			this.state === this.STATE.REQUEST
+			|| this.DOM.locationRepeatBusyErrorPopup
+		)
 		{
 			return false;
 		}
@@ -209,6 +244,7 @@ export class EventEditForm
 			EntryManager.showEmailLimitationDialog({
 				callback: () => {
 					options.emailLimitationDialogShown = true;
+					this.lastUsedSaveOptions = options;
 					this.save(options);
 				}
 			});
@@ -238,12 +274,14 @@ export class EventEditForm
 		{
 			EntryManager.showConfirmEditDialog({
 				callback: (params) => {
-					this.save({
-						recursionMode: (this.entry.isFirstInstance() && params.recursionMode === 'next')
-							? 'all'
-							: params.recursionMode,
-						confirmed: true
-					});
+					options.recursionMode =
+						(this.entry.isFirstInstance() && params.recursionMode === 'next')
+						? 'all'
+						: params.recursionMode
+					;
+					options.confirmed = true;
+					this.lastUsedSaveOptions = options;
+					this.save(options);
 				}
 			});
 			return false;
@@ -260,6 +298,7 @@ export class EventEditForm
 			EntryManager.showReInviteUsersDialog({
 				callback: (params) => {
 					options.sendInvitesAgain = params.sendInvitesAgain;
+					this.lastUsedSaveOptions = options;
 					this.save(options);
 				}
 			});
@@ -301,8 +340,17 @@ export class EventEditForm
 			// this.BX.userOptions.save('calendar', 'user_settings', 'lastUsedSection', parseInt(section.ID));
 		}
 
-		this.DOM.form.current_date_from.value = options.recursionMode ? Util.formatDate(this.entry.from) : '';
-		this.DOM.form.rec_edit_mode.value = options.recursionMode || '';
+		if (options.recursionMode)
+		{
+			this.DOM.form.current_date_from.value = Util.formatDate(this.entry.from);
+			this.DOM.form.rec_edit_mode.value = options.recursionMode;
+		}
+		else
+		{
+			this.DOM.form.current_date_from.value = null;
+			this.DOM.form.rec_edit_mode.value = null;
+		}
+
 
 		if (options.sendInvitesAgain !== undefined)
 		{
@@ -372,11 +420,12 @@ export class EventEditForm
 		this.DOM.userSelectorValueWarp.appendChild(Tag.render`
 			<input type="hidden" name="checkCurrentUsersAccessibility" value="${checkCurrentUsersAccessibility ? 'Y' : 'N'}">
 		`);
-
+		this.DOM.form.doCheckOccupancy.value = options.doCheckOccupancy || 'Y';
+		const data = new FormData(this.DOM.form);
 		this.BX.ajax.runAction('calendar.api.calendarentryajax.editEntry', {
-			data: new FormData(this.DOM.form),
+			data: data,
 			analyticsLabel: {
-				calendarAction: this.entry.id ? 'edit_event' : 'create_event',
+				calendarAction: this.isCreateForm() ? 'create_event' :'edit_event',
 				formType: 'full',
 				emailGuests: this.hasExternalEmailUsers() ? 'Y' : 'N',
 				markView: Util.getCurrentView() || 'outside',
@@ -402,6 +451,7 @@ export class EventEditForm
 
 				this.state = this.STATE.READY;
 				this.allowSliderClose();
+				this.doShowConfirmPopup = false;
 				this.close();
 
 				Dom.removeClass(this.DOM.closeBtn, this.BX.UI.Button.State.DISABLED);
@@ -510,23 +560,48 @@ export class EventEditForm
 
 	}
 
-	hide(event)
+	hideWithConfirm(event)
 	{
-		if (event && event.getSlider && event.getSlider().getUrl() === this.sliderId)
+		if (!(event && event.getSlider && event.getSlider().getUrl() === this.sliderId))
 		{
-			if (this.checkDenyClose())
-			{
-				event.denyAction();
-			}
-			else
-			{
-				this.BX.removeCustomEvent("SidePanel.Slider::onClose", this.sliderOnClose);
-				if (this.attendeesSelector)
-				{
-				 	this.attendeesSelector.closeAll();
-				}
-			}
+			return;
 		}
+
+		if (!this.isAvailable)
+		{
+			this.BX.removeCustomEvent("SidePanel.Slider:onClose", this.sliderOnClose);
+
+			return;
+		}
+
+		Util.closeAllPopups();
+
+		if (this.checkDenyClose())
+		{
+			event.denyAction();
+			return;
+		}
+
+		if (this.needToShowConfirmPopup())
+		{
+			event.denyAction();
+			const message = this.isCreateForm() ? Loc.getMessage('EC_CLOSE_CREATE_FORM_CONFIRM_QUESTION') : Loc.getMessage('EC_CLOSE_EDIT_FORM_CONFIRM_QUESTION');
+			Util.showConfirmPopup(this.hide.bind(this), message, {
+				okCaption: Loc.getMessage('EC_CLOSE_EDIT_FORM_CONFIRM_OK'),
+				minWidth: 350,
+				maxWidth: 350,
+			});
+		}
+		else
+		{
+			this.BX.removeCustomEvent("SidePanel.Slider:onClose", this.sliderOnClose);
+		}
+	}
+
+	hide()
+	{
+		this.doShowConfirmPopup = false;
+		this.slider.close();
 	}
 
 	destroy(event)
@@ -597,7 +672,20 @@ export class EventEditForm
 							attendeesEntityList.forEach((item) => {
 								if (item.entityId === 'user' && params.userIndex[item.id])
 								{
-									item.entityType = params.userIndex[item.id].EMAIL_USER ? 'email' : 'employee';
+									if (params.userIndex[item.id].EMAIL_USER)
+									{
+										item.entityType = 'email';
+										item.title = params.userIndex[item.id].DISPLAY_NAME;
+									}
+									else if (params.userIndex[item.id].SHARING_USER)
+									{
+										item.entityType = 'sharing';
+										item.title = params.userIndex[item.id].DISPLAY_NAME;
+									}
+									else
+									{
+										item.entityType = 'employee';
+									}
 								}
 							});
 						}
@@ -628,10 +716,40 @@ export class EventEditForm
 							SectionManager.setNewEntrySectionId(this.userSettings.meetSection);
 						}
 
+						this.timezoneHint = params.timezoneHint;
 						promise.fulfill(html);
 					}
 				},
 				(response) => {
+					if (response.data && !Type.isNil(response.data.isAvailable) && !response.data.isAvailable)
+					{
+						debugger
+						this.isAvailable = false;
+						const showHelperCallback = () => {
+							top.BX.UI.InfoHelper.show('limit_office_calendar_off', {
+								isLimit: true,
+								limitAnalyticsLabels: {
+									module: 'calendar',
+									source: 'eventEditForm',
+								},
+							});
+						};
+
+						const sliderInstance = BX.SidePanel.Instance.getSlider(this.sliderId);
+
+						if (sliderInstance)
+						{
+							this.BX.removeCustomEvent("SidePanel.Slider:onClose", this.sliderOnClose);
+							sliderInstance.close(true, showHelperCallback);
+						}
+						else
+						{
+							showHelperCallback();
+						}
+					}
+					let html = this.BX.util.trim('<div></div>');
+					slider.getData().set("sliderContent", html);
+					promise.fulfill(html);
 					//this.calendar.displayError(response.errors);
 				}
 			);
@@ -751,7 +869,16 @@ export class EventEditForm
 			timezoneName: this.userSettings.timezoneName
 		});
 
-		this.DOM.entryName.value = this.formDataValue.name || entry.getName();
+		if (entry.isSharingEvent())
+		{
+			this.dateTimeControl.setReadonly(this.timezoneHint);
+		}
+
+		const entryName = this.formDataValue.name || entry.getName();
+		this.DOM.entryName.value = entryName;
+		this.DOM.entryName.title = entryName;
+		Event.bind(this.DOM.entryName, 'keyup', this.updateEventNameInputTitle.bind(this));
+		Event.bind(this.DOM.entryName, 'change', this.updateEventNameInputTitle.bind(this));
 
 		// Section
 		const section = this.getCurrentSection();
@@ -760,6 +887,7 @@ export class EventEditForm
 			entry.sectionId = parseInt(this.formDataValue.section);
 		}
 		this.DOM.sectionInput.value = this.getCurrentSectionId();
+		this.initialSectionId = this.getCurrentSectionId();
 		this.sectionSelector.updateValue();
 
 		if (!this.fieldIsPinned('section'))
@@ -774,7 +902,7 @@ export class EventEditForm
 			}
 		}
 
-		if (this.isSyncSection(section) && entry.id)
+		if ((this.isSyncSection(section) || entry.isSharingEvent()) && entry.id)
 		{
 			this.sectionSelector.setViewMode(true);
 		}
@@ -791,6 +919,16 @@ export class EventEditForm
 
 		// Recursion
 		this.repeatSelector?.setValue(this.formDataValue.rrule || entry.getRrule());
+		this.initialRrule = this.getFormRrule();
+		if (entry.id && entry.isSharingEvent())
+		{
+			this.repeatSelector?.setViewMode(entry.getRRuleDescription());
+		}
+
+		if (entry.hasRecurrenceId())
+		{
+			this.repeatSelector?.setViewMode(entry.getRRuleDescription());
+		}
 
 		// accessibility
 		if (this.DOM.accessibilityInput)
@@ -807,6 +945,7 @@ export class EventEditForm
 			this.locationSelector.checkLocationAccessibility({
 				from: this.formDataValue.from || entry.from,
 				to: this.formDataValue.to || entry.to,
+				timezone: this.entry.getTimezoneFrom(),
 				fullDay: Type.isBoolean(this.formDataValue.fullDay)
 					? this.formDataValue.fullDay
 					: entry.fullDay,
@@ -870,6 +1009,8 @@ export class EventEditForm
 		}
 
 		let dateTime = this.dateTimeControl.getValue();
+		const needToLoadAdditional = this.planner.isNeedToExpandTimeline(dateTime.from, dateTime.to);
+
 		this.planner.updateSelector(
 			dateTime.from,
 			dateTime.to,
@@ -879,22 +1020,39 @@ export class EventEditForm
 			}
 		);
 
-		this.loadPlannerData({
-			entityList: this.getUserSelectorEntityList(),
-			from: Util.formatDate(entry.from.getTime() - Util.getDayLength() * 3),
-			to: Util.formatDate(entry.to.getTime() + Util.getDayLength() * 10),
-			timezone: entry.getTimezoneFrom(),
-			location: this.locationSelector.getTextValue()
-		}).then(()=>{
-			if (this.hasExternalEmailUsers())
-			{
-				this.showHideGuestsOption();
-			}
-			else
-			{
-				this.hideHideGuestsOption();
-			}
-		});
+		if (entry.isSharingEvent())
+		{
+			this.planner.setReadonly();
+		}
+
+		if (!needToLoadAdditional)
+		{
+			this.loadPlannerData({
+				entityList: this.getUserSelectorEntityList(),
+				from: Util.formatDate(entry.from.getTime() - Util.getDayLength() * 3),
+				to: Util.formatDate(entry.to.getTime() + Util.getDayLength() * 10),
+				timezone: entry.getTimezoneFrom(),
+				location: this.locationSelector.getTextValue()
+			});
+		}
+	}
+
+	updateEventNameInputTitle()
+	{
+		if (this.isTitleOverflowing())
+		{
+			this.DOM.entryName.title = this.DOM.entryName.value;
+		}
+		else
+		{
+			this.DOM.entryName.title = '';
+		}
+	}
+
+	isTitleOverflowing()
+	{
+		const el = this.DOM.entryName;
+		return el.clientWidth < el.scrollWidth || el.clientHeight < el.scrollHeight;
 	}
 
 	switchFullDay(value)
@@ -973,6 +1131,9 @@ export class EventEditForm
 				}
 			}
 		});
+
+		const fieldButtons = document.querySelectorAll('[data-bx-field-id]');
+		this.bindAdditionalFieldButtons(fieldButtons);
 	}
 
 	initDateTimeControl(uid)
@@ -986,6 +1147,9 @@ export class EventEditForm
 			if (event instanceof BaseEvent)
 			{
 				let value = event.getData().value;
+
+				this.entry.setTimezone(value.timezoneFrom);
+
 				if (this.remindersControl)
 				{
 					this.remindersControl.setFullDayMode(value.fullDay);
@@ -1007,6 +1171,7 @@ export class EventEditForm
 				if (this.planner)
 				{
 					this.planner.updateSelector(value.from, value.to, value.fullDay);
+					this.planner.updateTimezone(value.timezoneFrom);
 				}
 
 				if (this.locationSelector)
@@ -1015,9 +1180,9 @@ export class EventEditForm
 						{
 							from: value.from,
 							to: value.to,
+							timezone: this.entry.getTimezoneFrom(),
 							fullDay: value.fullDay,
 							currentEventId: this.entry.id,
-
 						}
 					);
 				}
@@ -1032,6 +1197,51 @@ export class EventEditForm
 			this.DOM.entryName.focus();
 			this.DOM.entryName.select();
 		}, 500);
+
+		let isInputFocus = false;
+
+		Event.bind(this.DOM.entryName, 'focusout', ()=> {
+			if (this.DOM.entryName.scrollWidth > this.DOM.entryName.offsetWidth)
+			{
+				this.getTitleFade(uid).classList.add('--show');
+			}
+			else
+			{
+				this.getTitleFade(uid).classList.remove('--show');
+			}
+			isInputFocus = false;
+		});
+
+		Event.bind(this.DOM.entryName, 'focus', ()=> {
+			this.getTitleFade(uid).classList.remove('--show');
+			isInputFocus = true;
+		});
+
+		Event.bind(this.DOM.entryName, 'scroll', ()=> {
+			if (
+				this.DOM.entryName.scrollWidth > this.DOM.entryName.offsetWidth
+				&& Math.ceil(this.DOM.entryName.offsetWidth + this.DOM.entryName.scrollLeft) < this.DOM.entryName.scrollWidth
+				&& !isInputFocus
+			)
+			{
+				this.getTitleFade(uid).classList.add('--show');
+			}
+			else
+			{
+				this.getTitleFade(uid).classList.remove('--show');
+			}
+		});
+
+	}
+
+	getTitleFade(uid)
+	{
+		if (!this.DOM.entryNameFade)
+		{
+			this.DOM.entryNameFade = this.DOM.content.querySelector(`#${uid}_input_fade`);
+		}
+
+		return this.DOM.entryNameFade;
 	}
 
 	initReminderControl(uid)
@@ -1207,7 +1417,7 @@ export class EventEditForm
 			{
 				wrap: this.DOM.rruleWrap,
 				rruleType: this.DOM.content.querySelector(`#${uid}_rrule_type`),
-				getDate: function() {return this.dateTimeControl.getValue().from;}.bind(this)
+				getDate: function() {return this.dateTimeControl.getValue().from;}.bind(this),
 			}
 		);
 
@@ -1242,6 +1452,7 @@ export class EventEditForm
 					'Item:onDeselect': this.handleUserSelectorChanges.bind(this),
 				},
 				entities: this.getParticipantsSelectorEntityList(),
+				selectedItems: this.getSelectedItemsForTagSelector(),
 				searchTabOptions: {
 					stubOptions: {
 						title: Loc.getMessage('EC_USER_DIALOG_404_TITLE'),
@@ -1276,6 +1487,26 @@ export class EventEditForm
 		}
 	}
 
+	getSelectedItemsForTagSelector()
+	{
+		let result = [];
+
+		this.getUserSelectorEntityList().forEach((item) => {
+			if (item.entityType === 'sharing')
+			{
+				result.push({
+					id: item.id,
+					entityId: item.entityId,
+					entityType: 'extranet',
+					title: item.title,
+					deselectable: false,
+				});
+			}
+		});
+
+		return result;
+	}
+
 	hasExternalEmailUsers()
 	{
 		return !!this.getUserSelectorEntityList().find((item) => {return item.entityType === 'email';});
@@ -1305,7 +1536,8 @@ export class EventEditForm
 			wrap: this.DOM.plannerOuterWrap,
 			minWidth: parseInt(this.DOM.plannerOuterWrap.offsetWidth),
 			dayOfWeekMonthFormat: this.dayOfWeekMonthFormat,
-			locked: !this.plannerFeatureEnabled
+			locked: !this.plannerFeatureEnabled,
+			entryTimezone: this.entry.getTimezoneFrom(),
 		});
 
 		this.planner.subscribe('onDateChange', this.handlePlannerSelectorChanges.bind(this));
@@ -1325,6 +1557,7 @@ export class EventEditForm
 					entryId: this.entry.id || 0,
 					entryLocation: this.entry.data.LOCATION || '',
 					ownerId: this.ownerId,
+					hostId: this.entry.data.MEETING_HOST || null,
 					type: this.type,
 					entityList: params.entityList || [],
 					dateFrom: Util.formatDate(this.planner.scaleDateFrom),
@@ -1465,6 +1698,11 @@ export class EventEditForm
 		// 	return true;
 
 		return this.denyClose;
+	}
+
+	needToShowConfirmPopup()
+	{
+		return this.doShowConfirmPopup && this.formDataChanged();
 	}
 
 	setCurrentEntry(entry = null, userIndex = null)
@@ -1758,14 +1996,22 @@ export class EventEditForm
 		}
 		else
 		{
-			let i, names = this.DOM.additionalBlock.getElementsByClassName('js-calendar-field-name');
 			Dom.clean(this.DOM.pinnedNamesWrap);
-			for (i = 0; i < names.length; i++)
-			{
-				this.DOM.pinnedNamesWrap.appendChild(Dom.create("SPAN", {props: {className: 'calendar-additional-alt-promo-text'}, html: names[i].innerHTML}));
-			}
+			const additionalFields = [...this.DOM.additionalBlock.querySelectorAll('.calendar-field-additional-placeholder[data-bx-block-placeholer]')]
+				.filter(field => field.innerText !== '' && field.style.display !== 'none');
+			const fieldButtons = additionalFields.map(field => Dom.create('SPAN', {
+				attrs: {
+					'data-bx-field-id': field.getAttribute('data-bx-block-placeholer'),
+				},
+				props: {
+					className: 'calendar-additional-alt-promo-text',
+				},
+				html: field.querySelector('.js-calendar-field-name').innerText,
+			}));
+			this.DOM.pinnedNamesWrap.append(...fieldButtons);
+			this.bindAdditionalFieldButtons(fieldButtons);
 
-			if (!names.length)
+			if (!fieldButtons.length)
 			{
 				Dom.addClass(this.DOM.additionalBlockWrap, 'calendar-additional-block-hidden');
 			}
@@ -1776,6 +2022,54 @@ export class EventEditForm
 
 			this.checkLastItemBorder();
 		}
+	}
+
+	bindAdditionalFieldButtons(fieldButtons)
+	{
+		for (const fieldButton of fieldButtons)
+		{
+			Event.bind(fieldButton, 'click', (event) => {
+				const fieldId = fieldButton.getAttribute('data-bx-field-id');
+				const fieldWrap = document.querySelector(`.calendar-openable-block [data-bx-block-placeholer=${fieldId}]`);
+				this.highlightField(fieldWrap);
+
+				if (this.isAdditionalBlockOpened())
+				{
+					event.stopPropagation();
+				}
+			});
+		}
+	}
+
+	highlightField(fieldWrap)
+	{
+		Dom.addClass(fieldWrap, 'calendar-field-highlighted');
+
+		const fieldAbsoluteTop = this.DOM.content.scrollTop + fieldWrap.getBoundingClientRect().top;
+		this.highlightFieldScrollAnimation = new BX.easing({
+			duration: 400,
+			start: {
+				scroll: this.DOM.content.scrollTop,
+			},
+			finish: {
+				scroll: fieldAbsoluteTop,
+			},
+			transition: BX.easing.makeEaseOut(BX.easing.transitions.quart),
+			step: (state) =>
+			{
+				this.DOM.content.scrollTop = state.scroll;
+			},
+			complete: () => {}
+		});
+		this.highlightFieldScrollAnimation.animate();
+
+		clearTimeout(fieldWrap.highlightTimeout);
+		fieldWrap.highlightTimeout = setTimeout(() => BX.Dom.removeClass(fieldWrap, 'calendar-field-highlighted'), 2500);
+	}
+
+	isAdditionalBlockOpened()
+	{
+		return Dom.hasClass(this.DOM.additionalSwitch, 'opened');
 	}
 
 	checkLastItemBorder()
@@ -1827,6 +2121,7 @@ export class EventEditForm
 					{
 						from: data.dateFrom,
 						to: data.dateTo,
+						timezone: this.entry.getTimezoneFrom(),
 						fullDay: data.fullDay,
 						currentEventId: this.entry.id,
 					},
@@ -1937,10 +2232,21 @@ export class EventEditForm
 			&& !e.altKey
 			&& e.keyCode === Util.getKeyCode('enter')
 			&& this.checkTopSlider()
+			&& !this.isAdditionalPopupShown()
 		)
 		{
+			if (this.busyUsersDialog && this.busyUsersDialog.isShown())
+			{
+				return;
+			}
+
 			this.save();
 		}
+	}
+
+	isAdditionalPopupShown(): boolean
+	{
+		return this.DOM.locationRepeatBusyErrorPopup?.getPopupWindow()?.isShown();
 	}
 
 	checkTopSlider()
@@ -1957,9 +2263,14 @@ export class EventEditForm
 		if (Type.isArray(errorList))
 		{
 			errorList.forEach((error) => {
-				if (error.code === "edit_entry_location_busy")
+				if (error.code === "edit_entry_location_busy" || error.code === "edit_entry_location_busy_recurrence")
 				{
 					this.locationBusyAlert = Util.showFieldError(error.message, this.DOM.locationWrap, {clearTimeout: 10000});
+					return;
+				}
+				else if (error.code === "edit_entry_location_repeat_busy")
+				{
+					this.showLocationRepeatBusyErrorPopup(error.message);
 					return;
 				}
 				errorText += error.message + "\n";
@@ -1969,6 +2280,36 @@ export class EventEditForm
 		if (errorText !== '')
 		{
 			alert(errorText);
+		}
+	}
+
+	showLocationRepeatBusyErrorPopup(message)
+	{
+		if (!this.DOM.locationRepeatBusyErrorPopup)
+		{
+			this.DOM.locationRepeatBusyErrorPopup = EntryManager.getLocationRepeatBusyErrorPopup({
+				message,
+				onYesCallback: () => {
+					if (Type.isDomNode(this.locationBusyAlert))
+					{
+						Dom.remove(this.locationBusyAlert);
+						this.locationBusyAlert = null;
+					}
+					this.lastUsedSaveOptions.doCheckOccupancy = 'N';
+					this.DOM.locationRepeatBusyErrorPopup.close();
+					this.save(this.lastUsedSaveOptions);
+					this.lastUsedSaveOptions = {};
+				},
+				onCancelCallback: () => {
+					this.lastUsedSaveOptions = {};
+					this.DOM.locationRepeatBusyErrorPopup.close();
+				},
+				onPopupCloseCallback: () => {
+					delete this.DOM.locationRepeatBusyErrorPopup;
+				},
+			});
+
+			this.DOM.locationRepeatBusyErrorPopup.show();
 		}
 	}
 
@@ -2016,7 +2357,7 @@ export class EventEditForm
 		// Section
 		if (!excludes.includes('section')
 			&&
-			parseInt(entry.sectionId) !== parseInt(this.DOM.sectionInput.value))
+			parseInt(this.initialSectionId) !== parseInt(this.DOM.sectionInput.value))
 		{
 			fields.push('section');
 		}
@@ -2032,7 +2373,50 @@ export class EventEditForm
 			fields.push('codes');
 		}
 
+		if (this.wasRruleChanged())
+		{
+			fields.push('rrule');
+		}
+
 		return fields;
+	}
+
+	wasRruleChanged()
+	{
+		return JSON.stringify(this.getFormRrule()) !== JSON.stringify(this.initialRrule) && !this.entry.hasRecurrenceId();
+	}
+
+	getFormRrule()
+	{
+		const formData = new FormData(this.DOM.form);
+		const endsOn = formData.get('rrule_endson');
+		const FREQ = formData.get('EVENT_RRULE[FREQ]');
+		let INTERVAL = parseInt(formData.get('EVENT_RRULE[INTERVAL]'));
+		let COUNT = null;
+		let UNTIL = null;
+		let BYDAY = null;
+
+		if (endsOn === 'count')
+		{
+			COUNT = parseInt(formData.get('EVENT_RRULE[COUNT]'));
+		}
+
+		if (endsOn === 'until')
+		{
+			UNTIL = formData.get('EVENT_RRULE[UNTIL]');
+		}
+
+		if (FREQ === 'NONE')
+		{
+			INTERVAL = COUNT = UNTIL = null;
+		}
+
+		if (FREQ === 'WEEKLY')
+		{
+			BYDAY = formData.getAll('EVENT_RRULE[BYDAY][]');
+		}
+
+		return { FREQ, INTERVAL, COUNT, UNTIL, BYDAY };
 	}
 
 	checkCurrentUsersAccessibility()
@@ -2116,7 +2500,16 @@ export class EventEditForm
 				options: {
 					inviteGuestLink: true,
 					emailUsers: true,
-				}
+				},
+				filters: [
+					{
+						id: 'calendar.attendeeFilter',
+						options: {
+							'isSharingEvent': this.entry.isSharingEvent(),
+							'eventId': this.entry.id
+						}
+					},
+				],
 			},
 			{
 				id: 'project'
@@ -2207,5 +2600,15 @@ export class EventEditForm
 			sectionManager.setHiddenSections(hiddenSections);
 			sectionManager.saveHiddenSections();
 		}
+	}
+
+	isCreateForm()
+	{
+		return !this.isEditForm();
+	}
+
+	isEditForm()
+	{
+		return parseInt(this.entry.id) > 0;
 	}
 }

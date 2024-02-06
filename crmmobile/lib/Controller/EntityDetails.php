@@ -4,7 +4,10 @@ declare(strict_types = 1);
 
 namespace Bitrix\CrmMobile\Controller;
 
+use Bitrix\Catalog;
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
 use Bitrix\Crm\Component\EntityDetails\ComponentMode;
+use Bitrix\Crm\Conversion;
 use Bitrix\Crm\Engine\ActionFilter\CheckReadMyCompanyPermission;
 use Bitrix\Crm\Engine\ActionFilter\CheckReadPermission;
 use Bitrix\Crm\Engine\ActionFilter\CheckWritePermission;
@@ -12,6 +15,7 @@ use Bitrix\Crm\Entity\PaymentDocumentsRepository;
 use Bitrix\Crm\Exclusion\Manager;
 use Bitrix\Crm\Field\Collection;
 use Bitrix\Crm\Integration\DocumentGeneratorManager;
+use Bitrix\Crm\Integration\Im;
 use Bitrix\Crm\Item;
 use Bitrix\Crm\Item\Company;
 use Bitrix\Crm\Item\Contact;
@@ -23,14 +27,15 @@ use Bitrix\Crm\Service\Factory;
 use Bitrix\Crm\Settings\HistorySettings;
 use Bitrix\Crm\Timeline\TimelineEntry;
 use Bitrix\Crm\UI\EntitySelector;
+use Bitrix\Crm\UserField\UserFieldManager;
 use Bitrix\CrmMobile\AhaMoments\GoToChat;
+use Bitrix\CrmMobile\AhaMoments\Yoochecks;
 use Bitrix\CrmMobile\Command\SaveEntityCommand;
 use Bitrix\CrmMobile\Controller\Filter\CheckRestrictions;
 use Bitrix\CrmMobile\Entity\FactoryProvider;
 use Bitrix\CrmMobile\ProductGrid\ProductGridQuery;
 use Bitrix\CrmMobile\Query\EntityEditor;
 use Bitrix\ImOpenlines\Security\Permissions;
-use Bitrix\Main\Config\Option;
 use Bitrix\Main\DI\ServiceLocator;
 use Bitrix\Main\Engine\ActionFilter\CloseSession;
 use Bitrix\Main\Engine\CurrentUser;
@@ -38,12 +43,14 @@ use Bitrix\Main\Error;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\SystemException;
+use Bitrix\Main\Type\DateTime;
 use Bitrix\Main\UI\EntitySelector\EntityUsageTable;
 use Bitrix\Mobile\Helpers\ReadsApplicationErrors;
 use Bitrix\Mobile\UI\DetailCard\Configurator;
 use Bitrix\Mobile\UI\DetailCard\Controller;
 use Bitrix\Mobile\UI\DetailCard\Tabs;
-use Bitrix\Crm\Conversion;
+use Bitrix\Main\Web\Json;
+use Bitrix\Crm\Component\EntityDetails\TimelineMenuBar\MenuIdResolver;
 
 Loader::requireModule('crm');
 
@@ -249,7 +256,14 @@ class EntityDetails extends Controller
 
 		if ($entity->isNew())
 		{
-			return $result;
+			return array_merge(
+				$result,
+				[
+					'params' => [
+						'permissions' => $this->getPermissions($entity),
+					],
+				]
+			);
 		}
 
 		$permissions = $this->getPermissions($entity);
@@ -267,14 +281,18 @@ class EntityDetails extends Controller
 					'timelinePushTag' => $this->subscribeToTimelinePushEvents($entity, $currentUser),
 					'todoNotificationParams' => $this->getTodoNotificationParams($factory, $entity, $permissions),
 					'isAutomationAvailable' => $this->getIsAutomationAvailable($entity->getEntityTypeId()),
-					'isDocumentPreviewerAvailable' => Option::get('crmmobile', 'release-spring-2023', true),
+					'isBizProcAvailable' => $this->getIsBizProcAvailable($entity->getEntityTypeId()),
+					'bizProcStarterConfig' => $this->getBizProcStarterConfig($entity),
+					'isLinkWithProductsEnabled' => $this->isLinkWithProductsEnabled(),
+					'isDocumentGenerationEnabled' => $this->isDocumentGenerationEnabled(),
+					'isClientEnabled' => $this->isClientEnabled(),
+					'isChatSupported' => Im\Chat::isEntitySupported($entity->getEntityTypeId()),
+					'isCategoriesEnabled' => $this->isCategoriesEnabled(),
 					'documentGeneratorProvider' => $this->getDocumentGeneratorProvider($entity->getEntityTypeId()),
-					'shouldShowAutomationMenuItem' => Option::get('crmmobile', 'release-spring-2023', true),
-					'isAvailableReceivePayment' => Option::get('crmmobile', 'release-spring-2023', true),
-					'isGoToChatAvailable' => Option::get('crmmobile', 'release-spring-2023', true),
-					'ahaMoments' => [
-						'goToChat' => (GoToChat::getInstance())->canShow(),
-					],
+					'ahaMoments' => $this->getAhaMoments($entity),
+					'linkedUserFields' => $this->getLinkedUserFields(),
+					'floatingMenuItemsSettings' => $this->getFloatingMenuItemsSettings($entity, $currentUser),
+					'isCalendarSharingEnabled' => RestrictionManager::getCalendarSharingRestriction()->hasPermission(),
 				],
 			]
 		);
@@ -327,6 +345,26 @@ class EntityDetails extends Controller
 		return $params;
 	}
 
+	private function getCommonPermissions(): array
+	{
+		return [
+			'openLinesAccess' => $this->hasOpenLinesAccess(),
+			'productCatalogAccess' => $this->hasProductCatalogAccess(),
+		];
+	}
+
+	private function hasProductCatalogAccess(): bool
+	{
+		if (!Loader::includeModule('catalog'))
+		{
+			return false;
+		}
+
+		return Catalog\Access\AccessController::getCurrent()->check(
+			Catalog\Access\ActionDictionary::ACTION_CATALOG_READ
+		);
+	}
+
 	private function prepareEditorConversionParams(&$params, $entityTypeId)
 	{
 		$conversionWizard = $this->getConversionWizard();
@@ -351,7 +389,7 @@ class EntityDetails extends Controller
 	{
 		if (!is_array($permissions))
 		{
-			$permissions = $this->getPermissions($entity);
+			$permissions = $this->getEntityPermissions($entity);
 		}
 
 		if (
@@ -367,9 +405,12 @@ class EntityDetails extends Controller
 			return null;
 		}
 
-		$counter = new EntityActivityCounter($entity->getEntityTypeId(), [$entity->getId()]);
+		$entityTypeId = $entity->getEntityTypeId();
+		$categoryId = $factory->isCategoriesSupported() ? $entity->getCategoryId() : null;
+		$counter = new EntityActivityCounter($entityTypeId, [$entity->getId()]);
 
 		return [
+			'reminders' => (new TodoPingSettingsProvider($entityTypeId, (int)$categoryId))->fetchForJsComponent(),
 			'notificationSupported' => $factory->isSmartActivityNotificationSupported(),
 			'notificationEnabled' => $factory->isSmartActivityNotificationEnabled(),
 			'plannedActivityCounter' => $counter->getCounters()[$entity->getId()]['N'] ?? 0,
@@ -386,6 +427,67 @@ class EntityDetails extends Controller
 		return \Bitrix\Crm\Automation\Factory::isAutomationAvailable($entityTypeId);
 	}
 
+	private function getIsBizProcAvailable($entityTypeId): bool
+	{
+		return (
+			Loader::includeModule('bizproc')
+			&& \CBPRuntime::isFeatureEnabled()
+			&& \Bitrix\Main\ModuleManager::isModuleInstalled('bizprocmobile')
+			&& \Bitrix\Crm\Automation\Factory::isBizprocDesignerEnabled((int)$entityTypeId)
+		);
+	}
+
+	private function getBizProcStarterConfig(Item $entity): array
+	{
+		if (Loader::includeModule('bizproc'))
+		{
+			$factory = $this->getFactory();
+			$entityTypeId = $factory->getEntityTypeId();
+			$documentType = \CCrmBizProcHelper::ResolveDocumentType($entityTypeId);
+			$documentId =  \CCrmBizProcHelper::ResolveDocumentId($entityTypeId, $entity->getId());
+
+			return [
+				'signedDocument' => \CBPDocument::signParameters([$documentType, $documentId[2]]),
+				'documentType' => $documentType[2],
+			];
+		}
+
+		return [];
+	}
+
+	private function isLinkWithProductsEnabled(): bool
+	{
+		return $this->getFactory()->isLinkWithProductsEnabled();
+	}
+
+	private function isDocumentGenerationEnabled(): bool
+	{
+		return $this->getFactory()->isDocumentGenerationEnabled();
+	}
+
+	private function isClientEnabled(): bool
+	{
+		return $this->getFactory()->isClientEnabled();
+	}
+
+	private function isCategoriesEnabled(): bool
+	{
+		$isCategoriesEnabled = $this->getFactory()->isCategoriesEnabled();
+		$entityTypeId = $this->getFactory()->getEntityTypeId();
+
+		if ($entityTypeId === \CCrmOwnerType::Deal)
+		{
+			return true;
+		}
+
+		if (\CCrmOwnerType::isPossibleDynamicTypeId($entityTypeId) && $isCategoriesEnabled)
+		{
+			return true;
+		}
+
+		return false;
+	}
+
 	private function getDocumentGeneratorProvider(int $entityTypeId): ?string
 	{
 		$manager = DocumentGeneratorManager::getInstance();
@@ -398,15 +500,39 @@ class EntityDetails extends Controller
 		return $providersMap[$entityTypeId] ?? null;
 	}
 
+	private function getLinkedUserFields(): array
+	{
+		$entityTypeName = $this->getFactory()->getEntityName();
+
+		$result = [];
+		foreach (UserFieldManager::getLinkedUserFieldsMap() as $userFieldName => $userField)
+		{
+			$result[$userFieldName] = UserFieldManager::isEntityEnabledInUserField($userField, $entityTypeName);
+		}
+
+		return $result;
+	}
+
 	private function getPermissions(Item $entity): array
 	{
+		return array_merge(
+			$this->getCommonPermissions(),
+			$this->getEntityPermissions($entity)
+		);
+	}
+
+	private function getEntityPermissions(Item $entity): array
+	{
+		if ($entity->isNew())
+		{
+			return [];
+		}
+
 		$userPermissions = Container::getInstance()->getUserPermissions();
 		$crmPermissions = $userPermissions->getCrmPermissions();
 
 		$entityTypeId = $entity->getEntityTypeId();
 		$entityId = $entity->getId();
-
-		$openLinesAccess = $this->hasOpenLinesAccess();
 
 		if ($entityTypeId === \CCrmOwnerType::Company && \CCrmCompany::isMyCompany($entityId))
 		{
@@ -418,7 +544,6 @@ class EntityDetails extends Controller
 				'update' => $myCompanyPermissions->canUpdate(),
 				'delete' => $myCompanyPermissions->canDelete(),
 				'exclude' => false,
-				'openLinesAccess' => $openLinesAccess,
 			];
 		}
 
@@ -430,7 +555,6 @@ class EntityDetails extends Controller
 			'update' => $userPermissions->checkUpdatePermissions($entityTypeId, $entityId, $categoryId),
 			'delete' => $userPermissions->checkDeletePermissions($entityTypeId, $entityId, $categoryId),
 			'exclude' => !$crmPermissions->HavePerm('EXCLUSION', BX_CRM_PERM_NONE, 'WRITE'),
-			'openLinesAccess' => $openLinesAccess,
 		];
 	}
 
@@ -503,14 +627,17 @@ class EntityDetails extends Controller
 
 	public function loadTimelineAction(Factory $factory, Item $entity, CurrentUser $currentUser): array
 	{
-		return array_merge(
-			$this->forward(Timeline::class, 'loadTimeline'),
-			[
+		$result = $this->forward(Timeline::class, 'loadTimeline');
+		if (is_array($result))
+		{
+			return array_merge($result, [
 				'params' => [
 					'todoNotificationParams' => $this->getTodoNotificationParams($factory, $entity),
 				],
-			],
-		);
+			]);
+		}
+
+		return [];
 	}
 
 	/**
@@ -605,9 +732,14 @@ class EntityDetails extends Controller
 
 		$entityId = (int)$result->getData()['ID'];
 
-		if ($conversionWizard !== null && $isNeedAttachConversionItem)
+		if ($conversionWizard !== null)
 		{
-			$conversionWizard->attachNewlyCreatedEntity($entityTypeName, $entityId);
+			if ($isNeedAttachConversionItem)
+			{
+				$conversionWizard->attachNewlyCreatedEntity($entityTypeName, $entityId);
+			}
+
+			$this->clearConversionParams();
 		}
 
 		if ($isCreationFromSelector && $entityId)
@@ -618,15 +750,35 @@ class EntityDetails extends Controller
 		return $entityId;
 	}
 
+	private function clearConversionParams()
+	{
+		$conversionQueryParams = Conversion\EntityConversionWizard::getQueryParamSource();
+		$conversionParamList = [...self::STATIC_CONVERSION_QUERY_PARAMS, $conversionQueryParams['ENTITY_ID']];
+		$sourceParametersList = $this->getSourceParametersList();
+
+		foreach ($conversionParamList as $conversionParam)
+		{
+			foreach ($sourceParametersList as &$parameterList)
+			{
+				if (isset($parameterList[$conversionParam]))
+				{
+					$parameterList[$conversionParam] = null;
+				}
+			}
+		}
+
+		$this->setSourceParametersList($sourceParametersList);
+	}
+
 	private function getConversionParams(): ?array
 	{
 		$entityId = null;
 		$entityTypeId = null;
 		$conversionQueryParams = Conversion\EntityConversionWizard::getQueryParamSource();
 		$conversionParamList = [...self::STATIC_CONVERSION_QUERY_PARAMS, $conversionQueryParams['ENTITY_ID']];
-		foreach ($conversionParamList as $key)
+		foreach ($conversionParamList as $conversionParam)
 		{
-			$value = (int)($this->findInSourceParametersList($key) ?? 0);
+			$value = (int)($this->findInSourceParametersList($conversionParam) ?? 0);
 			if ($value > 0)
 			{
 				$entityId = $value;
@@ -636,19 +788,27 @@ class EntityDetails extends Controller
 				continue;
 			}
 
-			if ($key === $conversionQueryParams['ENTITY_ID'])
+			if ($conversionParam === $conversionQueryParams['ENTITY_ID'])
 			{
 				$entityTypeId = $this->findInSourceParametersList($conversionQueryParams['ENTITY_TYPE_ID']);
 			}
-			elseif ($key === Conversion\QuoteConversionWizard::QUERY_PARAM_SRC_ID || $key === 'quote_id')
+			elseif (
+				$conversionParam === Conversion\QuoteConversionWizard::QUERY_PARAM_SRC_ID
+				|| $conversionParam
+				=== 'quote_id'
+			)
 			{
 				$entityTypeId = \CCrmOwnerType::Quote;
 			}
-			elseif ($key === 'lead_id')
+			elseif ($conversionParam === 'lead_id')
 			{
 				$entityTypeId = \CCrmOwnerType::Lead;
 			}
-			elseif ($key === Conversion\DealConversionWizard::QUERY_PARAM_SRC_ID || $key === 'deal_id')
+			elseif (
+				$conversionParam === Conversion\DealConversionWizard::QUERY_PARAM_SRC_ID
+				|| $conversionParam
+				=== 'deal_id'
+			)
 			{
 				$entityTypeId = \CCrmOwnerType::Deal;
 			}
@@ -949,5 +1109,63 @@ class EntityDetails extends Controller
 			'totalAmount' => $data['TOTAL_AMOUNT'] ?? 0,
 			'currencyId' => $data['CURRENCY_ID'] ?? '',
 		];
+	}
+
+	private function getFloatingMenuItemsSettings(Item $entity, CurrentUser $currentUser): ?array
+	{
+		$categoryId = $entity->isCategoriesSupported() ? $entity->getCategoryId() : null;
+		$entityTypeId = $entity->getEntityTypeId();
+		$userId = $currentUser->getId();
+		$menuId = MenuIdResolver::getMenuId($entityTypeId, (string)$userId, $categoryId);
+
+		$options = \CUserOptions::GetOption('ui', $menuId, []);
+		$settings = $options['settings'] ?? null;
+		if (!$settings)
+		{
+			return null;
+		}
+		$menuItemsSettings =  Json::decode($settings);
+
+		$preparedMenuItemsSettings = [];
+		foreach ($menuItemsSettings as $key => $value)
+		{
+			$preparedMenuItemsSettings[str_replace($menuId.'_', '', $key)] = [
+				'position' => $value['sort'],
+				'disabled' => $value['isDisabled'],
+				'pinned' => $value['isPinned'],
+			];
+		}
+
+		return $preparedMenuItemsSettings;
+	}
+
+	private function getAhaMoments(Item $entity): array
+	{
+		if (!$this->needShowAhaMoments($entity))
+		{
+			return [];
+		}
+
+		$ahaMoments = [
+			'goToChat' => (GoToChat::getInstance())->canShow(),
+		];
+
+		if ($entity->getEntityTypeId() === \CCrmOwnerType::Deal)
+		{
+			$ahaMoments['yoochecks'] = (Yoochecks::getInstance())->canShow();
+		}
+
+		return $ahaMoments;
+	}
+
+	private function needShowAhaMoments(Item $entity): bool
+	{
+		$timeCreated = $entity->getCreatedTime();
+		if ($timeCreated)
+		{
+			return $timeCreated->getDiff(new DateTime())->h > 1;
+		}
+
+		return false;
 	}
 }

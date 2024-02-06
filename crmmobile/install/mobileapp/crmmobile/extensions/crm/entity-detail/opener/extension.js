@@ -3,6 +3,8 @@
  */
 jn.define('crm/entity-detail/opener', (require, exports, module) => {
 	const { Alert } = require('alert');
+	const { Feature } = require('feature');
+	const AppTheme = require('apptheme');
 	const { NotifyManager } = require('notify-manager');
 	const { EntitySvg } = require('crm/assets/entity');
 	const { getEntityMessage } = require('crm/loc');
@@ -69,14 +71,16 @@ jn.define('crm/entity-detail/opener', (require, exports, module) => {
 		{
 			return {
 				modal: true,
-				backgroundColor: '#f5f7f8',
-				leftButtons: [{
-					// type: 'cross',
-					svg: {
-						content: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M14.722 6.79175L10.9495 10.5643L9.99907 11.5L9.06666 10.5643L5.29411 6.79175L3.96289 8.12297L10.008 14.1681L16.0532 8.12297L14.722 6.79175Z" fill="#A8ADB4"/></svg>',
+				backgroundColor: AppTheme.colors.bgSecondary,
+				leftButtons: [
+					{
+						// type: 'cross',
+						svg: {
+							content: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M14.722 6.79175L10.9495 10.5643L9.99907 11.5L9.06666 10.5643L5.29411 6.79175L3.96289 8.12297L10.008 14.1681L16.0532 8.12297L14.722 6.79175Z" fill="#A8ADB4"/></svg>',
+						},
+						isCloseButton: true,
 					},
-					isCloseButton: true,
-				}],
+				],
 			};
 		}
 
@@ -203,7 +207,7 @@ jn.define('crm/entity-detail/opener', (require, exports, module) => {
 
 			const entityTitleParams = {
 				useLargeTitleMode: false,
-				detailTextColor: '#a8adb4',
+				detailTextColor: AppTheme.colors.base4,
 			};
 
 			if (entityId)
@@ -265,6 +269,7 @@ jn.define('crm/entity-detail/opener', (require, exports, module) => {
 						if (entity && entity.supported && !entity.restricted)
 						{
 							this.resolveEntity(entity, resolve, reject);
+
 							return;
 						}
 
@@ -272,8 +277,7 @@ jn.define('crm/entity-detail/opener', (require, exports, module) => {
 						{
 							// retry first reject
 							loading = true;
-							this
-								.loadEntities(true)
+							this.loadEntities(true)
 								.then(() => {
 									entity = this.findEntityType(entityTypeId);
 									if (entity)
@@ -284,8 +288,7 @@ jn.define('crm/entity-detail/opener', (require, exports, module) => {
 									{
 										reject();
 									}
-								})
-							;
+								}).catch(console.error);
 						}
 						else if (entity)
 						{

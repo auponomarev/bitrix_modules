@@ -6,6 +6,7 @@ use Bitrix\Crm\Automation;
 use Bitrix\Crm\Category\Entity\Category;
 use Bitrix\Crm\Counter\EntityCounterFactory;
 use Bitrix\Crm\Counter\EntityCounterType;
+use Bitrix\Crm\Filter\HeaderSections;
 use Bitrix\Crm\Filter\Filter;
 use Bitrix\Crm\Filter\ItemDataProvider;
 use Bitrix\Crm\Filter\ItemUfDataProvider;
@@ -15,7 +16,6 @@ use Bitrix\Crm\Relation\EntityRelationTable;
 use Bitrix\Crm\Restriction\RestrictionManager;
 use Bitrix\Crm\Service;
 use Bitrix\Crm\Service\Container;
-use Bitrix\Crm\Settings\Crm;
 use Bitrix\Crm\Settings\InvoiceSettings;
 use Bitrix\Main\Error;
 use Bitrix\Main\Localization\Loc;
@@ -135,8 +135,11 @@ abstract class ItemList extends Base
 			]
 		);
 		$this->provider = $filterFactory->getDataProvider($settings);
+
 		$this->ufProvider = $filterFactory->getUserFieldDataProvider($settings);
-		$this->filter = $filterFactory->createFilter($settings->getID(), $this->provider, [$this->ufProvider]);
+		$additionalProviders = HeaderSections::getInstance()->additionalProviders($settings, $filterFactory);
+
+		$this->filter = $filterFactory->createFilter($settings->getID(), $this->provider, $additionalProviders);
 
 		EntityRelationTable::initiateClearingDuplicateSourceElementsWithInterval($this->factory->getEntityTypeId());
 	}
@@ -152,6 +155,7 @@ abstract class ItemList extends Base
 	protected function initCategory(): ?Category
 	{
 		$categoryId = (int) ($this->arParams['categoryId'] ?? null);
+		$optionName = 'current_' . mb_strtolower($this->factory->getEntityName()) . '_category';
 
 		if ($categoryId <= 0)
 		{
@@ -160,6 +164,8 @@ abstract class ItemList extends Base
 				return $this->factory->createDefaultCategoryIfNotExist();
 			}
 
+			\CUserOptions::DeleteOption('crm', $optionName);
+
 			return null;
 		}
 
@@ -167,9 +173,14 @@ abstract class ItemList extends Base
 
 		if (!$category)
 		{
+			\CUserOptions::DeleteOption('crm', $optionName);
+
 			$this->errorCollection[] = new Error(Loc::getMessage('CRM_TYPE_CATEGORY_NOT_FOUND_ERROR'));
+
 			return null;
 		}
+
+		\CUserOptions::SetOption('crm', $optionName, $categoryId);
 
 		return $category;
 	}
@@ -391,14 +402,7 @@ abstract class ItemList extends Base
 
 	protected function getHeaderSections(): array
 	{
-		return [
-			[
-				'id' => $this->factory->getEntityName(),
-				'name' => $this->factory->getEntityDescription(),
-				'default' => true,
-				'selected' => true,
-			],
-		];
+		return HeaderSections::getInstance()->sections($this->factory);
 	}
 
 	protected function getToolbarViews(): array
@@ -439,7 +443,7 @@ abstract class ItemList extends Base
 
 		}
 
-		if (Automation\Factory::isSupported($this->entityTypeId))
+		if (Automation\Factory::isAutomationAvailable($this->entityTypeId))
 		{
 			$categoryId = $this->getCategoryId();
 			if (is_null($categoryId) && $this->factory->isCategoriesSupported())

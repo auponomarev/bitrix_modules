@@ -95,6 +95,8 @@ if(typeof BX.Crm.EntityEditorClientSearchBox === "undefined")
 		this.onDocumentClickConfirm = null;
 
 		this.creatingItem = null;
+
+		this._selectEntityExternalHandler = null;
 	};
 	BX.Crm.EntityEditorClientSearchBox.prototype =
 		{
@@ -440,12 +442,18 @@ if(typeof BX.Crm.EntityEditorClientSearchBox === "undefined")
 			},
 			release: function()
 			{
+				this.closeSearchSummary();
 				this.releaseEntityEditor();
 			},
 			releaseEntityEditor: function()
 			{
 				if (this._clientEntityEditor)
 				{
+					BX.Event.EventEmitter.unsubscribe(
+						this,
+						'onSelectEntityExternal',
+						this._selectEntityExternalHandler
+					);
 					this._clientEntityEditor.removeControlChangeListener(this._clientEntityEditorChangeHandler);
 					this._clientEntityEditor.release();
 					this._clientEntityEditor = null;
@@ -972,6 +980,26 @@ if(typeof BX.Crm.EntityEditorClientSearchBox === "undefined")
 				this._externalEditorPages[contextId] = url;
 				BX.Crm.Page.open(url);
 			},
+			getDuplicateControlConfig: function()
+			{
+				const result =  BX.Runtime.clone(BX.prop.getObject(this._settings, "duplicateControl", {}));
+
+				result["enabled"] = result.hasOwnProperty("enabled");
+
+				if (this._entityInfo && this._entityInfo.getId() > 0)
+				{
+					result["isSingleMode"] = true;
+				}
+
+				if (this._editor && this._editor.hasOwnProperty("_ajaxForm") && this._editor["_ajaxForm"])
+				{
+					result["form"] = this._editor["_ajaxForm"];
+				}
+				result["clientSearchBox"] = this;
+				result["enableEntitySelect"] = true;
+
+				return result;
+			},
 			createClientEntityEditor: function(container, editorId)
 			{
 				if (this._clientEntityEditor === null)
@@ -1004,9 +1032,12 @@ if(typeof BX.Crm.EntityEditorClientSearchBox === "undefined")
 						},
 						'showTitle': false,
 						'virtual': true,
-						'options': this._parentField && this._parentField.getSchemeElement()
-							? this._parentField.getSchemeElement()._options
-							: {}
+						'options':
+							this._parentField && this._parentField.getSchemeElement()
+								? this._parentField.getSchemeElement()._options
+								: {}
+						,
+						'data': {'duplicateControl': {'groupId': 'phone'}}
 					});
 
 					fieldType = 'available';
@@ -1027,7 +1058,8 @@ if(typeof BX.Crm.EntityEditorClientSearchBox === "undefined")
 							'change':  BX.message("CRM_EDITOR_EMAIL")
 						},
 						'showTitle': false,
-						'virtual': true
+						'virtual': true,
+						'data': {'duplicateControl': {'groupId': 'email'}}
 					});
 
 					fieldType = 'available';
@@ -1125,6 +1157,11 @@ if(typeof BX.Crm.EntityEditorClientSearchBox === "undefined")
 						values['REQUISITES'] = requisites;
 					}
 
+					if (this._selectEntityExternalHandler === null)
+					{
+						this._selectEntityExternalHandler = this.onEntitySelectExternal.bind(this);
+					}
+					BX.Event.EventEmitter.subscribe(this, 'onSelectEntityExternal', this._selectEntityExternalHandler);
 					this._clientEntityEditor = BX.Crm.EntityEditor.create(
 						editorId,
 						{
@@ -1182,7 +1219,8 @@ if(typeof BX.Crm.EntityEditorClientSearchBox === "undefined")
 							enableSectionDragDrop: false,
 							enableFieldDragDrop: false,
 							enableContextDataLayout: false,
-							formTagName: 'div'
+							formTagName: 'div',
+							duplicateControl: this.getDuplicateControlConfig()
 						}
 					);
 					this._clientEntityEditor.addControlChangeListener(this._clientEntityEditorChangeHandler);
@@ -1850,6 +1888,62 @@ if(typeof BX.Crm.EntityEditorClientSearchBox === "undefined")
 			{
 				this._multifieldChangeNotifier.notify();
 			},
+			ucFirst: function(value)
+			{
+				return value.substring(0, 1).toUpperCase() + value.substring(1).toLowerCase();
+			},
+			showNotofication: function(context)
+			{
+				if (
+					context.hasOwnProperty("type")
+					&& BX.Type.isString(context["type"])
+					&& context["type"].length > 1
+				)
+				{
+					const baseEntityTypeName = this._editor.getEntityTypeName();
+					if (BX.Type.isString(baseEntityTypeName) && baseEntityTypeName.length > 1)
+					{
+						const srcTypeKey = this.ucFirst(context["type"]);
+						let dstTypeKey = this.ucFirst(baseEntityTypeName);
+						let index = dstTypeKey.indexOf("_");
+						while (index >= 0)
+						{
+							dstTypeKey = dstTypeKey.substring(0, index) + this.ucFirst(dstTypeKey.substring(index + 1));
+							index = dstTypeKey.indexOf("_", index + 1);
+						}
+						const notifyMessage = this.getMessage("notify" + srcTypeKey + "To" + dstTypeKey);
+						if (this._searchInput && BX.Type.isStringFilled(notifyMessage))
+						{
+							const popup = new BX.Main.Popup({
+								bindElement: this._searchInput,
+								darkMode: true,
+								angle: {
+									offset: 70,
+								},
+								content: notifyMessage,
+							});
+							popup.setBackground("rgba(64,64,64,0.7)");
+							popup.show();
+
+							setTimeout(
+								function (popup) {
+									return function () {
+										popup.close();
+									}
+								}(popup),
+								5000
+							);
+						}
+					}
+				}
+			},
+			onEntitySelectExternal: function (event)
+			{
+				const context = event.getData();
+				this.onChangeButtonClick();
+				this.onEntitySelect(this, context);
+				this.showNotofication(context);
+			},
 			reset: function()
 			{
 				this._searchInput.value = "";
@@ -1898,6 +1992,17 @@ if(typeof BX.Crm.EntityEditorClientSearchBox === "undefined")
 				var extraData = BX.prop.getObject(phones[0], "VALUE_EXTRA", {});
 
 				return BX.prop.getString(extraData, "COUNTRY_CODE", "");
+			},
+			closeSearchSummary: function ()
+			{
+				if (this._clientEntityEditor)
+				{
+					const duplicateManager = this._clientEntityEditor.getDuplicateManager();
+					if (duplicateManager && duplicateManager._controller)
+					{
+						duplicateManager._controller._closeSearchSummary();
+					}
+				}
 			},
 		};
 	if(typeof(BX.Crm.EntityEditorClientSearchBox.messages) === "undefined")

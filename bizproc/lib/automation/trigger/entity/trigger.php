@@ -14,9 +14,9 @@ use Bitrix\Main;
  * @method static EO_Trigger_Result getById($id)
  * @method static EO_Trigger_Result getList(array $parameters = [])
  * @method static EO_Trigger_Entity getEntity()
- * @method static \Bitrix\Bizproc\Automation\Trigger\Entity\EO_Trigger createObject($setDefaultValues = true)
+ * @method static \Bitrix\Bizproc\Automation\Trigger\Entity\TriggerObject createObject($setDefaultValues = true)
  * @method static \Bitrix\Bizproc\Automation\Trigger\Entity\EO_Trigger_Collection createCollection()
- * @method static \Bitrix\Bizproc\Automation\Trigger\Entity\EO_Trigger wakeUpObject($row)
+ * @method static \Bitrix\Bizproc\Automation\Trigger\Entity\TriggerObject wakeUpObject($row)
  * @method static \Bitrix\Bizproc\Automation\Trigger\Entity\EO_Trigger_Collection wakeUpCollection($rows)
  */
 class TriggerTable extends Main\Entity\DataManager
@@ -28,6 +28,11 @@ class TriggerTable extends Main\Entity\DataManager
 	public static function getTableName()
 	{
 		return 'b_bp_automation_trigger';
+	}
+
+	public static function getObjectClass()
+	{
+		return TriggerObject::class;
 	}
 
 	/**

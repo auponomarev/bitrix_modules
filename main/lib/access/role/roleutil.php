@@ -180,8 +180,8 @@ abstract class RoleUtil
 		}
 
 		$query = '
-			INSERT INTO `'. $permissionClass::getTableName() .'`
-				(ROLE_ID, PERMISSION_ID, `VALUE`)
+			INSERT INTO '. $helper->quote($permissionClass::getTableName()) .'
+				(ROLE_ID, PERMISSION_ID, ' . $helper->quote('VALUE') . ')
 				VALUES
 				'. implode(',', $query) .'
 		';
@@ -219,7 +219,7 @@ abstract class RoleUtil
 				throw new RoleRelationSaveException();
 			}
 
-			$query[] = '('. $this->roleId .', "'. $helper->forSql(trim($code)) .'")';
+			$query[] = '('. $this->roleId .', \''. $helper->forSql(trim($code)) .'\')';
 		}
 
 		if (empty($query))
@@ -228,7 +228,7 @@ abstract class RoleUtil
 		}
 
 		$query = '
-			INSERT INTO `'. $roleRelationsClass::getTableName() .'`
+			INSERT INTO '. $helper->quote($roleRelationsClass::getTableName()) .'
 				(ROLE_ID, RELATION)
 				VALUES
 				'. implode(',', $query) .'

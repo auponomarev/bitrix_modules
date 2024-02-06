@@ -1,13 +1,14 @@
-import {Core} from 'im.v2.application.core';
-import {DialogType, UserStatus as UserStatusType} from 'im.v2.const';
-import {Utils} from 'im.v2.lib.utils';
+import { Core } from 'im.v2.application.core';
+import { ChatType, UserStatus as UserStatusType } from 'im.v2.const';
+import { Utils } from 'im.v2.lib.utils';
 
-import {UserStatus, UserStatusSize} from '../user-status/user-status';
+// noinspection ES6PreferShortImport
+import { UserStatus, UserStatusSize } from '../user-status/user-status';
 
 import 'ui.fonts.opensans';
 import './avatar.css';
 
-import type {ImModelUser, ImModelDialog} from 'im.v2.model';
+import type { ImModelUser, ImModelChat } from 'im.v2.model';
 
 export const AvatarSize = Object.freeze({
 	XS: 'XS',
@@ -16,45 +17,54 @@ export const AvatarSize = Object.freeze({
 	L: 'L',
 	XL: 'XL',
 	XXL: 'XXL',
-	XXXL: 'XXXL'
+	XXXL: 'XXXL',
 });
 
 // @vue/component
 export const Avatar = {
 	name: 'MessengerAvatar',
-	components: {UserStatus},
+	components: { UserStatus },
 	props: {
 		dialogId: {
 			type: [String, Number],
-			default: 0
+			default: 0,
 		},
 		size: {
 			type: String,
-			default: AvatarSize.M
+			default: AvatarSize.M,
 		},
 		withAvatarLetters: {
 			type: Boolean,
-			default: true
+			default: true,
 		},
 		withStatus: {
 			type: Boolean,
-			default: true
+			default: true,
 		},
 		withSpecialTypes: {
 			type: Boolean,
-			default: true
-		}
+			default: true,
+		},
+		withSpecialTypeIcon: {
+			type: Boolean,
+			default: true,
+		},
+		withTooltip: {
+			type: Boolean,
+			default: true,
+		},
 	},
-	data() {
+	data(): Object
+	{
 		return {
 			imageLoadError: false,
 		};
 	},
 	computed:
 	{
-		dialog(): ImModelDialog
+		dialog(): ImModelChat
 		{
-			return this.$store.getters['dialogues/get'](this.dialogId, true);
+			return this.$store.getters['chats/get'](this.dialogId, true);
 		},
 		user(): ImModelUser
 		{
@@ -62,7 +72,7 @@ export const Avatar = {
 		},
 		isUser(): boolean
 		{
-			return this.dialog.type === DialogType.user;
+			return this.dialog.type === ChatType.user;
 		},
 		isBot(): boolean
 		{
@@ -75,9 +85,18 @@ export const Avatar = {
 		},
 		isSpecialType(): boolean
 		{
-			const commonTypes = [DialogType.user, DialogType.chat, DialogType.open];
+			const commonTypes = [ChatType.user, ChatType.chat, ChatType.open];
 
 			return !commonTypes.includes(this.dialog.type);
+		},
+		containerTitle(): string
+		{
+			if (!this.withTooltip)
+			{
+				return '';
+			}
+
+			return this.dialog.name;
 		},
 		containerClasses(): string[]
 		{
@@ -86,14 +105,14 @@ export const Avatar = {
 			{
 				classes.push('--special');
 			}
-			const typeClass = DialogType[this.dialog.type] ? `--${this.dialog.type}` : '--default';
+			const typeClass = ChatType[this.dialog.type] ? `--${this.dialog.type}` : '--default';
 			classes.push(typeClass);
 
 			return classes;
 		},
 		backgroundColorStyle(): {backgroundColor: string}
 		{
-			return {backgroundColor: this.dialog.color};
+			return { backgroundColor: this.dialog.color };
 		},
 		avatarText(): string
 		{
@@ -127,7 +146,7 @@ export const Avatar = {
 				[AvatarSize.L]: UserStatusSize.M,
 				[AvatarSize.XL]: UserStatusSize.L,
 				[AvatarSize.XXL]: UserStatusSize.XL,
-				[AvatarSize.XXXL]: UserStatusSize.XXL
+				[AvatarSize.XXXL]: UserStatusSize.XXL,
 			};
 
 			return sizesMap[this.size];
@@ -151,28 +170,28 @@ export const Avatar = {
 		hasImage(): boolean
 		{
 			return this.avatarUrl && !this.imageLoadError;
-		}
+		},
 	},
 	watch:
 	{
 		avatarUrl()
 		{
 			this.imageLoadError = false;
-		}
+		},
 	},
 	methods:
 	{
 		onImageLoadError()
 		{
 			this.imageLoadError = true;
-		}
+		},
 	},
 	template: `
-		<div :title="dialog.name" :class="containerClasses" class="bx-im-avatar__scope bx-im-avatar__container">
+		<div :title="containerTitle" :class="containerClasses" class="bx-im-avatar__scope bx-im-avatar__container">
 			<!-- Avatar -->
 			<template v-if="hasImage">
-				<img :src="avatarUrl" :alt="dialog.name" class="bx-im-avatar__content --image" @error="onImageLoadError"/>
-				<div v-if="withSpecialTypes && isSpecialType" :style="backgroundColorStyle" class="bx-im-avatar__special-type_icon"></div>
+				<img :src="avatarUrl" :alt="dialog.name" class="bx-im-avatar__content --image" @error="onImageLoadError" draggable="false"/>
+				<div v-if="withSpecialTypes && withSpecialTypeIcon && isSpecialType" :style="backgroundColorStyle" class="bx-im-avatar__special-type_icon"></div>
 			</template>
 			<div v-else-if="withAvatarLetters && avatarText" :style="backgroundColorStyle" class="bx-im-avatar__content --text">
 				{{ avatarText }}
@@ -183,5 +202,5 @@ export const Avatar = {
 				<UserStatus :status="userStatusIcon" :size="userStatusSize" />
 			</div>
 		</div>
-	`
+	`,
 };

@@ -2,14 +2,14 @@
 
 namespace Bitrix\Crm\Filter;
 
+use Bitrix\Crm;
+use Bitrix\Crm\Category\EntityTypeRelationsRepository;
+use Bitrix\Crm\Counter\EntityCounterType;
+use Bitrix\Crm\EntityAddress;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Service\ParentFieldManager;
 use Bitrix\Crm\UI\EntitySelector;
 use Bitrix\Main\Localization\Loc;
-use Bitrix\Crm;
-use Bitrix\Crm\EntityAddress;
-use Bitrix\Crm\Counter\EntityCounterType;
-use Bitrix\Crm\Category\EntityTypeRelationsRepository;
 
 Loc::loadMessages(__FILE__);
 
@@ -266,7 +266,25 @@ class ContactDataProvider extends EntityDataProvider implements FactoryOptionabl
 					'partial' => true,
 				]
 			),
+			'OBSERVER_IDS' => $this->createField(
+				'OBSERVER_IDS',
+				[
+					'type' => 'entity_selector',
+					'partial' => true,
+				]
+			),
 		];
+
+		if ($this->isActivityResponsibleEnabled())
+		{
+			$result['ACTIVITY_RESPONSIBLE_IDS'] = $this->createField(
+				'ACTIVITY_RESPONSIBLE_IDS',
+				[
+					'type' => 'entity_selector',
+					'partial' => true,
+				]
+			);
+		}
 
 		if($this->settings->checkFlag(ContactSettings::FLAG_ENABLE_ADDRESS))
 		{
@@ -316,6 +334,17 @@ class ContactDataProvider extends EntityDataProvider implements FactoryOptionabl
 				array('type' => 'list', 'partial' => true)
 			),
 		);
+
+		if ($this->factory && $this->factory->isLastActivityEnabled())
+		{
+			$result['LAST_ACTIVITY_TIME'] = $this->createField(
+				'LAST_ACTIVITY_TIME',
+				[
+					'type' => 'date',
+					'partial' => true,
+				]
+			);
+		}
 
 		Crm\Tracking\UI\Filter::appendFields($result, $this);
 
@@ -369,17 +398,24 @@ class ContactDataProvider extends EntityDataProvider implements FactoryOptionabl
 				'items' => \CCrmStatus::GetStatusList('CONTACT_TYPE')
 			);
 		}
-		elseif(in_array($fieldID, ['ASSIGNED_BY_ID', 'CREATED_BY_ID', 'MODIFY_BY_ID'], true))
+		elseif(in_array($fieldID, ['ASSIGNED_BY_ID', 'CREATED_BY_ID', 'MODIFY_BY_ID', 'ACTIVITY_RESPONSIBLE_IDS', 'OBSERVER_IDS'], true))
 		{
 			$referenceClass = ($this->factory ? $this->factory->getDataClass() : null);
+			if (in_array($fieldID, ['ACTIVITY_RESPONSIBLE_IDS', 'OBSERVER_IDS'], true))
+			{
+				$referenceClass = null;
+			}
+
+			$isEnableAllUsers = in_array($fieldID, ['ASSIGNED_BY_ID', 'ACTIVITY_RESPONSIBLE_IDS'], true);
+			$isEnableOtherUsers = in_array($fieldID, ['ASSIGNED_BY_ID', 'ACTIVITY_RESPONSIBLE_IDS'], true);
 
 			return $this->getUserEntitySelectorParams(
 				EntitySelector::CONTEXT,
 				[
 					'fieldName' => $fieldID,
 					'referenceClass' => $referenceClass,
-					'isEnableAllUsers' => $fieldID === 'ASSIGNED_BY_ID',
-					'isEnableOtherUsers' => $fieldID === 'ASSIGNED_BY_ID',
+					'isEnableAllUsers' => $isEnableAllUsers,
+					'isEnableOtherUsers' => $isEnableOtherUsers,
 				]
 			);
 		}

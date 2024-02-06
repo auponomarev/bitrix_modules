@@ -3,7 +3,6 @@
  */
 jn.define('crm/timeline/controllers/payment', (require, exports, module) => {
 	const { TimelineBaseController } = require('crm/controllers/base');
-	const { Loc } = require('loc');
 
 	const SupportedActions = {
 		SALESCENTER_APP_START: 'SalescenterApp:Start',
@@ -37,7 +36,7 @@ jn.define('crm/timeline/controllers/payment', (require, exports, module) => {
 				case SupportedActions.SALESCENTER_APP_START:
 					return this.openPayment(actionParams);
 				case SupportedActions.PAYMENT_OPEN_REALIZATION:
-					return this.openRealization();
+					return this.openRealization(actionParams);
 			}
 		}
 
@@ -45,18 +44,18 @@ jn.define('crm/timeline/controllers/payment', (require, exports, module) => {
 		{
 			this.timelineScopeEventBus.emit('EntityPaymentDocument::Click', [{
 				ID: actionParams.paymentId,
-				TYPE: 'PAYMENT',
-				FORMATTED_DATE: actionParams.formattedDate,
-				ACCOUNT_NUMBER: actionParams.accountNumber,
+				TYPE: actionParams.isTerminalPayment === 'Y' ? 'TERMINAL_PAYMENT' : 'PAYMENT',
+				PAID: actionParams.isPaid === 'Y' ? 'Y' : 'N',
 			}]);
 		}
 
-		openRealization()
+		openRealization(actionParams)
 		{
-			qrauth.open({
-				title: Loc.getMessage('M_CRM_TIMELINE_DESKTOP'),
-				redirectUrl: '/shop/documents/sales_order/',
-			});
+			this.timelineScopeEventBus.emit('EntityRealizationDocument::Click', [{
+				ownerId: this.entity.id,
+				ownerTypeId: this.entity.typeId,
+				paymentId: actionParams.paymentId,
+			}]);
 		}
 	}
 

@@ -582,8 +582,10 @@ class CSocNetLogTools
 
 	public static function FormatEvent_GetEntity($arFields, $arParams, $bMail)
 	{
+		$arEntity = [];
+
 		if (
-			$arFields["ENTITY_TYPE"] == SONET_SUBSCRIBE_ENTITY_USER
+			($arFields["ENTITY_TYPE"] ?? null) == SONET_SUBSCRIBE_ENTITY_USER
 			&& intval($arFields["ENTITY_ID"]) > 0
 		)
 		{
@@ -787,7 +789,7 @@ class CSocNetLogTools
 		if (!$bMail)
 		{
 			if (
-				$arParams["NEW_TEMPLATE"] != "Y"
+				($arParams["NEW_TEMPLATE"] ?? null) != "Y"
 				|| $arFields["EVENT_ID"] == "idea"
 			)
 			{
@@ -938,7 +940,7 @@ class CSocNetLogTools
 		)
 			$post_tmp = '<a href="'.$arLog["URL"].'">'.$arLog["TITLE"].'</a>';
 		else
-			$post_tmp = $arLog["TITLE"];
+			$post_tmp = $arLog["TITLE"] ?? '';
 
 		$title = str_replace(
 			array("#TITLE#", "#ENTITY#", "#CREATED_BY#"),
@@ -957,7 +959,7 @@ class CSocNetLogTools
 			if ($url <> '')
 				$arResult["EVENT_FORMATTED"]["URL"] = $url;
 		}
-		elseif ($arParams["NEW_TEMPLATE"] != "Y")
+		elseif (($arParams["NEW_TEMPLATE"] ?? null) != "Y")
 		{
 			$parserLog = new logTextParser(false, $arParams["PATH_TO_SMILE"]);
 			$arAllow = array(
@@ -1411,7 +1413,10 @@ class CSocNetLogTools
 						"STYLE" => "sonetgroups",
 						"TITLE" => $arResult["ENTITY"]["FORMATTED"]["NAME"],
 						"URL" => $arResult["ENTITY"]["FORMATTED"]["URL"],
-						"IS_EXTRANET" => (is_array($GLOBALS["arExtranetGroupID"]) && in_array($arFields["ENTITY_ID"], $GLOBALS["arExtranetGroupID"]))
+						"IS_EXTRANET" => (
+							is_array($GLOBALS["arExtranetGroupID"] ?? null)
+							&& in_array($arFields["ENTITY_ID"], $GLOBALS["arExtranetGroupID"])
+						)
 					)
 				);
 			}
@@ -1484,7 +1489,7 @@ class CSocNetLogTools
 			],
 			[
 				$topic_tmp,
-				is_string($arResult["ENTITY"]["FORMATTED"]) ? $arResult["ENTITY"]["FORMATTED"] : '',
+				is_string($arResult["ENTITY"]["FORMATTED"] ?? null) ? $arResult["ENTITY"]["FORMATTED"] : '',
 				($bMail ? $arResult["CREATED_BY"]["FORMATTED"] : "")
 			],
 			$title_tmp
@@ -4921,7 +4926,12 @@ class CSocNetLogTools
 								"STYLE" => "sonetgroups",
 								"TITLE" => ($htmlEncode ? $workgroupFields["NAME"] : htmlspecialcharsback($workgroupFields["NAME"])).GetMessage("SONET_GL_DESTINATION_SG_MODERATOR"),
 								"URL" => str_replace("#group_id#", $workgroupFields["ID"], $arParams["PATH_TO_GROUP"]),
-								"IS_EXTRANET" => (is_array($GLOBALS["arExtranetGroupID"]) && in_array($workgroupFields["ID"], $GLOBALS["arExtranetGroupID"]) ? "Y" : "N"),
+								"IS_EXTRANET" => (
+									is_array($GLOBALS["arExtranetGroupID"] ?? null)
+									&& in_array($workgroupFields["ID"], $GLOBALS["arExtranetGroupID"])
+										? "Y"
+										: "N"
+								),
 								'AVATAR' => $avatarUrl,
 							);
 
@@ -5144,7 +5154,11 @@ class CSocNetLogTools
 		$arRights = array_unique($arRights);
 
 		$bAll = false;
-		$arParams["DESTINATION_LIMIT"] = ((int)$arParams["DESTINATION_LIMIT"] <= 0 ? 3 : $arParams["DESTINATION_LIMIT"]);
+		$arParams["DESTINATION_LIMIT"] = (
+			(int) ($arParams["DESTINATION_LIMIT"] ?? null) <= 0
+				? 3
+				: $arParams["DESTINATION_LIMIT"]
+		);
 		$bCheckPermissions = (!array_key_exists("CHECK_PERMISSIONS_DEST", $arParams) || $arParams["CHECK_PERMISSIONS_DEST"] !== 'N');
 
 		foreach ($arRights as $right_tmp)
@@ -5378,6 +5392,8 @@ class CSocNetLogTools
 		{
 			return false;
 		}
+
+		$log_type = '';
 
 		switch ($rating_entity_type_id)
 		{
@@ -6564,7 +6580,7 @@ class CSocNetLogComponent
 		$arItems = $this->arItems;
 	}
 
-	public static function ConvertPresetToFilters($arPreset, $arParams = array())
+	public static function ConvertPresetToFilters(array $arPreset, ?int $groupId): array
 	{
 		global $USER;
 
@@ -6577,7 +6593,7 @@ class CSocNetLogComponent
 			$isListsAvailable = false,
 			$isTimemanAvailable = false;
 
-		$arFilter = array();
+		$filters = [];
 
 		if (!$inited)
 		{
@@ -6589,7 +6605,11 @@ class CSocNetLogComponent
 			);
 			$isTasksAvailable = ModuleManager::isModuleInstalled('tasks');
 			$isCrmAvailable = ModuleManager::isModuleInstalled('crm');
-			$isListsAvailable = (ModuleManager::isModuleInstalled('lists') && ModuleManager::isModuleInstalled('bizproc') && ModuleManager::isModuleInstalled('intranet'));
+			$isListsAvailable = (
+					ModuleManager::isModuleInstalled('lists')
+					&& ModuleManager::isModuleInstalled('bizproc')
+					&& ModuleManager::isModuleInstalled('intranet')
+			);
 			$isTimemanAvailable = ModuleManager::isModuleInstalled('timeman');
 			$inited = true;
 		}
@@ -6660,8 +6680,8 @@ class CSocNetLogComponent
 						$arPresetFilterTmp["FILTER"]["EXACT_EVENT_ID"] === "lists_new_element"
 						&& (
 							(
-								isset($arParams["GROUP_ID"])
-								&& (int)$arParams["GROUP_ID"] > 0
+								$groupId !== null
+								&& $groupId > 0
 							)
 							|| !$isListsAvailable
 							|| $isExtranetSite

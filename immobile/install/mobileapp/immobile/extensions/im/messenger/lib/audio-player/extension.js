@@ -1,10 +1,7 @@
-/* eslint-disable bitrix-rules/no-pseudo-private */
-
 /**
  * @module im/messenger/lib/audio-player
  */
 jn.define('im/messenger/lib/audio-player', (require, exports, module) => {
-
 	const NativeAudioPlayer = require('native/media').AudioPlayer;
 	const {
 		FeatureFlag,
@@ -54,7 +51,7 @@ jn.define('im/messenger/lib/audio-player', (require, exports, module) => {
 			}
 
 			this.playingMessageId = messageId;
-			const playingMessage = this.store.getters['messagesModel/getMessageById'](this.playingMessageId);
+			const playingMessage = this.store.getters['messagesModel/getById'](this.playingMessageId);
 			if (!playingMessage || !playingMessage.files[0])
 			{
 				return;
@@ -72,17 +69,13 @@ jn.define('im/messenger/lib/audio-player', (require, exports, module) => {
 
 			this.loadingMessageIdCollection.add(this.playingMessageId);
 			const waitingMessageId = this.playingMessageId;
-			Logger.log('AudioPlayer: message "' + waitingMessageId + '" is waiting to play');
+			Logger.log(`AudioPlayer: message "${waitingMessageId}" is waiting to play`);
 
 			this.player
 				.on('ready', () => {
 					if (!this.loadingMessageIdCollection.has(this.playingMessageId))
 					{
-						Logger.log(
-							'AudioPlayer: message "'
-							+ waitingMessageId
-							+ '" playback was stopped before the download was complete'
-						);
+						Logger.log(`AudioPlayer: message "${waitingMessageId}" playback was stopped before the download was complete`);
 
 						return;
 					}
@@ -102,15 +95,14 @@ jn.define('im/messenger/lib/audio-player', (require, exports, module) => {
 				})
 				.on('pause', () => {
 					this.isPaused = true;
-					this.__setMessageIsPlaying(false);
+					this.setMessageIsPlaying(false);
 				})
 				.on('finish', () => {
-
 					const previousMessageId = this.playingMessageId;
 
 					this.stop();
 
-					const nextMessageToPlay = this.__getNextMessageToPlay(previousMessageId);
+					const nextMessageToPlay = this.getNextMessageToPlay(previousMessageId);
 					if (!nextMessageToPlay)
 					{
 						return;
@@ -128,11 +120,11 @@ jn.define('im/messenger/lib/audio-player', (require, exports, module) => {
 				.on('error', (data) => {
 					Logger.error('AudioPlayer.playMessage error: ', data);
 
-					this.__setMessageIsPlaying(false);
+					this.setMessageIsPlaying(false);
 				})
 			;
 
-			this.__setMessageIsPlaying(true);
+			this.setMessageIsPlaying(true);
 		}
 
 		stop()
@@ -152,16 +144,19 @@ jn.define('im/messenger/lib/audio-player', (require, exports, module) => {
 				this.loadingMessageIdCollection.delete(this.playingMessageId);
 			}
 
-			this.__setMessageIsPlaying(false);
+			this.setMessageIsPlaying(false);
 
 			this.player.stop();
 			this.playingMessageId = null;
 			this.isPaused = null;
 		}
 
-		__setMessageIsPlaying(isPlaying)
+		/**
+		 * @private
+		 */
+		setMessageIsPlaying(isPlaying)
 		{
-			const message = this.store.getters['messagesModel/getMessageById'](this.playingMessageId);
+			const message = this.store.getters['messagesModel/getById'](this.playingMessageId);
 			if (!message)
 			{
 				return;
@@ -175,16 +170,20 @@ jn.define('im/messenger/lib/audio-player', (require, exports, module) => {
 			});
 		}
 
-		__getNextMessageToPlay(previousMessageId)
+		/**
+		 * @private
+		 */
+		getNextMessageToPlay(previousMessageId)
 		{
-			const previousMessage = this.store.getters['messagesModel/getMessageById'](previousMessageId);
+			const previousMessage = this.store.getters['messagesModel/getById'](previousMessageId);
 			if (!previousMessage)
 			{
 				return null;
 			}
 
 			const chatMessageList = this.store.getters['messagesModel/getByChatId'](previousMessage.chatId);
-			return chatMessageList.find(message => {
+
+			return chatMessageList.find((message) => {
 				if (message.id <= previousMessage.id || !message.files[0])
 				{
 					return false;

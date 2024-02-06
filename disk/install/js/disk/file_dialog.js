@@ -448,7 +448,7 @@ BX.DiskFileDialog.loadItems = function(oTarget, name)
 								BX.message('DISK_JS_FILE_DIALOG_OAUTH_NOTICE').replace('#SERVICE#', oTarget.name) +
 							'</div>' +
 							'<div class="bx-file-dialog-content-wrap-text">' +
-								BX.message('DISK_JS_FILE_DIALOG_OAUTH_NOTICE_DETAIL').replace('#HELP_URL#', BX.message('DISK_JS_FILE_DIALOG_OAUTH_NOTICE_DETAIL_HELP_URL')) +
+								BX.message('DISK_JS_FILE_DIALOG_OAUTH_NOTICE_DETAIL') +
 							'</div>' +
 						'</div>' +
 					'</div>';
@@ -818,7 +818,7 @@ BX.DiskFileDialog.getItemsHtml = function(name, sortMode)
 							continue;
 						path += arPath[i]+'/';
 						html += '<span class="bx-file-dialog-content-path-seporator bx-file-dialog-icon bx-file-dialog-icon-seporator"></span>';
-						html +=	'<a href="#'+arPath[i]+'" onclick="return BX.DiskFileDialog.openSpecifiedFolder(\''+path+'\', \''+name+'\')" class="bx-file-dialog-content-path-link '+(i == c-1? 'bx-file-dialog-content-path-link-active':'')+'">'+arPath[i]+'</a>';
+						html +=	'<a href="#'+BX.util.htmlspecialchars(arPath[i])+'" onclick="return BX.DiskFileDialog.openSpecifiedFolder(\''+path+'\', \''+name+'\')" class="bx-file-dialog-content-path-link '+(i == c-1? 'bx-file-dialog-content-path-link-active':'')+'">'+BX.util.htmlspecialchars(arPath[i])+'</a>';
 					};
 					html += '</span></span>';
 		html +=	'</div>';
@@ -957,7 +957,7 @@ BX.DiskFileDialog.showWait = function(timeout, name)
 	}
 
 	var content = BX('bx-file-dialog-content-'+name);
-	BX.DiskFileDialog.popupWaitWindow = new BX.PopupWindow('DiskFileDialogWait', content, {
+	BX.DiskFileDialog.popupWaitWindow = new BX.PopupWindow(null, content, {
 		autoHide: false,
 		lightShadow: true,
 		zIndex: 100,

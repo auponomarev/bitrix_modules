@@ -55,7 +55,7 @@ class CCrmDocumentLead extends CCrmDocument
 				'Required' => true,
 			],
 			'STATUS_ID' => [
-				'Name' => GetMessage('CRM_FIELD_STATUS_ID'),
+				'Name' => CCrmLead::GetFieldCaption('STATUS_ID'),
 				'Type' => 'select',
 				'Options' => CCrmStatus::GetStatusListEx('STATUS'),
 				'Filterable' => true,
@@ -63,14 +63,14 @@ class CCrmDocumentLead extends CCrmDocument
 				'Required' => false,
 			],
 			'STATUS_ID_PRINTABLE' => [
-				'Name' => GetMessage('CRM_FIELD_STATUS_ID') . $printableFieldNameSuffix,
+				'Name' => CCrmLead::GetFieldCaption('STATUS_ID') . $printableFieldNameSuffix,
 				'Type' => 'string',
 				'Filterable' => false,
 				'Editable' => false,
 				'Required' => false,
 			],
 			'STATUS_DESCRIPTION' => [
-				'Name' => GetMessage('CRM_FIELD_STATUS_DESCRIPTION'),
+				'Name' => CCrmLead::GetFieldCaption('STATUS_DESCRIPTION'),
 				'Type' => 'text',
 				'Filterable' => false,
 				'Editable' => true,
@@ -130,7 +130,7 @@ class CCrmDocumentLead extends CCrmDocument
 			'COMMENTS' => [
 				'Name' => GetMessage('CRM_FIELD_COMMENTS'),
 				'Type' => 'text',
-				'ValueContentType' => 'html',
+				'ValueContentType' => 'bb',
 				'Filterable' => false,
 				'Editable' => true,
 				'Required' => false,
@@ -507,7 +507,13 @@ class CCrmDocumentLead extends CCrmDocument
 		{
 			$CCrmBizProc = new CCrmBizProc('LEAD');
 			if (false === $CCrmBizProc->CheckFields(false, true))
+			{
+				if ($useTransaction)
+				{
+					$DB->Rollback();
+				}
 				throw new Exception($CCrmBizProc->LAST_ERROR);
+			}
 
 			if ($id && $id > 0 && !$CCrmBizProc->StartWorkflow($id))
 			{
@@ -586,30 +592,12 @@ class CCrmDocumentLead extends CCrmDocument
 			}
 			elseif ($fieldType == "file")
 			{
-				$arFileOptions = array('ENABLE_ID' => true);
-				foreach ($arFields[$key] as &$value)
-				{
-					//Issue #40380. Secure URLs and file IDs are allowed.
-					$file = false;
-					if (\CCrmFileProxy::TryResolveFile($value, $file, $arFileOptions))
-					{
-						global $USER_FIELD_MANAGER;
-						if ($USER_FIELD_MANAGER instanceof \CUserTypeManager)
-						{
-							$prevValue = $USER_FIELD_MANAGER->GetUserFieldValue(
-								\CCrmOwnerType::ResolveUserFieldEntityID(\CCrmOwnerType::Lead),
-								$key,
-								$arDocumentID['ID']
-							);
-							if ($prevValue)
-							{
-								$file['old_id'] = $prevValue;
-							}
-						}
-					}
-					$value = $file;
-				}
-				unset($value, $prevValue);
+				$arFields[$key] = static::castFileFieldValues(
+					$arDocumentID['ID'],
+					\CCrmOwnerType::Lead,
+					$key,
+					$arFields[$key],
+				);
 			}
 			elseif ($fieldType == "S:HTML")
 			{
@@ -693,7 +681,13 @@ class CCrmDocumentLead extends CCrmDocument
 		{
 			$CCrmBizProc = new CCrmBizProc('LEAD');
 			if (false === $CCrmBizProc->CheckFields($arDocumentID['ID'], true))
+			{
+				if ($useTransaction)
+				{
+					$DB->Rollback();
+				}
 				throw new Exception($CCrmBizProc->LAST_ERROR);
+			}
 
 			if ($res && !$CCrmBizProc->StartWorkflow($arDocumentID['ID']))
 			{

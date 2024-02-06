@@ -6,9 +6,7 @@
  */
 
 require_once(__DIR__."/../include/prolog_admin_before.php");
-require_once($_SERVER["DOCUMENT_ROOT"].BX_ROOT."/modules/main/prolog.php");
 define("HELP_FILE", "utilities/sql.php");
-require_once ($_SERVER["DOCUMENT_ROOT"].BX_ROOT."/modules/main/filter_tools.php");
 
 if(!$USER->CanDoOperation('view_other_settings'))
 	$APPLICATION->AuthForm(GetMessage("ACCESS_DENIED"));
@@ -24,7 +22,7 @@ CPageOption::SetOptionString("main", "nav_page_in_session", "N");
 $lAdmin = new CAdminList($sTableID);
 if($_SERVER["REQUEST_METHOD"] == "POST" && !empty($query) && $isAdmin && check_bitrix_sessid())
 {
-	$first = getmicrotime();
+	$first = microtime(true);
 	$arErrors = array();
 	$arQuery = $DB->ParseSQLBatch(str_replace("\r", "", $query));
 	foreach($arQuery as $i => $sql)
@@ -35,7 +33,7 @@ if($_SERVER["REQUEST_METHOD"] == "POST" && !empty($query) && $isAdmin && check_b
 	}
 	if(empty($arErrors))
 	{
-		$exec_time = round(getmicrotime()-$first, 5);
+		$exec_time = round(microtime(true)-$first, 5);
 		$rsData = new CAdminResult($dbr, $sTableID);
 
 		$message = new CAdminMessage(array(

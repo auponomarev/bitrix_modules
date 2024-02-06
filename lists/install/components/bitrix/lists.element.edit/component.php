@@ -1,5 +1,10 @@
-<?
-if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true) die();
+<?php
+
+if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
+{
+	die();
+}
+
 /** @global CMain $APPLICATION */
 /** @global CUser $USER */
 /** @global CDatabase $DB */
@@ -14,145 +19,75 @@ if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true) die();
 /** @var string $parentComponentTemplate */
 $this->setFrameMode(false);
 
-if(!CModule::IncludeModule('lists'))
+if(!\Bitrix\Main\Loader::includeModule('lists'))
 {
-	ShowError(GetMessage("CC_BLEE_MODULE_NOT_INSTALLED"));
-	return;
-}
-require_once($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/iblock/admin_tools.php");
-$APPLICATION->AddHeadScript('/bitrix/js/iblock/iblock_edit.js');
+	ShowError(\Bitrix\Main\Localization\Loc::getMessage('CC_BLEE_MODULE_NOT_INSTALLED'));
 
-$IBLOCK_ID = is_array($arParams["~IBLOCK_ID"])? 0: intval($arParams["~IBLOCK_ID"]);
-$ELEMENT_ID = is_array($arParams["~ELEMENT_ID"])? 0: intval($arParams["~ELEMENT_ID"]);
-$SECTION_ID = is_array($arParams["~SECTION_ID"])? 0: intval($arParams["~SECTION_ID"]);
-
-$arResult["IS_SOCNET_GROUP_CLOSED"] = false;
-if (
-	intval($arParams["~SOCNET_GROUP_ID"] ?? 0) > 0
-	&& CModule::IncludeModule("socialnetwork")
-)
-{
-	$arSonetGroup = CSocNetGroup::GetByID(intval($arParams["~SOCNET_GROUP_ID"]));
-	if (
-		is_array($arSonetGroup)
-		&& $arSonetGroup["CLOSED"] == "Y"
-		&& !CSocNetUser::IsCurrentUserModuleAdmin()
-		&& (
-			$arSonetGroup["OWNER_ID"] != $GLOBALS["USER"]->GetID()
-			|| COption::GetOptionString("socialnetwork", "work_with_closed_groups", "N") != "Y"
-		)
-	)
-	{
-		$arResult["IS_SOCNET_GROUP_CLOSED"] = true;
-	}
-}
-
-$lists_perm = CListPermissions::CheckAccess(
-	$USER,
-	$arParams["~IBLOCK_TYPE_ID"],
-	$IBLOCK_ID,
-	$arParams["~SOCNET_GROUP_ID"] ?? null
-);
-if($lists_perm < 0)
-{
-	switch($lists_perm)
-	{
-		case CListPermissions::WRONG_IBLOCK_TYPE:
-			ShowError(GetMessage("CC_BLEE_WRONG_IBLOCK_TYPE"));
-			return;
-		case CListPermissions::WRONG_IBLOCK:
-			ShowError(GetMessage("CC_BLEE_WRONG_IBLOCK"));
-			return;
-		case CListPermissions::LISTS_FOR_SONET_GROUP_DISABLED:
-			ShowError(GetMessage("CC_BLEE_LISTS_FOR_SONET_GROUP_DISABLED"));
-			return;
-		default:
-			ShowError(GetMessage("CC_BLEE_UNKNOWN_ERROR"));
-			return;
-	}
-}
-elseif(
-	(
-		$ELEMENT_ID > 0
-		&& $lists_perm < CListPermissions::CAN_READ
-		&& !CIBlockElementRights::UserHasRightTo($IBLOCK_ID, $ELEMENT_ID, "element_read")
-	) || (
-		$ELEMENT_ID == 0
-		&& $lists_perm < CListPermissions::CAN_READ
-		&& !CIBlockSectionRights::UserHasRightTo($IBLOCK_ID, $SECTION_ID, "section_element_bind")
-	)
-)
-{
-	ShowError(GetMessage("CC_BLEE_ACCESS_DENIED"));
 	return;
 }
 
-$copy_id = intval($_REQUEST["copy_id"] ?? 0);
+$arResult = [];
+
+require_once($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/iblock/admin_tools.php');
+\Bitrix\Main\Page\Asset::getInstance()->addJs('/bitrix/js/iblock/iblock_edit.js');
+
+$IBLOCK_ID = is_array($arParams['~IBLOCK_ID'])? 0: (int)$arParams['~IBLOCK_ID'];
+$ELEMENT_ID = is_array($arParams['~ELEMENT_ID'])? 0: (int)$arParams['~ELEMENT_ID'];
+$SECTION_ID = is_array($arParams['~SECTION_ID'])? 0: (int)$arParams['~SECTION_ID'];
+
+$accessService =
+	(new \Bitrix\Lists\Api\Service\AccessService(
+		(int)$USER->GetID(),
+		new \Bitrix\Lists\Service\Param([
+			'IBLOCK_TYPE_ID' => (string)$arParams['~IBLOCK_TYPE_ID'],
+			'IBLOCK_ID' => $IBLOCK_ID,
+			'SOCNET_GROUP_ID' => (int)($arParams['~SOCNET_GROUP_ID'] ?? 0),
+		])
+	))
+;
+$checkPermissionResult = $accessService->checkElementPermission($ELEMENT_ID, $SECTION_ID);
+if (!$checkPermissionResult->isSuccess())
+{
+	ShowError($checkPermissionResult->getErrorMessages()[0]);
+
+	return;
+}
+
+$rightParam = $checkPermissionResult->getRightParam();
+$elementRight = $checkPermissionResult->getElementRight();
+
+$arResult['IS_SOCNET_GROUP_CLOSED'] = $rightParam->getClosedStatusSocnetGroup();
 
 if (
-	$copy_id > 0
-	&& $lists_perm < CListPermissions::CAN_READ
-	&& !CIBlockElementRights::UserHasRightTo($IBLOCK_ID, $copy_id, "element_read")
+	($ELEMENT_ID !== 0 && !$elementRight->canRead())
+	|| ($ELEMENT_ID === 0 && !$elementRight->canAdd())
 )
 {
-	ShowError(GetMessage("CC_BLEE_ACCESS_DENIED"));
+	ShowError(\Bitrix\Main\Localization\Loc::getMessage('CC_BLEE_ACCESS_DENIED'));
+
 	return;
 }
 
-$arParams["CAN_EDIT"] =	(
-	!$arResult["IS_SOCNET_GROUP_CLOSED"]
-	&& (
-		(
-			$ELEMENT_ID > 0
-			&& (
-				$lists_perm >= CListPermissions::CAN_WRITE
-				|| CIBlockElementRights::UserHasRightTo($IBLOCK_ID, $ELEMENT_ID, "element_edit")
-			)
-		)
-		|| (
-			$ELEMENT_ID == 0
-			&& (
-				$lists_perm >= CListPermissions::CAN_WRITE
-				|| CIBlockSectionRights::UserHasRightTo($IBLOCK_ID, $SECTION_ID, "section_element_bind")
-			)
-		)
-	)
-);
-$arResult["CAN_EDIT_RIGHTS"] = (
-	!$arResult["IS_SOCNET_GROUP_CLOSED"]
-	&& (
-		(
-			$ELEMENT_ID > 0
-			&& CIBlockElementRights::UserHasRightTo($IBLOCK_ID, $ELEMENT_ID, "element_rights_edit")
-		)
-		|| (
-			$ELEMENT_ID == 0
-			&& CIBlockSectionRights::UserHasRightTo($IBLOCK_ID, $SECTION_ID, "element_rights_edit")
-		)
-	)
-);
-$arResult["CAN_ADD_ELEMENT"] = (
-	!$arResult["IS_SOCNET_GROUP_CLOSED"]
-	&& (
-		($lists_perm > CListPermissions::CAN_READ)
-		|| CIBlockSectionRights::UserHasRightTo($IBLOCK_ID, $SECTION_ID, "section_element_bind")
-	)
+$copy_id = (int)($_REQUEST['copy_id'] ?? 0);
+if (
+	($copy_id > 0)
+	&& !$accessService
+		->checkElementPermission($copy_id, $SECTION_ID, \Bitrix\Lists\Security\ElementRight::READ)
+		->isSuccess()
+)
+{
+	ShowError(\Bitrix\Main\Localization\Loc::getMessage('CC_BLEE_ACCESS_DENIED'));
 
-);
-$arResult["CAN_DELETE_ELEMENT"] =
-	!$arResult["IS_SOCNET_GROUP_CLOSED"]
-	&& $ELEMENT_ID > 0
-	&& ($lists_perm >= CListPermissions::CAN_WRITE
-		|| CIBlockElementRights::UserHasRightTo($IBLOCK_ID, $ELEMENT_ID, "element_delete"));
+	return;
+}
 
-$arResult["CAN_FULL_EDIT"] = (
-	!$arResult["IS_SOCNET_GROUP_CLOSED"]
-	&& $ELEMENT_ID > 0
-	&& (
-		$lists_perm >= CListPermissions::IS_ADMIN
-		|| CIBlockRights::UserHasRightTo($IBLOCK_ID, $IBLOCK_ID, "iblock_edit")
-	)
-);
+$arParams['CAN_EDIT'] = $elementRight->canEdit();
+$arResult['CAN_EDIT_RIGHTS'] = $elementRight->canEditRights();
+$arResult['CAN_ADD_ELEMENT'] = $elementRight->canAdd();
+$arResult['CAN_DELETE_ELEMENT'] = $elementRight->canDelete();
+$arResult['CAN_FULL_EDIT'] = $ELEMENT_ID > 0 && $elementRight->canFullEdit();
+
+$lists_perm = $checkPermissionResult->getPermission();
 
 $arResult["IBLOCK_PERM"] = $lists_perm;
 $arResult["USER_GROUPS"] = $USER->GetUserGroupArray();
@@ -173,7 +108,7 @@ else
 	$arResult["FORM_ID"] = "lists_element_add_".$arResult["IBLOCK_ID"];
 
 $bBizproc = (
-	CModule::IncludeModule("bizproc")
+	\Bitrix\Main\Loader::includeModule('bizproc')
 	&& CLists::isBpFeatureEnabled($arParams["IBLOCK_TYPE_ID"])
 	&& ($arIBlock["BIZPROC"] != "N")
 );
@@ -507,6 +442,17 @@ if(
 		$additionalActions = array();
 		foreach($arResult["FIELDS"] as $FIELD_ID => $arField)
 		{
+			if (
+				$arResult['ELEMENT_ID'] > 0
+				&& isset($arField['SETTINGS']['EDIT_READ_ONLY_FIELD'])
+				&& $arField['SETTINGS']['EDIT_READ_ONLY_FIELD'] === 'Y'
+				&& $arField['TYPE'] !== 'L'
+			)
+			{
+				//readonly field, skip writing
+				continue;
+			}
+
 			if($FIELD_ID == "PREVIEW_PICTURE" || $FIELD_ID == "DETAIL_PICTURE")
 			{
 				$arElement[$FIELD_ID] = $_FILES[$FIELD_ID];
@@ -528,7 +474,7 @@ if(
 			}
 			elseif($obList->is_field($FIELD_ID))
 			{
-				$arElement[$FIELD_ID] = $_POST[$FIELD_ID];
+				$arElement[$FIELD_ID] = $_POST[$FIELD_ID] ?? null;
 			}
 			elseif($arField["PROPERTY_TYPE"] == "F")
 			{
@@ -623,9 +569,9 @@ if(
 			}
 			elseif($arField["PROPERTY_TYPE"] == "E")
 			{
-				$arField["VALUE"] = $_POST[$FIELD_ID];
+				$arField["VALUE"] = $_POST[$FIELD_ID] ?? null;
 				$additionalActions[$arField["ID"]] = $arField;
-				$arProps[$arField["ID"]] = $_POST[$FIELD_ID];
+				$arProps[$arField["ID"]] = $_POST[$FIELD_ID] ?? null;
 			}
 			else
 			{
@@ -640,7 +586,7 @@ if(
 							}
 							break;
 						default:
-							$arProps[$arField["ID"]] = $_POST[$FIELD_ID];
+							$arProps[$arField["ID"]] = $_POST[$FIELD_ID] ?? ['VALUE' => ''];
 					}
 				}
 				else
@@ -658,7 +604,6 @@ if(
 			$arElement["PROPERTY_VALUES"] = $arProps;
 			if($arResult["ELEMENT_ID"] > 0)
 			{
-				$ignoreProperty = array("F", "L", "N");
 				//We have to read properties from database in order not to delete its values
 				$dbPropV = CIBlockElement::GetProperty(
 					$arResult["IBLOCK_ID"],
@@ -668,19 +613,14 @@ if(
 				);
 				while($arPropV = $dbPropV->Fetch())
 				{
-					if(!in_array($arPropV["PROPERTY_TYPE"], $ignoreProperty))
+					if (!isset($arProps[$arPropV["ID"]]))
 					{
-						if(is_array($arProps[$arPropV["ID"]]) && empty($arProps[$arPropV["ID"]])
-							|| is_string($arProps[$arPropV["ID"]]) && $arProps[$arPropV["ID"]] == '')
-						{
-							if(!array_key_exists($arPropV["ID"], $arElement["PROPERTY_VALUES"]))
-								$arElement["PROPERTY_VALUES"][$arPropV["ID"]] = array();
-
-							$arElement["PROPERTY_VALUES"][$arPropV["ID"]][$arPropV["PROPERTY_VALUE_ID"]] = array(
+						$arElement["PROPERTY_VALUES"][$arPropV["ID"]] = [
+							$arPropV["PROPERTY_VALUE_ID"] => [
 								"VALUE" => $arPropV["VALUE"],
 								"DESCRIPTION" => $arPropV["DESCRIPTION"],
-							);
-						}
+							],
+						];
 					}
 				}
 			}
@@ -838,20 +778,47 @@ if(
 			{
 				if($arDocumentState["ID"] == '')
 				{
-					$arErrorsTmp = array();
+					$currentUserId = \Bitrix\Main\Engine\CurrentUser::get()->getId();
+					$workflowParameters =
+						isset($arBizProcParametersValues) && is_array($arBizProcParametersValues)
+							? ($arBizProcParametersValues[$arDocumentState['TEMPLATE_ID']] ?? [])
+							: []
+					;
 
-					$arBizProcWorkflowId[$arDocumentState["TEMPLATE_ID"]] = CBPDocument::StartWorkflow(
-						$arDocumentState["TEMPLATE_ID"],
-						BizProcDocument::getDocumentComplexId($arParams["IBLOCK_TYPE_ID"], $arResult["ELEMENT_ID"]),
-						array_merge($arBizProcParametersValues[$arDocumentState["TEMPLATE_ID"]], array(
-							CBPDocument::PARAM_TAGRET_USER => "user_".intval($GLOBALS["USER"]->GetID()),
-							CBPDocument::PARAM_MODIFIED_DOCUMENT_FIELDS => $changedFields
-						)),
-						$arErrorsTmp
+					$timeToStart = null;
+					if (isset($_POST['timeToStart']) && is_numeric($_POST['timeToStart']))
+					{
+						$timeToStart = (int)$_POST['timeToStart'];
+					}
+					$startWorkflowRequest = new \Bitrix\Bizproc\Api\Request\WorkflowService\StartWorkflowRequest(
+						userId: $currentUserId,
+						targetUserId: $currentUserId,
+						templateId: $arDocumentState["TEMPLATE_ID"],
+						complexDocumentId: BizProcDocument::getDocumentComplexId(
+							$arParams["IBLOCK_TYPE_ID"],
+							$arResult["ELEMENT_ID"],
+						),
+						parameters: array_merge(
+							$workflowParameters,
+							[
+								CBPDocument::PARAM_TAGRET_USER => 'user_' . $currentUserId,
+								CBPDocument::PARAM_MODIFIED_DOCUMENT_FIELDS => $changedFields,
+							]
+						),
+						startDuration: $timeToStart >= 0 ? $timeToStart : null,
 					);
+					$workflowService = new \Bitrix\Bizproc\Api\Service\WorkflowService(
+						accessService: new \Bitrix\Lists\Api\Service\WorkflowAccessService(),
+					);
+					$startWorkflowResponse = $workflowService->startWorkflow($startWorkflowRequest);
 
-					foreach($arErrorsTmp as $e)
-						$strError .= $e["message"]."<br />";
+					if (!$startWorkflowResponse->isSuccess())
+					{
+						foreach ($startWorkflowResponse->getErrors() as $error)
+						{
+							$strError .= $error->getMessage() . '<br/>';
+						}
+					}
 				}
 			}
 
@@ -1024,7 +991,9 @@ foreach($arResult["FIELDS"] as $FIELD_ID => $arField)
 		else
 		{
 			if($bVarsFromForm)
-				$data[$FIELD_ID] = $_POST[$FIELD_ID];
+			{
+				$data[$FIELD_ID] = $_POST[$FIELD_ID] ?? null;
+			}
 			elseif($arResult["ELEMENT_ID"] || $copy_id)
 				$data[$FIELD_ID] = $arResult["ELEMENT_FIELDS"]["~".$FIELD_ID];
 			else
@@ -1035,7 +1004,7 @@ foreach($arResult["FIELDS"] as $FIELD_ID => $arField)
 	{
 		if($bVarsFromForm)
 		{
-			$data[$FIELD_ID] = $_POST[$FIELD_ID];
+			$data[$FIELD_ID] = $_POST[$FIELD_ID] ?? null;
 		}
 		elseif($arResult["ELEMENT_ID"] || $copy_id)
 		{
@@ -1209,8 +1178,10 @@ $arResult['RAND_STRING'] = $this->randString();
 
 $this->IncludeComponentTemplate();
 
-if($arResult["ELEMENT_ID"])
-	$APPLICATION->SetTitle($arResult["IBLOCK"]["ELEMENT_NAME"].": ".$arResult["ELEMENT_FIELDS"]["NAME"]);
+if($arResult["ELEMENT_ID"] && !empty($arResult["ELEMENT_FIELDS"]["NAME"]))
+{
+	$APPLICATION->SetTitle($arResult["IBLOCK"]["ELEMENT_NAME"] . ": " . $arResult["ELEMENT_FIELDS"]["NAME"]);
+}
 else
 	$APPLICATION->SetTitle($arResult["IBLOCK"]["ELEMENT_NAME"]);
 

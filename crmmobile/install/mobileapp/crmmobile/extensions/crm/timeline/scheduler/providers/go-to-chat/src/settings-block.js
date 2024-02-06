@@ -2,6 +2,7 @@
  * @module crm/timeline/scheduler/providers/go-to-chat/settings-block
  */
 jn.define('crm/timeline/scheduler/providers/go-to-chat/settings-block', (require, exports, module) => {
+	const AppTheme = require('apptheme');
 	const { ClientsSelector } = require('crm/timeline/scheduler/providers/go-to-chat/clients-selector');
 	const { ProvidersSelector } = require('crm/timeline/scheduler/providers/go-to-chat/providers-selector');
 
@@ -14,6 +15,7 @@ jn.define('crm/timeline/scheduler/providers/go-to-chat/settings-block', (require
 		{
 			const {
 				layout,
+				selectedClient,
 				name,
 				toPhoneId,
 				communications,
@@ -24,6 +26,7 @@ jn.define('crm/timeline/scheduler/providers/go-to-chat/settings-block', (require
 				currentChannelId,
 				showShimmer,
 				onChangeClientCallback: onPhoneSelectCallback,
+				onChangeClientWithoutPhoneCallback: onClientWithoutPhoneSelectCallback,
 				onChangeProviderCallback,
 				onChangeProviderPhoneCallback,
 				showAddPhoneToContactDrawer,
@@ -33,7 +36,7 @@ jn.define('crm/timeline/scheduler/providers/go-to-chat/settings-block', (require
 				{
 					style: {
 						marginTop: 12,
-						backgroundColor: '#ffffff',
+						backgroundColor: AppTheme.colors.bgContentPrimary,
 						borderRadius: 12,
 						paddingTop: 16,
 						paddingBottom: 18,
@@ -42,6 +45,7 @@ jn.define('crm/timeline/scheduler/providers/go-to-chat/settings-block', (require
 				},
 				new ClientsSelector({
 					layout,
+					selectedClient,
 					name,
 					toPhoneId,
 					communications,
@@ -50,6 +54,7 @@ jn.define('crm/timeline/scheduler/providers/go-to-chat/settings-block', (require
 					showShimmer,
 					onPhoneSelectCallback,
 					showAddPhoneToContactDrawer,
+					onClientWithoutPhoneSelectCallback,
 				}),
 				this.canShowProviderSelector() && new ProvidersSelector({
 					layout,

@@ -525,6 +525,10 @@ this.BX = this.BX || {};
 	      var scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
 	      return scrollTop / scrollHeight * 100;
 	    }
+	    /**
+	     * Landing ID
+	     * @type {number}
+	     */
 	  }]);
 	  function Main(id) {
 	    var _this;
@@ -1253,10 +1257,14 @@ this.BX = this.BX || {};
 	        self.currentBlock = null;
 	        self.currentArea = null;
 	        var blockId = parseInt(res.id);
-	        var oldBlock = BX.Landing.PageObject.getBlocks().get(blockId);
-	        if (oldBlock) {
-	          main_core.Dom.remove(oldBlock.node);
-	          BX.Landing.PageObject.getBlocks().remove(oldBlock);
+	        var allOldBlocks = BX.Landing.PageObject.getBlocks();
+	        if (allOldBlocks) {
+	          allOldBlocks.forEach(function (oldBlock) {
+	            if (oldBlock.id === blockId) {
+	              main_core.Dom.remove(oldBlock.node);
+	              BX.Landing.PageObject.getBlocks().remove(oldBlock);
+	            }
+	          });
 	        }
 
 	        // Init block entity

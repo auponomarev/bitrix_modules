@@ -1,4 +1,4 @@
-import { ResizeImageOptions } from '../types/resize-image-options';
+import type { ResizeImageOptions } from '../types/resize-image-options';
 
 type ImageData = ImageBitmap | HTMLImageElement | { width: number, height: number };
 type ResizedImageSizeResult = { targetWidth: number, targetHeight: number, useOriginalSize: boolean };
@@ -54,7 +54,8 @@ const getResizedImageSize = (imageData: ImageData, options: ResizeImageOptions):
 		height = imageData.height * ratio;
 	}
 
-	/*if (mode === 'crop')
+	/*
+	if (mode === 'crop')
 	{
 		const sourceImageRatio = sourceImageWidth / sourceImageHeight;
 		const targetRatio = targetWidth / targetHeight;
@@ -73,7 +74,8 @@ const getResizedImageSize = (imageData: ImageData, options: ResizeImageOptions):
 		}
 
 		context.drawImage(image, srcX, srcY, sourceImageWidth, sourceImageHeight, 0, 0, targetWidth, targetHeight);
-	}*/
+	}
+	*/
 
 	return {
 		targetWidth: Math.round(width),

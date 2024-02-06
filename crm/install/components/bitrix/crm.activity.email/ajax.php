@@ -1,7 +1,9 @@
 <?php
 
+use Bitrix\Crm\Activity\Provider\Email;
 use Bitrix\Main\Config;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Crm\Activity\Mail\Message;
 
 define('PUBLIC_AJAX_MODE', true);
 define('NOT_CHECK_PERMISSIONS', true);
@@ -113,7 +115,7 @@ class CrmActivityEmailAjax
 			$pageSize = !empty($_REQUEST['size']) ? (int) $_REQUEST['size'] : 5;
 			$res = \CCrmActivity::getList(
 				$order, $filter, false, false,
-				array('ID', 'SUBJECT', 'START_TIME', 'DIRECTION', 'COMPLETED', 'AUTHOR_ID', 'RESPONSIBLE_ID', 'SETTINGS'),
+				array('ID', 'OWNER_TYPE_ID', 'OWNER_ID', 'SUBJECT', 'START_TIME', 'DIRECTION', 'COMPLETED', 'SETTINGS'),
 				array('QUERY_OPTIONS' => array('OFFSET' => $offset, 'LIMIT' => $pageSize))
 			);
 
@@ -131,8 +133,11 @@ class CrmActivityEmailAjax
 				}
 				else
 				{
-					$authIds[] = $item['AUTHOR_ID'];
-					$authIds[] = $item['RESPONSIBLE_ID'];
+					$authorId = Message::getAssociatedUser($item)['id'];
+					if ($authorId !== 0)
+					{
+						$authIds[] = $authorId;
+					}
 				}
 			}
 		}
@@ -216,7 +221,7 @@ class CrmActivityEmailAjax
 				}
 				else
 				{
-					$authorId = !empty($authors[$item['AUTHOR_ID']]) ? $item['AUTHOR_ID'] : $item['RESPONSIBLE_ID'];
+					$authorId = Message::getAssociatedUser($item)['id'];
 
 					if (!empty($authors[$authorId]) && !array_key_exists('IMAGE_URL', $authors[$authorId]))
 					{
@@ -321,27 +326,15 @@ class CrmActivityEmailAjax
 
 		if ($error === false)
 		{
-			\Bitrix\Crm\Activity\Provider\Email::uncompressActivity($activity);
+			Email::uncompressActivity($activity);
 
-			switch ((int) $activity['DESCRIPTION_TYPE'])
-			{
-				case \CCrmContentType::BBCode:
-					$parser = new CTextParser();
-					$activity['DESCRIPTION_HTML'] = $parser->convertText($activity['DESCRIPTION']);
-					break;
-				case \CCrmContentType::Html:
-					$activity['DESCRIPTION_HTML'] = $activity['DESCRIPTION'];
-					break;
-				default:
-					$activity['DESCRIPTION_HTML'] = preg_replace(
-						'/[\r\n]+/'.BX_UTF_PCRE_MODIFIER, '<br>',
-						htmlspecialcharsbx($activity['DESCRIPTION'])
-					);
-			}
+			$activity['DESCRIPTION_HTML'] = Email::getDescriptionHtmlByActivityFields($activity);
+
+			$authorId = Message::getAssociatedUser($activity)['id'];
 
 			$res = \Bitrix\Main\UserTable::getList(array(
 				'select' => array('ID', 'NAME', 'LAST_NAME', 'SECOND_NAME', 'LOGIN', 'PERSONAL_PHOTO'),
-				'filter' => array('=ID' => array($userId, $activity['AUTHOR_ID'], $activity['RESPONSIBLE_ID'])),
+				'filter' => array('=ID' => array($userId, $authorId)),
 			));
 
 			$authors = array();
@@ -353,20 +346,19 @@ class CrmActivityEmailAjax
 				$authors[$item['ID']] = $item;
 			}
 
-			$authorId = !empty($authors[$activity['AUTHOR_ID']]) ? $activity['AUTHOR_ID'] : $activity['RESPONSIBLE_ID'];
-
-			foreach (array($authorId, $userId) as $uid)
+			foreach ($authors as &$item)
 			{
-				if (!array_key_exists('IMAGE_URL', $authors[$uid]))
+				if (!array_key_exists('IMAGE_URL', $item))
 				{
 					$preview = \CFile::resizeImageGet(
-						$authors[$uid]['PERSONAL_PHOTO'], array('width' => 38, 'height' => 38),
+						$item['PERSONAL_PHOTO'], array('width' => 38, 'height' => 38),
 						BX_RESIZE_IMAGE_EXACT, false
 					);
 
-					$authors[$uid]['IMAGE_URL'] = $preview['src'];
+					$item['IMAGE_URL'] = $preview['src'];
 				}
 			}
+			unset($item);
 
 			$activity['__author'] = $authors[$authorId];
 
@@ -453,29 +445,7 @@ class CrmActivityEmailAjax
 			}
 
 			$templates = array();
-			$res = \CCrmMailTemplate::getList(
-				array('SORT' => 'ASC', 'ENTITY_TYPE_ID' => 'DESC', 'TITLE'=> 'ASC'),
-				array(
-					'IS_ACTIVE' => 'Y',
-					'__INNER_FILTER_TYPE' => array(
-						'LOGIC' => 'OR',
-						'__INNER_FILTER_TYPE_1' => array('ENTITY_TYPE_ID' => $activity['OWNER_TYPE_ID']),
-						'__INNER_FILTER_TYPE_2' => array('ENTITY_TYPE_ID' => 0),
-					),
-					'__INNER_FILTER_SCOPE' => array(
-						'LOGIC' => 'OR',
-						'__INNER_FILTER_PERSONAL' => array(
-							'OWNER_ID' => $USER->getId(),
-							'SCOPE'    => \CCrmMailTemplateScope::Personal,
-						),
-						'__INNER_FILTER_COMMON' => array(
-							'SCOPE' => \CCrmMailTemplateScope::Common,
-						),
-					),
-				),
-				false, false,
-				array('TITLE', 'SCOPE', 'ENTITY_TYPE_ID', 'BODY_TYPE')
-			);
+			$res = \CCrmMailTemplate::getUserAvailableTemplatesList((int)$activity['OWNER_TYPE_ID']);
 
 			while ($item = $res->fetch())
 			{

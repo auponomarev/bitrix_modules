@@ -219,10 +219,9 @@
 					this.items.push(item);
 				}
 
-				if (item.isCountable() && !item.notChangeTotal)
+				if (item.isCountable())
 				{
 					this.incrementTotal();
-					item.notChangeTotal = false;
 				}
 			}
 
@@ -752,10 +751,14 @@
 				}.bind(this));
 
 				BX.bind(window, "keyup", function(ev) {
-					if(	ev.code === "MetaRight" ||
-						ev.code === "MetaLeft" ||
-						ev.code === "ControlRight" ||
-						ev.code === "ControlRight" )
+					const codes = [
+						'MetaRight',
+						'MetaLeft',
+						'ControlRight',
+						'ControlLeft',
+					];
+
+					if (codes.includes(ev.code))
 					{
 						this.isKeyMetaPressed = false;
 					}
@@ -1025,8 +1028,8 @@
 			if (data.sort === 100 && this.getGrid().getTypeInfoParam('hasPlusButtonTitle'))
 			{
 				plusTitle = gridData.isDynamicEntity
-					? BX.message("CRM_KANBAN_PLUS_TITLE_DYNAMIC")
-					: BX.message("CRM_KANBAN_PLUS_TITLE_" + gridData.entityType);
+					? BX.message('CRM_KANBAN_PLUS_TITLE_DYNAMIC')
+					: (BX.message(`CRM_KANBAN_PLUS_TITLE_${gridData.entityType}`) || BX.message(`CRM_KANBAN_PLUS_TITLE_${gridData.entityType}_MSGVER_1`));
 			}
 
 			if (quickForm)
@@ -1435,10 +1438,7 @@
 					}).then(function(value){
 						if (itemToRemove.isCountable() && itemToRemove.isVisible())
 						{
-							if (!itemToRemove.notChangeTotal)
-							{
-								this.decrementTotal();
-							}
+							this.decrementTotal();
 							this.getGrid().resetMultiSelectMode();
 						}
 						if (this.getGrid().isRendered())

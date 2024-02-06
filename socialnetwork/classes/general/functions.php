@@ -1346,6 +1346,9 @@ class CSocNetTools
 		}
 	}
 
+	/**
+	 * @deprecated Use CUser::GetSubordinateGroups() from main 23.600.0
+	 */
 	public static function GetSubordinateGroups($userID = false)
 	{
 		global $USER;
@@ -1368,14 +1371,7 @@ class CSocNetTools
 		}
 		else
 		{
-			$arUserSubordinateGroups = Array(2);
-			$arUserGroups_u = CUser::GetUserGroup($userID);
-			for ($j = 0,$len = count($arUserGroups_u); $j < $len; $j++)
-			{
-				$arSubordinateGroups = CGroup::GetSubordinateGroups($arUserGroups_u[$j]);
-				$arUserSubordinateGroups = array_merge ($arUserSubordinateGroups, $arSubordinateGroups);
-			}
-			$arUserSubordinateGroups = array_unique($arUserSubordinateGroups);
+			$arUserSubordinateGroups = CGroup::GetSubordinateGroups(CUser::GetUserGroup($userID));
 
 			$arSubordinateGroupsByUser[$userID] = $arUserSubordinateGroups;
 		}
@@ -1497,12 +1493,28 @@ class CSocNetAllowed
 
 	public static function runEventForAllowedFeature()
 	{
-		$newAllowedFeatures = array();
+		$newAllowedFeatures = [];
 
-		$events = GetModuleEvents("socialnetwork", "OnFillSocNetFeaturesList");
+		$ignoreList = [];
+
+		$events = GetModuleEvents('socialnetwork', 'OnFillSocNetFeaturesList');
 		while ($arEvent = $events->Fetch())
 		{
-			ExecuteModuleEventEx($arEvent, array(&$newAllowedFeatures, SITE_ID));
+			if ($arEvent['TO_MODULE_ID'] === 'wiki')
+			{
+				if (
+					Loader::includeModule('bitrix24')
+					&& !\Bitrix\Bitrix24\Feature::isFeatureEnabled('socialnetwork_wiki')
+				)
+				{
+					$ignoreList[] = $arEvent['TO_MODULE_ID'];
+				}
+			}
+
+			if (!in_array($arEvent['TO_MODULE_ID'], $ignoreList, true))
+			{
+				ExecuteModuleEventEx($arEvent, array(&$newAllowedFeatures, SITE_ID));
+			}
 		}
 
 		foreach($newAllowedFeatures as $strFeatureCode => $arFeature)

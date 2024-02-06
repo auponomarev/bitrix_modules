@@ -2,7 +2,8 @@
  * @module tasks/task/calendar
  */
 jn.define('tasks/task/calendar', (require, exports, module) => {
-	const {Type} = require('type');
+	const { RequestExecutor } = require('rest');
+	const { Type } = require('type');
 
 	class Calendar
 	{
@@ -10,6 +11,7 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 		{
 			this.isSettingsLoading = false;
 			this.isSettingsLoaded = false;
+			this.settings = {};
 
 			this.workTime = [
 				{
@@ -28,46 +30,73 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 				6: true,
 			};
 			this.holidays = {};
+			this.serverOffset = -(new Date()).getTimezoneOffset() * 60;
+			this.clientOffset = -(new Date()).getTimezoneOffset() * 60;
 
 			void this.loadSettings();
 		}
 
 		loadSettings()
 		{
-			return new Promise((resolve) => {
-				if (this.isSettingsLoading || this.isSettingsLoaded)
+			return new Promise((resolve, reject) => {
+				if (this.isSettingsLoaded)
 				{
 					resolve();
+
 					return;
 				}
+
+				if (this.isSettingsLoading)
+				{
+					setTimeout(() => {
+						this.loadSettings()
+							.then(resolve)
+							.catch(reject);
+					}, 50);
+
+					return;
+				}
+
 				this.isSettingsLoading = true;
 
 				(new RequestExecutor('tasksmobile.Calendar.getSettings'))
-					.call()
-					.then((response) => {
-						this.setSettings(response.result);
+					.setCacheHandler((response) => {
+						this.setSettings(response);
+					})
+					.setHandler((response) => {
+						this.setSettings(response);
+
+						this.isSettingsLoading = false;
+						this.isSettingsLoaded = true;
+
 						resolve();
 					})
-				;
+					.call(true)
+					.catch((e) => {
+						console.error(e);
+						reject();
+					});
 			});
 		}
 
 		setSettings(settings, adaptSettings = true)
 		{
-			if (adaptSettings)
-			{
-				settings = this.adaptSettings(settings);
-			}
+			this.settings = settings;
 
-			this.setWorkTime(settings.workTime);
-			this.setWeekends(settings.weekEnds);
-			this.setHolidays(settings.holidays);
+			const adaptedSettings = (adaptSettings ? Calendar.adaptSettings(settings) : settings);
 
-			this.isSettingsLoading = false;
-			this.isSettingsLoaded = true;
+			this.setWorkTime(adaptedSettings.workTime);
+			this.setWeekends(adaptedSettings.weekEnds);
+			this.setHolidays(adaptedSettings.holidays);
+			this.setServerOffset(adaptedSettings.serverOffset);
 		}
 
-		adaptSettings(inputSettings)
+		getSettings()
+		{
+			return this.settings;
+		}
+
+		static adaptSettings(inputSettings)
 		{
 			if (!Type.isPlainObject(inputSettings))
 			{
@@ -75,22 +104,24 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 			}
 
 			return {
-				workTime: this.adaptWorkTime(inputSettings),
-				weekEnds: this.adaptWeekends(inputSettings),
-				holidays: this.adaptHolidays(inputSettings),
+				workTime: Calendar.adaptWorkTime(inputSettings),
+				weekEnds: Calendar.adaptWeekends(inputSettings),
+				holidays: Calendar.adaptHolidays(inputSettings),
+				serverOffset: inputSettings.SERVER_OFFSET,
 			};
 		}
 
-		adaptWorkTime(inputSettings)
+		static adaptWorkTime(inputSettings)
 		{
 			const pad = function(num) {
-				num = num.toString();
+				const numLength = num.toString().length;
 
-				if (num.length === 0)
+				if (numLength === 0)
 				{
 					return '00';
 				}
-				if (num.length === 1)
+
+				if (numLength === 1)
 				{
 					return `0${num}`;
 				}
@@ -104,7 +135,7 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 			return `${pad(workStart.H)}:${pad(workStart.M)}-${pad(workEnd.H)}:${pad(workEnd.M)}`;
 		}
 
-		adaptWeekends(inputSettings)
+		static adaptWeekends(inputSettings)
 		{
 			const weekends = inputSettings.WEEKEND;
 			const dayMap = {
@@ -119,41 +150,42 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 
 			return weekends.reduce((result, day) => {
 				result.push(dayMap[day]);
+
 				return result;
 			}, []);
 		}
 
-		adaptHolidays(inputSettings)
+		static adaptHolidays(inputSettings)
 		{
 			const holidays = [];
 
-			for (const k in inputSettings.HOLIDAYS)
-			{
+			inputSettings.HOLIDAYS.forEach(({ M, D }) => {
 				holidays.push({
-					month: parseInt(inputSettings.HOLIDAYS[k].M) - 1,
-					day: parseInt(inputSettings.HOLIDAYS[k].D),
+					month: parseInt(M, 10) - 1,
+					day: parseInt(D, 10),
 				});
-			}
+			});
 
 			return holidays;
 		}
 
 		setWorkTime(workTime)
 		{
-			if (Type.isStringFilled(workTime))
+			let arrayedWorkTime = workTime;
+
+			if (Type.isStringFilled(arrayedWorkTime))
 			{
-				workTime = [workTime];
+				arrayedWorkTime = [arrayedWorkTime];
 			}
 
-			if (!Type.isArray(workTime))
+			if (!Type.isArray(arrayedWorkTime))
 			{
 				return;
 			}
 
 			const times = [];
-			for (let i = 0; i < workTime.length; i++)
+			for (const time of arrayedWorkTime)
 			{
-				const time = workTime[i];
 				const regex = /(\d\d):(\d\d)-(\d\d):(\d\d)/;
 				const matches = regex.exec(time);
 				if (!matches)
@@ -194,9 +226,8 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 			}
 
 			this.weekends = {};
-			for (let i = 0; i < weekends.length; i++)
+			for (const day of weekends)
 			{
-				const day = weekends[i];
 				if (day >= 0 && day <= 6)
 				{
 					this.weekends[day] = true;
@@ -212,9 +243,8 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 			}
 
 			this.holidays = {};
-			for (let i = 0; i < holidays.length; i++)
+			for (const holiday of holidays)
 			{
-				const holiday = holidays[i];
 				const isValidMonth = (Type.isNumber(holiday.month) && holiday.month >= 0 && holiday.month <= 11);
 				const isValidDay = (Type.isNumber(holiday.day) && holiday.day >= 0 && holiday.day <= 31);
 
@@ -223,6 +253,11 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 					this.holidays[`${holiday.month}_${holiday.day}`] = true;
 				}
 			}
+		}
+
+		setServerOffset(serverOffset)
+		{
+			this.serverOffset = serverOffset;
 		}
 
 		calculateStartDate(endDate, duration)
@@ -234,12 +269,14 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 				if (interval >= duration)
 				{
 					newDate = new Date(end.getTime() - duration);
+
 					return false;
 				}
-				else
-				{
-					duration -= interval;
-				}
+
+				// eslint-disable-next-line no-param-reassign
+				duration -= interval;
+
+				return true;
 			});
 
 			return newDate;
@@ -254,12 +291,14 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 				if (interval >= duration)
 				{
 					newDate = new Date(start.getTime() + duration);
+
 					return false;
 				}
-				else
-				{
-					duration -= interval;
-				}
+
+				// eslint-disable-next-line no-param-reassign
+				duration -= interval;
+
+				return true;
 			});
 
 			return newDate;
@@ -271,11 +310,15 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 
 			if (startDate < endDate)
 			{
-				this.processEachDay(startDate, endDate, true, (start, end) => duration += end - start);
+				this.processEachDay(startDate, endDate, true, (start, end) => {
+					duration += end - start;
+				});
 			}
 			else
 			{
-				this.processEachDay(endDate, startDate, true, (start, end) => duration -= end - start);
+				this.processEachDay(endDate, startDate, true, (start, end) => {
+					duration -= end - start;
+				});
 			}
 
 			return duration;
@@ -287,7 +330,9 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 			const endDate = (isForward ? null : date);
 
 			this.processEachDay(startDate, endDate, isForward, (start, end) => {
+				// eslint-disable-next-line no-param-reassign
 				date = (isForward ? start : end);
+
 				return false;
 			});
 
@@ -333,6 +378,8 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 				currentDate.setUTCHours(0, 0, 0, 0);
 				currentDate.setUTCDate(currentDate.getUTCDate() + (isForward ? 1 : -1));
 			}
+
+			return true;
 		}
 
 		getWorkHours(date)
@@ -370,9 +417,9 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 			const intervals = this.getWorkIntervals(new Date());
 			let duration = 0;
 
-			for (let i = 0; i < intervals.length; i++)
+			for (const interval of intervals)
 			{
-				duration += intervals[i].endDate - intervals[i].startDate;
+				duration += interval.endDate - interval.startDate;
 			}
 
 			return duration;
@@ -389,6 +436,7 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 
 			this.processEachDay(date, null, true, (start, end) => {
 				isWorkTime = (date >= start && date <= end);
+
 				return false;
 			});
 
@@ -397,17 +445,27 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 
 		isWeekend(date)
 		{
-			return !!this.weekends[date.getUTCDay()];
+			return Boolean(this.weekends[date.getUTCDay()]);
 		}
 
 		isHoliday(date)
 		{
-			return !!this.holidays[`${date.getUTCMonth()}_${date.getUTCDate()}`];
+			return Boolean(this.holidays[`${date.getUTCMonth()}_${date.getUTCDate()}`]);
+		}
+
+		isWeekendInLocal(date)
+		{
+			return Boolean(this.weekends[date.getDay()]);
+		}
+
+		isHolidayInLocal(date)
+		{
+			return Boolean(this.holidays[`${date.getMonth()}_${date.getDate()}`]);
 		}
 
 		isWorkTimeCorrect(times)
 		{
-			if (!times.length)
+			if (times.length === 0)
 			{
 				return false;
 			}
@@ -450,5 +508,5 @@ jn.define('tasks/task/calendar', (require, exports, module) => {
 
 	const CalendarSettings = new Calendar();
 
-	module.exports = {Calendar, CalendarSettings};
+	module.exports = { Calendar, CalendarSettings };
 });

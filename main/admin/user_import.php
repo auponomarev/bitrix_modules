@@ -14,7 +14,6 @@
  */
 
 require_once($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_admin_before.php");
-require_once($_SERVER["DOCUMENT_ROOT"].BX_ROOT."/modules/main/prolog.php");
 require_once($_SERVER["DOCUMENT_ROOT"].BX_ROOT."/modules/main/classes/general/csv_user_import.php");
 
 if(!$USER->CanDoOperation('edit_php'))
@@ -253,7 +252,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $tabStep > 2 && check_bitrix_sessid(
 				if(($mess = $csvImport->GetErrorMessage()) <> '')
 					echo "<script type=\"text/javascript\">parent.window.ShowError('".CUtil::JSEscape(_ShowHtmlspec($mess))."');</script>";
 
-				if (USER_IMPORT_EXECUTION_TIME > 0 && (getmicrotime()-START_EXEC_TIME) > USER_IMPORT_EXECUTION_TIME)
+				if (USER_IMPORT_EXECUTION_TIME > 0 && (microtime(true)-START_EXEC_TIME) > USER_IMPORT_EXECUTION_TIME)
 					die("<script type=\"text/javascript\">parent.window.Start('".$csvFile->GetPos()."',".$cntUsersImport.");</script>");
 			}
 

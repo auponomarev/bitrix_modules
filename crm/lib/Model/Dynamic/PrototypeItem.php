@@ -4,10 +4,12 @@ namespace Bitrix\Crm\Model\Dynamic;
 
 use Bitrix\Crm\CompanyTable;
 use Bitrix\Crm\ContactTable;
+use Bitrix\Crm\FieldContext\Repository;
 use Bitrix\Crm\Model\AssignedTable;
 use Bitrix\Crm\ProductRowTable;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Main;
+use Bitrix\Main\Config\Option;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\ORM;
 use Bitrix\Main\ORM\Event;
@@ -44,6 +46,7 @@ abstract class PrototypeItem extends Main\UserField\Internal\PrototypeItemDataMa
 
 			(new StringField('XML_ID'))
 				->configureTitle(Loc::getMessage('CRM_TYPE_ITEM_FIELD_XML_ID'))
+				->configureDefaultValue('')
 			,
 
 			$fieldRepository->getTitle(),
@@ -80,17 +83,22 @@ abstract class PrototypeItem extends Main\UserField\Internal\PrototypeItemDataMa
 
 			(new StringField('PREVIOUS_STAGE_ID'))
 				->configureTitle(Loc::getMessage('CRM_TYPE_ITEM_FIELD_PREVIOUS_STAGE_ID'))
+				->configureDefaultValue('')
 			,
 
 			$fieldRepository->getBeginDate(),
 
 			$fieldRepository->getCloseDate(),
 
-			$fieldRepository->getCompanyId(),
+			$fieldRepository->getCompanyId()
+				->configureDefaultValue(0)
+			,
 
 			(new Reference('COMPANY', CompanyTable::class, Join::on('this.COMPANY_ID', 'ref.ID'))),
 
-			$fieldRepository->getContactId(),
+			$fieldRepository->getContactId()
+				->configureDefaultValue(0)
+			,
 
 			(new Reference('CONTACT', ContactTable::class, Join::on('this.CONTACT_ID', 'ref.ID'))),
 
@@ -138,9 +146,13 @@ abstract class PrototypeItem extends Main\UserField\Internal\PrototypeItemDataMa
 
 			$fieldRepository->getSourceId(),
 
-			$fieldRepository->getSourceDescription(),
+			$fieldRepository->getSourceDescription()
+				->configureDefaultValue('')
+			,
 
-			$fieldRepository->getWebformId(),
+			$fieldRepository->getWebformId()
+				->configureDefaultValue(0)
+			,
 
 			// $fieldRepository->getLastActivityBy(),
 			//
@@ -193,7 +205,7 @@ abstract class PrototypeItem extends Main\UserField\Internal\PrototypeItemDataMa
 			$parameters['runtime'][] = static::getFullTextReferenceField();
 		}
 
-		$parameters['filter'] = static::replaceAssignedInFilter($parameters['filter']);
+		$parameters['filter'] = PrototypeItemFilter::replaceParameters($parameters['filter'], static::getEntityTypeId());
 
 		return $parameters;
 	}
@@ -261,37 +273,6 @@ abstract class PrototypeItem extends Main\UserField\Internal\PrototypeItemDataMa
 		return false;
 	}
 
-	protected static function replaceAssignedInFilter(array $filter): array
-	{
-		foreach ($filter as $index => $value)
-		{
-			if (is_array($value))
-			{
-				$filter[$index] = static::replaceAssignedInFilter($value);
-			}
-			elseif (mb_strpos($index, 'ASSIGNED_BY_ID') !== false)
-			{
-				$filter['@ID'] = static::getAssignedSqlExpression($index, $value);
-
-				unset($filter[$index]);
-			}
-		}
-
-		return $filter;
-	}
-
-	protected static function getAssignedSqlExpression(string $filterKey, $filterValue): Main\DB\SqlExpression
-	{
-		preg_match('/([=%><@!]*)ASSIGNED_BY_ID/', $filterKey, $pregResult);
-		$operation = $pregResult[1];
-
-		$subQuery = AssignedTable::query()->addSelect('ENTITY_ID')
-			->addFilter($operation.'ASSIGNED_BY', $filterValue)
-			->addFilter('ENTITY_TYPE_ID', static::getEntityTypeId());
-
-		return new Main\DB\SqlExpression($subQuery->getQuery());
-	}
-
 	/**
 	 * @return string|PrototypeItemIndex
 	 * @throws Main\ObjectNotFoundException
@@ -315,6 +296,16 @@ abstract class PrototypeItem extends Main\UserField\Internal\PrototypeItemDataMa
 				'join_type' => Join::TYPE_INNER,
 			]
 		);
+	}
+
+	public static function getFieldsContextDataClass(): string
+	{
+		$typeData = static::getType();
+
+		return \Bitrix\Main\DI\ServiceLocator::getInstance()
+			->get('crm.type.factory')
+			->getItemFieldsContextDataClass($typeData)
+		;
 	}
 
 	public static function onAfterUpdate(Event $event): ORM\EventResult
@@ -346,6 +337,11 @@ abstract class PrototypeItem extends Main\UserField\Internal\PrototypeItemDataMa
 			$id = static::getTemporaryStorage()->getIdByPrimary($event->getParameter('primary'));
 
 			static::getFullTextDataClass()::delete($id);
+
+			if (Repository::hasFieldsContextTables())
+			{
+				static::getFieldsContextDataClass()::deleteByItemId($id);
+			}
 		}
 
 		return $result;

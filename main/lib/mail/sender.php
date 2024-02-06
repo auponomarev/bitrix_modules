@@ -2,8 +2,10 @@
 
 namespace Bitrix\Main\Mail;
 
+use Bitrix\Mail\Internals\UserSignatureTable;
 use Bitrix\Main;
 use Bitrix\Main\Engine\CurrentUser;
+use Bitrix\Main\Loader;
 use Bitrix\Main\Mail\Internal\SenderTable;
 use Bitrix\Main\Event;
 
@@ -92,6 +94,7 @@ class Sender
 				'protocol' => $smtpConfig['protocol'],
 				'login' => $smtpConfig['login'],
 				'password' => $smtpConfig['password'],
+				'isOauth' => $smtpConfig['isOauth'] ?? false,
 			));
 
 			if ($smtpConfig->canCheck())
@@ -135,6 +138,8 @@ class Sender
 
 	public static function delete($ids)
 	{
+		$userId = CurrentUser::get()->getId();
+
 		if(!is_array($ids))
 		{
 			$ids = [$ids];
@@ -150,13 +155,37 @@ class Sender
 				'ID' => 'desc',
 			],
 			'filter' => [
-				'=USER_ID' => CurrentUser::get()->getId(),
+				'=USER_ID' => $userId,
 				'@ID' => $ids,
 				'IS_CONFIRMED' => true]
 			]
 		)->fetchAll();
-		foreach($senders as $sender)
+
+		$userFormattedName = CurrentUser::get()->getFormattedName();
+		foreach ($senders as $sender)
 		{
+			if (Loader::includeModule('mail') && $userId)
+			{
+				$senderName = sprintf(
+					'%s <%s>',
+					empty($sender['NAME']) ? $userFormattedName : $sender['NAME'],
+					$sender['EMAIL'],
+				);
+
+				$signatures = UserSignatureTable::getList([
+					'select' => ['ID'],
+					'filter' => [
+						'=USER_ID' => $userId,
+						'SENDER' => $senderName
+					],
+				])->fetchAll();
+
+				foreach ($signatures as $signature)
+				{
+					UserSignatureTable::delete($signature['ID']);
+				}
+			}
+
 			if(!empty($sender['OPTIONS']['smtp']['server']) && empty($sender['OPTIONS']['smtp']['encrypted']) && !isset($smtpConfigs[$sender['EMAIL']]))
 			{
 				$smtpConfigs[$sender['EMAIL']] = $sender['OPTIONS']['smtp'];
@@ -255,7 +284,14 @@ class Sender
 					'protocol' => $config['protocol'],
 					'login' => $config['login'],
 					'password' => $config['password'],
+					'isOauth' => $config['isOauth'],
 				));
+				if ($config->getIsOauth() && \CModule::includeModule('mail'))
+				{
+					$expireGapSeconds = self::getOAuthTokenExpireGapSeconds();
+					$token = \Bitrix\Mail\Helper\OAuth::getTokenByMeta($config->getPassword(), $expireGapSeconds);
+					$config->setPassword($token);
+				}
 			}
 
 			$smtp[$email] = $config;
@@ -372,7 +408,7 @@ class Sender
 				$item['OPTIONS']['smtp']['limit'] = $limit;
 				$updateResult = Internal\SenderTable::update($item['ID'], ['OPTIONS' => $item['OPTIONS']]);
 				$hasChanges = true;
-				if (!$quite && $limit < $oldLimit && $updateResult->isSuccess())
+				if (!$quite && ($limit < $oldLimit || $oldLimit <= 0) && $updateResult->isSuccess())
 				{
 					$event = new Event('main', self::MAIN_SENDER_SMTP_LIMIT_DECREASE, ['EMAIL'=>$email]);
 					$event->send();
@@ -462,7 +498,7 @@ class Sender
 		}
 	}
 
-	public static function prepareUserMailboxes($userId = null, $getUserIds = false)
+	public static function prepareUserMailboxes($userId = null)
 	{
 		global $USER;
 
@@ -526,6 +562,7 @@ class Sender
 					$mailboxes[$userId][$key] = array(
 						'name'  => $mailboxName,
 						'email' => $mailbox['EMAIL'],
+						'showEditHint' => true,
 					);
 				}
 			}
@@ -585,15 +622,21 @@ class Sender
 				$item['name'], $item['email']
 			);
 
-			if($getUserIds)
-			{
-				$mailboxes[$userId][$key]['id'] = $userId;
-			}
+			$mailboxes[$userId][$key]['userId'] = $userId;
 		}
 
 		$mailboxes[$userId] = array_values($mailboxes[$userId]);
 
 		return $mailboxes[$userId];
+	}
+
+	private static function getOAuthTokenExpireGapSeconds(): int
+	{
+		// we use 55 minutes because providers give tokens for 1 hour or more,
+		// 5 minutes is left for not refresh token too frequent, for mass send
+		$default = isModuleInstalled('bitrix24') ? 55 * 60 : 10;
+
+		return (int)Main\Config\Option::get('main', '~oauth_token_expire_gap_seconds', $default);
 	}
 
 }

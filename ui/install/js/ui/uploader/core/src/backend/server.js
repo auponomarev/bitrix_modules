@@ -1,5 +1,4 @@
 import { Extension, Runtime, Type } from 'main.core';
-import type { ServerOptions } from '../types/server-options';
 import UploadController from './upload-controller';
 import AbstractUploadController from './abstract-upload-controller';
 import ServerLoadController from './server-load-controller';
@@ -7,6 +6,9 @@ import AbstractLoadController from './abstract-load-controller';
 import ClientLoadController from './client-load-controller';
 import AbstractRemoveController from './abstract-remove-controller';
 import RemoveController from './remove-controller';
+import ServerlessLoadController from './serverless-load-controller';
+
+import type { ServerOptions } from '../types/server-options';
 
 export default class Server
 {
@@ -26,16 +28,16 @@ export default class Server
 
 	constructor(serverOptions: ServerOptions)
 	{
-		const options = Type.isPlainObject(serverOptions) ? serverOptions : {};
+		const options: ServerOptions = Type.isPlainObject(serverOptions) ? serverOptions : {};
 
 		this.#controller = Type.isStringFilled(options.controller) ? options.controller : null;
 		this.#controllerOptions = Type.isPlainObject(options.controllerOptions) ? options.controllerOptions : null;
 
-		const chunkSize =
+		const chunkSize: number = (
 			Type.isNumber(options.chunkSize) && options.chunkSize > 0
 				? options.chunkSize
 				: this.getDefaultChunkSize()
-		;
+		);
 
 		this.#chunkSize = options.forceChunkSize === true ? chunkSize : this.#calcChunkSize(chunkSize);
 
@@ -48,15 +50,15 @@ export default class Server
 			this.#chunkRetryDelays = options.chunkRetryDelays;
 		}
 
-		['uploadControllerClass', 'loadControllerClass', 'removeControllerClass'].forEach((controllerClass: string) => {
-
+		const controllerClasses: string[] = ['uploadControllerClass', 'loadControllerClass', 'removeControllerClass'];
+		controllerClasses.forEach((controllerClass: string): void => {
 			let fn = null;
 			if (Type.isStringFilled(options[controllerClass]))
 			{
 				fn = Runtime.getClass(options[controllerClass]);
 				if (!Type.isFunction(fn))
 				{
-					throw new Error(`Uploader.Server: "${controllerClass}" must be a function.`);
+					throw new TypeError(`Uploader.Server: "${controllerClass}" must be a function.`);
 				}
 			}
 			else if (Type.isFunction(options[controllerClass]))
@@ -64,48 +66,51 @@ export default class Server
 				fn = options[controllerClass];
 			}
 
-			if (controllerClass === 'uploadControllerClass')
+			switch (controllerClass)
 			{
-				this.#uploadControllerClass = fn;
-			}
-			else if (controllerClass === 'loadControllerClass')
-			{
-				this.#loadControllerClass = fn;
-			}
-			else if (controllerClass === 'removeControllerClass')
-			{
-				this.#removeControllerClass = fn;
+				case 'uploadControllerClass':
+					this.#uploadControllerClass = fn;
+					break;
+				case 'loadControllerClass':
+					this.#loadControllerClass = fn;
+					break;
+				case 'removeControllerClass':
+					this.#removeControllerClass = fn;
+					break;
+				default:
+					// No default
 			}
 		});
 
-		this.#loadControllerOptions =
+		this.#loadControllerOptions = (
 			Type.isPlainObject(options.loadControllerOptions) ? options.loadControllerOptions : {}
-		;
+		);
 
-		this.#uploadControllerOptions =
+		this.#uploadControllerOptions = (
 			Type.isPlainObject(options.uploadControllerOptions) ? options.uploadControllerOptions : {}
-		;
+		);
 
-		this.#removeControllerOptions =
+		this.#removeControllerOptions = (
 			Type.isPlainObject(options.removeControllerOptions) ? options.removeControllerOptions : {}
-		;
+		);
 	}
 
 	createUploadController(): ?UploadController
 	{
 		if (this.#uploadControllerClass)
 		{
-			const controller = new this.#uploadControllerClass(this, this.#uploadControllerOptions);
+			const controller: AbstractUploadController = new this.#uploadControllerClass(this, this.#uploadControllerOptions);
 			if (!(controller instanceof AbstractUploadController))
 			{
-				throw new Error(
+				throw new TypeError(
 					'Uploader.Server: "uploadControllerClass" must be an instance of AbstractUploadController.',
 				);
 			}
 
 			return controller;
 		}
-		else if (Type.isStringFilled(this.#controller))
+
+		if (Type.isStringFilled(this.#controller))
 		{
 			return new UploadController(this, this.#uploadControllerOptions);
 		}
@@ -113,14 +118,14 @@ export default class Server
 		return null;
 	}
 
-	createLoadController(): ServerLoadController
+	createServerLoadController(): AbstractLoadController
 	{
 		if (this.#loadControllerClass)
 		{
-			const controller = new this.#loadControllerClass(this, this.#loadControllerOptions);
+			const controller: AbstractLoadController = new this.#loadControllerClass(this, this.#loadControllerOptions);
 			if (!(controller instanceof AbstractLoadController))
 			{
-				throw new Error(
+				throw new TypeError(
 					'Uploader.Server: "loadControllerClass" must be an instance of AbstractLoadController.',
 				);
 			}
@@ -128,6 +133,11 @@ export default class Server
 			return controller;
 		}
 
+		return this.createDefaultServerLoadController();
+	}
+
+	createDefaultServerLoadController(): ServerLoadController
+	{
 		return new ServerLoadController(this, this.#loadControllerOptions);
 	}
 
@@ -136,21 +146,27 @@ export default class Server
 		return new ClientLoadController(this, this.#loadControllerOptions);
 	}
 
+	createServerlessLoadController(): ServerlessLoadController
+	{
+		return new ServerlessLoadController(this, this.#loadControllerOptions);
+	}
+
 	createRemoveController(): ?AbstractRemoveController
 	{
 		if (this.#removeControllerClass)
 		{
-			const controller = new this.#removeControllerClass(this, this.#removeControllerOptions);
+			const controller: AbstractRemoveController = new this.#removeControllerClass(this, this.#removeControllerOptions);
 			if (!(controller instanceof AbstractRemoveController))
 			{
-				throw new Error(
+				throw new TypeError(
 					'Uploader.Server: "removeControllerClass" must be an instance of AbstractRemoveController.',
 				);
 			}
 
 			return controller;
 		}
-		else if (Type.isStringFilled(this.#controller))
+
+		if (Type.isStringFilled(this.#controller))
 		{
 			return new RemoveController(this, this.#removeControllerOptions);
 		}

@@ -2,6 +2,8 @@
 
 return [
 	'extensions' => [
-		'loc'
+		'loc',
+		'type',
+		'apptheme'
 	],
 ];

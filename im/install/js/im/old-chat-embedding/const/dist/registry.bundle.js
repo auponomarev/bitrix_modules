@@ -1,3 +1,4 @@
+/* eslint-disable */
 this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.Embedding = this.BX.Messenger.Embedding || {};
@@ -581,6 +582,10 @@ this.BX.Messenger.Embedding = this.BX.Messenger.Embedding || {};
 	  quickAccess: 'quickAccess',
 	  messenger: 'messenger'
 	};
+	const ApplicationLayout = {
+	  lines: 'lines',
+	  full: 'full'
+	};
 
 	const PopupType = Object.freeze({
 	  userProfile: 'im-user-settings-popup',
@@ -647,6 +652,7 @@ this.BX.Messenger.Embedding = this.BX.Messenger.Embedding || {};
 	exports.AttachDescription = AttachDescription;
 	exports.DesktopFeature = DesktopFeature;
 	exports.ApplicationName = ApplicationName;
+	exports.ApplicationLayout = ApplicationLayout;
 	exports.PopupType = PopupType;
 	exports.LocalStorageKey = LocalStorageKey;
 

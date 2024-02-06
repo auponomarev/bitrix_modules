@@ -5,14 +5,20 @@ namespace Bitrix\Im\V2\Chat;
 use Bitrix\Im\Recent;
 use Bitrix\Im\User;
 use Bitrix\Im\V2\Message;
+use Bitrix\Im\V2\Message\PushFormat;
 use Bitrix\Im\V2\MessageCollection;
 use Bitrix\Im\V2\Relation;
+use Bitrix\Im\V2\RelationCollection;
 use Bitrix\Im\V2\Result;
 use Bitrix\ImOpenLines\Config;
+use Bitrix\ImOpenLines\Model\ChatIndexTable;
+use Bitrix\Main\Application;
 use Bitrix\Main\Loader;
 
 class OpenLineChat extends EntityChat
 {
+	protected const EXTRANET_CAN_SEE_HISTORY = true;
+
 	protected $entityMap = [
 		'entityId' => [
 			'connectorId',
@@ -73,7 +79,19 @@ class OpenLineChat extends EntityChat
 
 	public function readAllMessages(bool $byEvent = false, bool $forceRead = false): Result
 	{
-		return $this->readMessages(null, $byEvent, $forceRead);
+		$result = $this->readMessages(null, $byEvent, $forceRead);
+
+		$userId = $this->getContext()->getUserId();
+		Application::getInstance()->addBackgroundJob(function () use ($byEvent, $forceRead, $userId) {
+			$chat = $this->withContextUser($userId);
+
+			if ($chat->getSelfRelation() === null)
+			{
+				$chat->readMessages(null, $byEvent, $forceRead);
+			}
+		});
+
+		return $result;
 	}
 
 	public function readMessages(?MessageCollection $messages, bool $byEvent = false, bool $forceRead = false): Result
@@ -112,16 +130,36 @@ class OpenLineChat extends EntityChat
 
 		$entityData = $this->getEntityData(true);
 		return Config::canJoin(
-			$this->getChatId(),
+			$entityData['lineId'] ?? 0,
 			$entityData['crmEntityType'] ?? null,
 			$entityData['crmEntityId'] ?? null
 		);
+	}
+
+	public function canUpdateOwnMessage(): bool
+	{
+		if (!Loader::includeModule('imopenlines'))
+		{
+			return false;
+		}
+
+		[$connectorType] = explode("|", $this->getEntityId() ?? '');
+
+		return in_array($connectorType, \Bitrix\ImOpenlines\Connector::getListCanUpdateOwnMessage(), true);
 	}
 
 	protected function prepareParams(array $params = []): Result
 	{
 		$params['AUTHOR_ID'] = 0;
 		return parent::prepareParams($params);
+	}
+
+	public function extendPullWatch(): void
+	{
+		if (Loader::includeModule('pull'))
+		{
+			\CPullWatch::Add($this->getContext()->getUserId(), "IM_PUBLIC_{$this->getId()}", true);
+		}
 	}
 
 	/**
@@ -171,5 +209,108 @@ class OpenLineChat extends EntityChat
 					->save();
 			}
 		}
+	}
+
+	protected function filterUsersToAdd(array $userIds): array
+	{
+		$filteredUsers = parent::filterUsersToAdd($userIds);
+
+		foreach ($filteredUsers as $key => $userId)
+		{
+			$user = \Bitrix\Im\V2\Entity\User\User::getInstance($userId);
+			if (!$user->isConnector() && ($user->isExtranet() || $user->isNetwork()))
+			{
+				unset($filteredUsers[$key]);
+			}
+		}
+
+		return $filteredUsers;
+	}
+
+	public function setExtranet(?bool $extranet): \Bitrix\Im\V2\Chat
+	{
+		return $this;
+	}
+
+	public function getExtranet(): ?bool
+	{
+		return false;
+	}
+
+	protected function updateStateAfterUsersAdd(array $usersToAdd): self
+	{
+		parent::updateStateAfterUsersAdd($usersToAdd);
+
+		if (Loader::includeModule('pull'))
+		{
+			foreach ($usersToAdd as $userId)
+			{
+				\CPullWatch::Delete($userId, 'IM_PUBLIC_' . $this->getId());
+			}
+		}
+
+		return $this;
+	}
+
+	protected function sendPushUsersAdd(array $usersToAdd, RelationCollection $oldRelations): array
+	{
+		$pushMessage = parent::sendPushUsersAdd($usersToAdd, $oldRelations);
+
+		if (Loader::includeModule('pull'))
+		{
+			\CPullWatch::AddToStack('IM_PUBLIC_' . $this->getId(), $pushMessage);
+		}
+
+		return $pushMessage;
+	}
+
+	protected function addUsersToRelation(array $usersToAdd, array $managerIds = [], ?bool $hideHistory = null)
+	{
+		parent::addUsersToRelation($usersToAdd, $managerIds, false);
+	}
+
+	public function startRecordVoice(): void
+	{
+		if (!Loader::includeModule('pull'))
+		{
+			return;
+		}
+
+		parent::startRecordVoice();
+		$pushFormatter = new PushFormat();
+		\CPullWatch::AddToStack('IM_PUBLIC_'.$this->getId(), $pushFormatter->formatStartRecordVoice($this));
+	}
+
+	protected function addIndex(): \Bitrix\Im\V2\Chat
+	{
+		if (!Loader::includeModule('imopenlines'))
+		{
+			return $this;
+		}
+
+		ChatIndexTable::addIndex($this->getId(), $this->getTitle());
+
+		return $this;
+	}
+
+	protected function updateIndex(): \Bitrix\Im\V2\Chat
+	{
+		if (!Loader::includeModule('imopenlines'))
+		{
+			return $this;
+		}
+
+		ChatIndexTable::updateIndex($this->getId(), $this->getTitle());
+
+		return $this;
+	}
+
+	public function sendPushUpdateMessage(Message $message): void
+	{
+		parent::sendPushUpdateMessage($message);
+		$pushFormat = new Message\PushFormat();
+		$push = $pushFormat->formatMessageUpdate($message);
+		$push['params']['dialogId'] = $this->getDialogId();
+		\CPullWatch::AddToStack('IM_PUBLIC_' . $message->getChatId(), $push);
 	}
 }

@@ -77,10 +77,14 @@ class CLists
 				$CACHE_MANAGER->Set("b_lists_permission", $arResult);
 		}
 
-		if($iblock_type_id === false)
+		if ($iblock_type_id === false)
+		{
 			return $arResult;
+		}
 		else
-			return $arResult[$iblock_type_id];
+		{
+			return $arResult[$iblock_type_id] ?? false;
+		}
 	}
 
 	public static function GetDefaultSocnetPermission()
@@ -190,7 +194,7 @@ class CLists
 			{
 				//Check if iblock is list
 				$arListsPerm = CLists::GetPermission($arIBlock["IBLOCK_TYPE_ID"]);
-				if(count($arListsPerm))
+				if (is_array($arListsPerm) && count($arListsPerm) > 0)
 				{
 					//User groups
 					if($user_id == $USER->GetID())
@@ -501,7 +505,7 @@ class CLists
 	{
 		if (!Loader::includeModule('bizproc'))
 		{
-			return Loc::getMessage('LISTS_MODULE_BIZPROC_NOT_INSTALLED');
+			return Loc::getMessage('LISTS_MODULE_BIZPROC_NOT_INSTALLED_MSGVER_1');
 		}
 
 		global $USER;
@@ -545,29 +549,18 @@ class CLists
 		}
 		else
 		{
-			$errors = array();
-			if (isset($documentStates[$workflowId]['WORKFLOW_STATUS']) &&
-				$documentStates[$workflowId]['WORKFLOW_STATUS'] !== null)
+			$errors = CBPDocument::killWorkflow($workflowId);
+			foreach ($errors as $error)
 			{
-				CBPDocument::terminateWorkflow(
-					$workflowId,
-					$documentId,
-					$errors
-				);
+				$stringError .= $error['message'];
 			}
 
-			if (!empty($errors))
+			if ($errors)
 			{
-				$stringError = '';
-				foreach ($errors as $error)
-					$stringError .= $error['message'];
-				$listError[] = array('id' => 'stopBizproc', 'text' => $stringError);
-			}
-			else
-			{
-				CBPTaskService::deleteByWorkflow($workflowId);
-				CBPTrackingService::deleteByWorkflow($workflowId);
-				CBPStateService::deleteWorkflow($workflowId);
+				$listError[] = [
+					'id' => 'stopBizproc',
+					'text' => $stringError
+				];
 			}
 		}
 
@@ -1158,7 +1151,7 @@ class CLists
 
 		foreach($listSection as $sectionId => $section)
 		{
-			if($section['PARENT_ID'] == $baseSectionId)
+			if(($section['PARENT_ID'] ?? null) == $baseSectionId)
 			{
 				$listChildSection[] = $sectionId;
 				self::getChildSection($sectionId, $listSection, $listChildSection);
@@ -1359,8 +1352,7 @@ class CLists
 
 	private static function createSeachableContent(array $fields)
 	{
-		$searchableContent = $fields["NAME"];
-
+		$searchableContent = $fields["NAME"] ?? '';
 
 		if(!empty($fields["DATE_CREATE"]))
 		{

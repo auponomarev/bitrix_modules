@@ -383,7 +383,7 @@ if(typeof BX.Crm.QuoteModel === "undefined")
 		if (this.getField('IS_USE_NUMBER_IN_TITLE_PLACEHOLDER'))
 		{
 			caption = BX.Loc.getMessage(
-				'CRM_QUOTE_TITLE',
+				'CRM_QUOTE_TITLE_MSGVER_1',
 				{
 					'#QUOTE_NUMBER#': this.getField('QUOTE_NUMBER'),
 					'#BEGINDATE#': this.getField('BEGINDATE')
@@ -398,7 +398,7 @@ if(typeof BX.Crm.QuoteModel === "undefined")
 				id = '';
 			}
 			caption = BX.Loc.getMessage(
-				'CRM_QUOTE_TITLE_PLACEHOLDER',
+				'CRM_QUOTE_TITLE_PLACEHOLDER_MSGVER_1',
 				{
 					'#ID#': id,
 				}
@@ -593,6 +593,41 @@ if(typeof BX.Crm.SmartDocumentModel === "undefined")
 	BX.Crm.SmartDocumentModel.create = function(id, settings)
 	{
 		var self = new BX.Crm.SmartDocumentModel();
+		self.initialize(id, settings);
+		return self;
+	};
+}
+
+if (typeof BX.Crm.AgentContractModel === "undefined")
+{
+	BX.Crm.AgentContractModel = function()
+	{
+		BX.Crm.AgentContractModel.superclass.constructor.apply(this);
+	};
+	BX.extend(BX.Crm.AgentContractModel, BX.Crm.EntityModel);
+	BX.Crm.AgentContractModel.prototype.isCaptionEditable = function()
+	{
+		return true;
+	};
+	BX.Crm.AgentContractModel.prototype.getEntityTypeId = function()
+	{
+		return BX.CrmEntityType.enumeration.agentcontract;
+	};
+	BX.Crm.AgentContractModel.prototype.getCaption = function()
+	{
+		return this.getField("TITLE", "");
+	};
+	BX.Crm.AgentContractModel.prototype.setCaption = function(caption)
+	{
+		this.setField("TITLE", caption);
+	};
+	BX.Crm.AgentContractModel.prototype.prepareCaptionData = function(data)
+	{
+		data["TITLE"] = this.getField("TITLE", "");
+	};
+	BX.Crm.AgentContractModel.create = function(id, settings)
+	{
+		var self = new BX.Crm.AgentContractModel();
 		self.initialize(id, settings);
 		return self;
 	};

@@ -326,7 +326,7 @@ if(
 		"CHECK_PERMISSIONS" => ($arParams["CAN_EDIT"] || $arParams["SOCNET_GROUP_ID"]? "N": "Y"), //This cancels iblock permissions for trusted users
 	);
 
-	if($_POST["action_all_rows_".$arResult["GRID_ID"]] == "Y")
+	if (isset($_POST["action_all_rows_".$arResult["GRID_ID"]]) && $_POST["action_all_rows_".$arResult["GRID_ID"]] === "Y")
 	{
 		if(!$arResult["ANY_SECTION"])
 			$arFilter["SECTION_ID"] = $arResult["SECTION_ID"];
@@ -564,8 +564,10 @@ foreach($listFields as $fieldId => $field)
 			$fieldType = $field["TYPE"];
 		$field["IBLOCK_ID"] = $arResult["IBLOCK_ID"];
 		$field["IBLOCK_TYPE_ID"] = $arParams["IBLOCK_TYPE_ID"];
-		if(!is_array($arResult["FILTER_CUSTOM_ENTITY"][$fieldType]))
-			$arResult["FILTER_CUSTOM_ENTITY"][$fieldType] = array();
+		if (!isset($arResult["FILTER_CUSTOM_ENTITY"][$fieldType]) || !is_array($arResult["FILTER_CUSTOM_ENTITY"][$fieldType]))
+		{
+			$arResult["FILTER_CUSTOM_ENTITY"][$fieldType] = [];
+		}
 		$arResult["FILTER_CUSTOM_ENTITY"][$fieldType][] = $field;
 	}
 
@@ -680,13 +682,15 @@ if ($arResult["SHOW_SECTION_GRID"] == "Y" && !array_key_exists("*SEARCHABLE_CONT
 	{
 		if ($arResult["ANY_SECTION"])
 		{
-			if($section["DEPTH_LEVEL"] != 1)
+			if (($section["DEPTH_LEVEL"] ?? 0) != 1)
+			{
 				continue;
+			}
 		}
 		else
 		{
 			$currentDepthLevel = (int) $arResult["SECTION"]["DEPTH_LEVEL"];
-			$sectionDepthLevel = (int) $section["DEPTH_LEVEL"];
+			$sectionDepthLevel = (int)($section["DEPTH_LEVEL"] ?? null);
 			if (
 				$sectionDepthLevel <= $currentDepthLevel
 				|| (abs($sectionDepthLevel - $currentDepthLevel) > 1)
@@ -823,6 +827,8 @@ else
 	$arUserGroupsForBP = array();
 	$arDocumentStatesForBP = array();
 }
+
+$processesWithComments = null;
 
 if ($arResult["PROCESSES"])
 {
@@ -964,8 +970,10 @@ while ($obElement = $rsElements->GetNextElement())
 		$backUrl = $APPLICATION->GetCurPageParam(
 			"", array("bxajaxid", "grid_action", "grid_id", "internal", "sessid"));
 		$arUserGroupsForBPTmp = $arUserGroupsForBP;
-		if ($USER->GetID() == $data["CREATED_BY"])
+		if ($USER->GetID() == ($data["CREATED_BY"] ?? 0))
+		{
 			$arUserGroupsForBPTmp[] = "Author";
+		}
 		foreach($arDocumentTemplates as $arWorkflowTemplate)
 		{
 			if ($canStartBizproc)

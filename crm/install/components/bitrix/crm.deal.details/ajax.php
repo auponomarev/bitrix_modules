@@ -1,10 +1,11 @@
 <?php
+
 define('NO_KEEP_STATISTIC', 'Y');
 define('NO_AGENT_STATISTIC','Y');
 define('NO_AGENT_CHECK', true);
 define('DisableEventsCheck', true);
 
-require_once($_SERVER['DOCUMENT_ROOT'].'/bitrix/modules/main/include/prolog_before.php');
+require_once($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/prolog_before.php');
 
 use Bitrix\Crm;
 use Bitrix\Crm\Conversion\DealConversionConfig;
@@ -28,7 +29,9 @@ if (!CModule::IncludeModule('crm'))
  * 'GET_DEFAULT_SECONDARY_ENTITIES'
  */
 global $DB, $APPLICATION, $USER_FIELD_MANAGER;
+
 \Bitrix\Main\Localization\Loc::loadMessages(__FILE__);
+
 Container::getInstance()->getLocalization()->loadMessages();
 
 if(!function_exists('__CrmDealDetailsEndJsonResonse'))
@@ -417,7 +420,7 @@ elseif($action === 'SAVE')
 				}
 			}
 			elseif(
-				$contactItem['title']
+				!empty($contactItem['title'])
 				|| (isset($contactItem['multifields']) && is_array($contactItem['multifields']))
 				|| (isset($contactItem['requisites']) && is_array($contactItem['requisites']))
 			)
@@ -816,15 +819,14 @@ elseif($action === 'SAVE')
 				);
 			}
 
-			$fields = Crm\Entity\FieldContentType::prepareFieldsFromDetailsToSave(\CCrmOwnerType::Deal, $ID, $fields);
-
 			Tracking\UI\Details::appendEntityFieldValue($fields, $_POST);
 
 			$entity = new \CCrmDeal(!CCrmPerms::IsAdmin());
-			$saveOptions = array_merge(
-				Crm\Entity\FieldContentType::prepareSaveOptionsForDetails(\CCrmOwnerType::Deal, $ID),
-				['REGISTER_SONET_EVENT' => true],
-			);
+			$saveOptions = [
+				'REGISTER_SONET_EVENT' => true,
+				'eventId' => $request->getPost('EVENT_ID'),
+			];
+
 			if(!$enableRequiredUserFieldCheck)
 			{
 				$saveOptions['DISABLE_REQUIRED_USER_FIELD_CHECK'] = true;
@@ -834,9 +836,6 @@ elseif($action === 'SAVE')
 			{
 				$fields[\Bitrix\Crm\Item::FIELD_NAME_PRODUCTS] = $productRows;
 			}
-
-			// @todo will be need in the future, when realtime mode is enabled for current user too
-			$saveOptions['EVENT_ID'] = $request->getPost('EVENT_ID');
 
 			if($isNew)
 			{
@@ -1232,7 +1231,11 @@ elseif($action === 'SAVE')
 			$url = $conversionWizard->getRedirectUrl();
 			if($url !== '')
 			{
-				$responseData = array('ENTITY_ID' => $ID, 'REDIRECT_URL' => $url);
+				$responseData = [
+					'ENTITY_ID' => $ID,
+					'REDIRECT_URL' => $url,
+					'OPEN_IN_NEW_SLIDE' => !$conversionWizard->isFinished(),
+				];
 				$eventParams = $conversionWizard->getClientEventParams();
 				if(is_array($eventParams))
 				{
@@ -1750,7 +1753,13 @@ elseif($action === 'PREPARE_EDITOR_HTML')
 
 	$isReadOnly = isset($_POST['READ_ONLY']) && mb_strtoupper($_POST['READ_ONLY']) === 'Y';
 	$showEmptyFields = isset($_POST['SHOW_EMPTY_FIELDS']) && mb_strtoupper($_POST['SHOW_EMPTY_FIELDS']) === 'Y';
-	$initialMode = isset($_POST['INITIAL_MODE']) ? $_POST['INITIAL_MODE'] : '';
+	$initialMode = $_POST['INITIAL_MODE'] ?? '';
+
+	$moduleId = $_POST['MODULE_ID'] ?? null;
+	if (!in_array($moduleId, ['crm']))
+	{
+		$moduleId = null;
+	}
 
 	CBitrixComponent::includeComponentClass('bitrix:crm.deal.details');
 	$component = new CCrmDealDetailsComponent();
@@ -1853,6 +1862,7 @@ elseif($action === 'PREPARE_EDITOR_HTML')
 			'SCOPE_PREFIX' => $scopePrefix,
 			'OPTION_PREFIX' => $optionPrefix,
 			'FORCE_DEFAULT_CONFIG' => $forceDefaultConfig,
+			'~FORCE_DEFAULT_CONFIG' => $forceDefaultConfig,
 			'ENTITY_CONFIG' => $entityConfig,
 			'ENTITY_FIELDS' => $component->prepareFieldInfos(),
 			'ENTITY_DATA' => $component->prepareEntityData(),
@@ -1882,6 +1892,7 @@ elseif($action === 'PREPARE_EDITOR_HTML')
 			'SHOW_EMPTY_FIELDS' => $showEmptyFields,
 			'IS_EMBEDDED' =>$isEmbedded,
 			'CONTEXT' => $context,
+			'MODULE_ID' => $moduleId
 		)
 	);
 

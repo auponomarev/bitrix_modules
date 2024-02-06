@@ -3,6 +3,7 @@
 namespace Bitrix\Im\V2;
 
 use Bitrix\Im\V2\Entity\File\FilePopupItem;
+use Bitrix\Im\V2\Entity\Url\UrlCollection;
 use Bitrix\Im\V2\Entity\User\UserPopupItem;
 use Bitrix\Im\V2\Link\Reminder\ReminderPopupItem;
 use Bitrix\Im\V2\Message\AdditionalMessagePopupItem;
@@ -25,9 +26,9 @@ use Bitrix\Im\V2\Service\Locator;
 use Bitrix\Im\V2\Message\Params;
 
 /**
- * @method Message next()
- * @method Message current()
- * @method Message offsetGet($offset)
+ * @implements \IteratorAggregate<int,Message>
+ * @method self filter(callable $predicate)
+ * @method Message offsetGet($key)
  */
 class MessageCollection extends Collection implements RestConvertible, PopupDataAggregatable
 {
@@ -36,7 +37,7 @@ class MessageCollection extends Collection implements RestConvertible, PopupData
 	protected bool $isFileFilled = false;
 	protected bool $isParamsFilled = false;
 	protected bool $isUuidFilled = false;
-	protected bool $isLinkAttachmentsFilled = false;
+	protected bool $isUrlsFilled = false;
 	protected bool $isUnreadFilled = false;
 	protected bool $isViewedFilled = false;
 	protected bool $isViewedByOthersFilled = false;
@@ -80,12 +81,17 @@ class MessageCollection extends Collection implements RestConvertible, PopupData
 		static::processFilters($query, $filter, $messageOrder);
 		$messageIds = $query->fetchCollection()->getIdList();
 
-		if (empty($select))
+		if (empty($messageIds))
 		{
-			return new static($messageIds);
+			return new static();
 		}
 
-		return new static(MessageTable::query()->whereIn('ID', $messageIds)->setSelect($select)->fetchCollection());
+		if (empty($select))
+		{
+			$select = ['*'];
+		}
+
+		return new static(MessageTable::query()->whereIn('ID', $messageIds)->setOrder($messageOrder)->setSelect($select)->fetchCollection());
 	}
 
 	/**
@@ -148,7 +154,7 @@ class MessageCollection extends Collection implements RestConvertible, PopupData
 
 		foreach ($this as $message)
 		{
-			$messagesForRest[] = $message->toRestFormat();
+			$messagesForRest[] = $message->toRestFormat($option);
 		}
 
 		return $messagesForRest;
@@ -194,7 +200,7 @@ class MessageCollection extends Collection implements RestConvertible, PopupData
 						$messagesFiles[] = $file->setChatId($message->getChatId());
 					}
 				}
-				$message->setFiles($messagesFiles);
+				$message->fillFiles($messagesFiles);
 			}
 
 			$this->isFileFilled = true;
@@ -262,28 +268,34 @@ class MessageCollection extends Collection implements RestConvertible, PopupData
 	/**
 	 * @return self
 	 */
-	public function fillLinkAttachments(): self
+	public function fillUrls(): self
 	{
-		if ($this->isLinkAttachmentsFilled)
+		if ($this->isUrlsFilled)
 		{
 			return $this;
 		}
 
 		$this->fillParams();
-		$params = [];
+		$urlIdByMessageIds = [];
 		foreach ($this as $message)
 		{
-			$params[$message->getId()] = $message->getParams()->toRestFormat();
+			$urlId = $message->getParams()->get(Params::URL_ID)->getValue()[0] ?? null;
+			if (isset($urlId))
+			{
+				$urlIdByMessageIds[$message->getId()] = $urlId;
+			}
 		}
-
-		$attachByMessageId = \CIMMessageLink::prepareShow([], $params);
-
+		$urlCollection = UrlCollection::initByPreviewUrlsIds($urlIdByMessageIds, false);
 		foreach ($this as $message)
 		{
-			$message->setLinkAttachments($attachByMessageId[$message->getId()]['PARAMS']['ATTACH'] ?? []);
+			if (isset($urlIdByMessageIds[$message->getId()]))
+			{
+				$urlId = $urlIdByMessageIds[$message->getId()];
+				$message->setUrl($urlCollection->getById($urlId));
+			}
 		}
 
-		$this->isLinkAttachmentsFilled = true;
+		$this->isUrlsFilled = true;
 
 		return $this;
 	}
@@ -396,7 +408,7 @@ class MessageCollection extends Collection implements RestConvertible, PopupData
 	{
 		return $this
 			->fillParams()
-			->fillLinkAttachments()
+			->fillUrls()
 			->fillUuid()
 			->fillUnread()
 			->fillViewed()
@@ -507,7 +519,7 @@ class MessageCollection extends Collection implements RestConvertible, PopupData
 			new ReminderPopupItem($this->getReminders()),
 			new AdditionalMessagePopupItem($this->getReplayedMessageIds()),
 			new ReactionPopupItem($this->getReactions())
-		], $excludedList))->mergeFromEntity($this->getReactions(), $excludedList);
+		], $excludedList));
 	}
 
 	public function filterByChatId(int $chatId): self
@@ -534,7 +546,7 @@ class MessageCollection extends Collection implements RestConvertible, PopupData
 			$query->where('CHAT_ID', $filter['CHAT_ID']);
 		}
 
-		if (isset($filter['SEARCH_MESSAGE']))
+		if (isset($filter['SEARCH_MESSAGE']) && mb_strlen($filter['SEARCH_MESSAGE']) > 2)
 		{
 			$query->whereLike('MESSAGE', "%{$filter['SEARCH_MESSAGE']}%");
 		}

@@ -2,6 +2,8 @@
  * @module crm/mail/message/elements/avatar
  */
 jn.define('crm/mail/message/elements/avatar', (require, exports, module) => {
+	const AppTheme = require('apptheme');
+
 	function stringToHashCode(string)
 	{
 		let hashCode = 0;
@@ -20,6 +22,7 @@ jn.define('crm/mail/message/elements/avatar', (require, exports, module) => {
 		{
 			return 255;
 		}
+
 		if (chanelCode < 0)
 		{
 			return 0;
@@ -71,7 +74,9 @@ jn.define('crm/mail/message/elements/avatar', (require, exports, module) => {
 		g = alignChannelRangeColor(g);
 		b = alignChannelRangeColor(b);
 
-		const color = `#${(`0${r.toString(16)}`).slice(-2)}${(`0${g.toString(16)}`).slice(-2)}${(`0${b.toString(16)}`).slice(-2)}`;
+		const color = `#${(`0${r.toString(16)}`).slice(-2)}${(`0${g.toString(16)}`).slice(-2)}${(`0${b.toString(16)}`).slice(
+			-2)}`;
+
 		return color.toUpperCase();
 	}
 
@@ -82,8 +87,8 @@ jn.define('crm/mail/message/elements/avatar', (require, exports, module) => {
 
 	function getInitials(string, email)
 	{
-		string = string.replace(/[\d"#$%&'()*+,./:<>?\\{}~\u00AB\u00BB-]/g, '');
-		string = string.replace(/^\s+|\s+$/g, '');
+		string = string.replaceAll(/[\d"#$%&'()*+,./:<>?\\{}~\u00AB\u00BB-]/g, '');
+		string = string.replaceAll(/^\s+|\s+$/g, '');
 
 		const names = string.split(' ');
 
@@ -113,7 +118,7 @@ jn.define('crm/mail/message/elements/avatar', (require, exports, module) => {
 	{
 		return Text({
 			style: {
-				color: '#fff',
+				color: AppTheme.colors.baseWhiteFixed,
 				width: props.size,
 				height: props.size,
 				backgroundColor: stringToColor(props.email),

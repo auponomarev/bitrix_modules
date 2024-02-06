@@ -2,6 +2,7 @@
 
 namespace Bitrix\Im\V2\Chat;
 
+use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Im\Notify;
 use Bitrix\Im\User;
@@ -65,6 +66,11 @@ class NotifyChat extends Chat
 		return $result;
 	}
 
+	public static function getByUser(?int $userId = null): ?NotifyChat
+	{
+		return ChatFactory::getInstance()->getNotifyFeed($userId);
+	}
+
 	/**
 	 * Looks for notification channel for user
 	 *
@@ -113,7 +119,12 @@ class NotifyChat extends Chat
 		");
 		if ($row = $res->fetch())
 		{
-			$result->setResult($row);
+			$result->setResult([
+				'ID' => (int)$row['ID'],
+				'TYPE' => $row['TYPE'],
+				'ENTITY_TYPE' => $row['ENTITY_TYPE'],
+				'ENTITY_ID' => $row['ENTITY_ID'],
+			]);
 		}
 
 		return $result;
@@ -144,7 +155,7 @@ class NotifyChat extends Chat
 			return $result->addError(new ChatError(ChatError::WRONG_RECIPIENT));
 		}
 
-		$chat = new NotifyChat($params);
+		$chat = new static($params);
 		$chat->save();
 
 		if ($chat->getChatId() <= 0)
@@ -180,7 +191,11 @@ class NotifyChat extends Chat
 			return $result->addError(new ChatError(ChatError::WRONG_TARGET_CHAT));
 		}
 
-		if (!$message instanceof Message)
+		if (is_string($message))
+		{
+			$message = (new Message)->setMessage($message);
+		}
+		elseif (!$message instanceof Message)
 		{
 			$message = new Message($message);
 		}
@@ -389,6 +404,21 @@ class NotifyChat extends Chat
 		return $result;
 	}
 
+	public function dropAll(): void
+	{
+		$chatId = $this->getChatId();
+
+		if ($chatId === null || $chatId === 0)
+		{
+			return;
+		}
+
+		Message\MessageService::deleteByChatId($chatId, $this->getContext()->getUserId());
+		$this->setMessageCount(0)->save();
+
+		$this->sendPushDropAll();
+	}
+
 	/**
 	 * If we have other notifications with the same tag, we need to get USERS from the old notifications,
 	 * then merge it with AUTHOR_ID or create new USERS array with AUTHOR_ID then delete old notifications.
@@ -489,5 +519,34 @@ class NotifyChat extends Chat
 		{
 			\CIMNotify::DeleteByTag($message->getNotifyTag());
 		}
+	}
+
+	protected function sendPushDropAll(): void
+	{
+		if (Loader::includeModule('pull'))
+		{
+			\Bitrix\Pull\Event::add(
+				$this->getContext()->getUserId(),
+				[
+					'module_id' => 'im',
+					'command' => 'notifyDeleteAll',
+					'params' => [
+						'chatId' => $this->getChatId(),
+					],
+					'extra' => \Bitrix\Im\Common::getPullExtra()
+				]
+			);
+			\Bitrix\Pull\MobileCounter::send($this->getContext()->getUserId());
+		}
+	}
+
+	protected function addIndex(): Chat
+	{
+		return $this;
+	}
+
+	protected function updateIndex(): Chat
+	{
+		return $this;
 	}
 }

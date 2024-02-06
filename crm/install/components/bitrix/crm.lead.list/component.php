@@ -151,7 +151,8 @@ $CCrmLead = new CCrmLead(false);
 $CCrmBizProc = new CCrmBizProc('LEAD');
 $fieldRestrictionManager = new FieldRestrictionManager(
 	FieldRestrictionManager::MODE_GRID,
-	[FieldRestrictionManagerTypes::ACTIVITY]
+	[FieldRestrictionManagerTypes::OBSERVERS, FieldRestrictionManagerTypes::ACTIVITY],
+	CCrmOwnerType::Lead
 );
 
 $userID = CCrmSecurityHelper::GetCurrentUserID();
@@ -230,24 +231,7 @@ $arResult['NAVIGATION_CONTEXT_ID'] = $arParams['NAVIGATION_CONTEXT_ID'] ?? '';
 $arResult['DISABLE_NAVIGATION_BAR'] = $arParams['DISABLE_NAVIGATION_BAR'] ?? 'N';
 $arResult['PRESERVE_HISTORY'] = $arParams['PRESERVE_HISTORY'] ?? false;
 $arResult['ENABLE_SLIDER'] = \Bitrix\Crm\Settings\LayoutSettings::getCurrent()->isSliderEnabled();
-
-if (LayoutSettings::getCurrent()->isSimpleTimeFormatEnabled())
-{
-	$arResult['TIME_FORMAT'] = array(
-		'tommorow' => 'tommorow',
-		's' => 'sago',
-		'i' => 'iago',
-		'H3' => 'Hago',
-		'today' => 'today',
-		'yesterday' => 'yesterday',
-		//'d7' => 'dago',
-		'-' => Main\Type\DateTime::convertFormatToPhp(FORMAT_DATE)
-	);
-}
-else
-{
-	$arResult['TIME_FORMAT'] = preg_replace('/:s$/', '', Main\Type\DateTime::convertFormatToPhp(FORMAT_DATETIME));
-}
+$arResult['TIME_FORMAT'] = CCrmDateTimeHelper::getDefaultDateTimeFormat();
 
 $addressLabels = EntityAddress::getShortLabels();
 
@@ -549,6 +533,16 @@ if(!$bInternal)
 		$effectiveFilterFieldIDs[] = 'ACTIVITY_COUNTER';
 	}
 
+	if(!in_array('ACTIVITY_RESPONSIBLE_IDS', $effectiveFilterFieldIDs, true))
+	{
+		$effectiveFilterFieldIDs[] = 'ACTIVITY_RESPONSIBLE_IDS';
+	}
+
+	if(!in_array('ACTIVITY_FASTSEARCH_CREATED', $effectiveFilterFieldIDs, true))
+	{
+		$effectiveFilterFieldIDs[] = 'ACTIVITY_FASTSEARCH_CREATED';
+	}
+
 	if(!in_array('WEBFORM_ID', $effectiveFilterFieldIDs, true))
 	{
 		$effectiveFilterFieldIDs[] = 'WEBFORM_ID';
@@ -583,7 +577,7 @@ $arResult['HEADERS'] = array(
 	array('id' => 'LEAD_SUMMARY', 'name' => GetMessage('CRM_COLUMN_LEAD'), 'sort' => 'title', 'width' => 200, 'default' => true, 'editable' => true),
 	array(
 		'id' => 'STATUS_ID',
-		'name' => GetMessage('CRM_COLUMN_STATUS'),
+		'name' => GetMessage('CRM_COLUMN_STATUS_MSGVER_1'),
 		'sort' => 'status_sort',
 		'width' => 200,
 		'default' => true,
@@ -594,51 +588,114 @@ $arResult['HEADERS'] = array(
 );
 
 // Don't display activities in INTERNAL mode.
-if(!$bInternal)
+if (!$bInternal)
 {
-	$arResult['HEADERS'][] = array(
+	$arResult['HEADERS'][] = [
 		'id' => 'ACTIVITY_ID',
 		'name' => GetMessage('CRM_COLUMN_ACTIVITY'),
 		'sort' => 'nearest_activity',
 		'width' => 150,
 		'default' => true,
 		'prevent_default' => false
-	);
+	];
 }
 
 $arResult['HEADERS'] = array_merge(
 	$arResult['HEADERS'],
-	array(
-		array('id' => 'LEAD_FORMATTED_NAME', 'name' => GetMessage('CRM_COLUMN_FULL_NAME'), 'sort' => 'last_name', 'default' => true, 'editable' => false),
-		array('id' => 'TITLE', 'name' => GetMessage('CRM_COLUMN_TITLE'), 'sort' => 'title', 'default' => false, 'editable' => true),
-		array(
+	[
+		[
+			'id' => 'LEAD_FORMATTED_NAME',
+			'name' => GetMessage('CRM_COLUMN_FULL_NAME'),
+			'sort' => 'last_name',
+			'default' => true,
+			'editable' => false,
+		],
+		[
+			'id' => 'TITLE',
+			'name' => GetMessage('CRM_COLUMN_TITLE'),
+			'sort' => 'title',
+			'default' => false,
+			'editable' => true,
+		],
+		[
 			'id' => 'HONORIFIC',
 			'name' => GetMessage('CRM_COLUMN_HONORIFIC'),
 			'sort' => false,
 			'type' => 'list',
-			'editable' => array(
-				'items' => array('0' => GetMessage('CRM_HONORIFIC_NOT_SELECTED')) + CCrmStatus::GetStatusList('HONORIFIC')
-			)
-		),
-		array('id' => 'NAME', 'name' => GetMessage('CRM_COLUMN_NAME'), 'sort' => 'name', 'default' => false, 'editable' => true, 'class' => 'username'),
-		array('id' => 'SECOND_NAME', 'name' => GetMessage('CRM_COLUMN_SECOND_NAME'), 'sort' => 'second_name', 'default' => false, 'editable' => true, 'class' => 'username'),
-		array('id' => 'LAST_NAME', 'name' => GetMessage('CRM_COLUMN_LAST_NAME'), 'sort' => 'last_name', 'default' => false, 'editable' => true, 'class' => 'username'),
-		array('id' => 'BIRTHDATE', 'name' => GetMessage('CRM_COLUMN_BIRTHDATE'), 'sort' => 'BIRTHDATE', 'first_order' => 'desc', 'default' => false, 'editable' => true, 'type' => 'date'),
-		array('id' => 'DATE_CREATE', 'name' => GetMessage('CRM_COLUMN_DATE_CREATE'), 'sort' => 'id', 'first_order' => 'desc', 'default' => true, 'editable' => false, 'class' => 'date'),
-		array('id' => 'SOURCE_ID', 'name' => GetMessage('CRM_COLUMN_SOURCE'), 'sort' => 'source_id', 'default' => false, 'editable' => array('items' => CCrmStatus::GetStatusList('SOURCE')), 'type' => 'list')
-
-	)
+			'editable' => [
+				'items' => ['0' => GetMessage('CRM_HONORIFIC_NOT_SELECTED')] + CCrmStatus::GetStatusList('HONORIFIC')
+			],
+		],
+		[
+			'id' => 'NAME',
+			'name' => GetMessage('CRM_COLUMN_NAME'),
+			'sort' => 'name',
+			'default' => false,
+			'editable' => true,
+			'class' => 'username',
+		],
+		[
+			'id' => 'SECOND_NAME',
+			 'name' => GetMessage('CRM_COLUMN_SECOND_NAME'),
+			 'sort' => 'second_name',
+			 'default' => false,
+			 'editable' => true,
+			 'class' => 'username',
+		],
+		[
+			'id' => 'LAST_NAME',
+			'name' => GetMessage('CRM_COLUMN_LAST_NAME'),
+			'sort' => 'last_name',
+			'default' => false,
+			'editable' => true,
+			'class' => 'username',
+		],
+		[
+			'id' => 'BIRTHDATE',
+			'name' => GetMessage('CRM_COLUMN_BIRTHDATE'),
+			'sort' => 'BIRTHDATE',
+			'first_order' => 'desc',
+			 'default' => false,
+			 'editable' => true,
+			 'type' => 'date',
+		],
+		[
+			'id' => 'DATE_CREATE',
+			'name' => GetMessage('CRM_COLUMN_DATE_CREATE'),
+			'sort' => 'id',
+			'first_order' => 'desc',
+			'default' => true,
+			'editable' => false,
+			'class' => 'date',
+		],
+		[
+			'id' => 'SOURCE_ID',
+			'name' => GetMessage('CRM_COLUMN_SOURCE'),
+			'sort' => 'source_id',
+			'default' => false,
+			'editable' => [
+				'items' => CCrmStatus::GetStatusList('SOURCE')
+			],
+			'type' => 'list',
+		],
+		[
+			'id' => Crm\Item::FIELD_NAME_OBSERVERS,
+			'name' => Loc::getMessage('CRM_COLUMN_OBSERVERS'),
+			'sort' => false,
+			'editable' => false,
+		],
+	]
 );
 
 $CCrmFieldMulti->PrepareListHeaders($arResult['HEADERS'], ['LINK']);
-if($isInExportMode)
+if ($isInExportMode)
 {
 	$CCrmFieldMulti->ListAddHeaders($arResult['HEADERS']);
 }
 
 $arResult['HEADERS'] = array_merge($arResult['HEADERS'], array(
 	array('id' => 'ASSIGNED_BY', 'name' => GetMessage('CRM_COLUMN_ASSIGNED_BY'), 'sort' => 'assigned_by', 'default' => true, 'editable' => false, 'class' => 'username'),
-	array('id' => 'STATUS_DESCRIPTION', 'name' => GetMessage('CRM_COLUMN_STATUS_DESCRIPTION'), 'sort' => false /**because of MSSQL**/, 'default' => false, 'editable' => false),
+	array('id' => 'STATUS_DESCRIPTION', 'name' => GetMessage('CRM_COLUMN_STATUS_DESCRIPTION_MSGVER_1'), 'sort' => false /**because of MSSQL**/, 'default' => false, 'editable' => false),
 	array('id' => 'SOURCE_DESCRIPTION', 'name' => GetMessage('CRM_COLUMN_SOURCE_DESCRIPTION'), 'sort' => false /**because of MSSQL**/, 'default' => false, 'editable' => false),
 	array('id' => 'CREATED_BY', 'name' => GetMessage('CRM_COLUMN_CREATED_BY'), 'sort' => 'created_by', 'default' => false, 'editable' => false, 'class' => 'username'),
 	array('id' => 'DATE_MODIFY', 'name' => GetMessage('CRM_COLUMN_DATE_MODIFY'), 'sort' => 'date_modify', 'first_order' => 'desc', 'default' => false, 'class' => 'date'),
@@ -677,7 +734,7 @@ foreach ($utmList as $utmCode => $utmName)
 	);
 }
 
-$CCrmUserType->ListAddHeaders($arResult['HEADERS']);
+$CCrmUserType->appendGridHeaders($arResult['HEADERS']);
 
 Crm\Service\Container::getInstance()->getParentFieldManager()->prepareGridHeaders(
 	\CCrmOwnerType::Lead,
@@ -693,16 +750,13 @@ if (
 {
 	$arResult['HEADERS'][] = ['id' => Crm\Item::FIELD_NAME_LAST_ACTIVITY_TIME, 'name' => $factory->getFieldCaption(Crm\Item::FIELD_NAME_LAST_ACTIVITY_TIME), 'sort' => mb_strtolower(Crm\Item::FIELD_NAME_LAST_ACTIVITY_TIME), 'first_order' => 'desc', 'class' => 'datetime'];
 }
-unset($factory);
 
-$arResult['HEADERS_SECTIONS'] = [
-	[
-		'id' => 'LEAD',
-		'name' => Loc::getMessage('CRM_COLUMN_LEAD'),
-		'default' => true,
-		'selected' => true,
-	],
-];
+$observersDataProvider = new \Bitrix\Crm\Component\EntityList\UserDataProvider\Observers(CCrmOwnerType::Lead);
+
+$arResult['HEADERS_SECTIONS'] = \Bitrix\Crm\Filter\HeaderSections::getInstance()
+	->sections($factory);
+
+unset($factory);
 
 $arBPData = array();
 if ($isBizProcInstalled)
@@ -738,12 +792,11 @@ if ($isBizProcInstalled)
 }
 
 //region Check and fill fields restriction
-$restrictedFields = $fieldRestrictionManager->fetchRestrictedFields(
+$arResult['RESTRICTED_FIELDS_ENGINE'] = $fieldRestrictionManager->fetchRestrictedFieldsEngine(
 	$arResult['GRID_ID'] ?? '',
 	$arResult['HEADERS'] ?? [],
 	$entityFilter ?? null
 );
-$arResult = array_merge($arResult, $restrictedFields);
 //endregion
 
 // list all filds for export
@@ -923,8 +976,10 @@ else
 }
 //endregion
 
+Crm\Filter\FieldsTransform\UserBasedField::applyTransformWrapper($arFilter);
+
 //region Activity Counter Filter
-CCrmEntityHelper::applyCounterFilterWrapper(
+CCrmEntityHelper::applySubQueryBasedFiltersWrapper(
 	\CCrmOwnerType::Lead,
 	$arResult['GRID_ID'],
 	Bitrix\Crm\Counter\EntityCounter::internalizeExtras($_REQUEST),
@@ -943,7 +998,7 @@ $arImmutableFilters = array(
 	'WEBFORM_ID', 'IS_RETURN_CUSTOMER', 'TRACKING_SOURCE_ID', 'TRACKING_CHANNEL_CODE',
 	'SEARCH_CONTENT',
 	'PRODUCT_ID', 'STATUS_ID', 'SOURCE_ID', 'COMPANY_ID', 'CONTACT_ID',
-	'FILTER_ID', 'FILTER_APPLIED', 'PRESET_ID'
+	'FILTER_ID', 'FILTER_APPLIED', 'PRESET_ID', 'OBSERVER_IDS'
 );
 
 foreach ($arFilter as $k => $v)
@@ -1341,7 +1396,7 @@ if($actionData['ACTIVE'])
 				{
 					$arResult['MESSAGES'][] = array(
 						'TITLE' => GetMessage('CRM_SET_STATUS_NOT_COMPLETED_TITLE'),
-						'TEXT' => GetMessage('CRM_SET_STATUS_NOT_COMPLETED_TEXT')
+						'TEXT' => GetMessage('CRM_SET_STATUS_NOT_COMPLETED_TEXT_MSGVER_1')
 					);
 				}
 			}
@@ -1382,7 +1437,18 @@ if($actionData['ACTIVE'])
 						'ASSIGNED_BY_ID' => $actionData['ASSIGNED_BY_ID']
 					);
 
-					if($CCrmLead->Update($ID, $arUpdateData, true, true, array('DISABLE_USER_FIELD_CHECK' => true)))
+					if (
+						$CCrmLead->Update(
+							$ID,
+							$arUpdateData,
+							true,
+							true,
+							[
+								'REGISTER_SONET_EVENT' => true,
+								'DISABLE_USER_FIELD_CHECK' => true,
+							]
+						)
+					)
 					{
 						$DB->Commit();
 
@@ -1652,7 +1718,7 @@ if (empty($arSelectMap))
 {
 	foreach ($arResult['HEADERS'] as $arHeader)
 	{
-		if ($arHeader['default'])
+		if ($arHeader['default'] ?? false)
 		{
 			$arSelectMap[$arHeader['id']] = true;
 		}
@@ -1912,6 +1978,8 @@ if (in_array('ACTIVITY_ID', $arSelect, true)) // Remove ACTIVITY_ID from $arSele
 	unset($arSelect[array_search('ACTIVITY_ID', $arSelect)]);
 	$arSelect = array_values($arSelect);
 }
+
+$observersDataProvider->prepareSelect($arSelect);
 
 // For calendar view
 if (isset($arParams['CALENDAR_MODE_LIST']) && !in_array('DATE_CREATE', $arSelect))
@@ -2237,28 +2305,34 @@ else
 	}
 	else
 	{
+		$parameters = [
+			'select' => $arSelect,
+			'filter' => $arFilter,
+			'order' => $arSort,
+			'options' => [
+				'FIELD_OPTIONS' => $arOptions['FIELD_OPTIONS'] ?? [],
+				'IS_EXTERNAL_CONTEXT' => $arOptions['IS_EXTERNAL_CONTEXT'] ?? false,
+			],
+		];
+
 		if ($isInGadgetMode && isset($arNavParams['nTopCount']))
 		{
-			$navListOptions = array_merge($arOptions, array('QUERY_OPTIONS' => array('LIMIT' => $arNavParams['nTopCount'])));
+			$parameters['limit'] = $arNavParams['nTopCount'];
+			$parameters['offset'] = null;
+		}
+		elseif ($isInExportMode && !$isStExport)
+		{
+			$parameters['limit'] = null;
+			$parameters['offset'] = null;
 		}
 		else
 		{
-			$navListOptions = ($isInExportMode && !$isStExport)
-				? array()
-				: array_merge(
-					$arOptions,
-					array('QUERY_OPTIONS' => array('LIMIT' => $limit, 'OFFSET' => $pageSize * ($pageNum - 1)))
-				);
+			$parameters['limit'] = $limit;
+			$parameters['offset'] = $pageSize * ($pageNum - 1);
 		}
 
-		$dbResult = CCrmLead::GetListEx(
-			$arSort,
-			$arFilter,
-			false,
-			false,
-			$arSelect,
-			$navListOptions
-		);
+		$listEntity = \Bitrix\Crm\ListEntity\Entity::getInstance(\CCrmOwnerType::LeadName);
+		$dbResult = $listEntity->getItems($parameters);
 
 		$qty = 0;
 		while($arLead = $dbResult->GetNext())
@@ -2321,6 +2395,8 @@ if ($arResult['ENABLE_BIZPROC'] && !empty($arResult['LEAD']))
 		$allDocumentStates[$documentState['DOCUMENT_ID'][2]][$stateId] = $documentState;
 	}
 }
+
+$observersDataProvider->appendResult($arResult['LEAD']);
 
 $parentFieldValues = Crm\Service\Container::getInstance()->getParentFieldManager()->loadParentElementsByChildren(
 	\CCrmOwnerType::Lead,
@@ -2567,6 +2643,15 @@ foreach($arResult['LEAD'] as &$arLead)
 	$arLead['LEAD_LEGEND'] = isset($arLead['IS_RETURN_CUSTOMER']) && $arLead['IS_RETURN_CUSTOMER'] === 'Y'
 		? GetMessage('CRM_COLUMN_IS_RETURN_CUSTOMER1')
 		: '';
+
+	if (!empty($arLead['OBSERVERS']))
+	{
+		$arLead['~OBSERVERS'] = $arLead['OBSERVERS'];
+		$arLead['OBSERVERS'] = implode(
+			"\n",
+			array_column($arLead['~OBSERVERS'], 'OBSERVER_USER_FORMATTED_NAME')
+		);
+	}
 
 	if ($arResult['ENABLE_TASK'])
 	{

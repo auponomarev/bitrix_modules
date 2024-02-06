@@ -45,6 +45,11 @@ class Feed
 			PageInstance.setSignedParameters(params.signedParameters);
 		}
 
+		if (Type.isStringFilled(params.context))
+		{
+			PageInstance.setContext(params.context);
+		}
+
 		if (Type.isStringFilled(params.componentName))
 		{
 			PageInstance.setComponentName(params.componentName);
@@ -421,6 +426,15 @@ class Feed
 
 	clearMoreButtons()
 	{
+		for (const buttonData of this.moreButtonDataList)
+		{
+			const moreButton = document.getElementById(buttonData.outerBlockID)?.querySelector(`.${MoreButton.cssClass.more}`);
+			if (!moreButton?.hasClickListener)
+			{
+				return;
+			}
+		}
+
 		this.moreButtonDataList.clear();
 	}
 

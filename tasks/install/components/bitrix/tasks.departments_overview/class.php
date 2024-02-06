@@ -13,7 +13,9 @@ use Bitrix\Main\ORM\Query\Result;
 use Bitrix\Main\UI\Filter\Options;
 use Bitrix\Main\UI\PageNavigation;
 use Bitrix\Main\UserTable;
+use Bitrix\Tasks\Integration\Intranet\Settings;
 use Bitrix\Tasks\Internals\Counter;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Util\Error\Collection;
 use Bitrix\Tasks\Util\Restriction\Bitrix24Restriction\Limit\TaskLimit;
 use Bitrix\Tasks\Util\User;
@@ -47,6 +49,18 @@ class TasksDepartmentsOverviewComponent extends TasksBaseComponent
 		}
 
 		return $errors->checkNoFatals();
+	}
+
+	protected static function checkIfToolAvailable(array &$arParams, array &$arResult, Collection $errors, array $auxParams): void
+	{
+		parent::checkIfToolAvailable($arParams, $arResult, $errors, $auxParams);
+
+		if (!$arResult['IS_TOOL_AVAILABLE'])
+		{
+			return;
+		}
+
+		$arResult['IS_TOOL_AVAILABLE'] = (new Settings())->isToolAvailable(Settings::TOOLS['departments']);
 	}
 
 	protected function checkParameters()
@@ -269,7 +283,7 @@ class TasksDepartmentsOverviewComponent extends TasksBaseComponent
 		$tasksByRoles = [];
 
 		$connection = Application::getConnection();
-		$statuses = implode(',', [CTasks::STATE_PENDING, CTasks::STATE_IN_PROGRESS]);
+		$statuses = implode(',', [Status::PENDING, Status::IN_PROGRESS]);
 		$preparedUserIds = implode(',', $userIds);
 
 		$res = $connection->query("

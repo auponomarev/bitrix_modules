@@ -1,7 +1,8 @@
-import {Extension, Type, Loc} from 'main.core';
-import {DateTimeFormat} from 'main.date';
+import { Extension, Type, Loc } from 'main.core';
+import { DateTimeFormat } from 'main.date';
 
-import {DateFormatter, DateCode} from 'im.v2.lib.date-formatter';
+import { DateFormatter, DateCode } from 'im.v2.lib.date-formatter';
+import { UserIdNetworkPrefix } from 'im.v2.const';
 
 const settings = Extension.getSettings('im.v2.lib.utils');
 
@@ -152,13 +153,13 @@ export const UserUtil = {
 		return path.replace('#user_id#', userId);
 	},
 
-	getMentionBbCode(userId: number | string, name: string): string
+	isNetworkUserId(userId: string): boolean
 	{
-		if (Type.isString(userId))
+		if (!Type.isStringFilled(userId))
 		{
-			userId = Number.parseInt(userId, 10);
+			return false;
 		}
 
-		return `[USER=${userId}]${name}[/USER]`;
-	}
+		return userId.startsWith(UserIdNetworkPrefix);
+	},
 };

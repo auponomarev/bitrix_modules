@@ -1,6 +1,7 @@
 <?php
 
 use Bitrix\Highloadblock as HL;
+use Bitrix\Highloadblock\Integration\UI\EntitySelector\ElementProvider;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Text\HtmlFilter;
 
@@ -443,7 +444,7 @@ HIBSELECT;
 		$selectedValue = false;
 		$cellOption = '';
 		$defaultOption = '';
-		$highLoadIBTableName = (isset($arProperty["USER_TYPE_SETTINGS"]["TABLE_NAME"]) ? $arProperty["USER_TYPE_SETTINGS"]["TABLE_NAME"] : '');
+		$highLoadIBTableName = ($arProperty["USER_TYPE_SETTINGS"]["TABLE_NAME"] ?? '');
 		if($highLoadIBTableName != '')
 		{
 			if (empty(self::$arFullCache[$highLoadIBTableName]))
@@ -759,13 +760,40 @@ HIBSELECT;
 	 */
 	public static function GetUIFilterProperty($property, $strHTMLControlName, &$field)
 	{
-		unset($field['value']);
-		$field['type'] = 'list';
-		$field['items'] = self::GetOptionsData($property);
-		$field['params'] = ['multiple' => 'Y'];
-		$field['operators'] = [
-			'default' => '='
-		];
+		$tableName = (string)($property['USER_TYPE_SETTINGS']['TABLE_NAME'] ?? '');
+		if ($tableName === '')
+		{
+			return;
+		}
+
+		unset($field['value']); // aftefact from \Bitrix\Iblock\Helpers\Filter\PropertyManager::getFilterFields
+
+		$hlblock = \Bitrix\Highloadblock\HighloadBlockTable::getRow([
+			'select' => ['ID'],
+			'filter' => ['=TABLE_NAME' => $tableName]
+		]);
+		if ($hlblock)
+		{
+			$field['type'] = 'entity_selector';
+			$field['params'] = [
+				'multiple' => 'Y',
+				'dialogOptions' => [
+					'entities' => [
+						[
+							'id' => ElementProvider::ENTITY_ID,
+							'dynamicLoad' => true,
+							'dynamicSearch' => true,
+							'options' => [
+								'highloadblockId' => $hlblock['ID'],
+							],
+						],
+					],
+					'searchOptions' => [
+						'allowCreateItem' => false,
+					],
+				],
+			];
+		}
 	}
 
 	/**
@@ -852,6 +880,10 @@ HIBSELECT;
 		{
 			if (!empty($value))
 			{
+				if (isset($value['VALUE']) && is_array($value['VALUE']))
+				{
+					$value = $value['VALUE'];
+				}
 				foreach ($value as $row)
 				{
 					$oneValue = '';
@@ -932,13 +964,15 @@ HIBSELECT;
 		return self::$arFullCache[$hlTableName];
 	}
 
-	public static function GetUIEntityEditorProperty($settings, $value): ?array
+	public static function GetUIEntityEditorProperty($settings, $value): array
 	{
 		$hlTableName = (string)($settings['USER_TYPE_SETTINGS']['TABLE_NAME'] ?? '');
 
 		if ($hlTableName === '')
 		{
-			return null;
+			return [
+				'type' => 'custom',
+			];
 		}
 
 		$gridMode = ($settings['GRID_MODE'] ?? false) === true;
@@ -1095,7 +1129,7 @@ HIBSELECT;
 		onclick="selectDropDownItem(event, this, '$popupId')">
 		$imageHtml <span class="catalog-productcard-popup-select-text">$name</span>
 	</label>
-</li>		
+</li>
 LABEL;
 			$labelHtml .= $html;
 		}
@@ -1131,8 +1165,8 @@ LABEL;
 				popup.close();
 				return;
 			}
-			
-			var contentNode = BX.clone(element.querySelector('[data-role="dropdownContent"]'));	
+
+			var contentNode = BX.clone(element.querySelector('[data-role="dropdownContent"]'));
 			var items = contentNode.querySelectorAll('label');
 			for (var i in items)
 			{
@@ -1141,15 +1175,15 @@ LABEL;
 					var input = document.getElementById(items[i].getAttribute('for'));
 					if (BX.type.isDomNode(input) && input.checked)
 					{
-						BX.addClass(items[i].parentNode, 'selected');							
+						BX.addClass(items[i].parentNode, 'selected');
 					}
 					else
 					{
-						BX.removeClass(items[i].parentNode, 'selected');								
+						BX.removeClass(items[i].parentNode, 'selected');
 					}
 				}
 			}
-			
+
 			popup = BX.Main.PopupManager.create(
 				"prop_directory_" + popupId,
 				element,
@@ -1169,7 +1203,7 @@ LABEL;
 			popup.show();
 		};
 	}
-	
+
 	if (!window.selectDropDownItem)
 	{
 		window.selectDropDownItem = function(event, element, popupId)

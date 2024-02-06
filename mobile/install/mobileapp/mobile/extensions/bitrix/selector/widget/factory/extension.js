@@ -1,19 +1,20 @@
 (() => {
+	const require = (ext) => jn.require(ext);
 
-	const { ProjectSelector } = jn.require('selector/widget/entity/socialnetwork/project');
-	const { TaskTagSelector } = jn.require('selector/widget/entity/tasks/task-tag');
+	const { ProjectSelector } = require('selector/widget/entity/socialnetwork/project');
+	const { TaskTagSelector } = require('selector/widget/entity/tasks/task-tag');
 
-	let CrmContactSelector;
-	let CrmCompanySelector;
-	let CrmElementSelector;
-	let DocumentGeneratorTemplateSelector;
+	let CrmContactSelector = null;
+	let CrmCompanySelector = null;
+	let CrmElementSelector = null;
+	let DocumentGeneratorTemplateSelector = null;
 
 	try
 	{
-		CrmContactSelector = jn.require('crm/selector/entity/contact').CrmContactSelector;
-		CrmCompanySelector = jn.require('crm/selector/entity/company').CrmCompanySelector;
-		CrmElementSelector = jn.require('crm/selector/entity/element').CrmElementSelector;
-		DocumentGeneratorTemplateSelector = jn.require('crm/selector/documentgenerator/template').DocumentGeneratorTemplateSelector;
+		CrmContactSelector = require('crm/selector/entity/contact').CrmContactSelector;
+		CrmCompanySelector = require('crm/selector/entity/company').CrmCompanySelector;
+		CrmElementSelector = require('crm/selector/entity/element').CrmElementSelector;
+		DocumentGeneratorTemplateSelector = require('crm/selector/documentgenerator/template').DocumentGeneratorTemplateSelector;
 	}
 	catch (e)
 	{
@@ -36,6 +37,9 @@
 		CRM_ELEMENT: 'crm-element',
 		DOCUMENTGENERATOR_TEMPLATE: 'documentgenerator-template',
 		TASK_TAG: 'task_tag',
+		MAIL_CONTACT: 'mail_contact',
+		IBLOCK_PROPERTY_ELEMENT: 'iblock-property-element',
+		IBLOCK_PROPERTY_SECTION: 'iblock-property-section',
 		IBLOCK_ELEMENT_USER_FIELD: 'iblock-element-user-field',
 		IBLOCK_SECTION_USER_FIELD: 'iblock-section-user-field',
 	};
@@ -107,6 +111,16 @@
 				return TaskTagSelector.make(data);
 			}
 
+			if (type === Type.IBLOCK_PROPERTY_ELEMENT)
+			{
+				return IblockElementSelector.make(data);
+			}
+
+			if (type === Type.IBLOCK_PROPERTY_SECTION)
+			{
+				return IblockSectionSelector.make(data);
+			}
+
 			if (type === Type.IBLOCK_ELEMENT_USER_FIELD)
 			{
 				return IblockElementUserFieldSelector.make(data);
@@ -124,3 +138,13 @@
 	this.EntitySelectorFactory = EntitySelectorFactory;
 	this.EntitySelectorFactory.Type = Type;
 })();
+
+/**
+ * @module selector/widget/factory
+ */
+jn.define('selector/widget/factory', (require, exports, module) => {
+	module.exports = {
+		EntitySelectorFactory: this.EntitySelectorFactory,
+		EntitySelectorFactoryType: this.EntitySelectorFactory.Type,
+	};
+});

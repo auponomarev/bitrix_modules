@@ -1,6 +1,8 @@
 (() => {
-	const {EntityReady} = jn.require('entity-ready');
-	const {Entry} = jn.require('tasks/entry');
+	const { EntityReady } = jn.require('entity-ready');
+	const { Entry } = jn.require('tasks/entry');
+	const { ErrorLogger } = jn.require('utils/logger/error-logger');
+	const { StorageCache } = jn.require('storage-cache');
 
 	const SITE_ID = BX.componentParameters.get('SITE_ID', 's1');
 
@@ -37,7 +39,7 @@
 		{
 			BX.PULL.subscribe({
 				moduleId: 'tasks',
-				callback: data => this.processPullEvent(data),
+				callback: (data) => this.processPullEvent(data),
 			});
 		}
 
@@ -58,10 +60,10 @@
 			return new Promise((resolve, reject) => {
 				const has = Object.prototype.hasOwnProperty;
 				const eventHandlers = this.getEventHandlers();
-				const {command, params} = data;
+				const { command, params } = data;
 				if (has.call(eventHandlers, command))
 				{
-					const {method, context} = eventHandlers[command];
+					const { method, context } = eventHandlers[command];
 					if (method)
 					{
 						method.apply(context, [params]).then(() => resolve(), () => reject()).catch(() => reject());
@@ -72,36 +74,36 @@
 
 		freeQueue()
 		{
-			const commonCommands = [
+			const commonCommands = new Set([
 				'user_efficiency_counter',
 				'user_counter',
-			];
-			this.queue = new Set([...this.queue].filter(event => commonCommands.includes(event.command)));
+			]);
+			this.queue = new Set([...this.queue].filter((event) => commonCommands.has(event.command)));
 
-			const clearDuplicates = (result, event) => {
+			const clearDuplicates = (accumulator, event) => {
+				const result = accumulator;
 				if (
-					typeof result[event.command] === 'undefined'
-					|| event.extra.server_time_ago < result[event.command].extra.server_time_ago
+					typeof accumulator[event.command] === 'undefined'
+					|| event.extra.server_time_ago < accumulator[event.command].extra.server_time_ago
 				)
 				{
 					result[event.command] = event;
 				}
+
 				return result;
 			};
-			this.queue = new Set(Object.values([...this.queue].reduce(clearDuplicates, {})));
+			this.queue = new Set(
+				Object.values([...this.queue].reduce((accumulator, event) => clearDuplicates(accumulator, event), {})),
+			);
 
-			const promises = [...this.queue].map(event => this.executePullEvent(event));
+			const promises = [...this.queue].map((event) => this.executePullEvent(event));
+
 			return Promise.allSettled(promises);
 		}
 
 		clear()
 		{
 			this.queue.clear();
-		}
-
-		getCanExecute()
-		{
-			return this.canExecute;
 		}
 
 		setCanExecute(canExecute)
@@ -115,12 +117,15 @@
 				if (Number(data.userId) !== Number(this.userId))
 				{
 					resolve();
+
 					return;
 				}
 
-				this.tabs.setDownMenuTasksCounter(data[0].view_all.total);
+				TasksTabs.setDownMenuTasksCounter(data[0].view_all.total);
+
 				this.tabs.updateTasksCounter(data[0].view_all.total);
 				this.tabs.updateProjectsCounter(data.projects_major);
+				this.tabs.updateScrumCounter(data.scrum_total_comments);
 
 				resolve();
 			});
@@ -137,27 +142,73 @@
 
 	class TasksTabs
 	{
-		static get tabNames()
+		static createGuid()
 		{
-			return {
-				tasks: 'tasks.list',
-				projects: 'tasks.project.list',
-				scrum: 'tasks.scrum.list',
-				efficiency: 'tasks.efficiency',
+			const s4 = function() {
+				return Math.floor((1 + Math.random()) * 0x10000).toString(16).slice(1);
 			};
+
+			return `${s4()}${s4()}-${s4()}-${s4()}-${s4()}-${s4()}${s4()}${s4()}`;
+		}
+
+		static setDownMenuTasksCounter(value = -1)
+		{
+			const taskListCache = new StorageCache('tasksTaskList', 'filterCounters_0');
+
+			if (value >= 0)
+			{
+				Application.setBadges({ tasks: value });
+				taskListCache.set({ counterValue: value });
+
+				return;
+			}
+
+			let counterValue = 0;
+
+			const cachedCounters = Application.sharedStorage().get('userCounters');
+			if (cachedCounters)
+			{
+				try
+				{
+					const counters = JSON.parse(cachedCounters)[SITE_ID];
+					counterValue = (counters.tasks_total || 0);
+					taskListCache.set({ counterValue });
+				}
+				catch
+				{
+					// do nothing
+				}
+			}
+			else
+			{
+				const taskListCounter = taskListCache.get();
+				if (taskListCounter)
+				{
+					counterValue = (taskListCounter.counterValue || 0);
+				}
+			}
+
+			Application.setBadges({ tasks: counterValue });
 		}
 
 		constructor(tabs)
 		{
 			this.tabs = tabs;
 			this.userId = parseInt(BX.componentParameters.get('USER_ID', 0), 10);
-			this.guid = this.createGuid();
+			this.showScrumList = BX.componentParameters.get('SHOW_SCRUM_LIST', false);
+			this.tabCodes = BX.componentParameters.get('TAB_CODES');
+			this.guid = TasksTabs.createGuid();
 
 			this.pull = new Pull(this, this.userId);
 			this.pull.subscribe();
 
-			this.setDownMenuTasksCounter();
-			EntityReady.wait('chat').then(() => setTimeout(() => this.setDownMenuTasksCounter(), 1000));
+			this.logger = new ErrorLogger();
+
+			TasksTabs.setDownMenuTasksCounter();
+			EntityReady.wait('chat')
+				.then(() => setTimeout(() => TasksTabs.setDownMenuTasksCounter(), 1000))
+				.catch(() => {})
+			;
 
 			BX.onViewLoaded(() => {
 				this.bindEvents();
@@ -165,18 +216,9 @@
 			});
 		}
 
-		createGuid()
-		{
-			const s4 = function() {
-				return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
-			};
-
-			return `${s4()}${s4()}-${s4()}-${s4()}-${s4()}-${s4()}${s4()}${s4()}`;
-		}
-
 		bindEvents()
 		{
-			this.tabs.on('onTabSelected', (tab, changed) => this.onTabSelected(tab,  changed));
+			this.tabs.on('onTabSelected', (tab, changed) => this.onTabSelected(tab, changed));
 
 			BX.addCustomEvent('onAppActiveBefore', () => this.onAppActiveBefore());
 			BX.addCustomEvent('onAppActive', () => this.onAppActive());
@@ -188,12 +230,13 @@
 					this.updateTasksCounter(data.value);
 				}
 			});
-			BX.addCustomEvent('tasks.project.list:setVisualCounter', data => this.updateProjectsCounter(data.value));
+			BX.addCustomEvent('tasks.project.list:setVisualCounter', (data) => this.updateProjectsCounter(data.value));
+			BX.addCustomEvent('tasks.scrum.list:setVisualCounter', (data) => this.updateScrumCounter(data.value));
 		}
 
 		onAppPaused()
 		{
-			BX.postComponentEvent('tasks.tabs:onAppPaused', [], this.tabs.getCurrentItem().id);
+			BX.postComponentEvent('tasks.tabs:onAppPaused', [{ tabId: this.tabs.getCurrentItem().id }]);
 
 			this.pauseTime = new Date();
 
@@ -203,12 +246,12 @@
 
 		onAppActiveBefore()
 		{
-			BX.postComponentEvent('tasks.tabs:onAppActiveBefore', [], this.tabs.getCurrentItem().id);
+			BX.postComponentEvent('tasks.tabs:onAppActiveBefore', [{ tabId: this.tabs.getCurrentItem().id }]);
 		}
 
 		onAppActive()
 		{
-			BX.postComponentEvent('tasks.tabs:onAppActive', [], this.tabs.getCurrentItem().id);
+			BX.postComponentEvent('tasks.tabs:onAppActive', [{ tabId: this.tabs.getCurrentItem().id }]);
 
 			this.activationTime = new Date();
 
@@ -238,10 +281,9 @@
 
 			if (changed)
 			{
-				BX.postComponentEvent('tasks.tabs:onTabSelected', [{tabId}], TasksTabs.tabNames.tasks);
-				BX.postComponentEvent('tasks.tabs:onTabSelected', [{tabId}], TasksTabs.tabNames.projects);
+				BX.postComponentEvent('tasks.tabs:onTabSelected', [{ tabId }]);
 			}
-			else if (tabId === TasksTabs.tabNames.scrum)
+			else if (tabId === this.tabCodes.SCRUM)
 			{
 				qrauth.open({
 					redirectUrl: `/company/personal/user/${this.userId}/tasks/scrum/`,
@@ -249,59 +291,10 @@
 					title: BX.message('MOBILE_TASKS_TABS_TAB_SCRUM'),
 				});
 			}
-			else if (tabId === TasksTabs.tabNames.efficiency)
+			else if (tabId === this.tabCodes.EFFICIENCY)
 			{
-				(new Entry()).openEfficiency({userId: this.userId});
+				Entry.openEfficiency({ userId: this.userId });
 			}
-		}
-
-		setDownMenuTasksCounter(value = -1)
-		{
-			const storage = Application.sharedStorage('tasksTaskList');
-
-			if (value >= 0)
-			{
-				Application.setBadges({tasks: value});
-				storage.set('filterCounters_0', JSON.stringify({counterValue: value}));
-
-				return;
-			}
-
-			let counterValue = 0;
-
-			const cachedCounters = Application.sharedStorage().get('userCounters');
-			if (cachedCounters)
-			{
-				try
-				{
-					const counters = JSON.parse(cachedCounters)[SITE_ID];
-					counterValue = (counters.tasks_total || 0);
-
-					storage.set('filterCounters_0', JSON.stringify({counterValue}));
-				}
-				catch (e)
-				{
-					// do nothing
-				}
-			}
-			else
-			{
-				const cache = storage.get('filterCounters_0');
-				if (cache)
-				{
-					try
-					{
-						const counters = JSON.parse(cache);
-						counterValue = (counters.counterValue || 0);
-					}
-					catch (e)
-					{
-						// do nothing
-					}
-				}
-			}
-
-			Application.setBadges({tasks: counterValue});
 		}
 
 		updateCounters()
@@ -318,46 +311,52 @@
 						this.updateEfficiencyCounter(counters.tasks_effective);
 					}
 				}
-				catch (e)
+				catch
 				{
 					// do nothing
 				}
 			}
 
-			const projectCountersStorage = Application.sharedStorage('tasksProjectList');
-			const cachedProjectCounters = projectCountersStorage.get('filterCounters');
+			const projectListStorage = new StorageCache('tasks_project', 'filterCounters');
+			const cachedProjectCounters = projectListStorage.get();
 			if (cachedProjectCounters)
 			{
-				try
-				{
-					const counters = JSON.parse(cachedProjectCounters);
-					if (counters)
-					{
-						this.updateProjectsCounter(counters.counterValue);
-					}
-				}
-				catch (e)
-				{
-					// do nothing
-				}
+				this.updateProjectsCounter(cachedProjectCounters.counterValue);
 			}
 
-			(new RequestExecutor('tasks.task.counters.getProjectsTotalCounter'))
+			const scrumListStorage = new StorageCache('tasks_scrum', 'filterCounters');
+			const cachedScrumCounters = scrumListStorage.get();
+			if (cachedScrumCounters)
+			{
+				this.updateScrumCounter(cachedScrumCounters.counterValue);
+			}
+
+			(new RequestExecutor('tasksmobile.Task.Counter.getByType'))
 				.call()
 				.then(
 					(response) => {
-						const counterValue = response.result;
-						this.updateProjectsCounter(counterValue);
-						projectCountersStorage.set('filterCounters', JSON.stringify({counterValue}));
+						const counters = response.result;
+
+						const projectCounter = counters.sonetTotalExpired + counters.sonetTotalComments;
+						this.updateProjectsCounter(projectCounter);
+						projectListStorage.set({ counterValue: projectCounter });
+
+						if (this.showScrumList)
+						{
+							const scrumCounter = counters.scrumTotalComments;
+							this.updateScrumCounter(scrumCounter);
+							scrumListStorage.set({ counterValue: scrumCounter });
+						}
 					},
-					response => console.error(response)
+					(response) => this.logger.error(response),
 				)
+				.catch((response) => this.logger.error(response))
 			;
 		}
 
 		updateTasksCounter(value)
 		{
-			this.tabs.updateItem(TasksTabs.tabNames.tasks, {
+			this.tabs.updateItem(this.tabCodes.TASKS, {
 				title: BX.message('MOBILE_TASKS_TABS_TAB_TASKS'),
 				counter: Number(value),
 				label: (value > 0 ? String(value) : ''),
@@ -366,8 +365,22 @@
 
 		updateProjectsCounter(value)
 		{
-			this.tabs.updateItem(TasksTabs.tabNames.projects, {
+			this.tabs.updateItem(this.tabCodes.PROJECTS, {
 				title: BX.message('MOBILE_TASKS_TABS_TAB_PROJECTS'),
+				counter: Number(value),
+				label: (value > 0 ? String(value) : ''),
+			});
+		}
+
+		updateScrumCounter(value)
+		{
+			if (!this.showScrumList)
+			{
+				return;
+			}
+
+			this.tabs.updateItem(this.tabCodes.SCRUM, {
+				title: BX.message('MOBILE_TASKS_TABS_TAB_SCRUM'),
 				counter: Number(value),
 				label: (value > 0 ? String(value) : ''),
 			});
@@ -375,7 +388,7 @@
 
 		updateEfficiencyCounter(value)
 		{
-			this.tabs.updateItem(TasksTabs.tabNames.efficiency, {
+			this.tabs.updateItem(this.tabCodes.EFFICIENCY, {
 				title: BX.message('MOBILE_TASKS_TABS_TAB_EFFICIENCY'),
 				label: (value || value === 0 ? `${String(value)}%` : ''),
 				selectable: false,

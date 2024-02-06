@@ -8,8 +8,10 @@ return [
 		'layout/ui/fields/select',
 		'layout/ui/fields/string',
 		'layout/ui/money',
+		'apptheme',
 		'money',
 		'type',
 		'utils/object',
+		'utils/string',
 	],
 ];

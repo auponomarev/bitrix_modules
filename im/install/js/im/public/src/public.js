@@ -1,6 +1,7 @@
-import {Type, Extension, Reflection} from 'main.core';
+import { Type, Extension, Reflection } from 'main.core';
 
-import {legacyMessenger} from './legacy';
+import { legacyMessenger, legacyDesktop } from './legacy';
+import { prepareSettingsSection } from './functions/settings';
 
 class Messenger
 {
@@ -12,123 +13,285 @@ class Messenger
 		this.v2enabled = settings.get('v2enabled', false);
 	}
 
-	openChat(dialogId: string = '', text: string = ''): Promise
+	async openChat(dialogId: string = '', text: string = ''): Promise
 	{
 		if (!this.v2enabled)
 		{
-			return new Promise((resolve, reject) => {
-				window.BXIM.openMessenger(dialogId);
-				resolve();
-			});
-		}
+			window.BXIM.openMessenger(dialogId);
 
-		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
-		return MessengerSlider?.getInstance().openChat(dialogId, text);
-	}
-
-	openLines(): Promise
-	{
-		if (!this.v2enabled)
-		{
-			return new Promise((resolve, reject) => {
-				window.BXIM.openMessenger(0, 'im-ol');
-				resolve();
-			});
-		}
-
-		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
-		return MessengerSlider?.getInstance().openLines();
-	}
-
-	openNotifications(): Promise
-	{
-		if (!this.v2enabled)
-		{
-			return new Promise((resolve, reject) => {
-				window.BXIM.openNotify();
-				resolve();
-			});
-		}
-
-		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
-		return MessengerSlider?.getInstance().openNotifications();
-	}
-
-	openRecentSearch(): Promise
-	{
-		if (!this.v2enabled)
-		{
-			return new Promise((resolve, reject) => {
-				window.BXIM.openMessenger();
-				resolve();
-			});
-		}
-
-		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
-		return MessengerSlider?.getInstance().openRecentSearch();
-	}
-
-	openSettings(options: ?object = {}): Promise<Array>
-	{
-		if (!this.v2enabled)
-		{
-			return new Promise((resolve, reject) => {
-
-				const params = {};
-
-				if (Type.isPlainObject(options))
-				{
-					if (Type.isStringFilled(options.selected))
-					{
-						params.active = options.selected;
-					}
-					if (Type.isStringFilled(options.section))
-					{
-						params.onlyPanel = options.section;
-					}
-				}
-
-				window.BXIM.openSettings(params);
-				resolve();
-			});
-		}
-
-		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
-		return MessengerSlider?.getInstance().openSettings();
-	}
-
-	startVideoCall(dialogId: string = '', withVideo: boolean = true): Promise<Array>
-	{
-		if (!this.v2enabled)
-		{
-			return new Promise((resolve) => {
-				window.BXIM.callTo(dialogId, withVideo);
-				resolve();
-			});
+			return Promise.resolve();
 		}
 
 		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		const isRedirectAllowed = await DesktopManager?.getInstance().checkForRedirect();
+		if (isRedirectAllowed)
+		{
+			return DesktopManager?.getInstance().redirectToChat(dialogId);
+		}
 
-		return new Promise((resolve, reject) => {
-			DesktopManager?.getInstance().checkRunStatus()
-				.then(() => {
-					DesktopManager?.getInstance().startVideoCall(dialogId, withVideo);
-					resolve();
-				})
-				.catch(() => {
-					const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
-					MessengerSlider?.getInstance().startVideoCall(dialogId, withVideo)
-						.then(resolve)
-						.catch(reject)
-					;
-				})
-			;
-		});
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+
+		return MessengerSlider?.getInstance().openChat(dialogId, text);
+	}
+
+	async openLines(dialogId: string = ''): Promise
+	{
+		if (!this.v2enabled)
+		{
+			const preparedDialogId = dialogId === '' ? 0 : dialogId;
+			window.BXIM.openMessenger(preparedDialogId, 'im-ol');
+
+			return Promise.resolve();
+		}
+
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		const isRedirectAllowed = await DesktopManager?.getInstance().checkForRedirect();
+		if (isRedirectAllowed)
+		{
+			return DesktopManager?.getInstance().redirectToLines(dialogId);
+		}
+
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+
+		return MessengerSlider?.getInstance().openLines(dialogId);
+	}
+
+	async openCopilot(dialogId: string = ''): Promise
+	{
+		if (!this.v2enabled)
+		{
+			window.BXIM.openMessenger(dialogId);
+
+			return Promise.resolve();
+		}
+
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		const isRedirectAllowed = await DesktopManager?.getInstance().checkForRedirect();
+		if (isRedirectAllowed)
+		{
+			return DesktopManager?.getInstance().redirectToCopilot(dialogId);
+		}
+
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+
+		return MessengerSlider?.getInstance().openCopilot(dialogId);
+	}
+
+	async openLinesHistory(dialogId: string = ''): Promise
+	{
+		if (!this.v2enabled)
+		{
+			window.BXIM.openHistory(dialogId);
+
+			return Promise.resolve();
+		}
+
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+
+		return MessengerSlider?.getInstance().openHistory(dialogId);
+	}
+
+	async openNotifications(): Promise
+	{
+		if (!this.v2enabled)
+		{
+			window.BXIM.openNotify();
+
+			return Promise.resolve();
+		}
+
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		const isRedirectAllowed = await DesktopManager?.getInstance().checkForRedirect();
+		if (isRedirectAllowed)
+		{
+			return DesktopManager?.getInstance().redirectToNotifications();
+		}
+
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+
+		return MessengerSlider?.getInstance().openNotifications();
+	}
+
+	async openRecentSearch(): Promise
+	{
+		if (!this.v2enabled)
+		{
+			window.BXIM.openMessenger();
+
+			return Promise.resolve();
+		}
+
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		const isRedirectAllowed = await DesktopManager?.getInstance().checkForRedirect();
+		if (isRedirectAllowed)
+		{
+			return DesktopManager?.getInstance().redirectToRecentSearch();
+		}
+
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+
+		return MessengerSlider?.getInstance().openRecentSearch();
+	}
+
+	async openSettings(options: { onlyPanel?: string } = {}): Promise<Array>
+	{
+		if (!this.v2enabled)
+		{
+			const params = {};
+			if (Type.isPlainObject(options))
+			{
+				if (Type.isStringFilled(options.selected))
+				{
+					params.active = options.selected;
+				}
+
+				if (Type.isStringFilled(options.section))
+				{
+					params.onlyPanel = options.section;
+				}
+			}
+			window.BXIM.openSettings(params);
+
+			return Promise.resolve();
+		}
+
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		const isRedirectAllowed = await DesktopManager?.getInstance().checkForRedirect();
+		if (isRedirectAllowed)
+		{
+			return DesktopManager?.getInstance().redirectToSettings(options.onlyPanel ?? '');
+		}
+
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+		const settingsSection = prepareSettingsSection(options.onlyPanel ?? '');
+
+		return MessengerSlider?.getInstance().openSettings(settingsSection);
+	}
+
+	async openConference(options: { code?: string, link?: string } = {}): Promise<Array>
+	{
+		if (!this.v2enabled)
+		{
+			if (Type.isPlainObject(options))
+			{
+				if (Type.isStringFilled(options.code))
+				{
+					window.BXIM.openVideoconf(options.code);
+				}
+
+				if (Type.isStringFilled(options.link))
+				{
+					window.BXIM.openVideoconfByUrl(options.link);
+				}
+			}
+
+			return Promise.resolve();
+		}
+
+		const Utils = Reflection.getClass('BX.Messenger.v2.Lib.Utils');
+		if (Type.isStringFilled(options.url) && !Utils.conference.isCurrentPortal(options.url))
+		{
+			Utils.browser.openLink(options.url);
+
+			return Promise.resolve();
+		}
+
+		const code = Utils.conference.getCodeByOptions(options);
+
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		if (DesktopManager?.isDesktop())
+		{
+			return DesktopManager?.getInstance().openConference(code);
+		}
+		const isRedirectAllowed = await DesktopManager?.getInstance().checkForRedirect();
+		if (isRedirectAllowed)
+		{
+			return DesktopManager?.getInstance().redirectToConference(code);
+		}
+
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+
+		return MessengerSlider?.getInstance().openConference(code);
+	}
+
+	async startVideoCall(dialogId: string = '', withVideo: boolean = true): Promise
+	{
+		if (!this.v2enabled)
+		{
+			window.BXIM.callTo(dialogId, withVideo);
+
+			return Promise.resolve();
+		}
+
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		const isRedirectAllowed = await DesktopManager?.getInstance().checkForRedirect();
+		if (isRedirectAllowed)
+		{
+			return DesktopManager?.getInstance().redirectToVideoCall(dialogId, withVideo);
+		}
+
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+
+		return MessengerSlider?.getInstance().startVideoCall(dialogId, withVideo);
+	}
+
+	async startPhoneCall(number: string, params: Object<any, string>): Promise
+	{
+		if (!this.v2enabled)
+		{
+			window.BXIM.phoneTo(number, params);
+
+			return Promise.resolve();
+		}
+
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		const desktopIsActive = await DesktopManager?.getInstance().checkStatusInDifferentContext();
+		if (desktopIsActive)
+		{
+			return DesktopManager?.getInstance().redirectToPhoneCall(number, params);
+		}
+
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+
+		return MessengerSlider?.getInstance().startPhoneCall(number, params);
+	}
+
+	async startCallList(callListId: number, params: Object<string, any>): Promise
+	{
+		if (!this.v2enabled)
+		{
+			window.BXIM.startCallList(callListId, params);
+
+			return Promise.resolve();
+		}
+
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		const desktopIsActive = await DesktopManager?.getInstance().checkStatusInDifferentContext();
+		if (desktopIsActive)
+		{
+			return DesktopManager?.getInstance().redirectToCallList(callListId, params);
+		}
+
+		const MessengerSlider = Reflection.getClass('BX.Messenger.v2.Lib.MessengerSlider');
+
+		return MessengerSlider?.getInstance().startCallList(callListId, params);
+	}
+
+	enableDesktopRedirect()
+	{
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		DesktopManager?.getInstance().enableRedirect();
+	}
+
+	disableDesktopRedirect()
+	{
+		const DesktopManager = Reflection.getClass('BX.Messenger.v2.Lib.DesktopManager');
+		DesktopManager?.getInstance().disableRedirect();
 	}
 }
 
 const messenger = new Messenger();
-export {messenger as Messenger};
+export { messenger as Messenger };
 
 // pretty export
 const namespace = Reflection.getClass('BX.Messenger');
@@ -145,4 +308,14 @@ if (
 )
 {
 	window.BXIM = legacyMessenger;
+}
+
+if (
+	messenger.v2enabled
+	&& Type.isUndefined(window.BX.desktop)
+	&& Type.isObject(window.BXDesktopSystem)
+	&& window.parent === window
+)
+{
+	window.BX.desktop = legacyDesktop;
 }

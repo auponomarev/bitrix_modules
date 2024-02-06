@@ -1,15 +1,24 @@
 (() => {
-	const {debounce} = jn.require('utils/function');
-	const {EntityReady} = jn.require('entity-ready');
-	const {Loc} = jn.require('loc');
-	const {magnifierWithMenuAndDot} = jn.require('assets/common');
-	const {PresetList} = jn.require('tasks/layout/presetList');
+	const require = (ext) => jn.require(ext);
 
-	const apiVersion = Application.getApiVersion();
+	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
+	const { debounce } = require('utils/function');
+	const { EntityReady } = require('entity-ready');
+	const { Logger, LogType } = require('utils/logger');
+	const { magnifierWithMenuAndDot } = require('assets/common');
+	const { PresetList } = require('tasks/layout/presetList');
+	const { Project } = require('tasks/project');
+	const { StorageCache } = require('storage-cache');
+
 	const platform = Application.getPlatform();
-	const caches = new Map();
 
-	const isSearchByPresetsEnable = (apiVersion >= 49);
+	const Mode = {
+		PROJECT: 'tasks_project',
+		SCRUM: 'tasks_scrum',
+	};
+
+	const logger = new Logger([LogType.LOG, LogType.ERROR]);
 
 	class Loading
 	{
@@ -21,18 +30,13 @@
 			this.list = list.list;
 		}
 
-		isEnabled()
-		{
-			return (apiVersion >= 34);
-		}
-
 		showForList()
 		{
-			if (this.isEnabled() && !this.isShowedForList)
+			if (!this.isShowedForList)
 			{
 				dialogs.showSpinnerIndicator({
-					color: '#777777',
-					backgroundColor: '#77ffffff',
+					color: AppTheme.colors.base3,
+					backgroundColor: AppTheme.colors.bgContentPrimary,
 				});
 				this.isShowedForList = true;
 			}
@@ -40,7 +44,7 @@
 
 		hideForList()
 		{
-			if (this.isEnabled() && this.isShowedForList)
+			if (this.isShowedForList)
 			{
 				dialogs.hideSpinnerIndicator();
 				this.isShowedForList = false;
@@ -76,324 +80,93 @@
 			this.list = list;
 		}
 
-		isEnabled()
-		{
-			return (apiVersion >= 40);
-		}
-
 		show()
 		{
-			if (this.isEnabled())
-			{
-				this.list.list.welcomeScreen.show({
-					upperText: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_WELCOME_SCREEN_TITLE'),
-					lowerText: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_WELCOME_SCREEN_SUBTITLE'),
-					iconName: 'ws_open_project',
-				});
-			}
+			this.list.list.welcomeScreen.show({
+				upperText: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_WELCOME_SCREEN_TITLE'),
+				lowerText: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_WELCOME_SCREEN_SUBTITLE'),
+				iconName: 'ws_open_project',
+			});
 		}
 
 		hide()
 		{
-			if (this.isEnabled())
-			{
-				this.list.list.welcomeScreen.hide();
-			}
+			this.list.list.welcomeScreen.hide();
 		}
 	}
 
-	class SectionHandler
+	class Section
 	{
-		static getInstance()
-		{
-			if (SectionHandler.instance == null)
-			{
-				SectionHandler.instance = new SectionHandler();
-			}
-
-			return SectionHandler.instance;
-		}
-
-		static get sections()
+		static get type()
 		{
 			return {
-				new: 'new',
 				pinned: 'pinned',
 				default: 'default',
 				more: 'more',
-				empty: 'empty',
 			};
 		}
 
-		constructor()
-		{
-			this.clear();
-		}
-
-		clear()
+		static get()
 		{
 			const defaultSectionParams = {
 				title: '',
 				foldable: false,
 				folded: false,
 				badgeValue: 0,
-				sortItemParams: {activityDate: 'desc'},
-				backgroundColor: '#ffffff',
-				styles: {title: {font: {size: 18}}},
+				sortItemParams: { activityDate: 'desc' },
+				backgroundColor: AppTheme.colors.bgContentPrimary,
+				styles: {
+					title: {
+						font: {
+							size: 18,
+						},
+					},
+				},
 			};
 
-			this.items = {
-				new: {...{id: SectionHandler.sections.new}, ...defaultSectionParams},
-				pinned: {...{id: SectionHandler.sections.pinned}, ...defaultSectionParams},
-				default: {...{id: SectionHandler.sections.default}, ...defaultSectionParams},
-				more: {...{id: SectionHandler.sections.more}, ...defaultSectionParams},
-				empty: {...{id: SectionHandler.sections.empty}, ...defaultSectionParams},
-			};
-		}
-
-		setSortItemParams(sectionId, sortItemParams)
-		{
-			if (this.has(sectionId))
-			{
-				this.items[sectionId].sortItemParams = sortItemParams;
-			}
-		}
-
-		has(id)
-		{
-			return (id in this.items);
-		}
-
-		get list()
-		{
-			return Object.values(this.items);
+			return [
+				{ id: Section.type.pinned, ...defaultSectionParams },
+				{ id: Section.type.default, ...defaultSectionParams },
+				{ id: Section.type.more, ...defaultSectionParams },
+			];
 		}
 	}
 
-	class Cache
+	class Cache extends StorageCache
 	{
-		constructor(cacheKey)
-		{
-			this.cacheKey = cacheKey;
-
-			this.storage = Application.sharedStorage('tasksProjectList');
-			this.defaultData = {};
-		}
-
-		static getInstance(id)
-		{
-			if (!caches.has(id))
-			{
-				caches.set(id, (new Cache(id)));
-			}
-
-			return caches.get(id);
-		}
-
-		get()
-		{
-			const cache = this.storage.get(this.cacheKey);
-
-			if (typeof cache === "string")
-			{
-				return JSON.parse(cache);
-			}
-
-			return this.defaultData;
-		}
-
-		set(data)
-		{
-			this.storage.set(this.cacheKey, JSON.stringify(data));
-		}
-
-		update(key, value)
-		{
-			const currentCache = this.get();
-			currentCache[key] = value;
-			this.set(currentCache);
-		}
-
-		clear()
-		{
-			this.set({});
-		}
-
-		setDefaultData(defaultData)
-		{
-			this.defaultData = defaultData;
-		}
-	}
-
-	class ProjectCache extends Cache
-	{
-		constructor(cacheKey)
-		{
-			super(cacheKey);
-			this.init();
-		}
-
-		getInstance(id)
-		{
-			if (!caches.has(id))
-			{
-				caches.set(id, (new ProjectCache(id)));
-			}
-
-			return caches.get(id);
-		}
-
-		init()
-		{
-			const has = Object.prototype.hasOwnProperty;
-			const cache = this.get();
-
-			Object.values(Filter.counterTypes).forEach((counterType) => {
-				if (!has.call(cache, counterType))
-				{
-					cache[counterType] = [];
-				}
-			});
-
-			this.set(cache);
-		}
-
 		/**
-		 * @param {Project} project
-		 * @param {Object} projectItem
+		 * @param {Array<Object>} projects
 		 */
-		addProject(project, projectItem)
+		setProjects(projects)
 		{
-			const cache = this.get();
-			if (!cache || Object.keys(cache).length === 0)
+			const cachedProjects = this.get();
+			if (Object.prototype.hasOwnProperty.call(cachedProjects, Filter.counterTypes.none))
 			{
 				return;
 			}
 
-			const countersMap = {
-				[Filter.counterTypes.none]: true,
-				[Filter.counterTypes.sonetTotalExpired]: (project.getCounterMyExpiredCount() > 0),
-				[Filter.counterTypes.sonetTotalComments]: (project.getCounterMyNewCommentsCount() > 0),
-				[Filter.counterTypes.sonetForeignExpired]: (project.getCounterProjectExpiredCount() > 0),
-				[Filter.counterTypes.sonetForeignComments]: (project.getCounterProjectNewCommentsCount() > 0),
-			};
-			Object.keys(countersMap).forEach((counter) => {
-				if (countersMap[counter])
+			projects.forEach((project) => {
+				if (Object.keys(cachedProjects).includes(project.id))
 				{
-					cache[counter].splice(0, 0, projectItem);
+					cachedProjects[project.id] = project;
 				}
 			});
-			this.set(cache);
-		}
-
-		updateProject(projects)
-		{
-			const cache = this.get();
-			if (!cache || Object.keys(cache).length === 0)
-			{
-				return;
-			}
-
-			Object.keys(projects).forEach((projectId) => {
-				const {project, projectItem} = projects[projectId];
-				const findCondition = (project) => Number(project.id) === Number(projectId);
-				const countersMap = {
-					[Filter.counterTypes.none]: true,
-					[Filter.counterTypes.sonetTotalExpired]: (project.getCounterMyExpiredCount() > 0),
-					[Filter.counterTypes.sonetTotalComments]: (project.getCounterMyNewCommentsCount() > 0),
-					[Filter.counterTypes.sonetForeignExpired]: (project.getCounterProjectExpiredCount() > 0),
-					[Filter.counterTypes.sonetForeignComments]: (project.getCounterProjectNewCommentsCount() > 0),
-				};
-				Object.keys(countersMap).forEach((counter) => {
-					if (countersMap[counter])
-					{
-						const index = cache[counter].findIndex(findCondition);
-						if (index !== -1)
-						{
-							cache[counter][index] = projectItem;
-						}
-						else
-						{
-							cache[counter].splice(0, 0, projectItem);
-						}
-					}
-					else
-					{
-						const index = cache[counter].findIndex(findCondition);
-						if (index !== -1)
-						{
-							cache[counter].splice(index, 1);
-						}
-					}
-				});
-			});
-			this.set(cache);
+			this.set(cachedProjects);
 		}
 
 		removeProject(projectId)
 		{
-			const cache = this.get();
-			if (!cache || Object.keys(cache).length === 0)
+			const cachedProjects = this.get();
+			if (Object.prototype.hasOwnProperty.call(cachedProjects, Filter.counterTypes.none))
 			{
 				return;
 			}
 
-			Object.keys(cache).forEach((counter) => {
-				const index = cache[counter].findIndex(project => Number(project.id) === Number(projectId));
-				if (index !== -1)
-				{
-					cache[counter].splice(index, 1);
-				}
-			});
-			this.set(cache);
-		}
-	}
-
-	class Order
-	{
-		static get fields()
-		{
-			return {
-				activityDate: [
-					{field: 'ACTIVITY_DATE', direction: 'DESC'},
-					{field: 'ID', direction: 'DESC'},
-				],
-			};
-		}
-
-		static get sectionOrderFields()
-		{
-			return {
-				activityDate: 'desc',
-			};
-		}
-
-		constructor()
-		{
-			this.order = 'activityDate';
-		}
-
-		get()
-		{
-			const order = {
-				IS_PINNED: 'DESC',
-			};
-
-			Order.fields[this.order].forEach((fieldData) => {
-				order[fieldData.field] = fieldData.direction;
-			});
-
-			return order;
-		}
-
-		get order()
-		{
-			return this._order || 'activityDate';
-		}
-
-		set order(order)
-		{
-			this._order = order;
+			if (Object.keys(cachedProjects).includes(projectId))
+			{
+				delete cachedProjects[projectId];
+				this.set(cachedProjects);
+			}
 		}
 	}
 
@@ -415,6 +188,8 @@
 				sonetTotalComments: 'sonetTotalComments',
 				sonetForeignExpired: 'sonetForeignExpired',
 				sonetForeignComments: 'sonetForeignComments',
+				scrumTotalComments: 'scrumTotalComments',
+				scrumForeignComments: 'scrumForeignComments',
 			};
 		}
 
@@ -431,19 +206,19 @@
 			this.counter = Filter.counterTypes.none;
 			this.counters = {};
 			this.searchText = '';
-			this.isShowMine = !isSearchByPresetsEnable;
+			this.isShowMine = false;
 
-			this.cache = Cache.getInstance('filterCounters');
+			this.cache = new StorageCache(this.list.mode, 'filterCounters');
 			this.total = this.cache.get().counterValue || 0;
 
-			EntityReady.wait('chat').then(() => this.updateCounters());
+			EntityReady.wait('chat').then(() => this.updateCounters()).catch(console.error);
 		}
 
 		updateCounters()
 		{
-			console.log('ProjectList.Filter.updateCounters');
+			logger.log('ProjectList.Filter.updateCounters');
 
-			(new RequestExecutor('tasks.project.counter.getTotal', {userId: this.userId}))
+			(new RequestExecutor('tasksmobile.Task.Counter.getByType'))
 				.call()
 				.then((response) => {
 					this.counters = {};
@@ -451,10 +226,13 @@
 
 					Object.entries(response.result).forEach(([type, value]) => {
 						this.counters[type] = value;
-						if (
-							type === Filter.counterTypes.sonetTotalExpired
-							|| type === Filter.counterTypes.sonetTotalComments
-						)
+
+						const typesToCollectInTotal = (
+							this.list.isScrum()
+								? [Filter.counterTypes.scrumTotalComments]
+								: [Filter.counterTypes.sonetTotalExpired, Filter.counterTypes.sonetTotalComments]
+						);
+						if (typesToCollectInTotal.includes(type))
 						{
 							this.total += value;
 						}
@@ -463,7 +241,7 @@
 					this.setVisualCounters();
 					this.saveCache();
 				})
-			;
+				.catch(console.error);
 		}
 
 		pseudoUpdateCounters(value)
@@ -474,19 +252,17 @@
 			this.setVisualCounters();
 		}
 
-		setVisualCounters(value = null)
+		setVisualCounters()
 		{
-			value = (value || this.total);
-
 			Application.setBadges({
-				[`tasksProjectListMoreButton_${this.userId}`]: value,
+				[`${this.list.mode}_MoreButton`]: this.total,
 			});
-			BX.postComponentEvent('tasks.project.list:setVisualCounter', [{value}], 'tasks.tabs');
+			BX.postComponentEvent(`${this.list.getTabName()}:setVisualCounter`, [{ value: this.total }], 'tasks.tabs');
 		}
 
 		saveCache()
 		{
-			this.cache.set({counterValue: this.total});
+			this.cache.set({ counterValue: this.total });
 		}
 
 		get()
@@ -500,7 +276,7 @@
 
 			if (this.isShowMine)
 			{
-				filter['MEMBER'] = this.userId;
+				filter.MEMBER = this.userId;
 			}
 
 			switch (this.counter)
@@ -510,6 +286,7 @@
 					break;
 
 				case Filter.counterTypes.sonetTotalComments:
+				case Filter.counterTypes.scrumTotalComments:
 					filter.COUNTERS = 'NEW_COMMENTS';
 					break;
 
@@ -518,6 +295,7 @@
 					break;
 
 				case Filter.counterTypes.sonetForeignComments:
+				case Filter.counterTypes.scrumForeignComments:
 					filter.COUNTERS = 'PROJECT_NEW_COMMENTS';
 					break;
 
@@ -532,6 +310,16 @@
 		getCounterValue(type)
 		{
 			return this.counters[type] || 0;
+		}
+
+		isDefaultPreset()
+		{
+			return (this.preset === Filter.presetTypes.default);
+		}
+
+		isDefaultCounter()
+		{
+			return (this.counter === Filter.counterTypes.none);
 		}
 
 		getSearchText()
@@ -580,9 +368,9 @@
 		static get counterColors()
 		{
 			return {
-				gray: '#a8adb4',
-				green: '#9dcf00',
-				red: '#ff5752',
+				gray: AppTheme.colors.base4,
+				green: AppTheme.colors.accentMainSuccess,
+				red: AppTheme.colors.accentMainAlert,
 			};
 		}
 
@@ -598,7 +386,7 @@
 		show()
 		{
 			const menuItems = this.prepareItems();
-			const menuSections = this.prepareSections();
+			const menuSections = [{ id: 'default' }];
 
 			if (!this.popupMenu)
 			{
@@ -613,14 +401,9 @@
 			this.popupMenu.show();
 		}
 
-		prepareSections()
-		{
-			return [{id: SectionHandler.sections.default}];
-		}
-
 		prepareItems()
 		{
-			let items = [
+			const projectListItems = [
 				{
 					id: Filter.counterTypes.sonetTotalComments,
 					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_FILTER_COUNTER_MY_NEW_COMMENTS'),
@@ -661,29 +444,38 @@
 						backgroundColor: MoreMenu.counterColors.gray,
 					},
 				},
+			];
+			const scrumListItems = [
 				{
-					id: 'toggleShowMine',
-					title: Loc.getMessage(
-						this.filter.getIsShowMine()
-							? 'MOBILE_TASKS_PROJECT_LIST_ACTION_SHOW_ALL'
-							: 'MOBILE_TASKS_PROJECT_LIST_ACTION_SHOW_MINE'
-					),
-					sectionCode: SectionHandler.sections.default,
-					showTopSeparator: true,
+					id: Filter.counterTypes.scrumTotalComments,
+					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_FILTER_COUNTER_MY_NEW_COMMENTS'),
+					sectionCode: 'default',
+					checked: (this.filter.getCounter() === Filter.counterTypes.scrumTotalComments),
+					counterValue: this.filter.getCounterValue(Filter.counterTypes.scrumTotalComments),
+					counterStyle: {
+						backgroundColor: MoreMenu.counterColors.green,
+					},
 				},
 				{
-					id: 'readAll',
-					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_ACTION_READ_ALL'),
-					iconName: 'read',
-					sectionCode: SectionHandler.sections.default,
-					showTopSeparator: true,
+					id: Filter.counterTypes.scrumForeignComments,
+					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_FILTER_COUNTER_OTHER_NEW_COMMENTS'),
+					sectionCode: 'default',
+					checked: (this.filter.getCounter() === Filter.counterTypes.scrumForeignComments),
+					counterValue: this.filter.getCounterValue(Filter.counterTypes.scrumForeignComments),
+					counterStyle: {
+						backgroundColor: MoreMenu.counterColors.gray,
+					},
 				},
 			];
+			const items = (this.list.isScrum() ? scrumListItems : projectListItems);
 
-			if (isSearchByPresetsEnable)
-			{
-				items = items.filter((item) => item.id !== 'toggleShowMine');
-			}
+			items.push({
+				id: 'readAll',
+				title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_ACTION_READ_ALL'),
+				iconName: 'read',
+				sectionCode: 'default',
+				showTopSeparator: true,
+			});
 
 			return items;
 		}
@@ -696,6 +488,8 @@
 				case Filter.counterTypes.sonetTotalComments:
 				case Filter.counterTypes.sonetForeignExpired:
 				case Filter.counterTypes.sonetForeignComments:
+				case Filter.counterTypes.scrumTotalComments:
+				case Filter.counterTypes.scrumForeignComments:
 					this.onCounterChange(item.id);
 					break;
 
@@ -706,12 +500,15 @@
 				case 'readAll':
 					this.onReadAllAction();
 					break;
+
+				default:
+					break;
 			}
 		}
 
-		onCounterChange(newCounter)
+		onCounterChange(counter)
 		{
-			newCounter = (this.filter.getCounter() === newCounter ? Filter.counterTypes.none : newCounter);
+			const newCounter = (this.filter.getCounter() === counter ? Filter.counterTypes.none : counter);
 			this.filter.setCounter(newCounter);
 
 			this.list.setTopButtons();
@@ -730,18 +527,23 @@
 		{
 			this.list.pseudoReadProjects([...this.list.projectList.keys()]);
 
-			(new RequestExecutor('tasks.viewedGroup.project.markAsRead', {fields: {groupId: 0}}))
+			const methodName = `tasks.viewedGroup.${this.list.isScrum() ? 'scrum' : 'project'}.markAsRead`;
+
+			(new RequestExecutor(methodName, { fields: { groupId: 0 } }))
 				.call()
 				.then((response) => {
 					if (response.result === true)
 					{
-						Notify.showIndicatorSuccess({
-							text: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_NOTIFICATION_READ_ALL'),
-							hideAfter: 1500,
-						});
+						Notify.showMessage(
+							'',
+							Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_NOTIFICATION_READ_ALL'),
+							{
+								time: 1,
+							},
+						);
 					}
 				})
-			;
+				.catch(console.error);
 		}
 	}
 
@@ -757,7 +559,7 @@
 					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_ACTION_ABOUT'),
 					iconName: 'action_project',
 					iconUrl: `${imagePrefix}about.png`,
-					color: '#f2a100',
+					color: AppTheme.colors.accentMainWarning,
 					position: 'right',
 				},
 				members: {
@@ -765,7 +567,7 @@
 					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_ACTION_MEMBERS'),
 					iconName: 'action_userlist',
 					iconUrl: `${imagePrefix}members.png`,
-					color: '#2f72b9',
+					color: AppTheme.colors.accentMainLinks,
 					position: 'right',
 				},
 				join: {
@@ -773,7 +575,7 @@
 					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_ACTION_JOIN'),
 					iconName: 'action_accept',
 					iconUrl: `${imagePrefix}join.png`,
-					color: '#468ee5',
+					color: AppTheme.colors.accentMainLinks,
 					position: 'right',
 				},
 				// leave: {
@@ -781,7 +583,7 @@
 				// 	title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_ACTION_LEAVE'),
 				// 	iconName: 'action_skip',
 				// 	iconUrl: `${imagePrefix}leave.png`,
-				// 	color: '#848e9e',
+				// 	color: AppTheme.colors.base4,
 				// 	position: 'right',
 				// },
 				read: {
@@ -789,7 +591,7 @@
 					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_ACTION_READ'),
 					iconName: 'action_read',
 					iconUrl: `${imagePrefix}read.png`,
-					color: '#e57bb6',
+					color: AppTheme.colors.accentExtraPink,
 					position: 'left',
 				},
 				pin: {
@@ -797,7 +599,7 @@
 					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_ACTION_PIN'),
 					iconName: 'action_pin',
 					iconUrl: `${imagePrefix}pin.png`,
-					color: '#468ee5',
+					color: AppTheme.colors.accentMainLinks,
 					position: 'left',
 				},
 				unpin: {
@@ -805,10 +607,30 @@
 					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_ACTION_UNPIN'),
 					iconName: 'action_unpin',
 					iconUrl: `${imagePrefix}unpin.png`,
-					color: '#468ee5',
+					color: AppTheme.colors.accentMainLinks,
 					position: 'left',
 				},
 			};
+		}
+
+		static fill(itemData, project)
+		{
+			const result = {
+				...itemData,
+				menuMode: (platform === 'ios' ? 'swipe' : 'dialog'),
+				actions: Object.values(Action.swipeActions).filter((action) => project.getActions()[action.identifier]),
+			};
+
+			if (!project.isOpened)
+			{
+				const joinActionIndex = result.actions.findIndex((action) => action.identifier === 'join');
+				if (joinActionIndex >= 0)
+				{
+					delete result.actions[joinActionIndex];
+				}
+			}
+
+			return result;
 		}
 
 		/**
@@ -817,23 +639,6 @@
 		constructor(list)
 		{
 			this.list = list;
-		}
-
-		fill(project, itemData)
-		{
-			itemData.menuMode = (platform !== 'ios' ? 'dialog' : 'swipe');
-			itemData.actions = Object.values(Action.swipeActions).filter(action => project.actions[action.identifier]);
-
-			if (!project.isOpened)
-			{
-				const joinActionIndex = itemData.actions.findIndex(action => action.identifier === 'join');
-				if (joinActionIndex >= 0)
-				{
-					delete itemData.actions[joinActionIndex];
-				}
-			}
-
-			return itemData;
 		}
 
 		onItemAction(event)
@@ -863,7 +668,7 @@
 					break;
 
 				case 'join':
-					this.onJoinAction({id: project.id});
+					this.onJoinAction(project);
 					break;
 
 				case 'leave':
@@ -877,30 +682,45 @@
 			this.list.updateItem(project.id);
 		}
 
+		/**
+		 * @param {Project} project
+		 */
 		onPinAction(project)
 		{
-			void project.pin();
+			void project.pin(this.list.mode);
 		}
 
+		/**
+		 * @param {Project} project
+		 */
 		onUnpinAction(project)
 		{
-			void project.unpin();
+			void project.unpin(this.list.mode);
 		}
 
+		/**
+		 * @param {Project} project
+		 */
 		onReadAction(project)
 		{
 			this.list.filter.pseudoUpdateCounters(-project.getNewCommentsCount());
 			void project.read();
 		}
 
+		/**
+		 * @param {Project} project
+		 */
 		onAboutAction(project)
 		{
 			ProjectViewManager.open(this.list.userId, project.id);
 		}
 
+		/**
+		 * @param {Project} project
+		 */
 		onMembersAction(project)
 		{
-			PageManager.openWidget('list', {
+			void PageManager.openWidget('list', {
 				backdrop: {
 					bounceEnable: false,
 					swipeAllowed: true,
@@ -914,36 +734,37 @@
 				onReady: (list) => {
 					new ProjectMemberList(list, this.list.userId, project.id, {
 						isOwner: project.isOwner(),
-						canInvite: project.actions.invite,
+						canInvite: project.getActions().invite,
 						minSearchSize: 3,
-					})
+					});
 				},
-				onError: error => console.log(error),
+				onError: (error) => logger.log(error),
 			});
 		}
 
-		onJoinAction(event)
+		/**
+		 * @param {Project} project
+		 */
+		onJoinAction(project)
 		{
-			const projectId = String(event.id);
+			const projectId = String(project.id);
 
-			if (this.list.projectList.has(projectId))
+			if (project.isOpened)
 			{
-				const project = this.list.projectList.get(projectId);
+				project.joinProject().then(() => this.list.updateItem(projectId)).catch(console.error);
 
-				if (project.isOpened)
-				{
-					project.join().then(() => this.list.updateItem(projectId));
-
-					const projectItem = this.list.prepareListItem(project);
-					projectItem.joinButtonState = 'animated';
-					this.list.list.updateItem({id: projectId}, projectItem);
-				}
+				const projectItem = ProjectList.prepareListItem(project);
+				projectItem.joinButtonState = 'animated';
+				this.list.list.updateItem({ id: projectId }, projectItem);
 			}
 		}
 
+		/**
+		 * @param {Project} project
+		 */
 		onLeaveAction(project)
 		{
-			void project.leave();
+			void project.leaveProject();
 		}
 	}
 
@@ -954,6 +775,7 @@
 			return [
 				'project_read_all',
 				'comment_read_all',
+				'scrum_read_all',
 			];
 		}
 
@@ -975,7 +797,7 @@
 		{
 			return {
 				pinned: 2,
-			}
+			};
 		}
 
 		/**
@@ -993,7 +815,7 @@
 			this.canExecute = true;
 
 			this.extendWatch();
-			this.startWatch().then(() => this.subscribe());
+			this.startWatch().then(() => this.subscribe()).catch(console.error);
 		}
 
 		getEventHandlers()
@@ -1035,6 +857,10 @@
 					method: this.onProjectCommentsReadAll,
 					context: this,
 				},
+				scrum_read_all: {
+					method: this.onProjectCommentsReadAll,
+					context: this,
+				},
 				project_counter: {
 					method: this.onProjectCounter,
 					context: this,
@@ -1045,15 +871,19 @@
 		startWatch()
 		{
 			return new Promise((resolve, reject) => {
-				(new RequestExecutor('mobile.tasks.project.list.startWatch'))
+				(new RequestExecutor('tasksmobile.Project.startWatchList'))
 					.call()
 					.then(
 						(response) => resolve(response),
 						(response) => {
-							console.error(response);
+							logger.error(response);
 							reject(response);
-						}
+						},
 					)
+					.catch((response) => {
+						logger.error(response);
+						reject(response);
+					})
 				;
 			});
 		}
@@ -1068,7 +898,7 @@
 		{
 			BX.PULL.subscribe({
 				moduleId: 'tasks',
-				callback: data => this.processPullEvent(data),
+				callback: (data) => this.processPullEvent(data),
 			});
 		}
 
@@ -1089,10 +919,10 @@
 			return new Promise((resolve, reject) => {
 				const has = Object.prototype.hasOwnProperty;
 				const eventHandlers = this.getEventHandlers();
-				const {command, params} = data;
+				const { command, params } = data;
 				if (has.call(eventHandlers, command))
 				{
-					const {method, context} = eventHandlers[command];
+					const { method, context } = eventHandlers[command];
 					if (method)
 					{
 						method.apply(context, [params]).then(() => resolve(), () => reject()).catch(() => reject());
@@ -1103,21 +933,25 @@
 
 		freeQueue()
 		{
-			const clearDuplicates = (result, event) => {
+			const clearDuplicates = (accumulator, event) => {
+				const result = accumulator;
 				if (
-					typeof result[event.command] === 'undefined'
-					|| event.extra.server_time_ago < result[event.command].extra.server_time_ago
+					typeof accumulator[event.command] === 'undefined'
+					|| event.extra.server_time_ago < accumulator[event.command].extra.server_time_ago
 				)
 				{
 					result[event.command] = event;
 				}
+
 				return result;
 			};
 
-			this.queue = new Set([...this.queue].filter(event => Pull.commonEvents.includes(event.command)));
-			this.queue = new Set(Object.values([...this.queue].reduce(clearDuplicates, {})));
+			this.queue = new Set([...this.queue].filter((event) => Pull.commonEvents.includes(event.command)));
+			this.queue = new Set(
+				Object.values([...this.queue].reduce((accumulator, event) => clearDuplicates(accumulator, event), {})),
+			);
 
-			const promises = [...this.queue].map(event => this.executePullEvent(event));
+			const promises = [...this.queue].map((event) => this.executePullEvent(event));
 
 			return Promise.allSettled(promises);
 		}
@@ -1134,7 +968,7 @@
 			this.queue.forEach((event) => {
 				const has = Object.prototype.hasOwnProperty;
 				const eventHandlers = this.getEventHandlers();
-				const {command, params} = event;
+				const { command, params } = event;
 
 				if (has.call(eventHandlers, command))
 				{
@@ -1199,19 +1033,16 @@
 				if (Number(data.USER_ID) !== Number(this.userId))
 				{
 					resolve();
+
 					return;
 				}
-				switch (data.OPTION)
-				{
-					case Pull.userOptions.pinned:
-						this.onProjectPinChanged(String(data.PROJECT_ID), data.ADDED)
-							.then(() => resolve())
-							.catch(() => reject())
-						;
-						break;
 
-					default:
-						break;
+				if (data.OPTION === Pull.userOptions.pinned)
+				{
+					this.onProjectPinChanged(String(data.PROJECT_ID), data.ADDED)
+						.then(() => resolve())
+						.catch(() => reject())
+					;
 				}
 			});
 		}
@@ -1221,7 +1052,7 @@
 			return new Promise((resolve, reject) => {
 				if (this.list.projectList.has(projectId))
 				{
-					this.list.updateItem(projectId, {isPinned: (added ? 'Y' : 'N')});
+					this.list.updateItem(projectId, { isPinned: (added ? 'Y' : 'N') });
 					resolve();
 				}
 				else if (added)
@@ -1241,6 +1072,7 @@
 				if (userId > 0 && userId !== this.userId)
 				{
 					resolve();
+
 					return;
 				}
 
@@ -1297,7 +1129,7 @@
 		{
 			this.clear();
 			this.extendWatch();
-			this.startWatch().then(() => this.setCanExecute(true));
+			this.startWatch().then(() => this.setCanExecute(true)).catch(console.error);
 		}
 	}
 
@@ -1309,17 +1141,17 @@
 		static get backgroundColors()
 		{
 			return {
-				default: '#ffffff',
-				pinned: '#f4f5f7',
+				default: AppTheme.colors.accentMainLinks,
+				pinned: AppTheme.colors.bgContentTertiary,
 			};
 		}
 
 		static get counterColors()
 		{
 			return {
-				danger: '#ff5752',
-				gray: '#a8adb4',
-				success: '#9dcf00',
+				danger: AppTheme.colors.accentMainAlert,
+				gray: AppTheme.colors.base4,
+				success: AppTheme.colors.accentMainSuccess,
 			};
 		}
 
@@ -1335,14 +1167,23 @@
 				'OPENED',
 				'CLOSED',
 				'VISIBLE',
-				'IS_EXTRANET',
-				'USER_GROUP_ID',
 				'ACTIVITY_DATE',
 				'IS_PINNED',
+				'SCRUM_MASTER_ID',
+				'IS_EXTRANET',
+				'ACTIONS',
 				'MEMBERS',
 				'COUNTERS',
-				'ACTIONS',
 			];
+		}
+
+		static get order()
+		{
+			return {
+				IS_PINNED: 'DESC',
+				ACTIVITY_DATE: 'DESC',
+				ID: 'DESC',
+			};
 		}
 
 		static get avatarTypes()
@@ -1355,12 +1196,75 @@
 			};
 		}
 
+		/**
+		 * @param {Project} project
+		 * @param {bool} withActions
+		 */
+		static prepareListItem(project, withActions = true)
+		{
+			let itemData = {
+				id: String(project.id),
+				title: project.name || '',
+				imageUrl: project.image || '',
+				date: project.activityDate / 1000,
+				messageCount: project.getCounter().value,
+				joinButtonState: (project.getActions().join && project.isOpened ? 'showed' : 'hidden'),
+				creatorIcons: project.getHeadIcons(),
+				creatorCount: project.getHeadCount(),
+				responsibleIcons: project.getMemberIcons(),
+				responsibleCount: project.getMemberCount(),
+				styles: {
+					counter: {
+						backgroundColor: ProjectList.counterColors[project.getCounter().color],
+					},
+					date: {
+						image: {
+							name: (project.isPinned ? 'message_pin' : ''),
+						},
+						font: {
+							size: 13,
+						},
+					},
+					avatar: {
+						image: {
+							name: ProjectList.avatarTypes[project.getType()],
+						},
+					},
+				},
+				backgroundColor: ProjectList.backgroundColors.default,
+				sectionCode: Section.type.default,
+				sortValues: {
+					activityDate: project.activityDate,
+				},
+				type: 'project',
+			};
+
+			if (project.getCounter().isHidden)
+			{
+				itemData.messageCount = 0;
+			}
+
+			if (project.isPinned)
+			{
+				itemData.backgroundColor = ProjectList.backgroundColors.pinned;
+				itemData.sectionCode = Section.type.pinned;
+			}
+
+			if (withActions)
+			{
+				itemData = Action.fill(itemData, project);
+			}
+
+			return itemData;
+		}
+
 		constructor(list, userId, params)
 		{
-			console.log('ProjectList.constructor', userId);
+			logger.log(`${params.mode}.constructor`, userId);
 
 			this.list = list;
 			this.userId = userId;
+			this.mode = params.mode;
 			this.newsPathTemplate = (params.projectNewsPathTemplate || '');
 			this.calendarWebPathTemplate = (params.projectCalendarWebPathTemplate || '');
 
@@ -1369,8 +1273,7 @@
 
 			this.projectList = new Map();
 
-			this.cache = new ProjectCache(`projectList_${this.userId}`);
-			this.order = new Order();
+			this.cache = new Cache(this.mode, `projectList_${this.userId}`);
 			this.filter = new Filter(this, this.userId);
 			this.moreMenu = new MoreMenu(this);
 			this.welcomeScreen = new WelcomeScreen(this);
@@ -1385,7 +1288,7 @@
 					this.reload(0, true);
 				},
 				500,
-				this
+				this,
 			);
 			this.getPresets();
 
@@ -1396,6 +1299,7 @@
 						title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_LOADING'),
 					},
 				]);
+				this.list.setSections(Section.get());
 
 				this.setTopButtons();
 				this.setFloatingButton();
@@ -1409,14 +1313,21 @@
 			});
 		}
 
+		isScrum()
+		{
+			return (this.mode === Mode.SCRUM);
+		}
+
+		getTabName()
+		{
+			return (this.isScrum() ? 'tasks.scrum.list' : 'tasks.project.list');
+		}
+
 		getPresets()
 		{
-			if (!isSearchByPresetsEnable)
-			{
-				return;
-			}
+			const methodName = (this.isScrum() ? 'getScrumListPresets' : 'getProjectListPresets');
 
-			(new RequestExecutor('tasksmobile.Filter.getProjectListPresets'))
+			(new RequestExecutor(`tasksmobile.Filter.${methodName}`))
 				.call()
 				.then((response) => {
 					this.presets = response.result;
@@ -1428,7 +1339,7 @@
 						});
 					}
 				})
-			;
+				.catch(console.error);
 		}
 
 		setTopButtons()
@@ -1438,15 +1349,18 @@
 			this.list.setRightButtons([
 				{
 					type: 'search',
-					badgeCode: 'tasksProjectListSearchButton',
+					badgeCode: `${this.mode}_SearchButton`,
 					svg: {
-						content: magnifierWithMenuAndDot('#a8adb4', (isDefaultSearch ? null : '#2fc6f6')),
+						content: magnifierWithMenuAndDot(
+							AppTheme.colors.base4,
+							(isDefaultSearch ? null : AppTheme.colors.accentMainLinks),
+						),
 					},
 					callback: () => this.onSearchClick(),
 				},
 				{
 					type: (this.filter.getCounter() === Filter.counterTypes.none ? 'more' : 'more_active'),
-					badgeCode: `tasksProjectListMoreButton_${this.userId}`,
+					badgeCode: `${this.mode}_MoreButton`,
 					callback: () => this.moreMenu.show(),
 				},
 			]);
@@ -1455,95 +1369,56 @@
 
 		onSearchClick()
 		{
-			if (isSearchByPresetsEnable)
+			if (!this.isSearchInit)
 			{
-				if (!this.isSearchInit)
-				{
-					this.isSearchInit = true;
+				this.isSearchInit = true;
 
-					this.list.search.mode = 'layout';
-					this.list.search.on('textChanged', ({text}) => this.debounceSearch(text));
-					this.list.search.on('cancel', () => {
-						if (
-							this.filter.getSearchText()
+				this.list.search.mode = 'layout';
+				this.list.search.on('textChanged', ({ text }) => this.debounceSearch(text));
+				this.list.search.on('cancel', () => {
+					if (
+						this.filter.getSearchText()
 							|| this.filter.getPreset() !== Filter.presetTypes.default
-						)
-						{
-							this.filter.setSearchText('');
-							this.filter.setPreset(Filter.presetTypes.default);
+					)
+					{
+						this.filter.setSearchText('');
+						this.filter.setPreset(Filter.presetTypes.default);
 
-							this.setTopButtons();
-							this.reload(0, true);
-						}
-					});
-				}
-				this.searchLayout = new PresetList({
-					presets: this.presets,
-					currentPreset: this.filter.getPreset(),
-				});
-				this.searchLayout.on('presetSelected', (preset) => {
-					if (preset.id === this.filter.getPreset())
-					{
-						this.filter.setPreset(Filter.presetTypes.none);
+						this.setTopButtons();
+						this.reload(0, true);
 					}
-					else
-					{
-						this.filter.setPreset(preset.id);
-						this.filter.setCounter(Filter.counterTypes.none);
-					}
-					this.setTopButtons();
-					this.reload(0, true);
 				});
-				this.list.search.text = this.filter.getSearchText();
-				this.list.search.show(this.searchLayout, 46);
 			}
-			else
-			{
-				if (!this.isSearchInit)
+			this.searchLayout = new PresetList({
+				presets: this.presets,
+				currentPreset: this.filter.getPreset(),
+			});
+			this.searchLayout.on('presetSelected', (preset) => {
+				if (preset.id === this.filter.getPreset())
 				{
-					this.isSearchInit = true;
-
-					this.list.search.mode = 'bar';
-					this.list.search.on('textChanged', ({text}) => this.debounceSearch(text));
-					this.list.search.on('cancel', () => {
-						if (
-							this.filter.getSearchText()
-							|| this.filter.getPreset() !== Filter.presetTypes.default
-						)
-						{
-							this.filter.setSearchText('');
-							this.filter.setPreset(Filter.presetTypes.default);
-
-							this.setTopButtons();
-							this.reload(0, true);
-						}
-					});
-					this.list.search.on('clickEnter', () => this.list.search.close());
+					this.filter.setPreset(Filter.presetTypes.none);
 				}
-				this.list.search.text = this.filter.getSearchText();
-				this.list.search.show();
-			}
+				else
+				{
+					this.filter.setPreset(preset.id);
+					this.filter.setCounter(Filter.counterTypes.none);
+				}
+				this.setTopButtons();
+				this.reload(0, true);
+			});
+			this.list.search.text = this.filter.getSearchText();
+			this.list.search.show(this.searchLayout, 46);
 		}
 
 		setFloatingButton()
 		{
-			this.getCanCreateProject().then(
-				response => this.renderFloatingButton(response),
-				response => console.error(response)
-			);
-		}
-
-		getCanCreateProject()
-		{
-			return new Promise((resolve, reject) => {
-				(new RequestExecutor('socialnetwork.api.workgroup.getCanCreate'))
-					.call()
-					.then(
-						response => resolve(response.result),
-						response => reject(response)
-					)
-				;
-			});
+			(new RequestExecutor('socialnetwork.api.workgroup.getCanCreate'))
+				.call()
+				.then(
+					(response) => this.renderFloatingButton(response.result),
+					(response) => logger.error(response),
+				)
+				.catch((response) => logger.error(response));
 		}
 
 		renderFloatingButton(isExist = false)
@@ -1585,17 +1460,14 @@
 				},
 				onScroll: {
 					callback: () => {
-						if (isSearchByPresetsEnable)
-						{
-							this.list.search.close();
-						}
+						this.list.search.close();
 					},
 					context: this,
 				},
 			};
 
 			this.list.setListener((event, data) => {
-				console.log(`ProjectList.appEvent.${event}`);
+				logger.log(`ProjectList.appEvent.${event}`);
 				if (eventHandlers[event])
 				{
 					eventHandlers[event].callback.apply(eventHandlers[event].context, [data]);
@@ -1605,30 +1477,30 @@
 
 		bindEvents()
 		{
-			BX.addCustomEvent('tasks.tabs:onTabSelected', eventData => this.onTabSelected(eventData));
-			BX.addCustomEvent('tasks.tabs:onAppActive', () => this.onAppActive());
-			BX.addCustomEvent('tasks.tabs:onAppPaused', () => this.onAppPaused());
+			BX.addCustomEvent('tasks.tabs:onTabSelected', (eventData) => this.onTabSelected(eventData));
+			BX.addCustomEvent('tasks.tabs:onAppActive', (eventData) => this.onAppActive(eventData));
+			BX.addCustomEvent('tasks.tabs:onAppPaused', (eventData) => this.onAppPaused(eventData));
 		}
 
 		loadProjectsFromCache()
 		{
-			const counter = this.filter.getCounter();
-			const has = Object.prototype.hasOwnProperty;
-			const cache = this.cache.get();
+			BX.onViewLoaded(() => {
+				const projects = this.cache.get();
 
-			let cachedProjects = [];
-			if (has.call(cache, counter))
-			{
-				cachedProjects = cache[counter] || [];
-			}
+				if (Object.prototype.hasOwnProperty.call(projects, Filter.counterTypes.none)) // old cache
+				{
+					return;
+				}
 
-			if (!Array.isArray(cachedProjects) || cachedProjects.length < 1)
-			{
-				console.log('ProjectList.loadProjectsFromCache.empty');
-				return;
-			}
+				if (Object.keys(projects).length === 0)
+				{
+					logger.log('Cache is empty');
 
-			this.list.setItems(cachedProjects, null, false);
+					return;
+				}
+
+				this.list.setItems(Object.values(projects), null, false);
+			});
 		}
 
 		reload(offset = 0, showLoading = false)
@@ -1640,32 +1512,29 @@
 			this.loading.showForTitle();
 
 			const params = {
-				mode: 'mobile',
-				listMode: 'tasks_project',
+				mode: this.mode,
 			};
-			if (isSearchByPresetsEnable)
-			{
-				params.siftThroughFilter = {
-					presetId: this.filter.getPreset(),
-				};
-			}
+
+			params.siftThroughFilter = {
+				presetId: this.filter.getPreset(),
+			};
 
 			BX.rest.callMethod(
-				'tasks.project.list',
+				'tasksmobile.Project.list',
 				{
 					select: ProjectList.select,
 					filter: this.filter.get(),
-					order: this.order.get(),
+					order: ProjectList.order,
 					start: offset,
 					params,
 				},
-				response => this.onReloadSuccess(response, showLoading, offset)
+				(response) => this.onReloadSuccess(response, showLoading, offset),
 			);
 		}
 
 		onReloadSuccess(response, showLoading, offset)
 		{
-			console.log('ProjectList.onReloadSuccess', response);
+			logger.log('ProjectList.onReloadSuccess', response);
 
 			this.start = offset + this.pageSize;
 
@@ -1674,26 +1543,22 @@
 			{
 				this.projectList.clear();
 			}
-			this.updateSections(isFirstPage);
 
-			const {projects} = response.answer.result;
+			const { projects } = response.answer.result;
 			const items = [];
 			projects.forEach((row) => {
 				const project = new Project(this.userId);
 				project.setData(row);
 
 				this.projectList.set(String(project.id), project);
-				items.push(this.prepareListItem(project));
+				items.push(ProjectList.prepareListItem(project));
 			});
 
-			console.log('ProjectList.onReloadSuccess:items', items);
-
-			if (isFirstPage)
-			{
-				this.fillCache(items);
-			}
+			logger.log('ProjectList.onReloadSuccess:items', items);
 
 			const isNextPageExist = (this.projectList.size < response.answer.total);
+
+			this.fillCache(items, isFirstPage);
 			this.renderProjectListItems(items, isFirstPage, isNextPageExist);
 
 			if (showLoading)
@@ -1705,95 +1570,20 @@
 			this.list.stopRefreshing();
 		}
 
-		updateSections(clear = true)
+		fillCache(list, isFirstPage)
 		{
-			const sectionHandler = SectionHandler.getInstance();
-
-			if (clear)
+			if (
+				isFirstPage
+				&& this.filter.isDefaultPreset()
+				&& this.filter.isDefaultCounter()
+			)
 			{
-				sectionHandler.clear();
+				const projects = {};
+				list.forEach((project) => {
+					projects[project.id] = project;
+				});
+				this.cache.set(projects);
 			}
-
-			sectionHandler.setSortItemParams(SectionHandler.sections.pinned, {
-				[this.order.order]: Order.sectionOrderFields[this.order.order],
-			});
-			sectionHandler.setSortItemParams(SectionHandler.sections.default, {
-				[this.order.order]: Order.sectionOrderFields[this.order.order],
-			});
-
-			this.list.setSections(sectionHandler.list);
-		}
-
-		/**
-		 * @param {Project} project
-		 * @param {bool} withActions
-		 */
-		prepareListItem(project, withActions = true)
-		{
-			let itemData = {
-				id: String(project.id),
-				title: project.name || '',
-				imageUrl: project.image || '',
-				date: project.activityDate / 1000,
-				messageCount: project.counter.value,
-				joinButtonState: (project.actions.join && project.isOpened ? 'showed' : 'hidden'),
-				creatorIcons: project.getHeadIcons(),
-				creatorCount: project.getHeadCount(),
-				responsibleIcons: project.getMemberIcons(),
-				responsibleCount: project.getMemberCount(),
-				styles: {
-					counter: {
-						backgroundColor: ProjectList.counterColors[project.counter.color],
-					},
-					date: {
-						image: {
-							name: (project.isPinned ? 'message_pin' : ''),
-						},
-						font: {
-							size: 13,
-						},
-					},
-				},
-				backgroundColor: ProjectList.backgroundColors.default,
-				sectionCode: SectionHandler.sections.default,
-				sortValues: {
-					activityDate: project.activityDate,
-				},
-				type: 'project',
-			};
-
-			if (project.counter.isHidden)
-			{
-				itemData.messageCount = 0;
-			}
-			if (project.isPinned)
-			{
-				itemData.backgroundColor = ProjectList.backgroundColors.pinned;
-				itemData.sectionCode = SectionHandler.sections.pinned;
-			}
-			if (apiVersion >= 40)
-			{
-				itemData.styles.avatar = {
-					image: {
-						name: ProjectList.avatarTypes[project.getType()],
-					},
-				};
-			}
-			if (withActions)
-			{
-				itemData = this.action.fill(project, itemData);
-			}
-
-			return itemData;
-		}
-
-		fillCache(list)
-		{
-			const counter = this.filter.getCounter();
-			const cache = this.cache.get();
-			cache[counter] = list;
-
-			this.cache.set(cache);
 		}
 
 		renderProjectListItems(items, isFirstPage, isNextPageExist)
@@ -1801,6 +1591,7 @@
 			if (items.length <= 0)
 			{
 				this.welcomeScreen.show();
+
 				return;
 			}
 
@@ -1811,18 +1602,20 @@
 			}
 			else
 			{
-				this.list.removeItem({id: '-more-'});
+				this.list.removeItem({ id: '-more-' });
 				this.list.addItems(items);
 			}
 
 			if (isNextPageExist)
 			{
-				this.list.addItems([{
-					id: '-more-',
-					title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_NEXT_PAGE'),
-					type: 'button',
-					sectionCode: SectionHandler.sections.more,
-				}]);
+				this.list.addItems([
+					{
+						id: '-more-',
+						title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_NEXT_PAGE'),
+						type: 'button',
+						sectionCode: Section.type.more,
+					},
+				]);
 			}
 		}
 
@@ -1833,11 +1626,11 @@
 			if (projectId === '-more-')
 			{
 				this.list.updateItem(
-					{id: '-more-'},
+					{ id: '-more-' },
 					{
 						type: 'loading',
 						title: Loc.getMessage('MOBILE_TASKS_PROJECT_LIST_LOADING'),
-					}
+					},
 				);
 				this.reload(this.start);
 			}
@@ -1866,10 +1659,10 @@
 					item: projectItem,
 					newsPathTemplate: this.newsPathTemplate,
 					calendarWebPathTemplate: this.calendarWebPathTemplate,
-					currentUserId: parseInt(this.userId || 0),
+					currentUserId: parseInt(this.userId || 0, 10),
 				};
 
-				BX.postComponentEvent('projectbackground::project::action', [ projectData ], 'background');
+				BX.postComponentEvent('projectbackground::project::action', [projectData], 'background');
 			}
 		}
 
@@ -1894,9 +1687,8 @@
 
 				this.welcomeScreen.hide();
 
-				const projectItem = this.prepareListItem(project);
+				const projectItem = ProjectList.prepareListItem(project);
 				this.list.addItems([projectItem]);
-				this.cache.addProject(project, projectItem);
 			});
 		}
 
@@ -1913,9 +1705,9 @@
 				const project = this.projectList.get(projectId);
 				project.updateData(projectData);
 
-				const projectItem = this.prepareListItem(project);
-				this.list.updateItem({id: projectId}, projectItem);
-				this.cache.updateProject({[projectId]: {project, projectItem}});
+				const projectItem = ProjectList.prepareListItem(project);
+				this.list.updateItem({ id: projectId }, projectItem);
+				this.cache.setProjects([projectItem]);
 			});
 		}
 
@@ -1923,7 +1715,7 @@
 		{
 			BX.onViewLoaded(() => {
 				this.projectList.delete(id);
-				this.list.removeItem({id});
+				this.list.removeItem({ id });
 				this.cache.removeProject(id);
 
 				if (this.projectList.size === 0)
@@ -1935,26 +1727,36 @@
 
 		onTabSelected(data)
 		{
-			if (data.tabId === 'tasks.project.list')
+			if (data.tabId === this.getTabName())
 			{
-				this.onAppActive();
+				this.onAppActive(data);
 			}
 			else
 			{
-				this.onAppPaused();
+				this.onAppPaused(data, true);
 			}
 		}
 
-		onAppPaused()
+		onAppPaused(data, force = false)
 		{
+			if (!force && data.tabId !== this.getTabName())
+			{
+				return;
+			}
+
 			this.pauseTime = new Date();
 
 			this.pull.setCanExecute(false);
 			this.pull.clear();
 		}
 
-		onAppActive()
+		onAppActive(data)
 		{
+			if (data.tabId !== this.getTabName())
+			{
+				return;
+			}
+
 			this.activationTime = new Date();
 
 			if (this.pauseTime)
@@ -1993,29 +1795,34 @@
 				if (projectIds.length > 15)
 				{
 					this.runOnAppActiveRepeatedActions();
+
 					return;
 				}
 
 				const promises = [
-					new Promise((resolve) => {
+					new Promise((resolve, reject) => {
 						this.pull.extendWatch();
-						this.pull.startWatch().then(() => {
-							this.pull.setCanExecute(true);
-							this.pull.freeQueue().then(() => resolve());
-						});
+						this.pull.startWatch()
+							.then(() => {
+								this.pull.setCanExecute(true);
+								this.pull.freeQueue().then(() => resolve()).catch(() => reject());
+							})
+							.catch(() => reject());
 					}),
 				];
-				if (projectIds.length)
+				if (projectIds.length > 0)
 				{
 					promises.push(
 						new Promise((resolve) => {
 							this.filter.updateCounters();
 							resolve();
-						})
+						}),
+						this.updateProjects(projectIds),
 					);
-					promises.push(this.updateProjects(projectIds));
 				}
-				Promise.allSettled(promises).then(() => this.loading.hideForTitle());
+				Promise.allSettled(promises)
+					.then(() => this.loading.hideForTitle())
+					.catch(() => this.loading.hideForTitle());
 			}, 1000);
 		}
 
@@ -2023,18 +1830,16 @@
 		{
 			return new Promise((resolve, reject) => {
 				const params = {
-					mode: 'mobile',
-					listMode: 'tasks_project',
+					mode: this.mode,
 				};
-				if (isSearchByPresetsEnable)
-				{
-					params.siftThroughFilter = {
-						presetId: this.filter.getPreset(),
-					};
-				}
-				(new RequestExecutor('tasks.project.list', {
+
+				params.siftThroughFilter = {
+					presetId: this.filter.getPreset(),
+				};
+
+				(new RequestExecutor('tasksmobile.Project.list', {
 					select: ProjectList.select,
-					filter: {...this.filter.get(), ID: projectIds},
+					filter: { ...this.filter.get(), ID: projectIds },
 					params,
 				}))
 					.call()
@@ -2044,24 +1849,31 @@
 							resolve();
 						},
 						(response) => {
-							console.error(response);
+							logger.error(response);
 							reject();
-						}
+						},
 					)
-				;
+					.catch((response) => {
+						logger.error(response);
+						reject();
+					});
 			});
 		}
 
 		onUpdateProjectsSuccess(projectIds, projects)
 		{
 			projectIds.forEach((projectId) => {
-				const projectData = projects.find(project => Number(project.id) === Number(projectId));
+				const projectData = projects.find((project) => Number(project.id) === Number(projectId));
 				if (projectData)
 				{
-					this.projectList.has(projectId)
-						? this.updateItem(projectId, projectData)
-						: this.addItem(projectData)
-					;
+					if (this.projectList.has(projectId))
+					{
+						this.updateItem(projectId, projectData);
+					}
+					else
+					{
+						this.addItem(projectData);
+					}
 				}
 				else if (this.projectList.has(projectId))
 				{
@@ -2073,7 +1885,7 @@
 		pseudoReadProjects(projectIds)
 		{
 			const items = [];
-			const projects = {};
+			const projects = [];
 			let newCommentsRead = 0;
 
 			this.projectList.forEach((project) => {
@@ -2083,22 +1895,27 @@
 					newCommentsRead += project.getNewCommentsCount();
 					project.pseudoRead();
 
-					const projectItem = this.prepareListItem(project);
+					const projectItem = ProjectList.prepareListItem(project);
 					items.push({
-						filter: {id: projectId},
+						filter: { id: projectId },
 						element: projectItem,
 					});
-					projects[projectId] = {project, projectItem};
+					projects.push(projectItem);
 				}
 			});
 			this.list.updateItems(items);
-			this.cache.updateProject(projects);
+			this.cache.setProjects(projects);
 			this.filter.pseudoUpdateCounters(-newCommentsRead);
 		}
 	}
 
-	return new ProjectList(list, parseInt(BX.componentParameters.get('USER_ID', 0), 10), {
-		projectNewsPathTemplate: BX.componentParameters.get('PROJECT_NEWS_PATH_TEMPLATE', ''),
-		projectCalendarWebPathTemplate: BX.componentParameters.get('PROJECT_CALENDAR_WEB_PATH_TEMPLATE', ''),
-	});
+	return new ProjectList(
+		list,
+		parseInt(BX.componentParameters.get('USER_ID', 0), 10),
+		{
+			mode: BX.componentParameters.get('MODE', Mode.PROJECT),
+			projectNewsPathTemplate: BX.componentParameters.get('PROJECT_NEWS_PATH_TEMPLATE', ''),
+			projectCalendarWebPathTemplate: BX.componentParameters.get('PROJECT_CALENDAR_WEB_PATH_TEMPLATE', ''),
+		},
+	);
 })();

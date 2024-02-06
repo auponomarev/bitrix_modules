@@ -1,64 +1,95 @@
-import {Logger} from 'im.v2.lib.logger';
-import {ImModelDialog} from 'im.v2.model';
-import {SidebarFileTabTypes} from 'im.v2.const';
-import {SidebarService} from './classes/sidebar-service';
-import {MainDetail} from './components/main/detail';
-import {MainPreview} from './components/main/preview';
-import {InfoPreview} from './components/info/preview';
-import {LinkDetail} from './components/info/link-detail';
-import {FavoriteDetail} from './components/info/favorite-detail';
-import {MediaDetail} from './components/file/media-detail';
-import {AudioDetail} from './components/file/audio-detail';
-import {DocumentDetail} from './components/file/document-detail';
-import {OtherDetail} from './components/file/other-detail';
-import {FileUnsortedPreview} from './components/file-unsorted/preview';
-import {FileUnsortedDetail} from './components/file-unsorted/detail';
-import {FilePreview} from './components/file/preview';
-import {TaskPreview} from './components/task/preview';
-import {TaskDetail} from './components/task/detail';
-import {BriefDetail} from './components/brief/detail';
-import {BriefPreview} from './components/brief/preview';
-import {MeetingPreview} from './components/meeting/preview';
-import {MeetingDetail} from './components/meeting/detail';
-import {SignPreview} from './components/sign/preview';
-import {SignDetail} from './components/sign/detail';
-import {MarketPreview} from './components/market/preview';
-import {MarketDetail} from './components/market/detail';
-import {SidebarHeader} from './components/header';
-import {DetailHeader} from './components/detail-header';
-import {DetailTabs} from './components/detail-tabs';
-import {AvailabilityManager} from './classes/availability-manager';
-import {SettingsManager} from './classes/settings-manager';
+import { Logger } from 'im.v2.lib.logger';
+import { ImModelChat } from 'im.v2.model';
+import { SidebarDetailBlock, SidebarFileTabTypes } from 'im.v2.const';
+import { SidebarService } from './classes/sidebar-service';
+import { ChatsWithUserDetail } from './components/chats-with-user/detail';
+import { MainDetail } from './components/main/detail';
+import { MainPreview } from './components/main/preview';
+import { InfoPreview } from './components/info/preview';
+import { LinkDetail } from './components/info/link-detail';
+import { FavoriteDetail } from './components/info/favorite-detail';
+import { MediaDetail } from './components/file/media-detail';
+import { AudioDetail } from './components/file/audio-detail';
+import { DocumentDetail } from './components/file/document-detail';
+import { OtherDetail } from './components/file/other-detail';
+import { FileUnsortedPreview } from './components/file-unsorted/preview';
+import { FileUnsortedDetail } from './components/file-unsorted/detail';
+import { FilePreview } from './components/file/preview';
+import { MessageSearchDetail } from './components/message-search/detail';
+import { TaskPreview } from './components/task/preview';
+import { TaskDetail } from './components/task/detail';
+import { BriefDetail } from './components/brief/detail';
+import { BriefPreview } from './components/brief/preview';
+import { MeetingPreview } from './components/meeting/preview';
+import { MeetingDetail } from './components/meeting/detail';
+import { SignPreview } from './components/sign/preview';
+import { SignDetail } from './components/sign/detail';
+import { MarketPreview } from './components/market/preview';
+import { MarketDetail } from './components/market/detail';
+import { SidebarHeader } from './components/header';
+import { DetailHeader } from './components/detail-header';
+import { DetailTabs } from './components/detail-tabs';
+import { SearchHeader } from './components/message-search/search-header';
+import { AvailabilityManager } from './classes/availability-manager';
+import { SettingsManager } from './classes/settings-manager';
 import './css/sidebar.css';
 import './css/icons.css';
+
+import type { JsonObject } from 'main.core';
 
 // @vue/component
 export const ChatSidebar = {
 	name: 'ChatSidebar',
 	components: {
-		DetailHeader, DetailTabs, SidebarHeader, MainDetail, MainPreview, InfoPreview, LinkDetail, FavoriteDetail, MediaDetail, AudioDetail, DocumentDetail, OtherDetail, FilePreview, TaskPreview,
-		TaskDetail, BriefDetail, BriefPreview, MeetingPreview, MeetingDetail, SignPreview, SignDetail,
-		FileUnsortedDetail, FileUnsortedPreview, MarketPreview, MarketDetail
+		DetailHeader,
+		DetailTabs,
+		SidebarHeader,
+		MainDetail,
+		MainPreview,
+		InfoPreview,
+		LinkDetail,
+		FavoriteDetail,
+		MediaDetail,
+		AudioDetail,
+		DocumentDetail,
+		OtherDetail,
+		FilePreview,
+		TaskPreview,
+		TaskDetail,
+		BriefDetail,
+		BriefPreview,
+		MeetingPreview,
+		MeetingDetail,
+		SignPreview,
+		SignDetail,
+		FileUnsortedDetail,
+		FileUnsortedPreview,
+		MarketPreview,
+		MarketDetail,
+		MessageSearchDetail,
+		ChatsWithUserDetail,
+		SearchHeader,
 	},
 	props:
 	{
 		dialogId: {
 			type: String,
-			required: true
+			required: true,
 		},
 		sidebarDetailBlock: {
 			type: String,
-			default: null
-		}
+			default: null,
+		},
 	},
 	emits: ['back'],
-	data()
+	data(): JsonObject
 	{
 		return {
 			isLoading: false,
 			detailBlock: null,
 			detailBlockEntityId: null,
-			detailTransition: 'right-panel-detail-transition'
+			detailTransition: 'right-panel-detail-transition',
+			query: '',
 		};
 	},
 	computed:
@@ -67,7 +98,7 @@ export const ChatSidebar = {
 		{
 			return this.availabilityManager.getBlocks();
 		},
-		hasInitialData()
+		hasInitialData(): boolean
 		{
 			return this.$store.getters['sidebar/isInited'](this.chatId);
 		},
@@ -80,19 +111,19 @@ export const ChatSidebar = {
 
 			return `${this.detailBlock}Detail`;
 		},
-		getBlockServiceInstance()
+		getBlockServiceInstance(): Object
 		{
 			return this.sidebarService.getBlockInstance(this.detailBlock);
 		},
-		dialog(): ImModelDialog
+		dialog(): ImModelChat
 		{
-			return this.$store.getters['dialogues/get'](this.dialogId, true);
+			return this.$store.getters['chats/get'](this.dialogId, true);
 		},
 		chatId(): number
 		{
 			return this.dialog.chatId;
 		},
-		dialogInited()
+		dialogInited(): boolean
 		{
 			return this.dialog.inited;
 		},
@@ -105,20 +136,22 @@ export const ChatSidebar = {
 
 			return [];
 		},
+		needShowDefaultDetailHeader(): boolean
+		{
+			return this.detailBlock !== SidebarDetailBlock.messageSearch;
+		},
 	},
 	watch:
 	{
-		sidebarDetailBlock(newValue: string, oldValue: string)
+		sidebarDetailBlock(newValue: string)
 		{
-			if (!oldValue && newValue)
-			{
-				this.detailBlock = newValue;
-			}
+			this.detailBlock = newValue;
 		},
 		dialogInited(newValue: boolean, oldValue: boolean)
 		{
 			if (newValue === true && oldValue === false)
 			{
+				this.isLoading = false;
 				this.initializeSidebar();
 			}
 		},
@@ -143,9 +176,10 @@ export const ChatSidebar = {
 	{
 		initializeSidebar()
 		{
-			this.isLoading = true;
 			if (!this.dialogInited)
 			{
+				this.isLoading = true;
+
 				return;
 			}
 
@@ -154,18 +188,19 @@ export const ChatSidebar = {
 
 			if (this.hasInitialData)
 			{
-				this.isLoading = false;
-
 				return;
 			}
 
+			this.isLoading = true;
 			this.sidebarService.requestInitialData().then(() => {
 				this.isLoading = false;
+			}).catch((error) => {
+				Logger.warn('Sidebar: request initial data error:', error);
 			});
 		},
 		onOpenDetail(data: Object)
 		{
-			const {detailBlock, entityId = ''} = data;
+			const { detailBlock, entityId = '' } = data;
 			this.detailBlock = detailBlock;
 			this.detailBlockEntityId = entityId.toString();
 		},
@@ -178,10 +213,15 @@ export const ChatSidebar = {
 			this.detailBlock = null;
 			this.detailTransition = 'right-panel-detail-transition';
 			this.$emit('back');
+			this.query = '';
 		},
 		onTabSelect(tab: string)
 		{
 			this.detailBlock = tab;
+		},
+		onChangeQuery(query)
+		{
+			this.query = query;
 		},
 	},
 	template: `
@@ -199,7 +239,14 @@ export const ChatSidebar = {
 		</div>
 		<transition :name="detailTransition">
 			<div v-if="detailComponent && dialogInited" class="bx-im-sidebar__detail_container bx-im-sidebar__scope">
-				<DetailHeader :detailBlock="detailBlock" :dialogId="dialogId" :chatId="chatId" @back="onClickBack"/>
+				<DetailHeader 
+					v-if="needShowDefaultDetailHeader" 
+					:detailBlock="detailBlock" 
+					:dialogId="dialogId" 
+					:chatId="chatId" 
+					@back="onClickBack" 
+				/>
+				<SearchHeader v-else @changeQuery="onChangeQuery" @back="onClickBack" />
 				<DetailTabs v-if="tabs.length > 0" :tabs="tabs" @tabSelect="onTabSelect" />
 				<component
 					:is="detailComponent"
@@ -208,9 +255,10 @@ export const ChatSidebar = {
 					:detailBlock="detailBlock"
 					:detailBlockEntityId="detailBlockEntityId"
 					:service="getBlockServiceInstance"
+					:searchQuery="query"
 					@back="onClickBack"
 				/>
 			</div>
 		</transition> 
-	`
+	`,
 };

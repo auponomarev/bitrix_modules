@@ -92,6 +92,22 @@ class Sms extends BaseMessage
 	/**
 	 * @inheritDoc
 	 */
+	protected static function syncActivitySettings(int $messageId, array $activity): void
+	{
+		if (empty($activity))
+		{
+			return;
+		}
+
+		// update settings field
+		$activity['SETTINGS']['ORIGINAL_MESSAGE'] = static::fetchOriginalMessageFields($messageId);
+
+		CCrmActivity::Update((int)$activity['ID'], ['SETTINGS' => $activity['SETTINGS']]);
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function getId()
 	{
 		return 'CRM_SMS';
@@ -132,10 +148,7 @@ class Sms extends BaseMessage
 		}
 		else if (in_array($statusId, [MessageStatus::SENT, MessageStatus::DELIVERED], true))
 		{
-			static::unBindBadge(
-				Badge\Type\SmsStatus::SENDING_SMS_ERROR_VALUE,
-				$bindings,
-			);
+			static::unBindBadge($bindings);
 		}
 	}
 

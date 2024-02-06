@@ -1,5 +1,4 @@
 <?
-$MESS['IM_LIST_RECENT_MESSAGE_DRAFT'] = "Черновик: ";
 $MESS['IM_LIST_RECENT_MESSAGE_DRAFT_2'] = "Черновик: #TEXT#";
 $MESS['IM_LIST_RECENT_BIRTHDAY'] = "Празднует сегодня день рождения!"; //
 $MESS['IM_LIST_RECENT_VACATION'] = "В отпуске до #VACATION_END_DATE#"; //
@@ -16,3 +15,9 @@ $MESS["IM_LIST_RECENT_CONNECT_ERROR"] = "Мы не смогли подключи
 $MESS['IM_LIST_RECENT_CHAT_TYPE_GROUP_V2'] = "Групповой чат";
 $MESS['IM_LIST_RECENT_EMPTY'] = "Нет чатов";
 $MESS['IM_LIST_RECENT_CHAT_SELF'] = "это вы";
+$MESS['IM_LIST_RECENT_CREATE_CHAT_DEFAULT_TITLE'] = "Групповой чат";
+$MESS['IM_LIST_RECENT_CREATE_CONFERENCE_DEFAULT_TITLE'] = "Видеоконференция";
+$MESS['IM_LIST_RECENT_CREATE_CHAT_SUBTITLE'] = "Создание чата";
+$MESS['IM_LIST_RECENT_EMPTY_STATE_TITLE'] = "Чатов пока нет";
+$MESS['IM_LIST_RECENT_EMPTY_STATE_SUBTITLE'] = "Сотрудники, которых вы добавите в Битрикс24, появятся в списке чатов";
+$MESS['IM_LIST_RECENT_EMPTY_STATE_INVITE_USERS'] = "Пригласить коллег";

@@ -4,6 +4,8 @@ import {UserState} from '../engine/engine';
 import {BackgroundDialog} from '../dialogs/background_dialog';
 import {logPlaybackError} from './tools';
 import type {UserModel} from './user-registry'
+import {MediaStreamsKinds} from '../call_api';
+import Util from '../util';
 
 type CallUserElements = {
 	root?: HTMLElement,
@@ -11,6 +13,7 @@ type CallUserElements = {
 	videoContainer?: HTMLElement,
 	video?: HTMLVideoElement,
 	audio?: HTMLAudioElement,
+	preview?: HTMLVideoElement,
 	videoBorder?: HTMLElement,
 	avatarContainer?: HTMLElement,
 	avatar?: HTMLElement,
@@ -24,6 +27,7 @@ type CallUserElements = {
 	changeNameLoader?: HTMLElement,
 	introduceYourselfContainer?: HTMLElement,
 	floorRequest?: HTMLElement,
+	badNetworkIndicator?: HTMLElement,
 	state?: HTMLElement,
 	removeButton?: HTMLElement,
 	micState?: HTMLElement,
@@ -33,7 +37,8 @@ type CallUserElements = {
 	buttonBackground?: HTMLElement,
 	buttonPin?: HTMLElement,
 	buttonUnPin?: HTMLElement,
-	buttonMask?: HTMLElement,
+	connectionProblem?: HTMLElement,
+	statsOverlay?: HTMLElement,
 }
 
 type CallUserParams = {
@@ -77,11 +82,14 @@ export class CallUser
 		this._videoTrack = config.videoTrack;
 		this._stream = this._videoTrack ? new MediaStream([this._videoTrack]) : null;
 		this._videoRenderer = null;
+		this._previewRenderer = null;
 		this._flipVideo = false;
 
 		this.hidden = false;
 		this.videoBlurState = false;
 		this.isChangingName = false;
+
+		this._badNetworkIndicator = false;
 
 		this.incomingVideoConstraints = {
 			width: 0, height: 0
@@ -100,6 +108,17 @@ export class CallUser
 			onUnPin: Type.isFunction(config.onUnPin) ? config.onUnPin : BX.DoNothing,
 		};
 		this.checkAspectInterval = setInterval(this.checkVideoAspect.bind(this), 500);
+
+		this.hintManager = BX.UI.Hint.createInstance({
+			popupParameters: {
+				targetContainer: document.body,
+				className: `bx-messenger-videocall-panel-item-hotkey-hint ${this.userModel.id}`,
+				bindOptions: {forceBindPosition: true}
+			}
+		});
+
+		this.connectionStats = {};
+		this.connectionStatsVisible = false;
 	};
 
 	get id()
@@ -181,7 +200,69 @@ export class CallUser
 
 	set videoRenderer(videoRenderer)
 	{
-		this._videoRenderer = videoRenderer;
+		if (this._badNetworkIndicator)
+		{
+			// Voximplant calls logic with support of streams disabling
+			if (videoRenderer.stream)
+			{
+				this._tempVideoRenderer = videoRenderer;
+				this._videoRenderer = null;
+			}
+			else
+			{
+				this._tempVideoRenderer = this._videoRenderer = null;
+			}
+		}
+		else
+		{
+			// Bitrix calls logic with support of preview
+			this._tempVideoRenderer = null;
+			const currentVideoRendererKind = this._videoRenderer?.kind;
+			const newVideoRendererKind = videoRenderer?.kind;
+
+			if (videoRenderer.stream)
+			{
+				if (newVideoRendererKind === 'sharing' && currentVideoRendererKind === 'video')
+				{
+					this._previewRenderer = this._videoRenderer;
+					this._videoRenderer = videoRenderer;
+				}
+				else if (newVideoRendererKind === 'video' && currentVideoRendererKind === 'sharing')
+				{
+					this._previewRenderer = videoRenderer;
+				}
+				else
+				{
+					this._videoRenderer = videoRenderer;
+				}
+			}
+			else
+			{
+				if (newVideoRendererKind === 'sharing')
+				{
+					if (currentVideoRendererKind === 'sharing')
+					{
+						this._videoRenderer = this._previewRenderer;
+					}
+					this._previewRenderer = null;
+					delete this.connectionStats[MediaStreamsKinds.Screen];
+				}
+				else if (newVideoRendererKind === 'video')
+				{
+					if (currentVideoRendererKind === 'sharing')
+					{
+						this._previewRenderer = null;
+					}
+					else
+					{
+						this._videoRenderer = null;
+					}
+					delete this.connectionStats[MediaStreamsKinds.Camera];
+				}
+				this.showConnectionStats();
+			}
+		}
+
 		this.update();
 		this.updateRendererState();
 	}
@@ -200,6 +281,57 @@ export class CallUser
 		this._videoTrack = videoTrack;
 		this._stream = this._videoTrack ? new MediaStream([this._videoTrack]) : null;
 		this.update()
+	}
+
+	set badNetworkIndicator(badNetworkIndicator)
+	{
+		if (this._badNetworkIndicator === badNetworkIndicator)
+		{
+			return;
+		}
+
+		this._badNetworkIndicator = badNetworkIndicator;
+		if (this._badNetworkIndicator)
+		{
+			this.elements.badNetworkIndicator.classList.add("bx-messenger-videocall-user-bad-network-indicator-visible");
+			if (this._videoRenderer)
+			{
+				this._tempVideoRenderer = this._videoRenderer;
+				this._videoRenderer = null;
+			}
+		}
+		else
+		{
+			this.elements.badNetworkIndicator.classList.remove("bx-messenger-videocall-user-bad-network-indicator-visible");
+			if (this._tempVideoRenderer)
+			{
+				this._videoRenderer = this._tempVideoRenderer;
+				this._tempVideoRenderer = null;
+			}
+		}
+
+		this.update();
+	}
+
+	set hasConnectionProblem(hasConnectionProblem)
+	{
+		this._hasConnectionProblem = hasConnectionProblem;
+		if (this._hasConnectionProblem)
+		{
+			this.elements.connectionProblem.classList.add("connection-problem-visible");
+		}
+		else {
+			this.elements.connectionProblem.classList.remove("connection-problem-visible");
+		}
+	}
+
+	showStats(stats)
+	{
+		this.connectionStats = stats;
+		if (this.elements.statsOverlay && this.connectionStatsVisible)
+		{
+			this.showConnectionStats();
+		}
 	}
 
 	render()
@@ -241,6 +373,19 @@ export class CallUser
 						this.elements.state = Dom.create("div", {
 							props: {className: "bx-messenger-videocall-user-status-text"},
 							text: this.getStateMessage(this.userModel.state)
+						}),
+						this.elements.badNetworkIndicator = Dom.create("span", {
+							props: {className: "bx-messenger-videocall-user-bad-network-indicator"},
+							events: {
+								mouseover: (e) =>
+								{
+									this.hintManager.show(e.currentTarget, BX.message("IM_M_CALL_BAD_NETWORK_HINT"));
+								},
+								mouseout: (e) =>
+								{
+									this.hintManager.hide();
+								}
+							}
 						}),
 						Dom.create("div", {
 							props: {className: "bx-messenger-videocall-user-bottom"},
@@ -316,6 +461,9 @@ export class CallUser
 						}),
 						this.elements.floorRequest = Dom.create("div", {
 							props: {className: "bx-messenger-videocall-user-floor-request bx-messenger-videocall-floor-request-icon"}
+						}),
+						this.elements.statsOverlay = Dom.create("div", {
+							props: {className: "bx-messenger-videocall-user-stats-overlay"},
 						})
 					]
 				}),
@@ -339,6 +487,61 @@ export class CallUser
 			this.elements.root.classList.add("bx-messenger-videocall-user-talking");
 		}
 
+		this.elements.debugPanel = Dom.create("div", {
+			props: {className: "bx-messenger-videocall-user-debug-panel"},
+			children: [
+				Dom.create("div", {
+					props: {
+						className: "bx-messenger-videocall-user-debug-panel-button connection-stats"
+					},
+					children: [
+						Dom.create("div", {
+							props: {
+								className: "bx-messenger-videocall-user-debug-panel-button-icon connection-stats-icon"
+							}
+						}),
+					],
+					events: {
+						click: e => {
+							e.stopPropagation();
+							this.connectionStatsVisible = !this.connectionStatsVisible;
+							if (this.connectionStatsVisible)
+							{
+								this.showConnectionStats();
+								this.elements.statsOverlay.classList.add('stats-overlay-visble');
+							}
+							else
+							{
+								this.elements.statsOverlay.classList.remove('stats-overlay-visble');
+							}
+						}
+					}
+				}),
+				this.elements.connectionProblem = Dom.create("div", {
+					props: {
+						className: "bx-messenger-videocall-user-debug-panel-button connection-problem"
+					},
+					children: [
+						Dom.create("div", {
+							props: {
+								className: "bx-messenger-videocall-user-debug-panel-button-icon connection-problem-icon"
+							},
+							events: {
+								mouseover: (e) =>
+								{
+									this.hintManager.show(e.currentTarget, BX.message("IM_M_CALL_POOR_CONNECTION_WITH_USER"));
+								},
+								mouseout: (e) =>
+								{
+									this.hintManager.hide();
+								}
+							}
+						}),
+					]
+				})
+			]
+		});
+
 		if (this.userModel.localUser)
 		{
 			this.elements.root.classList.add("bx-messenger-videocall-user-self");
@@ -356,13 +559,39 @@ export class CallUser
 		this.elements.videoContainer = Dom.create("div", {
 			props: {
 				className: "bx-messenger-videocall-video-container",
-			}, children: [this.elements.video = Dom.create("video", {
-				props: {
-					className: "bx-messenger-videocall-video", volume: 0, autoplay: true
-				}, attrs: {
-					playsinline: true, muted: true
-				}
-			}),]
+			},
+			children: [
+				this.elements.video = Dom.create("video", {
+					props: {
+						className: "bx-messenger-videocall-video", volume: 0, autoplay: true
+					},
+					attrs: {
+						playsinline: true, muted: true
+					}
+				}),
+				Dom.create("div", {
+					props: {
+						className: "bx-messenger-videocall-preview",
+					},
+					children: [
+						Dom.create("div", {
+							props: {
+								className: "bx-messenger-videocall-preview-container",
+							},
+							children: [
+								this.elements.preview = Dom.create("video", {
+									props: {
+										className: "bx-messenger-videocall-preview-video", volume: 0, autoplay: true,
+									},
+									attrs: {
+										playsinline: true, muted: true
+									}
+								})
+							]
+						})
+					]
+				}),
+			]
 		});
 		this.elements.container.appendChild(this.elements.videoContainer);
 
@@ -393,27 +622,6 @@ export class CallUser
 
 		this.elements.container.appendChild(this.elements.removeButton);*/
 
-		this.elements.buttonMask = Dom.create("div", {
-			props: {
-				className: "bx-messenger-videocall-user-panel-button mask"
-			},
-			children: [
-				Dom.create("div", {
-					props: {
-						className: "bx-messenger-videocall-user-panel-button-icon mask"
-					}
-				}),
-				Dom.create("div", {
-					props: {
-						className: "bx-messenger-videocall-user-panel-button-text"
-					},
-					text: BX.message("IM_CALL_CHANGE_MASK")
-				})
-			],
-			events: {
-				click: () => BackgroundDialog.open({'tab': 'mask'})
-			}
-		});
 		this.elements.buttonBackground = Dom.create("div", {
 			props: {
 				className: "bx-messenger-videocall-user-panel-button"
@@ -432,7 +640,10 @@ export class CallUser
 				})
 			],
 			events: {
-				click: () => BackgroundDialog.open()
+				click: e => {
+					e.stopPropagation();
+					BackgroundDialog.open();
+				}
 			}
 		});
 		this.elements.buttonMenu = Dom.create("div", {
@@ -447,7 +658,10 @@ export class CallUser
 				}),
 			],
 			events: {
-				click: () => this.showMenu()
+				click: e => {
+					e.stopPropagation();
+					this.showMenu();
+				}
 			}
 		});
 		this.elements.buttonPin = Dom.create("div", {
@@ -503,6 +717,45 @@ export class CallUser
 		this.updatePanelDeferred();
 		return this.elements.root;
 	};
+
+	showConnectionStats()
+	{
+		if (!this.elements.statsOverlay)
+		{
+			return;
+		}
+
+		let statsString = '';
+
+		const cameraStats = this.connectionStats?.[MediaStreamsKinds.Camera];
+		const screenStats = this.connectionStats?.[MediaStreamsKinds.Screen];
+
+		if (cameraStats || !screenStats)
+		{
+			statsString += `Video track #1 (Camera):\n`;
+			statsString += `Bitrate: ${cameraStats?.bitrate || 0}\n`;
+			statsString += `PacketsLost: ${cameraStats?.packetsLost || 0}\n`;
+			statsString += `Codec: ${cameraStats?.codecName || '-'}\n`;
+			statsString += `Resolution: ${cameraStats?.frameWidth || 0}x${cameraStats?.frameHeight || 0} `;
+			statsString += `(${cameraStats?.framesPerSecond || 0} FPS)`;
+		}
+
+		if (screenStats)
+		{
+			if (cameraStats)
+			{
+				statsString += `\n\n`;
+			}
+			statsString += `Video track #${cameraStats ? 2 : 1} (Screen):\n`;
+			statsString += `Bitrate: ${screenStats?.bitrate || 0}\n`;
+			statsString += `PacketsLost: ${screenStats?.packetsLost || 0}\n`;
+			statsString += `Codec: ${screenStats?.codecName || '-'}\n`;
+			statsString += `Resolution: ${screenStats?.frameWidth || 0}x${screenStats?.frameHeight || 0} `;
+			statsString += `(${screenStats?.framesPerSecond || 0} FPS)`;
+		}
+
+		this.elements.statsOverlay.innerText = statsString;
+	}
 
 	setIncomingVideoConstraints(width, height)
 	{
@@ -847,10 +1100,6 @@ export class CallUser
 		{
 			if (width > 300)
 			{
-				if (this.allowMaskItem)
-				{
-					this.elements.panel.appendChild(this.elements.buttonMask);
-				}
 				this.elements.panel.appendChild(this.elements.buttonBackground);
 			}
 			else
@@ -859,7 +1108,7 @@ export class CallUser
 			}
 		}
 
-		if (!this.userModel.localUser && this.allowPinButton)
+		if (this.allowPinButton)
 		{
 			if (this.userModel.pinned)
 			{
@@ -896,6 +1145,14 @@ export class CallUser
 				if (this.videoRenderer)
 				{
 					this.videoRenderer.render(this.elements.video);
+					if (this._previewRenderer)
+					{
+						this._previewRenderer.render(this.elements.preview);
+					}
+					else
+					{
+						this.elements.preview.srcObject = null;
+					}
 				}
 				else if (this.elements.video.srcObject != this.stream)
 				{
@@ -903,14 +1160,33 @@ export class CallUser
 				}
 			}
 
-			Dom.remove(this.elements.avatarContainer);
-			this.elements.video.classList.toggle("bx-messenger-videocall-video-flipped", this.flipVideo);
+			if (this.videoRenderer?.kind === 'video' && this.flipVideo)
+			{
+				this.elements.video.classList.toggle("bx-messenger-videocall-video-flipped", this.flipVideo);
+				this.elements.preview.classList.toggle("bx-messenger-videocall-video-flipped", !this.flipVideo);
+			}
+			else if (this.videoRenderer?.kind === 'sharing' && this.flipVideo)
+			{
+				this.elements.video.classList.toggle("bx-messenger-videocall-video-flipped", !this.flipVideo);
+				this.elements.preview.classList.toggle("bx-messenger-videocall-video-flipped", this.flipVideo);
+			}
+			else
+			{
+				this.elements.video.classList.toggle("bx-messenger-videocall-video-flipped", this.flipVideo);
+			}
 			this.elements.video.classList.toggle("bx-messenger-videocall-video-contain", this.userModel.screenState);
 		}
 		else
 		{
 			this.elements.video.srcObject = null;
-			this.elements.container.insertBefore(this.elements.avatarContainer, this.elements.panel);
+			this.elements.preview.srcObject = null;
+		}
+		if (Util.isBitrixCallServerAllowed()
+			&& this.userModel.state === UserState.Connected
+			&& !this.userModel.localUser
+			&& !this.elements.debugPanel.parentElement)
+		{
+			this.elements.container.appendChild(this.elements.debugPanel);
 		}
 		this.updatePanelDeferred();
 	};
@@ -943,6 +1219,10 @@ export class CallUser
 		if (this.elements.video)
 		{
 			this.elements.video.play().catch(logPlaybackError);
+		}
+		if (this.elements.preview)
+		{
+			this.elements.preview.play().catch(logPlaybackError);
 		}
 	};
 
@@ -1034,6 +1314,14 @@ export class CallUser
 		else
 		{
 			this.elements.avatar.classList.remove("bx-messenger-videocall-user-avatar-pulse");
+		}
+
+		if (this.userModel.state == UserState.Idle)
+		{
+			this._videoRenderer = null;
+			this._previewRenderer = null;
+			this._audioTrack = null;
+			this._audioStream = null;
 		}
 
 		this.elements.state.innerText = this.getStateMessage(this.userModel.state, this.userModel.videoPaused);
@@ -1129,10 +1417,14 @@ export class CallUser
 		if (this.userModel.floorRequestState)
 		{
 			this.elements.floorRequest.classList.add("active");
+			this.elements.debugPanel.classList.add('under-other-panels');
+			this.elements.statsOverlay.classList.add('under-other-panels');
 		}
 		else
 		{
 			this.elements.floorRequest.classList.remove("active");
+			this.elements.debugPanel.classList.remove('under-other-panels');
+			this.elements.statsOverlay.classList.remove('under-other-panels');
 		}
 	};
 
@@ -1177,6 +1469,11 @@ export class CallUser
 		return this.userModel.state == UserState.Connected && (!!this._videoTrack || !!this._videoRenderer);
 	};
 
+	hasCameraVideo()
+	{
+		return this.userModel.state == UserState.Connected && (!!this._videoTrack || this._videoRenderer?.kind === 'video' || this._previewRenderer?.kind === 'video');
+	}
+
 	checkVideoAspect()
 	{
 		if (!this.elements.video)
@@ -1196,15 +1493,31 @@ export class CallUser
 
 	releaseStream()
 	{
-		if (this.elements.video)
+		if (this._videoRenderer && !this._previewRenderer)
 		{
-			this.elements.video.srcObject = null;
+			if (this.elements.video)
+			{
+				this.elements.video.srcObject = null;
+			}
+			this._videoRenderer = null;
 		}
-		this.videoTrack = null;
+		else
+		{
+			if (this.elements.video)
+			{
+				this.elements.video.srcObject = null;
+			}
+			this.videoTrack = null;
+		}
 	};
 
 	destroy()
 	{
+		if (this.hintManager)
+		{
+			this.hintManager.hide();
+			this.hintManager = null;
+		}
 		this.releaseStream();
 		clearInterval(this.checkAspectInterval);
 	};

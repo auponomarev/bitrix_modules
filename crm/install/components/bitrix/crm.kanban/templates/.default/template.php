@@ -5,6 +5,19 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 	die();
 }
 
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
+use Bitrix\Crm\Category\DealCategory;
+use Bitrix\Crm\Conversion\EntityConverter;
+use Bitrix\Crm\Conversion\LeadConversionScheme;
+use Bitrix\Crm\Integration\NotificationsManager;
+use Bitrix\Crm\Integration\PullManager;
+use Bitrix\Crm\Kanban\Helper;
+use Bitrix\Crm\Service\Container;
+use Bitrix\Crm\Settings\CounterSettings;
+use Bitrix\Crm\Tour;
+use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\UI\Extension;
+
 /**
  * @var array $arParams
  * @var array $arResult
@@ -19,18 +32,6 @@ if (isset($arResult['ERROR']))
 	return;
 }
 
-use Bitrix\Crm\Category\DealCategory;
-use Bitrix\Crm\Conversion\EntityConverter;
-use Bitrix\Crm\Conversion\LeadConversionScheme;
-use Bitrix\Crm\Integration\NotificationsManager;
-use Bitrix\Crm\Integration\PullManager;
-use Bitrix\Crm\Kanban\Helper;
-use Bitrix\Crm\Service\Container;
-use Bitrix\Crm\Settings\CounterSettings;
-use Bitrix\Crm\Tour;
-use Bitrix\Main\Localization\Loc;
-use Bitrix\Main\UI\Extension;
-
 Loc::loadMessages(__FILE__);
 
 $this->addExternalCss('/bitrix/themes/.default/crm-entity-show.css');
@@ -43,28 +44,14 @@ $APPLICATION->setPageProperty("BodyClass",
 
 $data = $arResult['ITEMS'];
 $date = new \Bitrix\Main\Type\Date;
-$isBitrix24 = \Bitrix\Main\ModuleManager::isModuleInstalled('bitrix24');
+$contactCenterUrl = Container::getInstance()->getRouter()->getContactCenterUrl();
 // $demoAccess =
 // 	\CJSCore::IsExtRegistered('intranet_notify_dialog')
 // 	&& \Bitrix\Main\ModuleManager::isModuleInstalled('im')
 // ;
 
 // js extension reg
-Extension::load(
-	[
-		'ui.actionpanel',
-		'ui.notification',
-	]
-);
-
-if (
-	!empty($arResult['CLIENT_FIELDS_RESTRICTIONS'])
-	|| !empty($arResult['OBSERVERS_FIELD_RESTRICTIONS'])
-	|| !empty($arResult['ACTIVITY_FIELD_RESTRICTIONS'])
-)
-{
-	Extension::load(['crm.restriction.filter-fields']);
-}
+Extension::load(['ui.actionpanel', 'ui.notification']);
 
 \CJSCore::registerExt('crm_common', array(
 	'js' => array('/bitrix/js/crm/crm.js', '/bitrix/js/crm/common.js')
@@ -232,8 +219,8 @@ else
 								lead: "/bitrix/components/bitrix/crm.lead.details/ajax.php?<?= bitrix_sessid_get();?>",
 								deal: "/bitrix/components/bitrix/crm.deal.details/ajax.php?<?= bitrix_sessid_get();?>"
 							},
-							headersSections: <?= \CUtil::PhpToJSObject($arResult['HEADERS_SECTIONS'])?>,
-							defaultHeaderSectionId: "<?= \CUtil::JSEscape($arResult['DEFAULT_HEADER_SECTION_ID']) ?>",
+							headersSections: <?= \CUtil::PhpToJSObject($arResult['HEADERS_SECTIONS'] ?? [])?>,
+							defaultHeaderSectionId: "<?= \CUtil::JSEscape($arResult['DEFAULT_HEADER_SECTION_ID'] ?? '') ?>",
 							params: <?= json_encode($arParams['EXTRA'])?>,
 							gridId: "<?=\CUtil::JSEscape($gridId)?>",
 							showActivity: <?= $showActivity ?>,
@@ -253,6 +240,7 @@ else
 							admins: <?= \CUtil::PhpToJSObject(array_values($arResult['ADMINS']))?>,
 							userId: <?= $arParams['USER_ID'];?>,
 							currentUser: <?=\Bitrix\Main\Web\Json::encode($arParams['LAYOUT_CURRENT_USER'])?>,
+							pingSettings: <?=\Bitrix\Main\Web\Json::encode($arParams['PING_SETTINGS'])?>,
 							customFields: <?= \CUtil::phpToJSObject(array_keys($arResult['MORE_FIELDS']));?>,
 							customEditFields: <?= \CUtil::phpToJSObject(array_keys($arResult['MORE_EDIT_FIELDS']));?>,
 							customSectionsFields: <?= \CUtil::phpToJSObject($arResult['FIELDS_SECTIONS']);?>,
@@ -260,7 +248,7 @@ else
 							userSelectorId: "kanban_multi_actions",
 							linksPath: {
 								marketplace: {
-									url: "/marketplace/category/migration/?from=kanban"
+									url: "<?= \CUtil::jsEscape(\Bitrix\Crm\Integration\Market\Router::getCategoryPath('migration', ['from' => 'kanban']));?>"
 								},
 								importexcel: {
 									url: "<?= \CUtil::jsEscape($arParams['PATH_TO_IMPORT']);?>"
@@ -269,7 +257,7 @@ else
 									url: "<?= \CUtil::jsEscape($arParams['PATH_TO_DEAL_KANBANCATEGORY']);?>"
 								},
 								contact_center: {
-									url: "<?= $isBitrix24 ? '/contact_center/?from=kanban' : '/services/contact_center/?from=kanban';?>"
+									url: "<?= $contactCenterUrl->addParams(['from' => 'kanban']) ?>",
 								},
 								rest_demo: {
 									url: "<?= $arParams['REST_DEMO_URL'];?>",
@@ -289,6 +277,7 @@ else
 								// We use negation so as not to confuse when working, since the default has always been allowed
 								addItemNotPermittedByTariff: <?= !($arParams['EXTRA']['ADD_ITEM_PERMITTED_BY_TARIFF'] ?? true) ? 'true' : 'false' ?>,
 							},
+							showErrorCounterByActivityResponsible: <?= $arResult['SHOW_ERROR_COUNTER_BY_ACTIVITY_RESPONSIBLE'] ? 'true' : 'false' ?>,
 						}
 				}
 			);
@@ -340,29 +329,39 @@ else
 			<?endif;?>
 
 			<?php
-				if (\Bitrix\Crm\Settings\Crm::isUniversalActivityScenarioEnabled()):
-					$todoCreateNotification = (new \Bitrix\Crm\Activity\TodoCreateNotification($entityTypeId));
-					$todoCreateNotificationSkipPeriod = $todoCreateNotification->getCurrentSkipPeriod();
-					$factory = Container::getInstance()->getFactory($entityTypeId);
-					$smartActivityNotificationSupported = $factory && $factory->isSmartActivityNotificationSupported();
+				Extension::load('crm.settings-button-extender');
+				$todoCreateNotification = (new \Bitrix\Crm\Activity\TodoCreateNotification($entityTypeId));
+				$todoCreateNotificationSkipPeriod = $todoCreateNotification->getCurrentSkipPeriod();
+				$factory = Container::getInstance()->getFactory($entityTypeId);
+				$smartActivityNotificationSupported = $factory && $factory->isSmartActivityNotificationSupported();
 			?>
-				BX.Runtime.loadExtension('crm.push-crm-settings').then((exports) => {
-					const PushCrmSettings = exports.PushCrmSettings;
-
-					/** @see BX.Crm.PushCrmSettings */
-					new PushCrmSettings({
-						smartActivityNotificationSupported: <?= $smartActivityNotificationSupported ? 'true' : 'false' ?>,
-						entityTypeId: <?= $entityTypeId ?>,
-						rootMenu: Kanban.getSettingsButtonMenu(),
-						targetItemId: 'crm_kanban_cc_delimiter',
-						controller: BX.CRM.Kanban.Sort.SettingsController.Instance,
-						restriction: BX.CRM.Kanban.Restriction.Instance,
-						<?php if (is_string($todoCreateNotificationSkipPeriod)): ?>
-						todoCreateNotificationSkipPeriod: '<?= \CUtil::JSEscape($todoCreateNotificationSkipPeriod) ?>',
-						<?php endif; ?>
-					});
+			const settingsMenu = Kanban.getSettingsButtonMenu();
+			if (settingsMenu)
+			{
+				new BX.Crm.SettingsButtonExtender({
+					smartActivityNotificationSupported: <?= $smartActivityNotificationSupported ? 'true' : 'false' ?>,
+					entityTypeId: <?= $entityTypeId ?>,
+					categoryId: <?= isset($arParams['EXTRA']['CATEGORY_ID']) ? (int)$arParams['EXTRA']['CATEGORY_ID'] : 'null' ?>,
+					pingSettings: <?= CUtil::PhpToJSObject((new TodoPingSettingsProvider($entityTypeId, (int)($arParams['EXTRA']['CATEGORY_ID'] ?? 0)))->fetchAll()) ?>,
+					rootMenu: settingsMenu,
+					targetItemId: 'crm_kanban_cc_delimiter',
+					controller: BX.CRM.Kanban.Sort.SettingsController.Instance,
+					restriction: BX.CRM.Kanban.Restriction.Instance,
+					<?php if (is_string($todoCreateNotificationSkipPeriod)): ?>
+					todoCreateNotificationSkipPeriod: '<?= \CUtil::JSEscape($todoCreateNotificationSkipPeriod) ?>',
+					<?php endif; ?>
+					<?php if (
+					\Bitrix\Crm\Integration\AI\AIManager::isAiCallAutomaticProcessingAllowed()
+					&& in_array($entityTypeId, \Bitrix\Crm\Integration\AI\AIManager::SUPPORTED_ENTITY_TYPE_IDS, true)
+					&& Container::getInstance()->getUserPermissions()->isAdmin()
+					): ?>
+					aiAutostartSettings: '<?= \Bitrix\Main\Web\Json::encode(\Bitrix\Crm\Integration\AI\Operation\AutostartSettings::get(
+						$entityTypeId,
+						isset($arParams['EXTRA']['CATEGORY_ID']) ? (int)$arParams['EXTRA']['CATEGORY_ID'] : null,
+					)) ?>',
+					<?php endif; ?>
 				});
-			<?php endif; ?>
+			}
 		}
 	);
 </script>
@@ -441,29 +440,10 @@ else
 	NotificationsManager::showSignUpFormOnCrmShopCreated();
 	print (Tour\SortByLastActivityTime::getInstance())->build();
 endif;
-if (!empty($arResult['CLIENT_FIELDS_RESTRICTIONS'])):?>
-		<script type="text/javascript">
-		BX.ready(
-			function()
-			{
-				new BX.Crm.Restriction.FilterFieldsRestriction(
-					<?=CUtil::PhpToJSObject($arResult['CLIENT_FIELDS_RESTRICTIONS'])?>
-				);
-			}
-		);
-		</script>
-<?endif;?>
-<?if (!empty($arResult['OBSERVERS_FIELD_RESTRICTIONS'])):?>
-	<script type="text/javascript">
-		BX.ready(
-			function()
-			{
-				new BX.Crm.Restriction.FilterFieldsRestriction(
-					<?=CUtil::PhpToJSObject($arResult['OBSERVERS_FIELD_RESTRICTIONS'])?>
-				);
-			}
-		);
-	</script>
-<?endif;
 
-echo $arResult['ACTIVITY_FIELD_RESTRICTIONS'] ?? '';
+if (!empty($arResult['RESTRICTED_FIELDS_ENGINE']))
+{
+	Extension::load(['crm.restriction.filter-fields']);
+
+	echo $arResult['RESTRICTED_FIELDS_ENGINE'];
+}

@@ -185,17 +185,35 @@
 			 */
 			function isBlockLink(url)
 			{
-				if (url !== null)
+				if (url !== null && (url === '#' || url.startsWith('#/')))
 				{
-					if (url === '#' || url.startsWith('#/'))
-					{
-						return false;
-					}
+					return false;
 				}
-				const urlObj = new URL(url, document.location);
-				return urlObj.hash !== ''
-					&& urlObj.pathname === document.location.pathname
-					&& urlObj.hostname === document.location.hostname;
+
+				if (isValidURL(url))
+				{
+					const urlObj = new URL(url, document.location);
+
+					return urlObj.hash !== ''
+						&& urlObj.pathname === document.location.pathname
+						&& urlObj.hostname === document.location.hostname;
+				}
+
+				return false;
+			}
+
+			function isValidURL(url)
+			{
+				try
+				{
+					new URL(url);
+
+					return true;
+				}
+				catch
+				{
+					return false;
+				}
 			}
 
 			// height of float header
@@ -244,6 +262,10 @@
 					else if (link.hasAttribute('data-pseudo-url'))
 					{
 						const linkOptions = BX.Landing.Utils.data(link, "data-pseudo-url");
+						if (isValidAnchor(linkOptions.href))
+						{
+							linkOptions.href = window.location.origin + window.location.pathname + linkOptions.href;
+						}
 						const urlObj = new URL(linkOptions.href);
 						targetSelector = urlObj.hash;
 						urlForHistory = urlObj.href;
@@ -297,11 +319,44 @@
 							linkOptions.href += (linkOptions.href.indexOf('?') === -1) ? '?' : '&';
 							linkOptions.href += linkOptions.query;
 						}
-						top.open(linkOptions.href, linkOptions.target);
+
+						if (isValidURL(linkOptions.href))
+						{
+							top.open(linkOptions.href, linkOptions.target);
+						}
+
+						if (isValidAnchor(linkOptions.href))
+						{
+							onBlockLinkClick(event);
+						}
 					}
 				}
 			}
 			// endregion
+
+			function isValidAnchor(anchor)
+			{
+				if (anchor.charAt(0) !== '#' || anchor.length === 1)
+				{
+					return false;
+				}
+				const regex = /^[\w-]+$/;
+
+				return regex.test(anchor.slice(1));
+			}
 		}
+
+		document.addEventListener('DOMContentLoaded', () => {
+			const elements = document.querySelectorAll('[style]');
+			for (const element of elements)
+			{
+				let styleValue = element.getAttribute('style');
+				if (styleValue)
+				{
+					styleValue = styleValue.replaceAll(/--[\w-]*: ;/gi, '');
+					element.setAttribute('style', styleValue);
+				}
+			}
+		});
 	});
 })();

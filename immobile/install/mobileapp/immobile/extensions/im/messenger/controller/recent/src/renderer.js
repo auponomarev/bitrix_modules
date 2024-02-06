@@ -1,27 +1,21 @@
 /* eslint-disable flowtype/require-return-type */
-/* eslint-disable bitrix-rules/no-bx */
-/* eslint-disable bitrix-rules/no-pseudo-private */
 
 /**
  * @module im/messenger/controller/recent/renderer
  */
 jn.define('im/messenger/controller/recent/renderer', (require, exports, module) => {
-
 	const { Type } = require('type');
-	const { Logger } = require('im/messenger/lib/logger');
+
 	const { RecentConverter } = require('im/messenger/lib/converter');
 	const { Worker } = require('im/messenger/lib/helper/worker');
+	const { LoggerManager } = require('im/messenger/lib/logger');
+	const logger = LoggerManager.getInstance().getLogger('recent--renderer');
 
 	/**
 	 * @class RecentRenderer
 	 *
 	 * Designed to reduce the number of redraw for RecentView (dialogList).
 	 * Collects items to add and modify in update queue and applies at a time.
-	 *
-	 * @property {RecentView} _view
-	 * @property {Object} _updateQueue
-	 * @property {Worker} _updateWorker
-	 * @property {Worker} _listUpdateWorker
 	 */
 	class RecentRenderer
 	{
@@ -31,42 +25,46 @@ jn.define('im/messenger/controller/recent/renderer', (require, exports, module) 
 		 */
 		constructor(options = {})
 		{
-			this._view = options.view;
-
 			this.ACTION_ADD = 'add';
 			this.ACTION_UPDATE = 'update';
 
-			this._updateQueue = {};
+			/** @private */
+			this.view = options.view;
+
+			/** @private */
+			this.updateQueue = {};
 			this.resetQueue();
 
-			this._nextTickCallbackList = [];
+			/** @private */
+			this.nextTickCallbackList = [];
 
-			this._updateWorker = new Worker({
+			/** @private */
+			this.updateWorker = new Worker({
 				frequency: 1000,
 				callback: this.render.bind(this),
 			});
 
-			this._updateWorker.start();
+			this.updateWorker.start();
 		}
 
 		resetQueue()
 		{
-			this._getSupportedActions().forEach((actionId) => {
-				this._updateQueue[actionId] = {};
+			this.getSupportedActions().forEach((actionId) => {
+				this.updateQueue[actionId] = {};
 			});
 		}
 
 		do(action, items)
 		{
-			if (!this._isActionSupported(action))
+			if (!this.isActionSupported(action))
 			{
-				Logger.error('RecentRenderer: Unsupported action', action);
+				logger.error('RecentRenderer: Unsupported action', action);
 
 				return false;
 			}
 
 			items.forEach((item) => {
-				this._updateQueue[action][item.id] = item;
+				this.updateQueue[action][item.id] = item;
 			});
 
 			return true;
@@ -74,26 +72,26 @@ jn.define('im/messenger/controller/recent/renderer', (require, exports, module) 
 
 		add(itemList)
 		{
-			this._view.addItems(RecentConverter.toList(itemList));
+			this.view.addItems(RecentConverter.toList(itemList));
 		}
 
 		update(itemList)
 		{
-			itemList = RecentConverter.toList(itemList);
-			itemList = itemList.map(item => {
+			let viewItemList = RecentConverter.toList(itemList);
+			viewItemList = viewItemList.map((item) => {
 				return {
 					filter: { id: item.id.toString() },
 					element: item,
 				};
 			});
 
-			this._view.updateItems(itemList);
+			this.view.updateItems(viewItemList);
 		}
 
 		removeFromQueue(itemId)
 		{
-			this._getSupportedActions().forEach((actionId) => {
-				delete this._updateQueue[actionId][itemId];
+			this.getSupportedActions().forEach((actionId) => {
+				delete this.updateQueue[actionId][itemId];
 			});
 		}
 
@@ -102,13 +100,13 @@ jn.define('im/messenger/controller/recent/renderer', (require, exports, module) 
 			const renderStart = Date.now();
 			let isViewChanged = false;
 
-			Object.keys(this._updateQueue).forEach((action) => {
+			Object.keys(this.updateQueue).forEach((action) => {
 				const itemList = [];
 
-				Object.keys(this._updateQueue[action]).forEach(itemId => {
-					itemList.push(this._updateQueue[action][itemId]);
+				Object.keys(this.updateQueue[action]).forEach((itemId) => {
+					itemList.push(this.updateQueue[action][itemId]);
 
-					delete this._updateQueue[action][itemId];
+					delete this.updateQueue[action][itemId];
 				});
 
 				if (itemList.length > 0)
@@ -117,18 +115,18 @@ jn.define('im/messenger/controller/recent/renderer', (require, exports, module) 
 
 					this[action](itemList);
 
-					Logger.info('RecentRenderer.' + action + ' items:', itemList);
+					logger.info(`RecentRenderer.${action} items:`, itemList);
 				}
 			});
 
 			if (isViewChanged)
 			{
-				this._nextTickCallbackList.forEach(callback => callback());
-				this._nextTickCallbackList = [];
+				this.nextTickCallbackList.forEach((callback) => callback());
+				this.nextTickCallbackList = [];
 
 				const renderFinish = Date.now();
 
-				Logger.info('RecentRenderer.render time:', renderFinish - renderStart + 'ms.');
+				logger.info('RecentRenderer.render time:', `${renderFinish - renderStart}ms.`);
 			}
 		}
 
@@ -136,13 +134,16 @@ jn.define('im/messenger/controller/recent/renderer', (require, exports, module) 
 		{
 			if (!Type.isFunction(callback))
 			{
-				throw new Error('RecentRenderer.nextTick: callback must be a function');
+				throw new TypeError('RecentRenderer.nextTick: callback must be a function');
 			}
 
-			this._nextTickCallbackList.push(callback);
+			this.nextTickCallbackList.push(callback);
 		}
 
-		_getSupportedActions()
+		/**
+		 * @private
+		 */
+		getSupportedActions()
 		{
 			return new Set([
 				this.ACTION_ADD,
@@ -150,9 +151,12 @@ jn.define('im/messenger/controller/recent/renderer', (require, exports, module) 
 			]);
 		}
 
-		_isActionSupported(action)
+		/**
+		 * @private
+		 */
+		isActionSupported(action)
 		{
-			return this._getSupportedActions().has(action);
+			return this.getSupportedActions().has(action);
 		}
 	}
 

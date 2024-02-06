@@ -1,4 +1,6 @@
-<?
+<?php
+
+use Bitrix\Main\Application;
 use Bitrix\Main\Composite;
 use Bitrix\Main\Composite\Helper;
 use Bitrix\Main\Composite\Internals\AutomaticArea;
@@ -6,7 +8,6 @@ use Bitrix\Main\Config\Option;
 use Bitrix\Main\Config\Configuration;
 
 require_once($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_admin_before.php");
-require_once($_SERVER["DOCUMENT_ROOT"].BX_ROOT."/modules/main/prolog.php");
 define("HELP_FILE", "settings/composite.php");
 /** @var CUser $USER */
 /** @var CMain $APPLICATION */
@@ -275,7 +276,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" &&
 		}
 
 		Helper::setOptions($compositeOptions);
-		bx_accelerator_reset();
+		Application::resetAccelerator();
 		LocalRedirect("/bitrix/admin/composite.php?lang=".LANGUAGE_ID."&".$tabControl->ActiveTabParam());
 	}
 }

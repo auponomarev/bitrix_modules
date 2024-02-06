@@ -14,6 +14,7 @@ use Bitrix\Main\UI\Filter\DateType;
 use Bitrix\Main\Web\Uri;
 use Bitrix\Report\VisualConstructor\IReportMultipleGroupedData;
 use Bitrix\Crm\Integration\Report\Handler;
+use Bitrix\Main\Application;
 
 /**
  * Class Deal
@@ -33,7 +34,7 @@ class BaseGraph extends Handler\Deal implements IReportMultipleGroupedData
 	public function prepare()
 	{
 		$filterParameters = $this->getFilterParameters();;
-		$categoryId = $filterParameters['CATEGORY_ID']['value'] ?: 0;
+		$categoryId = $filterParameters['CATEGORY_ID']['value'] ?? 0;
 		$userPermission = \CCrmPerms::GetCurrentUserPermissions();
 		if (!\CCrmDeal::CheckReadPermission(0, $userPermission, $categoryId))
 		{
@@ -50,14 +51,15 @@ class BaseGraph extends Handler\Deal implements IReportMultipleGroupedData
 	{
 		$filterParameters = $this->getFilterParameters();
 		$this->addToQueryFilterCase($query, $filterParameters);
-		$this->addTimePeriodToQuery($query, $filterParameters['TIME_PERIOD']);
+		$this->addTimePeriodToQuery($query, $filterParameters['TIME_PERIOD'] ?? null);
 
 		$this->addPermissionsCheck($query);
 
 		$query->addSelect(Query::expr()->sum('OPPORTUNITY'), 'SUM');
 
 		$closedDateFormat = $this->getDateGrouping() === static::GROUP_MONTH ? '%%Y-%%m-01' : '%%Y-%%m-%%d';
-		$query->addSelect(new ExpressionField("CLOSED", "DATE_FORMAT(%s, '{$closedDateFormat}')", "CLOSEDATE"));
+		$helper = Application::getConnection()->getSqlHelper();
+		$query->addSelect(new ExpressionField('CLOSED', $helper->formatDate($closedDateFormat, '%s'), 'CLOSEDATE'));
 
 		$query->addSelect("CURRENCY_ID");
 
@@ -220,7 +222,7 @@ class BaseGraph extends Handler\Deal implements IReportMultipleGroupedData
 
 	protected function addTimePeriodToQuery(Query $query, $timePeriodValue)
 	{
-		if ($timePeriodValue['from'] !== "" && $timePeriodValue['to'] !== "")
+		if (($timePeriodValue['from'] ?? '') !== '' && ($timePeriodValue['to'] ?? '') !== '')
 		{
 			$toDateValue = new DateTime($timePeriodValue['to']);
 			$fromDateValue = new DateTime($timePeriodValue['from']);

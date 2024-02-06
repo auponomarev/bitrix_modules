@@ -1,10 +1,12 @@
-import {Loc, Tag, Dom, Event, Type} from 'main.core';
-import {EventEmitter, BaseEvent} from 'main.core.events';
-import {Util} from 'calendar.util';
+import { Dom, Event, Loc, Tag, Type } from 'main.core';
+import { EventEmitter } from 'main.core.events';
+import { Button, ButtonSize, ButtonColor, ButtonIcon } from 'ui.buttons';
+import { MessageBox } from 'ui.dialogs.messagebox';
+import { Util } from 'calendar.util';
 import DialogNew from './dialog-new';
 import 'ui.switcher';
 import 'spotlight';
-import {Guide} from "ui.tour";
+import { Guide } from 'ui.tour';
 import { Counter } from 'ui.cnt';
 
 export default class SharingButton
@@ -14,31 +16,42 @@ export default class SharingButton
 	PAY_ATTENTION_TO_NEW_FEATURE_FIRST = 'first-feature';
 	PAY_ATTENTION_TO_NEW_FEATURE_NEW = 'new-feature';
 	PAY_ATTENTION_TO_NEW_FEATURE_REMIND = 'remind-feature';
+	PAY_ATTENTION_TO_NEW_FEATURE_JOINT = 'joint-sharing'
 
 	PAY_ATTENTION_TO_NEW_FEATURE_WITHOUT_TEXT_MODS = [this.PAY_ATTENTION_TO_NEW_FEATURE_FIRST];
-	PAY_ATTENTION_TO_NEW_FEATURE_WITH_TEXT_MODS = [this.PAY_ATTENTION_TO_NEW_FEATURE_NEW, this.PAY_ATTENTION_TO_NEW_FEATURE_REMIND];
+	PAY_ATTENTION_TO_NEW_FEATURE_WITH_TEXT_MODS = [
+		this.PAY_ATTENTION_TO_NEW_FEATURE_NEW,
+		this.PAY_ATTENTION_TO_NEW_FEATURE_REMIND,
+
+	];
+
 	AVAILABLE_PAY_ATTENTION_TO_NEW_FEATURE_MODS = [
 		...this.PAY_ATTENTION_TO_NEW_FEATURE_WITHOUT_TEXT_MODS,
-		...this.PAY_ATTENTION_TO_NEW_FEATURE_WITH_TEXT_MODS
+		...this.PAY_ATTENTION_TO_NEW_FEATURE_WITH_TEXT_MODS,
 	];
 
 	constructor(options = {})
 	{
 		this.wrap = options.wrap;
-		this.userId = options.userId;
+		this.userInfo = options.userInfo || null;
 		this.sharingConfig = Util.getSharingConfig();
 		this.sharingUrl = this.sharingConfig?.url || null;
+		this.linkHash = this.sharingConfig?.hash || null;
+		this.sharingRule = this.sharingConfig?.rule || null;
 		this.payAttentionToNewFeatureMode = options.payAttentionToNewFeature;
+		this.sharingFeatureLimit = options.sharingFeatureLimit;
+		this.sharingSettingsCollapsed = options.sharingSettingsCollapsed;
 	}
 
 	show()
 	{
 		Dom.addClass(this.wrap, 'calendar-sharing__btn-wrap');
-		this.button = new BX.UI.Button({
+		this.button = new Button({
 			text: Loc.getMessage('SHARING_BUTTON_TITLE'),
 			round: true,
-			size: BX.UI.Button.Size.EXTRA_SMALL,
-			color: BX.UI.Button.Color.LIGHT_BORDER,
+			size: ButtonSize.EXTRA_SMALL,
+			color: ButtonColor.LIGHT_BORDER,
+			icon: this.sharingFeatureLimit ? ButtonIcon.LOCK : null,
 			className: 'ui-btn-themes calendar-sharing__btn',
 			onclick: (button, event) => {
 				if (!this.switcher.getNode().contains(event.target))
@@ -51,43 +64,49 @@ export default class SharingButton
 		this.button.renderTo(this.wrap);
 		this.renderSwitcher();
 
-		if (this.AVAILABLE_PAY_ATTENTION_TO_NEW_FEATURE_MODS.includes(this.payAttentionToNewFeatureMode))
+		if (this.payAttentionToNewFeatureMode === this.PAY_ATTENTION_TO_NEW_FEATURE_JOINT)
 		{
-			this.payAttentionToNewFeature(this.payAttentionToNewFeatureMode);
-			BX.ajax.runAction('calendar.api.sharingajax.disableOptionPayAttentionToNewSharingFeature');
+			setTimeout(() => {
+				if (BX.SidePanel.Instance.getTopSlider() === null)
+				{
+					this.payAttentionToNewFeatureWithText();
+					BX.ajax.runAction('calendar.api.sharingajax.disableOptionPayAttentionToNewSharingFeature');
+				}
+			}, this.PAY_ATTENTION_TO_NEW_FEATURE_DELAY);
 		}
 	}
 
 	handleSharingButtonClick()
 	{
-		if (!this.isSharingEnabled())
+		if (this.sharingFeatureLimit)
 		{
-			this.switcher.toggle();
+			top.BX.UI.InfoHelper.show('limit_office_calendar_free_slots');
+
+			return;
+		}
+
+		if (this.isSharingEnabled())
+		{
+			this.openDialog();
 		}
 		else
 		{
-			this.openDialog();
+			this.switcher.toggle();
 		}
 	}
 
 	getSwitcherContainer()
 	{
-		const switcherContainer = Tag.render`
-			<div class="calendar-sharing__switcher">
-				
-			</div>
+		return Tag.render`
+			<div class="calendar-sharing__switcher"></div>
 		`;
-
-		return switcherContainer;
 	}
 
 	getSwitcherDivider()
 	{
-		const switcherDivider = Tag.render`
+		return Tag.render`
 			<div class="calendar-sharing__switcher_divider"></div>
 		`;
-
-		return switcherDivider;
 	}
 
 	renderSwitcher()
@@ -95,11 +114,11 @@ export default class SharingButton
 		Dom.append(this.getSwitcherDivider(), this.wrap);
 		this.switcherWrap = Tag.render`<div class="calendar-sharing__switcher-wrap"></div>`;
 		Dom.append(this.switcherWrap, this.wrap);
-		Event.bind(this.switcherWrap, 'click', this.handleSwitcherWrapClick.bind(this), {capture: true});
+		Event.bind(this.switcherWrap, 'click', this.handleSwitcherWrapClick.bind(this), { capture: true });
 
 		this.switcher = new BX.UI.Switcher({
 			node: this.getSwitcherContainer(),
-			checked: this.isSharingEnabled(),
+			checked: this.isSharingEnabled() && !this.sharingFeatureLimit,
 			color: 'green',
 			size: 'small',
 			handlers: {
@@ -118,12 +137,22 @@ export default class SharingButton
 			event.stopPropagation();
 		}
 	}
+
 	handleSwitcherToggled()
 	{
+		if (this.sharingFeatureLimit && this.switcher.isChecked())
+		{
+			top.BX.UI.InfoHelper.show('limit_office_calendar_free_slots');
+			this.switcher.toggle();
+
+			return;
+		}
+
 		if (this.isToggledAfterErrorOccurred())
 		{
 			return;
 		}
+
 		if (this.switcher.isChecked())
 		{
 			this.enableSharing();
@@ -152,14 +181,16 @@ export default class SharingButton
 		BX.ajax.runAction(action)
 			.then((response) => {
 				this.sharingUrl = response.data.url;
+				this.linkHash = response.data.hash;
+				this.sharingRule = response.data.rule;
 				this.openDialog();
 
 				EventEmitter.emit(
 					event,
 					{
-						'isChecked': this.switcher.isChecked(),
-						'url': response.data.url,
-					}
+						isChecked: this.switcher.isChecked(),
+						url: response.data.url,
+					},
 				);
 			})
 			.catch(() => {
@@ -178,14 +209,23 @@ export default class SharingButton
 			this.newDialog = new DialogNew({
 				bindElement: this.button.getContainer(),
 				sharingUrl: this.sharingUrl,
-				context: "calendar",
+				linkHash: this.linkHash,
+				sharingRule: this.sharingRule,
+				context: 'calendar',
+				calendarSettings: {
+					weekHolidays: Util.config.week_holidays,
+					weekStart: Util.config.week_start,
+					workTimeStart: Util.config.work_time_start,
+					workTimeEnd: Util.config.work_time_end,
+				},
+				userInfo: this.userInfo,
+				settingsCollapsed: this.sharingSettingsCollapsed,
 			});
 		}
 
 		if (!this.newDialog.isShown())
 		{
 			this.newDialog.show();
-			this.newDialog.copyLink();
 		}
 	}
 
@@ -203,7 +243,7 @@ export default class SharingButton
 					this.newDialog.destroy();
 					this.newDialog = null;
 				}
-				EventEmitter.emit(event, {'isChecked': this.switcher.isChecked()});
+				EventEmitter.emit(event, { isChecked: this.switcher.isChecked() });
 			})
 			.catch(() => {
 				this.switcher.toggle();
@@ -215,17 +255,18 @@ export default class SharingButton
 	{
 		if (!this.warningPopup)
 		{
-			this.warningPopup = new BX.UI.Dialogs.MessageBox({
-				title: Loc.getMessage('SHARING_WARNING_POPUP_TITLE'),
-				message: Loc.getMessage('SHARING_WARNING_POPUP_CONTENT'),
+			this.warningPopup = new MessageBox({
+				title: Loc.getMessage('SHARING_WARNING_POPUP_TITLE_1'),
+				message: Loc.getMessage('SHARING_WARNING_POPUP_CONTENT_2'),
 				buttons: this.getWarningPopupButtons(),
 				popupOptions: {
 					autoHide: true,
 					closeByEsc: true,
-					draggable: true,
+					draggable: false,
 					closeIcon: true,
 					minWidth: 365,
-					maxWidth: 365,
+					maxWidth: 385,
+					minHeight: 180,
 				},
 			});
 		}
@@ -235,30 +276,30 @@ export default class SharingButton
 
 	getWarningPopupButtons()
 	{
-		return [this.getSubmitButton(), this.getCancelButton()]
+		return [this.getSubmitButton(), this.getCancelButton()];
 	}
 
 	getSubmitButton()
 	{
-		return new BX.UI.Button({
-			size: BX.UI.Button.Size.MEDIUM,
-			color: BX.UI.Button.Color.DANGER,
-			text: Loc.getMessage('SHARING_WARNING_POPUP_SUBMIT_BUTTON'),
+		return new Button({
+			size: ButtonSize.MEDIUM,
+			color: ButtonColor.DANGER,
+			text: Loc.getMessage('SHARING_WARNING_POPUP_SUBMIT_BUTTON_NEW_MSGVER_1'),
 			events: {
 				click: () => this.handleSubmitButtonClick(),
-			}
+			},
 		});
 	}
 
 	getCancelButton()
 	{
-		return new BX.UI.Button({
-			size: BX.UI.Button.Size.MEDIUM,
-			color: BX.UI.Button.Color.LIGHT_BORDER,
+		return new Button({
+			size: ButtonSize.MEDIUM,
+			color: ButtonColor.LIGHT_BORDER,
 			text: Loc.getMessage('SHARING_WARNING_POPUP_CANCEL_BUTTON'),
 			events: {
 				click: () => this.handleCancelButtonClick(),
-			}
+			},
 		});
 	}
 
@@ -279,9 +320,10 @@ export default class SharingButton
 		{
 			this.payAttentionToNewFeatureWithoutText();
 		}
+
 		if (this.PAY_ATTENTION_TO_NEW_FEATURE_WITH_TEXT_MODS.includes(mode))
 		{
-			this.payAttentionToNewFeatureWithText(mode);
+			this.payAttentionToNewFeatureWithText();
 		}
 	}
 
@@ -297,31 +339,24 @@ export default class SharingButton
 			value: 1,
 			color: Counter.Color.DANGER,
 			size: Counter.Size.MEDIUM,
-			animation: false
+			animation: false,
 		})).getContainer();
 		Dom.addClass(this.counterNode, 'calendar-sharing__new-feature-counter');
 		Dom.append(this.counterNode, this.wrap);
 	}
 
-	payAttentionToNewFeatureWithText(mode)
+	payAttentionToNewFeatureWithText()
 	{
-		let title = Loc.getMessage('CALENDAR_PAY_ATTENTION_TO_NEW_FEATURE_TITLE');
-		let text = Loc.getMessage('CALENDAR_PAY_ATTENTION_TO_NEW_FEATURE_TEXT');
-		if (mode === this.PAY_ATTENTION_TO_NEW_FEATURE_REMIND)
-		{
-			title = Loc.getMessage('CALENDAR_PAY_ATTENTION_TO_NEW_FEATURE_NOTIFY_TITLE');
-			text = Loc.getMessage('CALENDAR_PAY_ATTENTION_TO_NEW_FEATURE_NOTIFY_TEXT');
-		}
+		const title = Loc.getMessage('CALENDAR_PAY_ATTENTION_TO_NEW_FEATURE_JOINT_TITLE');
+		const text = Loc.getMessage('CALENDAR_PAY_ATTENTION_TO_NEW_FEATURE_JOINT_TEXT');
 
 		const guide = this.getGuide(title, text);
 		const pulsar = this.getPulsar(this.wrap);
 
-		setTimeout(() => {
-			guide.showNextStep();
-			guide.getPopup().setAngle({ offset: 210 });
+		guide.showNextStep();
+		guide.getPopup().setAngle({ offset: 210 });
 
-			pulsar.show();
-		}, this.PAY_ATTENTION_TO_NEW_FEATURE_DELAY);
+		pulsar.show();
 	}
 
 	getGuide(title, text)
@@ -332,8 +367,8 @@ export default class SharingButton
 			steps: [
 				{
 					target: this.wrap,
-					title: title,
-					text: text,
+					title,
+					text,
 					position: 'bottom',
 					condition: {
 						top: true,
@@ -346,7 +381,7 @@ export default class SharingButton
 		const guidePopup = guide.getPopup();
 		Dom.addClass(guidePopup.popupContainer, 'calendar-popup-ui-tour-animate');
 		guidePopup.setWidth(400);
-		guidePopup.getContentContainer().style.paddingRight = getComputedStyle(guidePopup.closeIcon)['width'];
+		Dom.style(guidePopup.getContentContainer(), 'paddingRight', getComputedStyle(guidePopup.closeIcon).width);
 
 		return guide;
 	}
@@ -361,7 +396,7 @@ export default class SharingButton
 		if (hideOnHover)
 		{
 			pulsar.bindEvents({
-				'onTargetEnter': () => pulsar.close(),
+				onTargetEnter: () => pulsar.close(),
 			});
 		}
 

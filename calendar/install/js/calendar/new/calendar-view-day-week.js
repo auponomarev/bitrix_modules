@@ -19,7 +19,8 @@
 		this.offHoursCollapsedHeight = 15;
 		this.title = BX.message('EC_VIEW_DAY');
 		this.entryWidthOffset = 2;
-		this.lastEntryWidthOffset = 8;
+		this.lastEntryWidthOffset = 4;
+		this.offsetForTimelineExpiredTime = 25;
 		this.hotkey = 'D';
 
 		this.contClassName = 'calendar-day-view';
@@ -116,7 +117,9 @@
 		this.setTitle();
 
 		if (this.gridWrap)
+		{
 			this.gridWrap.style.overflowX = 'hidden';
+		}
 
 		var nextGrid = this.outerGrid.appendChild(BX.create('DIV', {props: {className: this.gridClass + ' ' + this.gridClassNext + ' ' + this.animateClass}}));
 		BX.addClass(this.grid, this.animateClass);
@@ -990,6 +993,8 @@
 								else if (backEntry.part.params.nameNode)
 								{
 									backEntry.part.params.nameNode.style.whiteSpace = 'nowrap';
+									backEntry.part.params.nameNode.style.display = 'block';
+									backEntry.part.params.nameNode.style.textOverflow = 'ellipsis';
 									backEntry.part.params.nameNode.style.lineHeight = '11px';
 									backEntry.part.params.timeNode.style.lineHeight = '11px';
 								}
@@ -1051,6 +1056,16 @@
 			if (!timelineMap[i])
 				timelineMap[i] = [];
 			timelineMap[i].push(entryIndex);
+		}
+	};
+
+	DayView.prototype.displayTopEntries = function()
+	{
+		// Display top parts (in the top section - full day or several days events)
+		var i;
+		for (i = 0; i < this.partsStorage.length; i++)
+		{
+			this.displayTopEntry(this.partsStorage[i]);
 		}
 	};
 
@@ -1145,63 +1160,77 @@
 		{
 			innerNode.style.maxWidth = 'calc(200% / ' + daysCount + ' - ' + this.lastEntryWidthOffset + 'px)';
 		}
-		else if (entry.isLongWithTime())
+		else
 		{
 			partWrap.style.borderColor = entry.color;
-			innerNode.style.maxWidth = 'calc(200% / ' + daysCount + ' - ' + this.lastEntryWidthOffset + 'px)';
 
-			// first part
-			if (params.part.partIndex === 0)
-			{
-				if (daysCount > 1)
-				{
-					timeNode = innerNode.appendChild(BX.create('SPAN', {
-						props: {className: 'calendar-event-line-time'},
-						text: this.calendar.util.formatTime(entry.from.getHours(), entry.from.getMinutes())
-					}));
-				}
-				innerNode.style.width = 'calc(100% / ' + daysCount + ' - ' + this.lastEntryWidthOffset + 'px)';
-			}
-
-			if (!timeNode && daysCount === 1
-				&& this.util.getDayCode(entry.from) === params.part.from.dayCode)
-			{
-				timeNode = innerNode.appendChild(BX.create('SPAN', {
-					props: {className: 'calendar-event-line-time'},
-					text: this.calendar.util.formatTime(entry.from.getHours(), entry.from.getMinutes())
-				}));
-			}
-
-			// Last part
 			if (params.part.partIndex === entry.parts.length - 1)
 			{
 				if (daysCount > 1 && entry.parts.length > 1)
 				{
 					innerNode.style.width = 'calc(' + (daysCount - 1) + '00% / ' + daysCount + ' - ' + this.lastEntryWidthOffset + 'px)';
 				}
+			}
 
-				if (daysCount > 1)
+			partWrap.style.borderColor = entry.color;
+			const startRangeDate = entry.calendar.displayedRange.start,
+				endRangeDate = entry.calendar.displayedRange.end,
+				eventStartAtRangeDates = this.util.getDayCode(entry.from) >= this.util.getDayCode(startRangeDate),
+				eventEndAtRangeDates = this.util.getDayCode(entry.to) <= this.util.getDayCode(endRangeDate),
+				formattedEventStartTime = this.calendar.util.formatTime(entry.from.getHours(), entry.from.getMinutes()),
+				formattedEventEndTime = this.calendar.util.formatTime(entry.to.getHours(), entry.to.getMinutes());
+
+			if (daysCount===1)
+			{
+				if (eventStartAtRangeDates)
 				{
-					endTimeNode = innerNode.appendChild(BX.create('SPAN', {
-						props: {className: (entry.parts.length > 1 && daysCount === 1) ? 'calendar-event-line-time' : 'calendar-event-line-expired-time'},
-						text: this.calendar.util.formatTime(entry.to.getHours(), entry.to.getMinutes())
-					}));
+					timeNode = innerNode.appendChild(
+						BX.create('SPAN', {
+							props: {className: 'calendar-event-line-time'},
+							text: formattedEventStartTime
+						}));
+
+					innerNode.style.width = 'calc(100% / ' + daysCount + ' - ' + this.lastEntryWidthOffset + 'px)';
+				}
+				else if (eventEndAtRangeDates)
+				{
+					timeNode = innerNode.appendChild(
+						BX.create('SPAN', {
+							props: {className: 'calendar-event-line-time'},
+							text: BX.message('EC_JS_UNTIL_DATE').replace('#DATE#', formattedEventEndTime)
+						})
+					)
 				}
 			}
+			else {
+				if (eventEndAtRangeDates)
+				{
+					endTimeNode = innerNode.appendChild(
+						BX.create('SPAN', {
+							props: {className: 'calendar-event-line-expired-time'},
+							text: formattedEventEndTime
+						}));
 
-			if (!endTimeNode && daysCount === 1 && this.util.getDayCode(entry.to) === params.part.to.dayCode)
-			{
-				endTimeNode = innerNode.appendChild(BX.create('SPAN', {
-					props: {className: 'calendar-event-line-time'},
-					text: this.calendar.util.formatTime(entry.to.getHours(), entry.to.getMinutes())
-				}));
+					innerNode.style.width = 'calc(100% - ' + this.offsetForTimelineExpiredTime + 'px)';
+				}
+
+				if (eventStartAtRangeDates)
+				{
+					timeNode = innerNode.appendChild(
+						BX.create('SPAN', {
+							props: {className: 'calendar-event-line-time'},
+							text: formattedEventStartTime
+						}));
+
+					innerNode.style.width = 'calc(100% / ' + daysCount + ' - ' + this.lastEntryWidthOffset + 'px)';
+				}
 			}
 		}
-		else
-		{
-			timeNode = innerNode.appendChild(BX.create('SPAN', {props: {className: 'calendar-event-line-time'}, text: this.calendar.util.formatTime(entry.from.getHours(), entry.from.getMinutes())}));
-		}
-		nameNode = innerNode.appendChild(BX.create('SPAN', {props: {className: 'calendar-event-line-text'}, text: params.entry.name}));
+
+		nameNode = innerNode.appendChild(BX.create('SPAN', {
+			props: {className: 'calendar-event-line-text'},
+			text: params.entry.name
+		}));
 
 		if (entry.isFullDay())
 		{
@@ -1242,16 +1271,6 @@
 		this.calendar.dragDrop.registerEntry(partWrap, params);
 
 		return res;
-	};
-
-	DayView.prototype.displayTopEntries = function()
-	{
-		// Display top parts (in the top section - full day or several days events)
-		var i;
-		for (i = 0; i < this.partsStorage.length; i++)
-		{
-			this.displayTopEntry(this.partsStorage[i]);
-		}
 	};
 
 	DayView.prototype.displayTimelineEntries = function()
@@ -2263,9 +2282,12 @@
 					});
 				}
 			}
-			else if ((!this.calendar.util.readOnlyMode())
+			else if (
+				!this.calendar.util.readOnlyMode()
 				&& this.entryController.canDo(true, 'add_event')
-				&& (dayCode = params.specialTarget && params.specialTarget.getAttribute('data-bx-calendar-week-day')))
+				&& (dayCode = params.specialTarget && params.specialTarget.getAttribute('data-bx-calendar-week-day'))
+				&& !this.isCompactFormShown()
+			)
 			{
 				this.deselectEntry();
 				this.showCompactEditFormForNewEntry({
@@ -2382,13 +2404,8 @@
 
 	DayView.prototype.handleMousedown = function(e)
 	{
-		if (!this.isActive())
-		{
-			return;
-		}
-
-		var compactForm = BX.Calendar.EntryManager.getCompactViewForm(false);
-		if (compactForm && compactForm.isShown())
+		const isRightButton = e.which === 3;
+		if (isRightButton || !this.isActive() || this.isCompactFormShown())
 		{
 			return;
 		}
@@ -2516,6 +2533,12 @@
 		}
 	};
 
+	DayView.prototype.isCompactFormShown = function()
+	{
+		const compactForm = BX.Calendar.EntryManager.getCompactViewForm(false);
+		return compactForm && compactForm.isShown();
+	};
+
 	DayView.prototype.buildTopNewEntryWrap = function(params)
 	{
 		var
@@ -2575,6 +2598,8 @@
 
 		var entry = {
 			entryNode: entryClone,
+			nameNode: nameNode,
+			timeNode: timeNode,
 			innerNode: innerNode,
 			section: section,
 			entryName: entryName,
@@ -2712,7 +2737,6 @@
 		}
 		// clear all compact levels
 		BX.removeClass(entryNode, 'calendar-event-block-compact');
-		BX.removeClass(entryNode, 'calendar-event-block-super-compact');
 		nameNode.style.overflow = 'visible';
 
 		// add compactness level by level
@@ -2725,10 +2749,28 @@
 			if (lineCount <= 1)
 			{
 				BX.addClass(entryNode, 'calendar-event-block-compact');
-				BX.addClass(entryNode, 'calendar-event-block-super-compact');
 			}
 		}
 		nameNode.style.overflow = '';
+
+		const titleNode = entryNode.querySelector('.calendar-event-block-title');
+		if (!titleNode)
+		{
+			return;
+		}
+
+		if (BX.hasClass(entryNode, 'calendar-event-block-compact'))
+		{
+			const titleWidth = titleNode.offsetWidth;
+			const textWidth = [...titleNode.children].reduce((width, child) => {
+				return width + child.offsetWidth + parseInt(getComputedStyle(child).marginRight);
+			}, 0);
+
+			if (textWidth < titleWidth)
+			{
+				titleNode.style.width = `${textWidth + 1}px`;
+			}
+		}
 	}
 
 	DayView.prototype.showCompactEditFormForNewEntry = function(params)
@@ -2817,7 +2859,8 @@
 						taskWrap = innerCont.appendChild(BX.create('DIV', {props: {className: 'calendar-event-block'}}));
 					}
 
-					this.displayTopEntry({
+					this.displayEntryPiece({
+						dayInCell: params.day.date,
 						entry: entryItem.entry,
 						part: entryItem.part,
 						holder: taskWrap,
@@ -2832,7 +2875,8 @@
 						eventsWrap = innerCont.appendChild(BX.create('DIV', {props: {className: 'calendar-event-block'}}));
 					}
 
-					this.displayTopEntry({
+					this.displayEntryPiece({
+						dayInCell: params.day.date,
 						entry: entryItem.entry,
 						part: entryItem.part,
 						holder: eventsWrap,
@@ -2863,7 +2907,214 @@
 		});
 	};
 
+	DayView.prototype.displayEntryPiece = function(params)
+	{
+		const entry = params.entry;
+		let entryClassName = 'calendar-event-line-wrap';
 
+		if (entry.isFullDay())
+		{
+			entryClassName += ' calendar-event-line-fill';
+		}
+		else if (entry.isLongWithTime())
+		{
+			entryClassName += ' calendar-event-line-border';
+		}
+
+		if (entry.getCurrentStatus() === 'N')
+		{
+			entryClassName += ' calendar-event-line-refused';
+		}
+
+		if (entry.isExpired())
+		{
+			entryClassName += ' calendar-event-line-past';
+		}
+
+		if (entry.isSharingEvent())
+		{
+			entryClassName += ' calendar-event-line-wrap-sharing';
+			entryClassName += ' calendar-event-wrap-icon';
+		}
+
+		let arrowColor = entry.color;
+
+		if (entry.isFullDay())
+		{
+			arrowColor = this.calendar.util.addOpacityToHex(entry.color, 0.3);
+		}
+		else if (entry.isLongWithTime())
+		{
+			arrowColor = this.calendar.util.addOpacityToHex(entry.color, 0.5);
+		}
+
+		let startArrow, endArrow, deltaPartWidth = 0;
+
+		if (!params.popupMode && this.util.getDayCode(entry.from) !== this.util.getDayCode(from.date))
+		{
+			entryClassName += ' calendar-event-line-start-yesterday';
+			deltaPartWidth += 8;
+			startArrow = this.getArrow('left', arrowColor, entry.isFullDay());
+		}
+
+		if (!params.popupMode && this.util.getDayCode(entry.to) !== this.util.getDayCode(params.part.to.date))
+		{
+			entryClassName += ' calendar-event-line-finish-tomorrow';
+			endArrow = this.getArrow('right', arrowColor, entry.isFullDay());
+			deltaPartWidth += 12;
+		}
+
+		if (startArrow && !endArrow)
+		{
+			deltaPartWidth += 4;
+		}
+
+		deltaPartWidth = deltaPartWidth === 0 ? 5 : deltaPartWidth;
+
+		const daysCount = params.part.daysCount, from = params.part.from;
+		let partWrap = BX.create('DIV', {
+			attrs: {'data-bx-calendar-entry': entry.uid},
+			props: {className: entryClassName}, style: {
+				top: 0,
+				left: 'calc((100% / ' + this.dayCount + ') * (' + (from.dayOffset + 1) + ' - 1) + 2px)',
+				width: 'calc(' + daysCount + ' * 100% / ' + this.dayCount + ' - ' + deltaPartWidth + 'px)'
+			}
+		});
+
+		if (startArrow)
+		{
+			BX.Dom.addClass()
+			partWrap.style.left = '9px';
+		}
+
+		if (endArrow)
+		{
+			partWrap.appendChild(endArrow);
+		}
+
+		let innerContainer = partWrap.appendChild(BX.create('DIV', {props: {className: 'calendar-event-line-inner-container'}})),
+			innerNode = innerContainer.appendChild(BX.create('DIV', {props: {className: 'calendar-event-line-inner'}}));
+
+		const day = this.days[this.dayIndex[entry.startDayCode]];
+		const entriesInDay = [...day.entries.topList].sort((e1, e2) => {
+			return (e1.entry.from.getTime() > e2.entry.from.getTime()) ? 1 : (e1.entry.from.getTime() < e2.entry.from.getTime()) ? -1 : 0;
+		});
+		const positionInDay = entriesInDay.findIndex(e => e.entry.uid === entry.uid);
+
+		if (positionInDay >= this.slotsCount && entriesInDay.length > this.slotsCount)
+		{
+			entry.isHiddenInPopup = true;
+		}
+
+		let dotNode = BX.create('DIV', {props: {className: 'calendar-event-line-dot'}}), timeNode, endTimeNode;
+
+		if (entry.isInvited())
+		{
+			partWrap.className += ' calendar-event-animate-counter-highlight';
+			if (this.isFirstVisibleRecursiveEntry(entry))
+			{
+				innerNode.appendChild(BX.create('DIV', {props: {className: 'calendar-event-invite-counter'}, text: '1'}))
+			}
+			else
+			{
+				//temporarily removed recursive entries invitation indicators
+				// innerNode.appendChild(BX.create('DIV', {props: {className: 'calendar-event-invite-counter-dot'}}))
+				innerNode.appendChild(dotNode);
+			}
+		}
+		else
+		{
+			innerNode.appendChild(dotNode);
+		}
+
+		if (entry.isSharingEvent())
+		{
+			innerNode.appendChild(BX.create('SPAN', {props: {className: 'calendar-event-block-icon-sharing'}}));
+		}
+
+		if (entry.isFullDay())
+		{
+			innerNode.style.maxWidth = 'calc(200% / ' + daysCount + ' - 3px)';
+		}
+		else if (entry.isLongWithTime())
+		{
+			innerNode.style.maxWidth = 'calc(200% / ' + daysCount + ' - 3px)';
+
+			let dayInCell = params.dayInCell;
+			if (params.popupMode && typeof dayInCell !== 'undefined')
+			{
+				switch (this.util.getDayCode(dayInCell))
+				{
+					case this.util.getDayCode(entry.from):
+						timeNode = innerNode.appendChild(
+							BX.create('SPAN', {
+								props: {className: 'calendar-event-line-time'},
+								text: this.calendar.util.formatTime(entry.from.getHours(), entry.from.getMinutes())
+							}));
+						break;
+					case this.util.getDayCode(entry.to):
+						let formattedDate = this.calendar.util.formatTime(entry.to.getHours(), entry.to.getMinutes());
+						timeNode = innerNode.appendChild(
+							BX.create('SPAN', {
+								props: {className: 'calendar-event-line-time'},
+								text: BX.message('EC_JS_UNTIL_DATE').replace('#DATE#', formattedDate)
+							})
+						)
+						break;
+				}
+
+				innerNode.style.width = 'calc(100% / ' + daysCount + ' - 3px)';
+			}
+		}
+
+		let nameNode = innerNode.appendChild(
+			BX.create('SPAN', {
+				props: {className: 'calendar-event-line-text'},
+				text: params.entry.name
+			})
+		);
+
+		if (entry.isFullDay())
+		{
+			innerContainer.style.backgroundColor = this.calendar.util.addOpacityToHex(entry.color, 0.3);
+			innerContainer.style.borderColor = this.calendar.util.addOpacityToHex(entry.color, 0.3);
+		}
+		else
+		{
+			if (entry.isLongWithTime())
+			{
+				innerContainer.style.borderColor = this.calendar.util.addOpacityToHex(entry.color, 0.5);
+			}
+			dotNode.style.backgroundColor = entry.color;
+		}
+
+		let holder = params.holder || this.entryHolders[from.holderIndex];
+		holder.appendChild(partWrap);
+
+		if (entry.opacity !== undefined)
+		{
+			partWrap.style.opacity = entry.opacity;
+		}
+
+		let res = {
+			wrapNode: partWrap,
+			nameNode: nameNode,
+			innerContainer: innerContainer,
+			innerNode: innerNode,
+			timeNode: timeNode || false,
+			endTimeNode: endTimeNode || false,
+			dotNode: dotNode
+		};
+
+		if (!params.popupMode)
+		{
+			params.entry.registerPartNode(params.part, res);
+		}
+
+		this.calendar.dragDrop.registerEntry(partWrap, params);
+
+		return res;
+	};
 
 	// Week view of the calendar
 	function WeekView()

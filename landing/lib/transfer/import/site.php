@@ -174,25 +174,32 @@ class Site
 		$isPageImport = $return['RATIO']['IS_PAGE_IMPORT'] ?? false;
 		// if only current step add page
 		$isPageStep = false;
+		// if replace landing, not import
+		$isReplaceLanding = $additional && (int)($additional['replaceLid'] ?? 0) > 0;
 		if (isset($ratio[$code]['SITE_ID']) && (int)$ratio[$code]['SITE_ID'] > 0)
 		{
 			$isPageStep = true;
 		}
-		elseif ($additional && (int)$additional['siteId'] > 0)
+		elseif (
+			$additional && (int)$additional['siteId'] > 0
+		)
 		{
-			$isPageStep = true;
 			$return['RATIO']['SITE_ID'] = (int)$additional['siteId'];
-			if (!isset($return['RATIO']['IS_PAGE_IMPORT']))
-			{
-				$isPageImport = true;
-			}
+			$isPageImport = $return['RATIO']['IS_PAGE_IMPORT'] ?? true;
 		}
 
-		$return['RATIO']['IS_PAGE_IMPORT'] = $isPageImport;
+		if ($isReplaceLanding)
+		{
+			$return['RATIO']['REPLACE_ID'] = (int)$additional['replaceLid'];
+		}
 
 		// common ratio params
 		$data = self::prepareData($content['~DATA']);
 		$data = self::prepareAdditionalFields($data, $additional);
+		if ($isReplaceLanding && !$isPageStep)
+		{
+			$return['RATIO']['ADDITIONAL_FIELDS_SITE'] = $data['ADDITIONAL_FIELDS'];
+		}
 		if (!isset($return['RATIO']['SPECIAL_PAGES']))
 		{
 			$return['RATIO']['SPECIAL_PAGES'] = [
@@ -201,9 +208,11 @@ class Site
 				'LANDING_ID_503' => isset($data['LANDING_ID_503']) ? (int)$data['LANDING_ID_503'] : 0
 			];
 		}
+		$return['RATIO']['IS_PAGE_IMPORT'] = $isPageImport;
+		$return['RATIO']['TYPE'] = $data['TYPE'];
 
 		// site import
-		if (!$isPageStep)
+		if (!$isPageImport && !$isPageStep && !$isReplaceLanding)
 		{
 			Type::setScope($data['TYPE']);
 			$res = self::importSite($data, $structure);
@@ -215,7 +224,6 @@ class Site
 				$return['RATIO']['TEMPLATES'] = [];
 				$return['RATIO']['TEMPLATE_LINKING'] = [];
 				$return['RATIO']['SITE_ID'] = $res->getId();
-				$return['RATIO']['TYPE'] = $data['TYPE'];
 				$return['RATIO']['FOLDERS_NEW'] = $data['FOLDERS_NEW'] ?? [];
 				$return['RATIO']['SYS_PAGES'] = $data['SYS_PAGES'];
 
@@ -253,7 +261,12 @@ class Site
 			return $return;
 		}
 
-		// pages import
+		// not site imports
+		if (isset($return['RATIO']['REPLACE_ID']) && $return['RATIO']['REPLACE_ID'] > 0)
+		{
+			return Landing::replaceLanding($event);
+		}
+
 		return Landing::importLanding($event);
 	}
 
@@ -282,21 +295,24 @@ class Site
 	 */
 	protected static function prepareAdditionalFields(array $data, ?array $additional): array
 	{
-		if ($additional && $additional['theme'])
+		if ($additional)
 		{
-			$color = $additional['theme'];
-			if ($color[0] !== '#')
+			if (isset($additional['theme']) && $additional['theme'])
 			{
-				$color = '#' . $color;
+				$color = $additional['theme'];
+				if ($color[0] !== '#')
+				{
+					$color = '#' . $color;
+				}
+				$data['ADDITIONAL_FIELDS']['THEME_COLOR'] = $color;
+				unset($data['ADDITIONAL_FIELDS']['THEME_CODE']);
+				$data['ADDITIONAL_FIELDS']['THEME_USE'] = 'Y';
 			}
-			$data['ADDITIONAL_FIELDS']['THEME_COLOR'] = $color;
-			unset($data['ADDITIONAL_FIELDS']['THEME_CODE']);
-			$data['ADDITIONAL_FIELDS']['THEME_USE'] = 'Y';
-		}
 
-		if ($additional && $additional['title'])
-		{
-			$data['TITLE'] = $additional['title'];
+			if (isset($additional['title']) && $additional['title'])
+			{
+				$data['TITLE'] = $additional['title'];
+			}
 		}
 
 		//default widget value
@@ -477,11 +493,15 @@ class Site
 			$specialPages = $ratio['LANDING']['SPECIAL_PAGES'];
 			$sysPages = $ratio['LANDING']['SYS_PAGES'];
 			$foldersNew = $ratio['LANDING']['FOLDERS_NEW'];
-			$additional = $event->getParameter('ADDITIONAL_OPTION');
+			$additional = $event->getParameter('ADDITIONAL_OPTION') ?? [];
 
 			// if import just page in existing site
 			$isPageImport = false;
-			if ($additional && (int)$additional['siteId'] > 0)
+			$isReplaceLanding = isset($additional['replaceLid']) && (int)$additional['replaceLid'] > 0;
+			if (
+				(isset($additional['siteId']) && (int)$additional['siteId'] > 0)
+				|| $isReplaceLanding
+			)
 			{
 				$isPageImport = true;
 			}
@@ -657,7 +677,7 @@ class Site
 			}
 
 			//set default additional fields for page
-			if ($mainPageId)
+			if ($mainPageId && !$isReplaceLanding)
 			{
 				self::setAdditionalPageFields($mainPageId, $additional);
 			}
@@ -706,6 +726,11 @@ class Site
 				}
 			}
 
+			if ($isReplaceLanding)
+			{
+				$linkAttrs['data-replace-lid'] = (int)$additional['replaceLid'];
+			}
+
 			$domList = [
 				[
 					'TAG' => 'a',
@@ -715,7 +740,6 @@ class Site
 					]
 				]
 			];
-
 
 			if (mb_strpos($linkAttrs['href'], '#') !== 0)
 			{
@@ -727,12 +751,54 @@ class Site
 				];
 			}
 
+			$isNewAnalytic = false;
+			if (
+				!empty($additional)
+				&& array_key_exists('st_category', $additional)
+				&& array_key_exists('st_event', $additional)
+			)
+			{
+				$isNewAnalytic = true;
+
+				$analyticData = [
+					'category' => $additional['st_category'],
+					'event' => $additional['st_event'],
+				];
+				if (array_key_exists('st_section', $additional))
+				{
+					$analyticData['c_section'] = $additional['st_section'];
+				}
+				if (array_key_exists('st_element', $additional))
+				{
+					$analyticData['c_element'] = $additional['st_element'];
+				}
+				if (array_key_exists('app_code', $additional))
+				{
+					$analyticData['params'] = [
+						'appCode' => $additional['app_code'],
+					];
+				}
+
+				$script = "if (typeof BX.Landing.Metrika !== 'undefined') {";
+				$script  .= "const metrika = new BX.Landing.Metrika(true);";
+				$script  .= "metrika.sendData(" . \CUtil::PhpToJSObject($analyticData) . ")";
+				$script  .= "}";
+				$domList[] = [
+					'TAG' => 'script',
+					'DATA' => [
+						'html' => $script,
+					]
+				];
+			}
+
 			return [
 				'CREATE_DOM_LIST' => $domList,
 				'ADDITIONAL' => [
 					'id' => $siteId,
 					'publicUrl' => \Bitrix\Landing\Site::getPublicUrl($siteId),
-					'imageUrl' => Manager::getUrlFromFile(\Bitrix\Landing\Site::getPreview($siteId))
+					'imageUrl' => Manager::getUrlFromFile(\Bitrix\Landing\Site::getPreview($siteId)),
+					// tmp param - del when all analytic will be new
+					'isNewAnalytic' => $isNewAnalytic ? 'Y' : 'N',
 				]
 			];
 		}
@@ -742,14 +808,14 @@ class Site
 		return [];
 	}
 
-	protected static function setAdditionalPageFields($landingId, $additional)
+	protected static function setAdditionalPageFields($landingId, array $additional): void
 	{
 		$additionalFields = [];
 
 		// set Title and Description to mainpage
 		if (!empty($additional))
 		{
-			if ($additional['title'])
+			if (isset($additional['title']))
 			{
 				$additionalFields['METAMAIN_TITLE'] = $additional['title'];
 				$additionalFields['METAOG_TITLE'] = $additional['title'];
@@ -758,7 +824,7 @@ class Site
 					'TITLE' => $additional['title']
 				]);
 			}
-			if ($additional['description'])
+			if (isset($additional['description']))
 			{
 				$additionalFields['METAMAIN_DESCRIPTION'] = $additional['description'];
 				$additionalFields['METAOG_DESCRIPTION'] = $additional['description'];

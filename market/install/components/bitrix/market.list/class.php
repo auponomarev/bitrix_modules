@@ -8,6 +8,7 @@ use Bitrix\Main\ObjectException;
 use Bitrix\Main\Type\Date;
 use Bitrix\Market\AppFavoritesTable;
 use Bitrix\Market\History;
+use Bitrix\Market\Link;
 use Bitrix\Market\ListTemplates\BaseTemplate;
 use Bitrix\Market\ListTemplates\Category;
 use Bitrix\Market\ListTemplates\Collection;
@@ -29,6 +30,7 @@ class MarketList extends CBitrixComponent implements Controllerable, Loadable
 	public function executeComponent()
 	{
 		$this->arParams['HISTORY'] = History::getFirstPageInfo('list');
+		$this->arParams['CREATE_URI_SITE_TEMPLATE'] = Link::getCreateUri();
 
 		$this->prepareResult();
 
@@ -68,6 +70,10 @@ class MarketList extends CBitrixComponent implements Controllerable, Loadable
 
 		$isCollectionId = isset($params['COLLECTION']) && (int)$params['COLLECTION'] > 0;
 		$isCollectionCode = !empty($params['COLLECTION_CODE']);
+		if (is_string($params['COLLECTION']) && preg_match("/^[a-z][a-z_0-9]+$/", $params['COLLECTION'])) {
+			$isCollectionCode = true;
+			$params['COLLECTION_CODE'] = $params['COLLECTION'];
+		}
 
 		$rp = $params['REQUEST'] ?? [];
 		if (isset($params['IS_FAVORITES']) && $params['IS_FAVORITES'] == 'Y') {

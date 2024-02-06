@@ -100,7 +100,7 @@ class OrmAnnotateCommand extends Command implements AnnotationInterface
 			'',
 		]);
 
-		$time = getmicrotime();
+		$time = microtime(true);
 		$memoryBefore = memory_get_usage();
 
 		/** @var \Exception[] $exceptions deferred errors */
@@ -199,7 +199,7 @@ class OrmAnnotateCommand extends Command implements AnnotationInterface
 		$output->writeln('Map has been saved to: '.$filePath);
 
 		// summary stats
-		$time = round(getmicrotime() - $time, 2);
+		$time = round(microtime(true) - $time, 2);
 		$memoryAfter = memory_get_usage();
 		$memoryDiff = $memoryAfter - $memoryBefore;
 
@@ -219,6 +219,8 @@ class OrmAnnotateCommand extends Command implements AnnotationInterface
 				$io->warning('Exception: '.$e->getMessage().PHP_EOL.$e->getTraceAsString());
 			}
 		}
+
+		return 0;
 	}
 
 	protected function getDirsToScan($inputModules, InputInterface $input, OutputInterface $output)

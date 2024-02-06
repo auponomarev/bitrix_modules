@@ -4,6 +4,8 @@ if(!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true) die();
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Tasks\Helper\RestrictionUrl;
 use Bitrix\Tasks\Integration\SocialNetwork\Group;
+use Bitrix\Tasks\Internals\Task\MetaStatus;
+use Bitrix\Tasks\Replicator\Template\Replicators\RegularTaskReplicator;
 
 Loc::loadMessages(__FILE__);
 
@@ -59,7 +61,7 @@ $canReadGroupTasks = (
 						echo $templateData["DEADLINE"];
 					endif ?>
 				</div>
-				<? if ($taskData["STATUS"] == CTasks::METASTATE_EXPIRED):?>
+				<? if ((int)$taskData["STATUS"] === MetaStatus::EXPIRED):?>
 					<div class="task-detail-sidebar-item-delay">
 						<div class="task-detail-sidebar-item-delay-message">
 							<span class="task-detail-sidebar-item-delay-message-icon"></span>
@@ -139,6 +141,13 @@ $canReadGroupTasks = (
 			<div class="task-detail-sidebar-item-title"><?=Loc::getMessage("TASKS_SIDEBAR_CREATED_DATE")?>:</div>
 			<div class="task-detail-sidebar-item-value"><?=$templateData["CREATED_DATE"]?></div>
 		</div>
+
+		<?php if (RegularTaskReplicator::isEnabled()):?>
+		<div class="task-detail-sidebar-item">
+			<div class="task-detail-sidebar-item-title">Regularity start time:</div>
+			<div class="task-detail-sidebar-item-value"><?=(new \Bitrix\Tasks\Internals\TaskObject(['ID' => $taskData['ID']]))->getRegularityStartTime()?->toString()?></div>
+		</div>
+		<?php endif;?>
 
 		<? if ($taskData["ALLOW_TIME_TRACKING"] === "Y"): ?>
 			<div class="task-detail-sidebar-item">

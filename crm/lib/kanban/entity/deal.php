@@ -32,7 +32,8 @@ class Deal extends Entity
 
 		$this->dealFieldRestrictionManager = new FieldRestrictionManager(
 			FieldRestrictionManager::MODE_KANBAN,
-			[FieldRestrictionManagerTypes::CLIENT, FieldRestrictionManagerTypes::OBSERVERS]
+			[FieldRestrictionManagerTypes::CLIENT, FieldRestrictionManagerTypes::OBSERVERS],
+			\CCrmOwnerType::Deal
 		);
 	}
 
@@ -95,16 +96,16 @@ class Deal extends Entity
 		return $options;
 	}
 
-	public function getFieldsRestrictions(): array
+	public function getFieldsRestrictionsEngine(): string
 	{
-		$parentFieldsRestrictions = parent::getFieldsRestrictions();
-		$fieldsRestrictions = $this->dealFieldRestrictionManager->fetchRestrictedFields(
+		$parentFieldsRestrictions = parent::getFieldsRestrictionsEngine();
+		$dealFieldsRestrictions = $this->dealFieldRestrictionManager->fetchRestrictedFieldsEngine(
 			$this->getGridId(),
 			[],
 			$this->getFilter()
 		);
 
-		return array_merge($parentFieldsRestrictions, $fieldsRestrictions);
+		return implode("\n", [$parentFieldsRestrictions, $dealFieldsRestrictions]);
 	}
 
 	protected function getFilter(): Filter\Filter
@@ -210,12 +211,11 @@ class Deal extends Entity
 
 	public function prepareItemCommonFields(array $item): array
 	{
-		$item['PRICE'] = $item['OPPORTUNITY'];
+		$item['PRICE'] = $item['OPPORTUNITY'] ?? null;
 		$item['DATE'] = $item['DATE_CREATE'] ?? null;
+		$item['OBSERVER'] = $item['OBSERVER'] ?? null;
 
-		$item = parent::prepareItemCommonFields($item);
-
-		return $item;
+		return parent::prepareItemCommonFields($item);
 	}
 
 	public function appendRelatedEntitiesValues(array $items, array $selectedFields): array
@@ -392,7 +392,11 @@ class Deal extends Entity
 		$fields = parent::getPopupFields($viewType);
 		foreach ($fields as $i => $field)
 		{
-			if (mb_strpos($field['NAME'], 'CONTACT_') === 0 || mb_strpos($field['NAME'], 'COMPANY_') === 0)
+			if (
+				mb_strpos($field['NAME'], 'CONTACT_') === 0
+				|| mb_strpos($field['NAME'], 'COMPANY_') === 0
+				|| mb_strpos($field['NAME'], 'ACTIVITY_FASTSEARCH_') === 0
+			)
 			{
 				unset($fields[$i]);
 			}
@@ -479,5 +483,10 @@ class Deal extends Entity
 			PhaseSemantics::SUCCESS,
 			PhaseSemantics::FAILURE,
 		];
+	}
+
+	final protected function isItemsAssignedNotificationSupported(): bool
+	{
+		return true;
 	}
 }

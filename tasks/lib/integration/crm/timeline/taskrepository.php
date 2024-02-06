@@ -36,7 +36,6 @@ class TaskRepository implements BackGroundJob
 
 	/**
 	 * @uses Controller::onTaskAdded
-	 * @uses Controller::onTaskUpdated
 	 * @uses Controller::onTaskDeleted
 	 * @uses Controller::onTaskExpired
 	 * @uses Controller::onTaskViewed
@@ -60,13 +59,21 @@ class TaskRepository implements BackGroundJob
 	 * @uses Controller::onTaskTitleUpdated
 	 * @uses Controller::onTaskCommentDeleted
 	 */
-	public function addToBackgroundJobs(array $payload, string $endpoint = '', int $priority = 0): void
+	public function addToBackgroundJobs(
+		array $payload,
+		string $endpoint = '',
+		int $priority = 0,
+		bool $isImmediately = false
+	): void
 	{
 		if (!$endpoint)
 		{
 			return;
 		}
-		if (isset($payload['IMMEDIATELY']) && $payload['IMMEDIATELY'] === true)
+		if (
+			(isset($payload['IMMEDIATELY']) && $payload['IMMEDIATELY'] === true)
+			|| $isImmediately
+		)
 		{
 			$this->controller->$endpoint($this->getBindings(), $payload);
 		}
@@ -101,6 +108,7 @@ class TaskRepository implements BackGroundJob
 			'GROUP_ID',
 			'START_DATE_PLAN',
 			'END_DATE_PLAN',
+			'PRIORITY',
 		];
 
 		$query = (new TaskQuery($this->userId))

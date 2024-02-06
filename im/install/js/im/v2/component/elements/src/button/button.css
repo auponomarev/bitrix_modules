@@ -1,7 +1,7 @@
 .bx-im-button__scope {
 	--im-button__size_s: 18px;
 	--im-button__size_m: 26px;
-	--im-button__size_l: 33px;
+	--im-button__size_l: 31px;
 	--im-button__size_xl: 39px;
 	--im-button__size_xxl: 47px;
 
@@ -78,7 +78,7 @@
 	border-color: var(--im-button__border-color);
 
 	font-size: var(--im-button__font-size);
-	font-family: var(--im-font-family-open-sans), var(--im-font-family-helvetica);
+	font-family: var(--im-font-family-system);
 	font-weight: var(--im-font-weight-bold, 700);
 	user-select: none;
 
@@ -285,7 +285,8 @@
 .bx-im-button__container.--loading.--color-light-border,
 .bx-im-button__container.--loading.--color-danger-border,
 .bx-im-button__container.--loading.--color-primary-border,
-.bx-im-button__container.--loading.--color-link
+.bx-im-button__container.--loading.--color-link,
+.bx-im-button__container.--loading.--black-loader
 {
 	background-image: url('images/loader-black.svg');
 }
@@ -350,6 +351,10 @@
 
 .bx-im-button__container .bx-im-button__icon.--call {
 	--im-button_icon: url('./images/call.svg');
+}
+
+.bx-im-button__container .bx-im-button__icon.--camera {
+	--im-button_icon: url('./images/camera.svg');
 }
 
 .bx-im-button__container .bx-im-button__icon.--end-call {

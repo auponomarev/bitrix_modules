@@ -30,7 +30,7 @@ if (!CModule::IncludeModule("socialnetwork"))
 	return;
 }
 
-$arResult["IS_IFRAME"] = ($_REQUEST["IFRAME"] == "Y");
+$arResult["IS_IFRAME"] = (($_REQUEST["IFRAME"] ?? null) == "Y");
 
 $arParams["GROUP_ID"] = intval($arParams["GROUP_ID"]);
 $arParams["USER_ID"] = intval($arParams["USER_ID"]);
@@ -41,6 +41,10 @@ if ($arParams["PAGE_ID"] == '')
 	$arParams["PAGE_ID"] = "user_features";
 
 $arParams["SET_NAV_CHAIN"] = ($arParams["SET_NAV_CHAIN"] == "N" ? "N" : "Y");
+
+$arParams["PAGE_VAR"] = $arParams["PAGE_VAR"] ?? '';
+$arParams["USER_VAR"] = $arParams["USER_VAR"] ?? '';
+$arParams["GROUP_VAR"] = $arParams["GROUP_VAR"] ?? '';
 
 if ($arParams["USER_VAR"] == '')
 	$arParams["USER_VAR"] = "user_id";
@@ -57,9 +61,9 @@ $arParams["PATH_TO_GROUP"] = trim($arParams["PATH_TO_GROUP"]);
 if ($arParams["PATH_TO_GROUP"] == '')
 	$arParams["PATH_TO_GROUP"] = htmlspecialcharsbx($APPLICATION->GetCurPage()."?".$arParams["PAGE_VAR"]."=group&".$arParams["GROUP_VAR"]."=#group_id#");
 
-if ($arParams["NAME_TEMPLATE"] == '')
+if (($arParams["NAME_TEMPLATE"] ?? null) == '')
 	$arParams["NAME_TEMPLATE"] = CSite::GetNameFormat();
-$bUseLogin = $arParams['SHOW_LOGIN'] != "N" ? true : false;
+$bUseLogin = (($arParams['SHOW_LOGIN'] ?? null) != "N" ? true : false);
 
 $arResult["FatalError"] = "";
 
@@ -151,7 +155,7 @@ else
 						}
 
 						$arResult["Features"][$feature] = array(
-							"FeatureName" => $arFeaturesTmp[$feature]["FEATURE_NAME"],
+							"FeatureName" => $arFeaturesTmp[$feature]["FEATURE_NAME"] ?? null,
 							"Active" => (array_key_exists($feature, $arFeaturesTmp) ? ($arFeaturesTmp[$feature]["ACTIVE"] == "Y") : true),
 							"Operations" => array(),
 						);
@@ -378,7 +382,7 @@ else
 				$updateFields = [];
 
 				if (
-					(string)$_POST['GROUP_SPAM_PERMS'] !== ''
+					(string) ($_POST['GROUP_SPAM_PERMS'] ?? null) !== ''
 					&& in_array((string)$_POST['GROUP_SPAM_PERMS'], array_merge(UserToGroupTable::getRolesMember(), [ SONET_ROLES_ALL ]), true)
 				)
 				{
@@ -428,13 +432,13 @@ else
 					($arParams["PAGE_ID"] == "group_features" ? SONET_ENTITY_GROUP : SONET_ENTITY_USER),
 					($arParams["PAGE_ID"] == "group_features" ? $arResult["Group"]["ID"] : $arResult["User"]["ID"]),
 					$feature,
-					($_REQUEST[$feature."_active"] == "Y"),
-					($_REQUEST[$feature."_name"] <> '' ? $_REQUEST[$feature."_name"] : false)
+					(($_REQUEST[$feature."_active"] ?? null) == "Y"),
+					(($_REQUEST[$feature."_name"] ?? '') <> '' ? $_REQUEST[$feature."_name"] : false)
 				);
 
 				if (
 					$idTmp
-					&& $_REQUEST[$feature."_active"] == "Y"
+					&& ($_REQUEST[$feature."_active"] ?? null) == "Y"
 					&& (
 						!array_key_exists("hide_operations_settings", $arResult["arSocNetFeaturesSettings"][$feature])
 						|| !$arResult["arSocNetFeaturesSettings"][$feature]["hide_operations_settings"]
@@ -445,7 +449,7 @@ else
 					{
 						if (
 							!array_key_exists("restricted", $arResult["arSocNetFeaturesSettings"][$feature]["operations"][$operation])
-							|| !in_array($key, $arResult["arSocNetFeaturesSettings"][$feature]["operations"][$operation]["restricted"][($arParams["PAGE_ID"] == "group_features" ? SONET_ENTITY_GROUP : SONET_ENTITY_USER)])
+							|| !in_array($key ?? null, $arResult["arSocNetFeaturesSettings"][$feature]["operations"][$operation]["restricted"][($arParams["PAGE_ID"] == "group_features" ? SONET_ENTITY_GROUP : SONET_ENTITY_USER)])
 						)
 						{
 							$id1Tmp = CSocNetFeaturesPerms::SetPerm(

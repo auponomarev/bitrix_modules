@@ -1,56 +1,53 @@
-import {Type} from 'main.core';
-import {EventEmitter, BaseEvent} from 'main.core.events';
-import {Store} from 'ui.vue3.vuex';
+import { Type } from 'main.core';
+import { EventEmitter, BaseEvent } from 'main.core.events';
+import { Store } from 'ui.vue3.vuex';
 
-import {Core} from 'im.v2.application.core';
-import {DesktopManager} from 'im.v2.lib.desktop';
+import { Core } from 'im.v2.application.core';
+import { DesktopManager } from 'im.v2.lib.desktop';
+import { Logger } from 'im.v2.lib.logger';
+import { EventType } from 'im.v2.const';
 
 type InitialCounters = {
 	CHAT: {[chatId: string]: number},
+	LINES: {[chatId: string]: number},
+	COPILOT: {[chatId: string]: number},
 	CHAT_MUTED: number[],
 	CHAT_UNREAD: number[],
 	TYPE: {
 		'ALL': number,
+		'CHAT': number,
 		'NOTIFY': number,
+		'LINES': number,
 	}
 };
 
-const NOTIFICATION_COUNTER_UPDATE_EVENT = 'onImUpdateCounterNotify';
-const CHAT_COUNTER_UPDATE_EVENT = 'onImUpdateCounterMessage';
-
 export class CounterManager
 {
-	static instance: CounterManager;
+	static #instance: CounterManager;
 
 	#store: Store;
 
 	static getInstance(): CounterManager
 	{
-		if (!this.instance)
+		if (!this.#instance)
 		{
-			this.instance = new this();
+			this.#instance = new this();
 		}
 
-		return this.instance;
+		return this.#instance;
 	}
 
-	static init(counters: InitialCounters)
+	static init()
 	{
-		CounterManager.getInstance().init(counters);
+		CounterManager.getInstance();
 	}
 
 	constructor()
 	{
 		this.#store = Core.getStore();
-	}
-
-	init(counters: InitialCounters)
-	{
-		this.#store.dispatch('recent/setUnloadedChatCounters', this.#prepareChatCounters(counters));
-		this.#store.dispatch('notifications/setCounter', counters['TYPE']['NOTIFY']);
-
-		this.#subscribeToCountersChange();
-		this.#sendNotificationCounterChangeEvent(counters['TYPE']['NOTIFY']);
+		const { counters } = Core.getApplicationData();
+		Logger.warn('CounterManager: counters', counters);
+		this.#init(counters);
 	}
 
 	removeBrowserTitleCounter()
@@ -66,12 +63,25 @@ export class CounterManager
 		document.title = document.title.slice(counterPrefixLength);
 	}
 
+	#init(counters: InitialCounters)
+	{
+		this.#store.dispatch('counters/setUnloadedChatCounters', this.#prepareChatCounters(counters));
+		this.#store.dispatch('counters/setUnloadedLinesCounters', counters.LINES);
+		this.#store.dispatch('counters/setUnloadedCopilotCounters', counters.COPILOT);
+		this.#store.dispatch('notifications/setCounter', counters.TYPE.NOTIFY);
+
+		this.#subscribeToCountersChange();
+		this.#sendChatCounterChangeEvent(counters.TYPE.CHAT);
+		this.#sendNotificationCounterChangeEvent(counters.TYPE.NOTIFY);
+		this.#sendLinesCounterChangeEvent(counters.TYPE.LINES);
+	}
+
 	#prepareChatCounters(counters: InitialCounters): {[chatId: string]: number}
 	{
-		const chatCounters = Type.isArray(counters['CHAT']) ? {} : counters['CHAT'];
-		const markedChats = counters['CHAT_UNREAD'];
-		markedChats.forEach(markedChatId => {
-			const unreadChatHasCounter = !!chatCounters[markedChatId];
+		const chatCounters = Type.isArray(counters.CHAT) ? {} : counters.CHAT;
+		const markedChats = counters.CHAT_UNREAD;
+		markedChats.forEach((markedChatId) => {
+			const unreadChatHasCounter = Boolean(chatCounters[markedChatId]);
 			if (unreadChatHasCounter)
 			{
 				return;
@@ -94,25 +104,38 @@ export class CounterManager
 			this.#sendChatCounterChangeEvent(newValue);
 			this.#onTotalCounterChange();
 		});
+
+		this.#store.watch(linesCounterWatch, (newValue: number) => {
+			this.#sendLinesCounterChangeEvent(newValue);
+			this.#onTotalCounterChange();
+		});
 	}
 
 	#sendNotificationCounterChangeEvent(notificationsCounter: number)
 	{
-		const event = new BaseEvent({compatData: [notificationsCounter]});
-		EventEmitter.emit(window, NOTIFICATION_COUNTER_UPDATE_EVENT, event);
+		const event = new BaseEvent({ compatData: [notificationsCounter] });
+		EventEmitter.emit(window, EventType.counter.onNotificationCounterChange, event);
 	}
 
 	#sendChatCounterChangeEvent(chatCounter: number)
 	{
-		const event = new BaseEvent({compatData: [chatCounter]});
-		EventEmitter.emit(window, CHAT_COUNTER_UPDATE_EVENT, event);
+		const event = new BaseEvent({ compatData: [chatCounter] });
+		EventEmitter.emit(window, EventType.counter.onChatCounterChange, event);
+	}
+
+	#sendLinesCounterChangeEvent(linesCounter: number)
+	{
+		const LINES_TYPE = 'LINES';
+		const event = new BaseEvent({ compatData: [linesCounter, LINES_TYPE] });
+		EventEmitter.emit(window, EventType.counter.onLinesCounterChange, event);
 	}
 
 	#onTotalCounterChange()
 	{
 		const notificationCounter = this.#store.getters['notifications/getCounter'];
-		const chatCounter = this.#store.getters['recent/getTotalCounter'];
-		const totalCounter = notificationCounter + chatCounter;
+		const chatCounter = this.#store.getters['counters/getTotalChatCounter'];
+		const linesCounter = this.#store.getters['counters/getTotalLinesCounter'];
+		const totalCounter = notificationCounter + chatCounter + linesCounter;
 
 		if (DesktopManager.getInstance().isDesktopActive())
 		{
@@ -147,5 +170,9 @@ const notificationCounterWatch = (state, getters) => {
 };
 
 const chatCounterWatch = (state, getters) => {
-	return getters['recent/getTotalCounter'];
+	return getters['counters/getTotalChatCounter'];
+};
+
+const linesCounterWatch = (state, getters) => {
+	return getters['counters/getTotalLinesCounter'];
 };

@@ -7,6 +7,7 @@
  * @copyright 2001-2014 Bitrix
  */
 
+use Bitrix\Main\Application;
 use Bitrix\Main\Event;
 use Bitrix\Main\Loader;
 use Bitrix\Main\ModuleManager;
@@ -81,7 +82,7 @@ class CIntranetInviteDialog
 		$strEmail = trim($arFields["ADD_EMAIL"]);
 		$strName = trim($arFields["ADD_NAME"]);
 		$strLastName = trim($arFields["ADD_LAST_NAME"]);
-		$strPosition = trim($arFields["ADD_POSITION"]);
+		$strPosition = trim($arFields["ADD_POSITION"] ?? '');
 
 		if ($strEmail !== '')
 		{
@@ -384,15 +385,16 @@ class CIntranetInviteDialog
 
 		if (!empty($arFields["EMAIL"]) || !empty($arFields['PHONE']))
 		{
-			$isPhone = is_array($arFields['PHONE']) && !empty($arFields['PHONE']);
+			$isPhone = !empty($arFields['PHONE']) && is_array($arFields['PHONE']);
 			$phoneCountryList = [];
+			$arEmailOriginal = [];
 
-			if($isPhone)
+			if ($isPhone)
 			{
 				$arEmailOriginal = $arFields['PHONE'];
 				$phoneCountryList = $arFields['PHONE_COUNTRY'];
 			}
-			else
+			else if (!empty($arFields["EMAIL"]))
 			{
 				$arEmailOriginal = is_array($arFields["EMAIL"])
 					? $arFields["EMAIL"] : preg_split("/[\n\r\t\\,;\\ ]+/", trim($arFields["EMAIL"]));
@@ -996,7 +998,7 @@ class CIntranetInviteDialog
 	{
 		if (Loader::includeModule("bitrix24"))
 		{
-			$UserMaxCount = (int)Option::get("main", "PARAM_MAX_USERS");
+			$UserMaxCount = Application::getInstance()->getLicense()->getMaxUsers();
 			$currentUserCount = CBitrix24::getActiveUserCount();
 			return $UserMaxCount <= 0 || $cnt <= $UserMaxCount - $currentUserCount;
 		}

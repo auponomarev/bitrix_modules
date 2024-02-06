@@ -5,8 +5,9 @@ jn.define('layout/ui/detail-card/floating-button/menu/recent/grid-view', (requir
 	const { EventEmitter } = require('event-emitter');
 	const { withPressed } = require('utils/color');
 	const { changeFillColor } = require('utils/svg');
+	const { AppTheme } = require('apptheme/extended');
 
-	const TINT_COLOR = '#11a9d9';
+	const TINT_COLOR = AppTheme.colors.accentMainPrimaryalt;
 
 	/**
 	 * @constructor
@@ -16,8 +17,8 @@ jn.define('layout/ui/detail-card/floating-button/menu/recent/grid-view', (requir
 	 */
 	function RecentGridView(detailCard, items)
 	{
-		items = items.map((item, index) => ({
-			key: item.getId() + '/' + item.getTabId(),
+		items = items.map((item) => ({
+			key: `${item.getId()}/${item.getTabId()}`,
 			actionId: item.getId(),
 			tabId: item.getTabId(),
 			title: item.getShortTitle() || item.getTitle(),
@@ -33,7 +34,7 @@ jn.define('layout/ui/detail-card/floating-button/menu/recent/grid-view', (requir
 				marginTop: 22,
 				paddingLeft: 2,
 				paddingRight: 2,
-				backgroundColor: '#eef2f4',
+				backgroundColor: AppTheme.colors.bgSecondary,
 			},
 			data: [{ items }],
 			params: {
@@ -71,7 +72,8 @@ jn.define('layout/ui/detail-card/floating-button/menu/recent/grid-view', (requir
 				testId: `recent-item-${tabId || 'root'}-${actionId}`,
 				onClick,
 			},
-			View({
+			View(
+				{
 					style: {
 						width: 90,
 						paddingHorizontal: 4,
@@ -86,7 +88,7 @@ jn.define('layout/ui/detail-card/floating-button/menu/recent/grid-view', (requir
 							justifyContent: 'center',
 							alignSelf: 'center',
 						},
-						color: '#1f000000',
+						color: AppTheme.colors.shadowPrimary,
 						radius: 1,
 						offset: {
 							y: 1,
@@ -99,7 +101,7 @@ jn.define('layout/ui/detail-card/floating-button/menu/recent/grid-view', (requir
 					View(
 						{
 							style: {
-								backgroundColor: withPressed('#ffffff'),
+								backgroundColor: withPressed(AppTheme.colors.bgContentPrimary),
 								borderRadius: 12,
 								width: 60,
 								height: 60,
@@ -109,24 +111,23 @@ jn.define('layout/ui/detail-card/floating-button/menu/recent/grid-view', (requir
 							onClick,
 						},
 						Image({
-								style: {
-									alignSelf: 'center',
-									width: 38,
-									height: 38,
-								},
-								tintColor: TINT_COLOR,
-								resizeMode: 'contain',
-								svg: {
-									content: svgIcon,
-								},
+							style: {
+								alignSelf: 'center',
+								width: 38,
+								height: 38,
 							},
-						),
+							tintColor: TINT_COLOR,
+							resizeMode: 'contain',
+							svg: {
+								content: svgIcon,
+							},
+						}),
 					),
 				),
 				Text({
 					style: {
 						width: '100%',
-						color: '#333333',
+						color: AppTheme.colors.base1,
 						fontSize: 11,
 						textAlign: 'center',
 						marginTop: 5,

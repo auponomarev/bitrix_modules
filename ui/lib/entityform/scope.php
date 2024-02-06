@@ -111,7 +111,7 @@ class Scope
 	}
 
 	/**
-	 * @return \CAllUser|\CUser
+	 * @return \CUser
 	 */
 	protected function getUser()
 	{
@@ -270,8 +270,14 @@ class Scope
 				]);
 			}
 
+			$forceSetToUsers = ($params['forceSetToUsers'] ?? false);
+			if (mb_strtoupper($forceSetToUsers) === 'FALSE')
+			{
+				$forceSetToUsers = false;
+			}
+
 			$this->forceSetScopeToUsers($accessCodes, [
-				'forceSetToUsers' => ($params['forceSetToUsers'] ?? false),
+				'forceSetToUsers' => $forceSetToUsers,
 				'categoryName' => ($params['categoryName'] ?? ''),
 				'entityTypeId' => $entityTypeId,
 				'configId' => $configId,

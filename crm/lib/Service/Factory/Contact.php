@@ -80,6 +80,11 @@ class Contact extends Service\Factory
 		return true;
 	}
 
+	public function isObserversEnabled(): bool
+	{
+		return true;
+	}
+
 	public function isMultiFieldsEnabled(): bool
 	{
 		return true;
@@ -166,7 +171,8 @@ class Contact extends Service\Factory
 			Item::FIELD_NAME_CREATED_TIME => 'DATE_CREATE',
 			Item::FIELD_NAME_UPDATED_TIME => 'DATE_MODIFY',
 			Item::FIELD_NAME_CREATED_BY => 'CREATED_BY_ID',
-			Item::FIELD_NAME_UPDATED_BY => 'MODIFY_BY_ID'
+			Item::FIELD_NAME_UPDATED_BY => 'MODIFY_BY_ID',
+			Item::FIELD_NAME_OBSERVERS => 'OBSERVER_IDS',
 		];
 	}
 
@@ -241,10 +247,9 @@ class Contact extends Service\Factory
 			],
 			Item::FIELD_NAME_COMMENTS => [
 				'TYPE' => Field::TYPE_TEXT,
+				'VALUE_TYPE' => Field::VALUE_TYPE_BB,
 				'ATTRIBUTES' => [],
-				'SETTINGS' => [
-					'isFlexibleContentType' => true,
-				],
+				'CLASS' => Field\Comments::class,
 			],
 			Item::FIELD_NAME_OPENED => [
 				'TYPE' => Field::TYPE_BOOLEAN,
@@ -347,6 +352,11 @@ class Contact extends Service\Factory
 				'TYPE' => Field::TYPE_CRM_MULTIFIELD,
 				'ATTRIBUTES' => [\CCrmFieldInfoAttr::Multiple],
 				'CLASS' => Field\Multifield::class,
+			],
+			Item::FIELD_NAME_OBSERVERS => [
+				'TYPE' => Field::TYPE_USER,
+				'ATTRIBUTES' => [\CCrmFieldInfoAttr::Multiple],
+				'CLASS' => Field\Observers::class,
 			],
 		];
 	}
@@ -472,6 +482,10 @@ class Contact extends Service\Factory
 			)
 			->addAction(
 				Operation::ACTION_AFTER_SAVE,
+				new Operation\Action\FillEntityFieldsContext()
+			)
+			->addAction(
+				Operation::ACTION_AFTER_SAVE,
 				new Operation\Action\ResetEntityCommunicationSettingsInActivities(),
 			)
 		;
@@ -519,6 +533,10 @@ class Contact extends Service\Factory
 			->addAction(
 				Operation::ACTION_AFTER_SAVE,
 				new Operation\Action\Compatible\SendEvent\Delete('OnAfterCrmContactDelete')
+			)
+			->addAction(
+				Operation::ACTION_AFTER_SAVE,
+				new Operation\Action\DeleteEntityFieldsContext()
 			)
 		;
 

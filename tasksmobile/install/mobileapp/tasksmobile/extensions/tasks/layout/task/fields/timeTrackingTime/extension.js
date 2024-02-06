@@ -2,10 +2,10 @@
  * @module tasks/layout/task/fields/timeTrackingTime
  */
 jn.define('tasks/layout/task/fields/timeTrackingTime', (require, exports, module) => {
-	const {Loc} = require('loc');
-	const {Type} = require('type');
-	const {CombinedField} = require('layout/ui/fields/combined');
-	const {NumberField, NumberPrecision} = require('layout/ui/fields/number');
+	const { Loc } = require('loc');
+	const { Type } = require('type');
+	const { CombinedField } = require('layout/ui/fields/combined');
+	const { NumberField, NumberPrecision } = require('layout/ui/fields/number');
 
 	class TimeTrackingTime extends LayoutComponent
 	{
@@ -20,6 +20,8 @@ jn.define('tasks/layout/task/fields/timeTrackingTime', (require, exports, module
 				hours,
 				minutes,
 			};
+
+			this.handleOnChange = this.handleOnChange.bind(this);
 		}
 
 		componentWillReceiveProps(props)
@@ -31,6 +33,25 @@ jn.define('tasks/layout/task/fields/timeTrackingTime', (require, exports, module
 				hours,
 				minutes,
 			};
+		}
+
+		handleOnChange({ hours, minutes })
+		{
+			const resultHours = (Type.isUndefined(hours) ? 0 : Number(hours));
+			const resultMinutes = (Type.isUndefined(minutes) ? 0 : Number(minutes));
+
+			const newStateData = {};
+			if (resultHours !== this.state.hours)
+			{
+				newStateData.hours = resultHours;
+			}
+
+			if (resultMinutes !== this.state.minutes)
+			{
+				newStateData.minutes = resultMinutes;
+			}
+			this.setState(newStateData);
+			this.props.onChange(this.state.hours * 3600 + this.state.minutes * 60);
 		}
 
 		render()
@@ -77,25 +98,10 @@ jn.define('tasks/layout/task/fields/timeTrackingTime', (require, exports, module
 					},
 				},
 				testId: 'timeTrackingTime',
-				onChange: ({hours, minutes}) => {
-					hours = (!Type.isUndefined(hours) ? Number(hours) : 0);
-					minutes = (!Type.isUndefined(minutes) ? Number(minutes) : 0);
-
-					const newStateData = {};
-					if (hours !== this.state.hours)
-					{
-						newStateData.hours = hours;
-					}
-					if (minutes !== this.state.minutes)
-					{
-						newStateData.minutes = minutes;
-					}
-					this.setState(newStateData);
-					this.props.onChange(this.state.hours * 3600 + this.state.minutes * 60);
-				},
+				onChange: this.handleOnChange,
 			});
 		}
 	}
 
-	module.exports = {TimeTrackingTime};
+	module.exports = { TimeTrackingTime };
 });

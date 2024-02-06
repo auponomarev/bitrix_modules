@@ -8,7 +8,7 @@
 $arParams["bVarsFromForm"] = $arParams["bVarsFromForm"] ? true:false;
 $arResult["VALUE"] = false;
 $arUserField = &$arParams["arUserField"];
-$arFilter = $arParams["arFilter"];
+$arFilter = $arParams["arFilter"] ?? [];
 
 // *****************************************************************************************
 
@@ -17,8 +17,12 @@ if(isset($arUserField['USER_TYPE']))
 	if(!$arParams["bVarsFromForm"])
 	{
 		if(
-			$arUserField["ENTITY_VALUE_ID"] <= 0
-			&& !is_array($arUserField["SETTINGS"]["DEFAULT_VALUE"])
+			($arUserField["ENTITY_VALUE_ID"] ?? 0) <= 0
+			&& !(
+				isset($arUserField["SETTINGS"]["DEFAULT_VALUE"])
+				&& is_array($arUserField["SETTINGS"]["DEFAULT_VALUE"])
+			)
+			&& isset($arUserField["SETTINGS"]["DEFAULT_VALUE"])
 			&& $arUserField["SETTINGS"]["DEFAULT_VALUE"] <> ''
 		)
 			$arResult["VALUE"] = '';//$arParams["~arUserField"]["SETTINGS"]["DEFAULT_VALUE"];
@@ -128,7 +132,7 @@ if(isset($arUserField['USER_TYPE']))
 
 		if(
 			($arUserField["MANDATORY"] != "Y")
-			&& ($arUserField["SETTINGS"]["DISPLAY"] != "CHECKBOX")
+			&& (($arUserField["SETTINGS"]["DISPLAY"] ?? '') != "CHECKBOX")
 		):
 			$enum = array(/*null=>GetMessage("MAIN_NO")*/);
 		endif;

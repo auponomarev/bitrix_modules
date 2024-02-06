@@ -5,13 +5,13 @@ import {Row} from "./row";
 import {Selector} from "./selector";
 import {EventEmitter} from "main.core.events";
 import {ActiveDirectory} from "./active-directory";
+import { Analytics } from './analytics';
 
 export default class Form extends EventEmitter
 {
 	constructor(formParams)
 	{
 		super();
-
 		const params = Type.isPlainObject(formParams) ? formParams : {};
 
 		this.signedParameters = params.signedParameters;
@@ -29,6 +29,8 @@ export default class Form extends EventEmitter
 		this.isCreatorEmailConfirmed = params.isCreatorEmailConfirmed === "Y";
 		this.regenerateUrlBase = params.regenerateUrlBase;
 		this.firstInvitationBlock = params.firstInvitationBlock;
+		this.isSelfRegisterEnabled = params.isSelfRegisterEnabled;
+		this.analyticsLabel = params.analyticsLabel;
 
 		if (Type.isDomNode(this.contentContainer))
 		{
@@ -69,6 +71,8 @@ export default class Form extends EventEmitter
 		this.submit.subscribe('onInputError', (event) => {
 			this.showErrorMessage(event.data.error);
 		});
+
+		this.analytics = new Analytics(this.analyticsLabel, this.isAdmin);
 
 		if (this.isCloud)
 		{
@@ -356,7 +360,6 @@ export default class Form extends EventEmitter
 		this.panelRect = this.panelConfirmBtn.getBoundingClientRect();
 		this.btnWidth = Math.ceil(this.panelRect.width);
 		this.arrowWidth = Math.ceil(this.arrowRect.width);
-		this.delta = (this.btnWidth - this.arrowWidth) / 2;
 		this.sliderContentRect = this.sliderContent.getBoundingClientRect();
 
 		this.bodyHeight = this.body.getBoundingClientRect().height - this.buttonPanelRect.height + this.sliderHeaderHeight;
@@ -373,11 +376,15 @@ export default class Form extends EventEmitter
 	setSetupArrow()
 	{
 		this.getSetupArrow();
-		this.arrowBox.style.left = (this.panelRect.left - this.delta) + 'px';
+		const btnPadding = 40;
+		this.arrowBox.style.left = (this.panelRect.left + (this.btnWidth / 2) - (this.arrowWidth / 2) - btnPadding) + 'px';
 		this.contentHeight > this.bodyHeight ? this.body.classList.add('js-intranet-invitation-arrow-hide') : this.body.classList.remove('js-intranet-invitation-arrow-hide');
 
 		window.addEventListener('resize', function() {
-			this.arrowBox.style.left = (this.panelRect.left - this.delta) + 'px';
+			if (window.innerWidth <= 1100)
+			{
+				this.arrowBox.style.left = (this.panelRect.left + (this.btnWidth / 2) - (this.arrowWidth / 2) - btnPadding) + 'px';
+			}
 			this.getSetupArrow();
 			this.updateArrow();
 		}.bind(this))

@@ -7,6 +7,7 @@
  */
 
 namespace Bitrix\Crm\Integration;
+use Bitrix\Crm\Integration\Disk\MailTemplateConnector;
 use Bitrix\Disk\Driver;
 use Bitrix\Disk\File;
 use Bitrix\Disk\Folder;
@@ -375,7 +376,7 @@ class DiskManager
 				continue;
 			}
 
-			$archive->addEntry(ArchiveEntry::createFromFileModel($file, $file->getName()));
+			$archive->addEntry(ArchiveEntry::createFromFileModel($file));
 		}
 
 		return $archive;
@@ -434,12 +435,17 @@ class DiskManager
 	 */
 	public static function onBuildConnectorList()
 	{
-		return new EventResult(EventResult::SUCCESS, array(
-			'TASK' => array(
+		return new EventResult(EventResult::SUCCESS, [
+			'TASK' => [
 				'ENTITY_TYPE' => 'crm_timeline', // should match entity type from user fields: CRM_TIMELINE
 				'MODULE_ID' => 'crm',
 				'CLASS' => Disk\CommentConnector::className()
-			)
-		));
+			],
+			'CRM_MAIL_TEMPLATE' => [
+				'ENTITY_TYPE' => 'crm_mail_template', // should match entity type from user fields: CRM_TIMELINE
+				'MODULE_ID' => 'crm',
+				'CLASS' => MailTemplateConnector::className()
+			],
+		]);
 	}
 }

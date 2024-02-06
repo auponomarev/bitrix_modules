@@ -580,7 +580,15 @@ this.BX.Tasks = this.BX.Tasks || {};
 	    value: function setDisplayPriority(value) {
 	      var availableValues = new Set(['backlog', 'sprint']);
 	      if (!availableValues.has(value)) {
-	        throw Error('Invalid parameter to set display priority');
+	        throw new Error('Invalid parameter to set display priority');
+	      }
+	    }
+	  }, {
+	    key: "changeShortView",
+	    value: function changeShortView(isShortView) {
+	      var availableValues = new Set(['Y', 'N']);
+	      if (!availableValues.has(isShortView)) {
+	        throw new Error('Invalid parameter to set short view');
 	      }
 	    }
 	  }, {
@@ -2521,8 +2529,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        tabs: 'recents',
 	        avatarOptions: {
 	          bgColor: epic.color,
-	          bgImage: 'none',
-	          borderRadius: '12px'
+	          bgImage: 'none'
 	        }
 	      };
 	    } // widget on scrum (ex task)
@@ -2567,7 +2574,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        clearUnavailableItems: true,
 	        events: {
 	          'onLoad': function onLoad(baseEvent) {
-	            baseEvent.getTarget().getFooterContainer().style.zIndex = 1;
+	            main_core.Dom.style(baseEvent.getTarget().getFooterContainer(), 'zIndex', 1);
 	            _this2.onShowTaskEditCallback(baseEvent, statusSuccess, item);
 	            _this2.hideDialogLabel(baseEvent.getTarget());
 	          },
@@ -2724,10 +2731,10 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        return;
 	      }
 	      var input = inputObject.getInputNode();
+	      var groupId = this.groupId;
 	      if (this.tagSearchDialog && this.tagSearchDialog.getId() !== inputObject.getNodeId()) {
 	        this.tagSearchDialog = null;
 	      }
-	      var groupId = this.groupId;
 	      if (!this.tagSearchDialog) {
 	        this.tagSearchDialog = new ui_entitySelector.Dialog({
 	          id: inputObject.getNodeId(),
@@ -2757,7 +2764,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	          clearUnavailableItems: true,
 	          events: {
 	            'onLoad': function onLoad(event) {
-	              event.getTarget().getFooterContainer().style.zIndex = 1;
+	              main_core.Dom.style(event.getTarget().getFooterContainer(), 'zIndex', 1);
 	              _this4.onLoadTaskQuickCreateCallback(event, inputObject);
 	            },
 	            'onSearch': function onSearch(event) {
@@ -2785,22 +2792,22 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        });
 	        this.tagSearchDialog.subscribe('onHide', function () {
 	          inputObject.setTagsSearchMode(false);
+	          _this4.tagSearchDialog = null;
+	        });
+	        inputObject.subscribe('onEnter', function (event) {
+	          if (main_core.Type.isNil(_this4.tagSearchDialog)) {
+	            return;
+	          }
+	          var searchTab = _this4.tagSearchDialog.getSearchTab();
+	          if (main_core.Type.isNil(searchTab)) {
+	            return;
+	          }
+	          if (searchTab.isEmptyResult()) {
+	            _this4.tagSearchDialog.hide();
+	            input.focus();
+	          }
 	        });
 	      }
-	      inputObject.subscribe('onEnter', function (event) {
-	        if (main_core.Type.isNil(_this4.tagSearchDialog)) {
-	          return;
-	        }
-	        var searchTab = _this4.tagSearchDialog.getSearchTab();
-	        if (main_core.Type.isNil(searchTab)) {
-	          return;
-	        }
-	        if (searchTab.isEmptyResult()) {
-	          _this4.tagSearchDialog.hide();
-	          _this4.tagSearchDialog = null;
-	          input.focus();
-	        }
-	      });
 	      inputObject.setTagsSearchMode(true);
 	      this.tagSearchDialog.show();
 	      this.tagSearchDialog.search(enteredQuery);
@@ -2817,10 +2824,10 @@ this.BX.Tasks = this.BX.Tasks || {};
 	    value: function showEpicSearchDialog(inputObject, enteredQuery) {
 	      var _this5 = this;
 	      var input = inputObject.getInputNode();
+	      this.epicEnteredQuery = enteredQuery;
 	      if (this.epicSearchDialog && this.epicSearchDialog.getId() !== inputObject.getNodeId()) {
 	        this.epicSearchDialog = null;
 	      }
-	      this.epicEnteredQuery = enteredQuery;
 	      if (!this.epicSearchDialog) {
 	        this.epicSearchDialog = new ui_entitySelector.Dialog({
 	          id: inputObject.getNodeId(),
@@ -2865,7 +2872,6 @@ this.BX.Tasks = this.BX.Tasks || {};
 	                  resolve();
 	                });
 	                _this5.epicSearchDialog.hide();
-	                _this5.epicSearchDialog = null;
 	              });
 	            },
 	            'Item:onSelect': function ItemOnSelect(event) {
@@ -2884,6 +2890,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        });
 	        this.epicSearchDialog.subscribe('onHide', function () {
 	          inputObject.setEpicSearchMode(false);
+	          _this5.epicSearchDialog = null;
 	        });
 	        inputObject.subscribe('onMetaEnter', function () {
 	          if (main_core.Type.isNil(_this5.epicSearchDialog)) {
@@ -3403,6 +3410,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	    _this.observerLoadItems = null;
 	    _this.node = null;
 	    _this.listItems = null;
+	    _this.listLoader = null;
 	    _this.itemLoader = null;
 	    _this.itemsLoaderNode = null;
 	    _this.blank = null;
@@ -3755,7 +3763,12 @@ this.BX.Tasks = this.BX.Tasks || {};
 	    value: function isLastItem(item) {
 	      var listItemsNode = this.getListItemsNode();
 	      var itemNode = item.getNode();
-	      return listItemsNode.lastElementChild.isEqualNode(itemNode);
+	      var loaderNode = this.getLoaderNode();
+	      if (listItemsNode.lastElementChild.isEqualNode(loaderNode)) {
+	        return loaderNode.previousElementSibling.isEqualNode(itemNode);
+	      } else {
+	        return listItemsNode.lastElementChild.isEqualNode(itemNode);
+	      }
 	    }
 	  }, {
 	    key: "getFirstItemNode",
@@ -3838,6 +3851,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      if (!this.itemsLoaderNode) {
 	        return;
 	      }
+	      this.waitingLoadItems = true;
 	      main_core.Dom.addClass(this.itemsLoaderNode, '--waiting');
 	      this.showItemsLoader();
 	      if (main_core.Type.isUndefined(IntersectionObserver)) {
@@ -3860,6 +3874,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "unbindItemsLoader",
 	    value: function unbindItemsLoader() {
+	      this.waitingLoadItems = false;
 	      if (this.observerLoadItems) {
 	        this.observerLoadItems.disconnect();
 	      }
@@ -3867,6 +3882,11 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        this.hideItemsLoader();
 	        main_core.Dom.removeClass(this.itemsLoaderNode, '--waiting');
 	      }
+	    }
+	  }, {
+	    key: "isWaitingLoadItems",
+	    value: function isWaitingLoadItems() {
+	      return this.waitingLoadItems;
 	    }
 	  }, {
 	    key: "setActiveLoadItems",
@@ -3877,6 +3897,36 @@ this.BX.Tasks = this.BX.Tasks || {};
 	    key: "isActiveLoadItems",
 	    value: function isActiveLoadItems() {
 	      return this.activeLoadItems === true;
+	    }
+	  }, {
+	    key: "showListLoader",
+	    value: function showListLoader() {
+	      if (this.listLoader) {
+	        this.listLoader.destroy();
+	      }
+	      var targetNode = this.getNode();
+	      var position = main_core.Dom.getPosition(targetNode);
+	      var offset = this.isBacklog() ? {
+	        top: "".concat(position.top + (position.height / 2 - 55), "px"),
+	        left: "".concat(position.left + (position.width / 2 - 55), "px")
+	      } : {
+	        top: "".concat(position.top, "px"),
+	        left: "".concat(position.width / 2 - 55, "px")
+	      };
+	      this.listLoader = new main_loader.Loader({
+	        target: targetNode,
+	        mode: 'custom',
+	        offset: offset
+	      });
+	      this.listLoader.show();
+	      return this.listLoader;
+	    }
+	  }, {
+	    key: "hideListLoader",
+	    value: function hideListLoader() {
+	      if (this.listLoader) {
+	        this.listLoader.hide();
+	      }
 	    }
 	  }, {
 	    key: "showItemsLoader",
@@ -5885,6 +5935,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        this.toggling = false;
 	        this.emit('toggleVisibilityContent');
 	      }
+	      this.emit('transitionEnd');
 	    }
 	  }, {
 	    key: "toggleVisibilityContent",
@@ -5893,7 +5944,6 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      this.unbindItemsLoader();
 	      if (this.isHideContent()) {
 	        this.showContent(node);
-	        main_core.Dom.addClass(this.node, '--open');
 	        if (this.isCompleted()) {
 	          if (this.getItems().size === 0) {
 	            this.emit('getSprintCompletedItems');
@@ -5901,12 +5951,12 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        }
 	      } else {
 	        this.hideContent(node);
-	        main_core.Dom.removeClass(this.node, '--open');
 	      }
 	    }
 	  }, {
 	    key: "showContent",
 	    value: function showContent(node) {
+	      var _this8 = this;
 	      this.hideCont = false;
 	      if (node) {
 	        main_core.Dom.style(node, 'height', "".concat(node.scrollHeight, "px"));
@@ -5914,10 +5964,17 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      if (this.header) {
 	        this.header.upTick();
 	      }
+	      main_core.Dom.addClass(this.node, '--open');
+	      return new Promise(function (resolve) {
+	        main_core.Event.bindOnce(_this8.getContentContainer(), 'transitionend', function () {
+	          return resolve();
+	        });
+	      });
 	    }
 	  }, {
 	    key: "hideContent",
 	    value: function hideContent(node) {
+	      var _this9 = this;
 	      this.hideCont = true;
 	      if (node) {
 	        /* eslint-disable */
@@ -5930,6 +5987,12 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      if (this.header) {
 	        this.header.downTick();
 	      }
+	      main_core.Dom.removeClass(this.node, '--open');
+	      return new Promise(function (resolve) {
+	        main_core.Event.bindOnce(_this9.getContentContainer(), 'transitionend', function () {
+	          return resolve();
+	        });
+	      });
 	    }
 	  }, {
 	    key: "showSprint",
@@ -6559,10 +6622,12 @@ this.BX.Tasks = this.BX.Tasks || {};
 	    _this.isShortView = params.isShortView;
 	    _this.mandatoryExists = params.mandatoryExists;
 	    _this.isExactSearchApplied = params.isExactSearchApplied === 'Y';
+	    _this.pageSize = parseInt(params.pageSize, 10);
 	    _this.scroller = new Scroller({
 	      planBuilder: babelHelpers.assertThisInitialized(_this),
 	      entityStorage: _this.entityStorage
 	    });
+	    _this.loadItemsRepeatCounter = new Map();
 	    return _this;
 	  }
 	  babelHelpers.createClass(PlanBuilder, [{
@@ -6676,8 +6741,10 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        var sprint = Sprint.buildSprint(sprintParams);
 	        _this3.entityStorage.addSprint(sprint);
 	        _this3.appendToPlannedContainer(sprint);
-	        _this3.scroller.scrollToSprint(sprint);
-	        _this3.emit('createSprint', sprint);
+	        _this3.updateVisibilitySprints(sprint).then(function () {
+	          _this3.scroller.scrollToSprint(sprint);
+	          _this3.emit('createSprint', sprint);
+	        });
 	        return sprint;
 	      })["catch"](function (response) {
 	        _this3.requestSender.showErrorAlert(response);
@@ -6820,6 +6887,102 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      if (this.entityStorage.existCompletedSprint()) {
 	        this.completedSprints.hideFilteredSprints();
 	      }
+	    }
+	  }, {
+	    key: "loadItems",
+	    value: function loadItems(entity) {
+	      var _this5 = this;
+	      if (!this.loadItemsRepeatCounter.has(entity.getId())) {
+	        this.loadItemsRepeatCounter.set(entity.getId(), 0);
+	      }
+	      if (this.loadItemsRepeatCounter.get(entity.getId()) > 1) {
+	        entity.unbindItemsLoader();
+	        return;
+	      }
+	      entity.setActiveLoadItems(true);
+	      if (entity.getNumberItems() >= this.pageSize) {
+	        entity.getListItems().addScrollbar();
+	      }
+	      var requestData = {
+	        entityId: entity.getId(),
+	        pageNumber: entity.getPageNumberItems() + 1,
+	        pageSize: this.pageSize
+	      };
+	      return this.requestSender.getItems(requestData).then(function (response) {
+	        var items = response.data;
+	        entity.setActiveLoadItems(false);
+	        if (entity.isHideContent()) {
+	          return;
+	        }
+	        if (main_core.Type.isArray(items) && items.length) {
+	          entity.incrementPageNumberItems();
+	          _this5.createItemsInEntity(entity, items);
+	          if (entity.isGroupMode()) {
+	            entity.activateGroupMode();
+	          }
+	          entity.bindItemsLoader();
+	        } else {
+	          if (entity.getNumberTasks() !== entity.getNumberItems()) {
+	            _this5.loadItemsRepeatCounter.set(entity.getId(), _this5.loadItemsRepeatCounter.get(entity.getId()) + 1);
+	            entity.decrementPageNumberItems();
+	            return _this5.loadItems(entity);
+	          } else {
+	            entity.unbindItemsLoader();
+	          }
+	        }
+	        return true;
+	      })["catch"](function (response) {
+	        entity.setActiveLoadItems(false);
+	        _this5.requestSender.showErrorAlert(response);
+	      });
+	    }
+	  }, {
+	    key: "loadAllItems",
+	    value: function loadAllItems(entity) {
+	      var _this6 = this;
+	      var requestData = {
+	        entityId: entity.getId(),
+	        withoutNav: 'Y'
+	      };
+	      return this.requestSender.getItems(requestData).then(function (response) {
+	        var items = response.data;
+	        if (main_core.Type.isArray(items) && items.length) {
+	          _this6.createItemsInEntity(entity, items);
+	        }
+	        entity.unbindItemsLoader();
+	        return true;
+	      })["catch"](function (response) {
+	        entity.setActiveLoadItems(false);
+	        _this6.requestSender.showErrorAlert(response);
+	      });
+	    }
+	  }, {
+	    key: "createItemsInEntity",
+	    value: function createItemsInEntity(entity, items) {
+	      var _this7 = this;
+	      items.forEach(function (itemData) {
+	        var item = Item.buildItem(itemData);
+	        item.setEntityType(entity.getEntityType());
+	        if (!_this7.entityStorage.findItemByItemId(item.getId())) {
+	          item.setShortView(entity.getShortView());
+	          entity.appendItemToList(item);
+	          entity.setItem(item);
+	        }
+	      });
+	    }
+	  }, {
+	    key: "updateVisibilitySprints",
+	    value: function updateVisibilitySprints(sprint) {
+	      var results = [];
+	      this.entityStorage.getSprintsAvailableForFilling(sprint).forEach(function (anotherSprint) {
+	        if (!anotherSprint.isHideContent() && anotherSprint.isWaitingLoadItems()) {
+	          results.push(anotherSprint.hideContent(anotherSprint.getContentContainer()));
+	        }
+	      });
+	      if (sprint.isHideContent()) {
+	        results.push(sprint.showContent(sprint.getContentContainer()));
+	      }
+	      return Promise.all(results);
 	    }
 	  }]);
 	  return PlanBuilder;
@@ -7955,23 +8118,32 @@ this.BX.Tasks = this.BX.Tasks || {};
 	              if (first.getSort() > second.getSort()) return 1;
 	              if (first.getSort() < second.getSort()) return -1;
 	            });
-	            var sortedItemsIds = new Set();
-	            sortedItems.forEach(function (groupModeItem) {
-	              sortedItemsIds.add(groupModeItem.getId());
-	              if (groupModeItem.isParentTask() && groupModeItem.isShownSubTasks()) {
-	                groupModeItem.hideSubTasks();
-	              }
-	              _this9.moveItemToDown(groupModeItem, entity.getListItemsNode(), false);
-	              groupModeItem.activateBlinking();
-	            });
-	            _this9.scroller.scrollToItem(sortedItems.values().next().value);
-	            _this9.requestSender.updateItemSort({
-	              sortInfo: _this9.calculateSort(entity.getListItemsNode(), sortedItemsIds)
-	            })["catch"](function (response) {
-	              _this9.requestSender.showErrorAlert(response);
-	            });
-	            entity.deactivateGroupMode();
+	            _this9.fadeOutEntity(entity);
 	            menuItem.getMenuWindow().close();
+	            _this9.loadEntityList(entity, !entity.isWaitingLoadItems()).then(function () {
+	              _this9.fadeInEntity(entity);
+	              var sortedItemsIds = new Set();
+	              sortedItems.forEach(function (groupModeItem) {
+	                sortedItemsIds.add(groupModeItem.getId());
+	                if (groupModeItem.isParentTask() && groupModeItem.isShownSubTasks()) {
+	                  groupModeItem.hideSubTasks();
+	                }
+	                _this9.moveItemToDown(groupModeItem, entity.getListItemsNode(), false);
+	                groupModeItem.activateBlinking();
+	              });
+	              _this9.scroller.scrollToItem(sortedItems.values().next().value);
+	              var containerPosition = main_core.Dom.getPosition(_this9.planBuilder.getScrumContainer());
+	              window.scrollTo({
+	                top: containerPosition.top,
+	                behavior: 'smooth'
+	              });
+	              _this9.requestSender.updateItemSort({
+	                sortInfo: _this9.calculateSort(entity.getListItemsNode(), sortedItemsIds)
+	              })["catch"](function (response) {
+	                _this9.requestSender.showErrorAlert(response);
+	              });
+	              entity.deactivateGroupMode();
+	            });
 	          }
 	        });
 	      }
@@ -8118,14 +8290,14 @@ this.BX.Tasks = this.BX.Tasks || {};
 	    key: "moveToWithGroupMode",
 	    value: function moveToWithGroupMode(entityFrom, entityTo, item) {
 	      var _this16 = this;
-	      var after = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : true;
+	      var moveToEnd = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : true;
 	      var update = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : true;
 	      var groupModeItems = entityFrom.getGroupModeItems();
 	      if (item && !groupModeItems.has(item.getId())) {
 	        groupModeItems.set(item.getId(), item);
 	      }
 	      var sortedItems = babelHelpers.toConsumableArray(groupModeItems.values()).sort(function (first, second) {
-	        if (after) {
+	        if (moveToEnd) {
 	          if (first.getSort() > second.getSort()) return 1;
 	          if (first.getSort() < second.getSort()) return -1;
 	        } else {
@@ -8133,36 +8305,44 @@ this.BX.Tasks = this.BX.Tasks || {};
 	          if (first.getSort() > second.getSort()) return -1;
 	        }
 	      });
-	      var sortedItemsIds = new Set();
-	      sortedItems.forEach(function (groupModeItem) {
-	        _this16.moveTo(entityFrom, entityTo, groupModeItem, after, update);
-	        sortedItemsIds.add(groupModeItem.getId());
-	        groupModeItem.activateBlinking();
+	      var updateVisibilitySprints = entityTo.isBacklog() ? Promise.resolve() : this.planBuilder.updateVisibilitySprints(entityTo);
+	      updateVisibilitySprints.then(function () {
+	        _this16.fadeOutEntity(entityTo);
+	        var immediately = !moveToEnd || !entityTo.isWaitingLoadItems();
+	        _this16.loadEntityList(entityTo, immediately).then(function () {
+	          _this16.fadeInEntity(entityTo);
+	          var sortedItemsIds = new Set();
+	          sortedItems.forEach(function (groupModeItem) {
+	            _this16.moveTo(entityFrom, entityTo, groupModeItem, moveToEnd, update);
+	            sortedItemsIds.add(groupModeItem.getId());
+	            groupModeItem.activateBlinking();
+	          });
+	          _this16.scroller.scrollToItem(sortedItems.values().next().value);
+	          _this16.requestSender.updateItemSort({
+	            entityId: entityTo.getId(),
+	            itemIds: Array.from(sortedItemsIds),
+	            sortInfo: _objectSpread$2(_objectSpread$2({}, _this16.calculateSort(entityTo.getListItemsNode(), sortedItemsIds, true)), _this16.calculateSort(entityFrom.getListItemsNode(), new Set(), true))
+	          }).then(function () {
+	            _this16.updateEntityCounters(entityFrom, entityTo);
+	          })["catch"](function (response) {
+	            _this16.requestSender.showErrorAlert(response);
+	          });
+	          entityFrom.deactivateGroupMode();
+	          entityTo.deactivateGroupMode();
+	        });
 	      });
-	      this.scroller.scrollToItem(sortedItems.values().next().value);
-	      this.requestSender.updateItemSort({
-	        entityId: entityTo.getId(),
-	        itemIds: Array.from(sortedItemsIds),
-	        sortInfo: _objectSpread$2(_objectSpread$2({}, this.calculateSort(entityTo.getListItemsNode(), sortedItemsIds, true)), this.calculateSort(entityFrom.getListItemsNode(), new Set(), true))
-	      }).then(function () {
-	        _this16.updateEntityCounters(entityFrom, entityTo);
-	      })["catch"](function (response) {
-	        _this16.requestSender.showErrorAlert(response);
-	      });
-	      entityFrom.deactivateGroupMode();
-	      entityTo.deactivateGroupMode();
 	    }
 	  }, {
 	    key: "moveTo",
 	    value: function moveTo(entityFrom, entityTo, item) {
-	      var after = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : true;
+	      var moveToEnd = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : true;
 	      var update = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : true;
 	      var itemNode = item.getNode();
 	      var entityListNode = entityTo.getListItemsNode();
 	      if (item.isParentTask() && item.isShownSubTasks()) {
 	        item.hideSubTasks();
 	      }
-	      if (after) {
+	      if (moveToEnd) {
 	        main_core.Dom.insertBefore(itemNode, entityListNode.lastElementChild);
 	      } else {
 	        main_core.Dom.insertBefore(itemNode, entityListNode.firstElementChild);
@@ -8304,6 +8484,33 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      if (this.moveToSprintMenu) {
 	        this.moveToSprintMenu.getPopupWindow().close();
 	      }
+	    }
+	  }, {
+	    key: "loadEntityList",
+	    value: function loadEntityList(entity) {
+	      var _this19 = this;
+	      var immediately = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
+	      return new Promise(function (resolve) {
+	        if (immediately) {
+	          resolve();
+	        } else {
+	          _this19.planBuilder.loadAllItems(entity).then(function () {
+	            return resolve();
+	          });
+	        }
+	      });
+	    }
+	  }, {
+	    key: "fadeOutEntity",
+	    value: function fadeOutEntity(entity) {
+	      entity.fadeOut();
+	      entity.showListLoader();
+	    }
+	  }, {
+	    key: "fadeInEntity",
+	    value: function fadeInEntity(entity) {
+	      entity.hideListLoader();
+	      entity.fadeIn();
 	    }
 	  }]);
 	  return ItemMover;
@@ -9469,7 +9676,8 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      displayPriority: params.displayPriority,
 	      isShortView: params.isShortView,
 	      mandatoryExists: params.mandatoryExists,
-	      isExactSearchApplied: params.isExactSearchApplied
+	      isExactSearchApplied: params.isExactSearchApplied,
+	      pageSize: _this.pageSize
 	    });
 	    _this.planBuilder.subscribe('beforeCreateSprint', function (baseEvent) {
 	      var requestData = baseEvent.getData();
@@ -9587,6 +9795,39 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      });
 	    }
 	  }, {
+	    key: "changeShortView",
+	    value: function changeShortView(isShortView) {
+	      var _this3 = this;
+	      babelHelpers.get(babelHelpers.getPrototypeOf(Plan.prototype), "changeShortView", this).call(this, isShortView);
+	      this.planBuilder.setShortView(isShortView);
+	      this.destroyActionPanel();
+	      var entities = this.entityStorage.getAllEntities();
+	      entities.forEach(function (entity) {
+	        if (!entity.isCompleted()) {
+	          entity.deactivateGroupMode();
+	          entity.fadeOut();
+	        }
+	      });
+	      this.requestSender.saveShortView({
+	        isShortView: isShortView
+	      }).then(function (response) {
+	        entities.forEach(function (entity) {
+	          if (!entity.isCompleted()) {
+	            entity.setShortView(isShortView);
+	            entity.adjustListItemsWidth();
+	            entity.fadeIn();
+	          }
+	        });
+	      })["catch"](function (response) {
+	        entities.forEach(function (entity) {
+	          if (!entity.isCompleted()) {
+	            entity.fadeIn();
+	          }
+	        });
+	        _this3.requestSender.showErrorAlert(response);
+	      });
+	    }
+	  }, {
 	    key: "subscribeToPull",
 	    value: function subscribeToPull() {
 	      pull_client.PULL.subscribe(this.pullSprint);
@@ -9597,7 +9838,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "bindHandlers",
 	    value: function bindHandlers() {
-	      var _this3 = this;
+	      var _this4 = this;
 	      this.entityStorage.getBacklog().subscribe('showInput', this.onShowBacklogInput.bind(this));
 	      this.entityStorage.getBacklog().subscribe('openAddTaskForm', this.onOpenAddTaskForm.bind(this));
 	      this.entityStorage.getBacklog().subscribe('updateItem', this.onUpdateItem.bind(this));
@@ -9614,10 +9855,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      this.entityStorage.getBacklog().subscribe('filterByTag', this.onFilterByTag.bind(this));
 	      this.entityStorage.getBacklog().subscribe('loadItems', function (baseEvent) {
 	        var entity = baseEvent.getTarget();
-	        if (!_this3.loadItemsRepeatCounter.has(entity.getId())) {
-	          _this3.loadItemsRepeatCounter.set(entity.getId(), 0);
-	        }
-	        _this3.loadItems(entity);
+	        _this4.planBuilder.loadItems(entity);
 	      });
 	      this.entityStorage.getBacklog().subscribe('toggleActionPanel', this.onToggleActionPanel.bind(this));
 	      this.entityStorage.getBacklog().subscribe('showLinked', this.onShowLinked.bind(this));
@@ -9625,13 +9863,13 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      this.entityStorage.getBacklog().subscribe('showBlank', this.onShowBlank.bind(this));
 	      this.entityStorage.getBacklog().subscribe('deactivateGroupMode', this.onDeactivateGroupMode.bind(this));
 	      this.entityStorage.getSprints().forEach(function (sprint) {
-	        return _this3.subscribeToSprint(sprint);
+	        return _this4.subscribeToSprint(sprint);
 	      });
 	      this.epic.subscribe('filterByTag', this.onFilterByTag.bind(this));
 	      this.itemMover.subscribe('dragStart', function () {
-	        _this3.destroyActionPanel();
-	        if (_this3.searchItems.isActive()) {
-	          _this3.searchItems.stop();
+	        _this4.destroyActionPanel();
+	        if (_this4.searchItems.isActive()) {
+	          _this4.searchItems.stop();
 	        }
 	      });
 	      document.onkeydown = this.onDocumentKeyDown.bind(this);
@@ -9640,7 +9878,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "subscribeToSprint",
 	    value: function subscribeToSprint(sprint) {
-	      var _this4 = this;
+	      var _this5 = this;
 	      sprint.subscribe('showInput', this.onShowSprintInput.bind(this));
 	      sprint.subscribe('createSprint', this.onCreateSprint.bind(this));
 	      sprint.subscribe('updateItem', this.onUpdateItem.bind(this));
@@ -9665,10 +9903,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      sprint.subscribe('showSprintCreateMenu', this.onOpenSprintAddMenu.bind(this));
 	      sprint.subscribe('loadItems', function (baseEvent) {
 	        var entity = baseEvent.getTarget();
-	        if (!_this4.loadItemsRepeatCounter.has(entity.getId())) {
-	          _this4.loadItemsRepeatCounter.set(entity.getId(), 0);
-	        }
-	        _this4.loadItems(entity);
+	        _this5.planBuilder.loadItems(entity);
 	      });
 	      sprint.subscribe('toggleActionPanel', this.onToggleActionPanel.bind(this));
 	      sprint.subscribe('showLinked', this.onShowLinked.bind(this));
@@ -9807,7 +10042,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "onCreateTaskItem",
 	    value: function onCreateTaskItem(baseEvent) {
-	      var _this5 = this;
+	      var _this6 = this;
 	      var input = baseEvent.getTarget();
 	      var entity = input.getEntity();
 	      var newItem = null;
@@ -9855,11 +10090,11 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      this.pullItem.addTmpIdToSkipAdding(newItem.getId());
 	      this.pullItem.addTmpIdToSkipSorting(newItem.getId());
 	      this.sendRequestToCreateTask(entity, newItem).then(function (response) {
-	        _this5.fillItemAfterCreation(newItem, response.data);
+	        _this6.fillItemAfterCreation(newItem, response.data);
 	        entity.setItem(newItem);
-	        _this5.updateEntityCounters(entity);
-	        if (_this5.decomposition) {
-	          var _parentItem = _this5.decomposition.getParentItem();
+	        _this6.updateEntityCounters(entity);
+	        if (_this6.decomposition) {
+	          var _parentItem = _this6.decomposition.getParentItem();
 	          if (!entity.isBacklog()) {
 	            var subTasks = _parentItem.getSubTasks();
 	            subTasks.addTask(newItem);
@@ -9880,31 +10115,31 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        input.unDisable();
 	        input.focus();
 	        entity.adjustListItemsWidth();
-	        _this5.planBuilder.adjustSprintListWidth();
+	        _this6.planBuilder.adjustSprintListWidth();
 	      })["catch"](function (response) {
-	        _this5.requestSender.showErrorAlert(response);
+	        _this6.requestSender.showErrorAlert(response);
 	      });
 	    }
 	  }, {
 	    key: "onUpdateItem",
 	    value: function onUpdateItem(baseEvent) {
-	      var _this6 = this;
+	      var _this7 = this;
 	      var entity = baseEvent.getTarget();
 	      var updateData = baseEvent.getData();
 	      this.pullItem.addIdToSkipUpdating(updateData.itemId);
 	      this.requestSender.updateItem(baseEvent.getData()).then(function () {
 	        var isStoryPointsUpdated = !main_core.Type.isUndefined(updateData.storyPoints);
 	        if (isStoryPointsUpdated) {
-	          _this6.updateEntityCounters(entity);
+	          _this7.updateEntityCounters(entity);
 	        }
 	      })["catch"](function (response) {
-	        _this6.requestSender.showErrorAlert(response);
+	        _this7.requestSender.showErrorAlert(response);
 	      });
 	    }
 	  }, {
 	    key: "onGetSubTasks",
 	    value: function onGetSubTasks(baseEvent) {
-	      var _this7 = this;
+	      var _this8 = this;
 	      var sprint = baseEvent.getTarget();
 	      var subTasks = baseEvent.getData();
 	      sprint.appendNodeAfterItem(subTasks.render(), subTasks.getParentItem().getNode());
@@ -9919,15 +10154,15 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        });
 	        subTasks.getParentItem().showSubTasks();
 	        sprint.deactivateSubTaskLoading(subTasks.getParentItem());
-	        _this7.planBuilder.adjustSprintListWidth();
+	        _this8.planBuilder.adjustSprintListWidth();
 	      })["catch"](function (response) {
-	        _this7.requestSender.showErrorAlert(response);
+	        _this8.requestSender.showErrorAlert(response);
 	      });
 	    }
 	  }, {
 	    key: "onChangeTaskResponsible",
 	    value: function onChangeTaskResponsible(baseEvent) {
-	      var _this8 = this;
+	      var _this9 = this;
 	      var item = baseEvent.getData();
 	      this.pullItem.addIdToSkipUpdating(item.getId());
 	      this.requestSender.changeTaskResponsible({
@@ -9935,7 +10170,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        sourceId: item.getSourceId(),
 	        responsible: item.getResponsible().getValue()
 	      })["catch"](function (response) {
-	        _this8.requestSender.showErrorAlert(response);
+	        _this9.requestSender.showErrorAlert(response);
 	      });
 	    }
 	  }, {
@@ -9965,7 +10200,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "onCompleteSprint",
 	    value: function onCompleteSprint() {
-	      var _this9 = this;
+	      var _this10 = this;
 	      var sprintSidePanel = new SprintSidePanel({
 	        sidePanel: this.sidePanel,
 	        groupId: this.groupId,
@@ -9973,13 +10208,13 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      });
 	      sprintSidePanel.showCompletionForm();
 	      sprintSidePanel.subscribe('showTask', function (innerBaseEvent) {
-	        _this9.sidePanel.openSidePanelByUrl(_this9.getPathToTask().replace('#task_id#', innerBaseEvent.getData()));
+	        _this10.sidePanel.openSidePanelByUrl(_this10.getPathToTask().replace('#task_id#', innerBaseEvent.getData()));
 	      });
 	    }
 	  }, {
 	    key: "onRemoveSprint",
 	    value: function onRemoveSprint(baseEvent) {
-	      var _this10 = this;
+	      var _this11 = this;
 	      var sprint = baseEvent.getTarget();
 	      this.pullSprint.addIdToSkipRemoving(sprint.getId());
 	      this.requestSender.removeSprint({
@@ -9990,30 +10225,30 @@ this.BX.Tasks = this.BX.Tasks || {};
 	          babelHelpers.toConsumableArray(sprint.getItems().values()).map(function (item) {
 	            sprint.addItemToGroupMode(item);
 	          });
-	          _this10.itemMover.moveToWithGroupMode(sprint, _this10.entityStorage.getBacklog(), null, false, false);
+	          _this11.itemMover.moveToWithGroupMode(sprint, _this11.entityStorage.getBacklog(), null, false, false);
 	        }
-	        _this10.destroyActionPanel();
+	        _this11.destroyActionPanel();
 	        sprint.removeYourself();
-	        _this10.entityStorage.removeSprint(sprint.getId());
-	        _this10.planBuilder.adjustSprintListWidth();
+	        _this11.entityStorage.removeSprint(sprint.getId());
+	        _this11.planBuilder.adjustSprintListWidth();
 	      })["catch"](function (response) {
-	        _this10.requestSender.showErrorAlert(response);
+	        _this11.requestSender.showErrorAlert(response);
 	      });
 	    }
 	  }, {
 	    key: "onChangeSprintName",
 	    value: function onChangeSprintName(baseEvent) {
-	      var _this11 = this;
+	      var _this12 = this;
 	      var requestData = baseEvent.getData();
 	      this.pullSprint.addIdToSkipUpdating(requestData.sprintId);
 	      this.requestSender.changeSprintName(requestData)["catch"](function (response) {
-	        _this11.requestSender.showErrorAlert(response);
+	        _this12.requestSender.showErrorAlert(response);
 	      });
 	    }
 	  }, {
 	    key: "onChangeSprintDeadline",
 	    value: function onChangeSprintDeadline(baseEvent) {
-	      var _this12 = this;
+	      var _this13 = this;
 	      var sprint = baseEvent.getTarget();
 	      var requestData = baseEvent.getData();
 	      this.pullSprint.addIdToSkipUpdating(requestData.sprintId);
@@ -10024,13 +10259,13 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        sprint.setDateStart(sprintData.dateStart);
 	        sprint.setDateEnd(sprintData.dateEnd);
 	      })["catch"](function (response) {
-	        _this12.requestSender.showErrorAlert(response);
+	        _this13.requestSender.showErrorAlert(response);
 	      });
 	    }
 	  }, {
 	    key: "onGetSprintCompletedItems",
 	    value: function onGetSprintCompletedItems(baseEvent) {
-	      var _this13 = this;
+	      var _this14 = this;
 	      var sprint = baseEvent.getTarget();
 	      var listItemsNode = sprint.getListItemsNode();
 	      var listPosition = main_core.Dom.getPosition(listItemsNode);
@@ -10068,7 +10303,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        sprint.showContent(sprint.getContentContainer());
 	      })["catch"](function (response) {
 	        loader.hide();
-	        _this13.requestSender.showErrorAlert(response);
+	        _this14.requestSender.showErrorAlert(response);
 	      });
 	    }
 	  }, {
@@ -10086,7 +10321,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "onOpenSprintAddMenu",
 	    value: function onOpenSprintAddMenu(baseEvent) {
-	      var _this14 = this;
+	      var _this15 = this;
 	      var entity = baseEvent.getTarget();
 	      var button = baseEvent.getData().getNode();
 	      if (this.sprintAddMenu) {
@@ -10108,23 +10343,23 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      this.sprintAddMenu.addMenuItem({
 	        text: main_core.Loc.getMessage('TASKS_SCRUM_BACKLOG_SPRINT_FIRST_ADD'),
 	        onclick: function onclick(event, menuItem) {
-	          _this14.onShowSprintInput(new main_core_events.BaseEvent().setTarget(entity));
+	          _this15.onShowSprintInput(new main_core_events.BaseEvent().setTarget(entity));
 	          menuItem.getMenuWindow().close();
 	        }
 	      });
 	      this.sprintAddMenu.addMenuItem({
 	        text: main_core.Loc.getMessage('TASKS_SCRUM_BACKLOG_SPRINT_SECOND_ADD'),
 	        onclick: function onclick(event, menuItem) {
-	          _this14.planBuilder.createSprint();
+	          _this15.planBuilder.createSprint();
 	          menuItem.getMenuWindow().close();
 	        }
 	      });
 	      this.sprintAddMenu.getPopupWindow().subscribe('onClose', function () {
-	        _this14.sprintAddMenu.getPopupWindow().destroy();
-	        _this14.sprintAddMenu = null;
+	        _this15.sprintAddMenu.getPopupWindow().destroy();
+	        _this15.sprintAddMenu = null;
 	      });
 	      this.sprintAddMenu.getPopupWindow().subscribe('onShow', function () {
-	        var angle = _this14.sprintAddMenu.getMenuContainer().querySelector('.popup-window-angly');
+	        var angle = _this15.sprintAddMenu.getMenuContainer().querySelector('.popup-window-angly');
 	        main_core.Dom.style(angle, 'pointerEvents', 'none');
 	      });
 	      this.sprintAddMenu.show();
@@ -10204,35 +10439,8 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "onChangeShortView",
 	    value: function onChangeShortView(baseEvent) {
-	      var _this15 = this;
 	      var isShortView = baseEvent.getData();
-	      this.planBuilder.setShortView(isShortView);
-	      this.destroyActionPanel();
-	      var entities = this.entityStorage.getAllEntities();
-	      entities.forEach(function (entity) {
-	        if (!entity.isCompleted()) {
-	          entity.deactivateGroupMode();
-	          entity.fadeOut();
-	        }
-	      });
-	      this.requestSender.saveShortView({
-	        isShortView: isShortView
-	      }).then(function (response) {
-	        entities.forEach(function (entity) {
-	          if (!entity.isCompleted()) {
-	            entity.setShortView(isShortView);
-	            entity.adjustListItemsWidth();
-	            entity.fadeIn();
-	          }
-	        });
-	      })["catch"](function (response) {
-	        entities.forEach(function (entity) {
-	          if (!entity.isCompleted()) {
-	            entity.fadeIn();
-	          }
-	        });
-	        _this15.requestSender.showErrorAlert(response);
-	      });
+	      this.changeShortView(isShortView);
 	    }
 	  }, {
 	    key: "onToggleActionPanel",
@@ -10383,67 +10591,23 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      }
 	    }
 	  }, {
-	    key: "loadItems",
-	    value: function loadItems(entity) {
-	      var _this18 = this;
-	      if (this.loadItemsRepeatCounter.get(entity.getId()) > 1) {
-	        entity.unbindItemsLoader();
-	        return;
-	      }
-	      entity.setActiveLoadItems(true);
-	      if (entity.getNumberItems() >= this.pageSize) {
-	        entity.getListItems().addScrollbar();
-	      }
-	      var requestData = {
-	        entityId: entity.getId(),
-	        pageNumber: entity.getPageNumberItems() + 1,
-	        pageSize: this.pageSize
-	      };
-	      this.requestSender.getItems(requestData).then(function (response) {
-	        var items = response.data;
-	        entity.setActiveLoadItems(false);
-	        if (entity.isHideContent()) {
-	          return;
-	        }
-	        if (main_core.Type.isArray(items) && items.length) {
-	          entity.incrementPageNumberItems();
-	          _this18.createItemsInEntity(entity, items);
-	          if (entity.isGroupMode()) {
-	            entity.activateGroupMode();
-	          }
-	          entity.bindItemsLoader();
-	        } else {
-	          if (entity.getNumberTasks() !== entity.getNumberItems()) {
-	            _this18.loadItemsRepeatCounter.set(entity.getId(), _this18.loadItemsRepeatCounter.get(entity.getId()) + 1);
-	            entity.decrementPageNumberItems();
-	            _this18.loadItems(entity);
-	          } else {
-	            entity.unbindItemsLoader();
-	          }
-	        }
-	      })["catch"](function (response) {
-	        entity.setActiveLoadItems(false);
-	        _this18.requestSender.showErrorAlert(response);
-	      });
-	    }
-	  }, {
 	    key: "showInput",
 	    value: function showInput(entity, bindNode) {
-	      var _this19 = this;
+	      var _this18 = this;
 	      return new Promise(function (resolve) {
-	        if (_this19.input.isExists()) {
-	          _this19.input.submit();
-	          if (_this19.input.hasEntity(entity)) {
+	        if (_this18.input.isExists()) {
+	          _this18.input.submit();
+	          if (_this18.input.hasEntity(entity)) {
 	            resolve();
 	          } else {
-	            _this19.input.subscribeOnce('unDisable', function () {
-	              _this19.input.removeYourself();
-	              _this19.renderInput(entity, bindNode);
+	            _this18.input.subscribeOnce('unDisable', function () {
+	              _this18.input.removeYourself();
+	              _this18.renderInput(entity, bindNode);
 	              resolve();
 	            });
 	          }
 	        } else {
-	          _this19.renderInput(entity, bindNode);
+	          _this18.renderInput(entity, bindNode);
 	          resolve();
 	        }
 	      });
@@ -10488,26 +10652,12 @@ this.BX.Tasks = this.BX.Tasks || {};
 	      }
 	    }
 	  }, {
-	    key: "createItemsInEntity",
-	    value: function createItemsInEntity(entity, items) {
-	      var _this20 = this;
-	      items.forEach(function (itemData) {
-	        var item = Item.buildItem(itemData);
-	        item.setEntityType(entity.getEntityType());
-	        if (!_this20.entityStorage.findItemByItemId(item.getId())) {
-	          item.setShortView(entity.getShortView());
-	          entity.appendItemToList(item);
-	          entity.setItem(item);
-	        }
-	      });
-	    }
-	  }, {
 	    key: "showActionPanel",
 	    value: function showActionPanel(entity, item) {
-	      var _this21 = this;
+	      var _this19 = this;
 	      var stopSearch = function stopSearch() {
-	        if (_this21.searchItems.isActive()) {
-	          _this21.searchItems.stop();
+	        if (_this19.searchItems.isActive()) {
+	          _this19.searchItems.stop();
 	        }
 	      };
 	      var isMultipleAction = entity.getGroupModeItems().size > 1;
@@ -10521,10 +10671,10 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            activity: true,
 	            disable: isMultipleAction,
 	            callback: function callback() {
-	              _this21.onShowTask(new main_core_events.BaseEvent({
+	              _this19.onShowTask(new main_core_events.BaseEvent({
 	                data: item
 	              }));
-	              _this21.destroyActionPanel();
+	              _this19.destroyActionPanel();
 	              entity.deactivateGroupMode();
 	            }
 	          },
@@ -10532,23 +10682,23 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            activity: true,
 	            disable: !item.isEditAllowed(),
 	            callback: function callback(event) {
-	              if (_this21.diskManager) {
-	                _this21.diskManager.closeAttachmentMenu();
-	                _this21.diskManager = null;
+	              if (_this19.diskManager) {
+	                _this19.diskManager.closeAttachmentMenu();
+	                _this19.diskManager = null;
 	                return;
 	              }
 	              var groupItems = entity.getGroupModeItems();
-	              _this21.diskManager = new DiskManager({
+	              _this19.diskManager = new DiskManager({
 	                targetElement: event.currentTarget
 	              });
-	              _this21.diskManager.subscribe('onFinish', function (baseEvent) {
-	                _this21.attachFilesToTask(entity, groupItems, baseEvent.getData());
+	              _this19.diskManager.subscribe('onFinish', function (baseEvent) {
+	                _this19.attachFilesToTask(entity, groupItems, baseEvent.getData());
 	              });
-	              _this21.diskManager.showAttachmentMenu(event.currentTarget);
-	              _this21.actionPanel.subscribe('onDestroy', function () {
-	                if (_this21.diskManager) {
-	                  _this21.diskManager.closeAttachmentMenu();
-	                  _this21.diskManager = null;
+	              _this19.diskManager.showAttachmentMenu(event.currentTarget);
+	              _this19.actionPanel.subscribe('onDestroy', function () {
+	                if (_this19.diskManager) {
+	                  _this19.diskManager.closeAttachmentMenu();
+	                  _this19.diskManager = null;
 	                }
 	              });
 	            }
@@ -10557,8 +10707,8 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            activity: true,
 	            disable: isMultipleAction,
 	            callback: function callback() {
-	              _this21.showDod(item);
-	              _this21.destroyActionPanel();
+	              _this19.showDod(item);
+	              _this19.destroyActionPanel();
 	              entity.deactivateGroupMode();
 	            }
 	          },
@@ -10566,7 +10716,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            activity: true,
 	            disable: !item.isMovable(),
 	            callback: function callback(event) {
-	              _this21.moveItem(item, event.currentTarget);
+	              _this19.moveItem(item, event.currentTarget);
 	              stopSearch();
 	            }
 	          },
@@ -10575,7 +10725,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            disable: false,
 	            multiple: this.entityStorage.getSprintsAvailableForFilling(entity).size > 1,
 	            callback: function callback(event) {
-	              _this21.moveToSprint(entity, item, event.currentTarget);
+	              _this19.moveToSprint(entity, item, event.currentTarget);
 	              stopSearch();
 	            }
 	          },
@@ -10583,8 +10733,8 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            activity: true,
 	            disable: item.getEntityType() !== 'sprint',
 	            callback: function callback() {
-	              _this21.moveToBacklog(entity, item);
-	              _this21.destroyActionPanel();
+	              _this19.moveToBacklog(entity, item);
+	              _this19.destroyActionPanel();
 	              stopSearch();
 	            }
 	          },
@@ -10592,22 +10742,22 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            activity: true,
 	            disable: !item.isEditAllowed(),
 	            callback: function callback(event) {
-	              if (_this21.tagSearcher.hasActionPanelDialog()) {
-	                _this21.tagSearcher.closeActionPanelDialogs();
+	              if (_this19.tagSearcher.hasActionPanelDialog()) {
+	                _this19.tagSearcher.closeActionPanelDialogs();
 	                return;
 	              }
-	              _this21.showTagSearcher(entity, item, event.currentTarget);
+	              _this19.showTagSearcher(entity, item, event.currentTarget);
 	            }
 	          },
 	          epic: {
 	            activity: true,
 	            disable: !item.isEditAllowed(),
 	            callback: function callback(event) {
-	              if (_this21.tagSearcher.hasActionPanelDialog()) {
-	                _this21.tagSearcher.closeActionPanelDialogs();
+	              if (_this19.tagSearcher.hasActionPanelDialog()) {
+	                _this19.tagSearcher.closeActionPanelDialogs();
 	                return;
 	              }
-	              _this21.showEpicSearcher(entity, item, event.currentTarget);
+	              _this19.showEpicSearcher(entity, item, event.currentTarget);
 	            }
 	          },
 	          decomposition: {
@@ -10615,11 +10765,11 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            disable: isMultipleAction,
 	            callback: function callback() {
 	              if (entity.isBacklog()) {
-	                _this21.startBacklogDecomposition(entity, item);
+	                _this19.startBacklogDecomposition(entity, item);
 	              } else {
-	                _this21.startSprintDecomposition(entity, item);
+	                _this19.startSprintDecomposition(entity, item);
 	              }
-	              _this21.destroyActionPanel();
+	              _this19.destroyActionPanel();
 	              entity.deactivateGroupMode();
 	              stopSearch();
 	            }
@@ -10630,23 +10780,23 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            callback: function callback() {
 	              ui_dialogs_messagebox.MessageBox.confirm(main_core.Loc.getMessage('TASKS_SCRUM_CONFIRM_TEXT_REMOVE_TASKS'), function (messageBox) {
 	                messageBox.close();
-	                _this21.removeGroupItems(entity).then(function () {
+	                _this19.removeGroupItems(entity).then(function () {
 	                  entity.getGroupModeItems().forEach(function (groupModeItem) {
 	                    entity.removeItem(groupModeItem);
-	                    _this21.deactivateGroupMode(entity, groupModeItem);
+	                    _this19.deactivateGroupMode(entity, groupModeItem);
 	                    groupModeItem.removeYourself();
 	                  });
-	                  _this21.updateEntityCounters(entity);
+	                  _this19.updateEntityCounters(entity);
 	                });
 	              }, main_core.Loc.getMessage('TASKS_SCRUM_BUTTON_TEXT_REMOVE'));
-	              _this21.destroyActionPanel();
+	              _this19.destroyActionPanel();
 	              stopSearch();
 	            }
 	          }
 	        }
 	      });
 	      this.actionPanel.subscribe('unSelect', function () {
-	        _this21.destroyActionPanel();
+	        _this19.destroyActionPanel();
 	        entity.deactivateGroupMode();
 	      });
 	      this.actionPanel.show();
@@ -10770,13 +10920,13 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "attachFilesToTask",
 	    value: function attachFilesToTask(entity, groupItems, attachedIds) {
-	      var _this22 = this;
+	      var _this20 = this;
 	      if (attachedIds.length === 0) {
 	        return;
 	      }
 	      var itemIds = [];
 	      groupItems.forEach(function (item) {
-	        _this22.pullItem.addIdToSkipUpdating(item.getId());
+	        _this20.pullItem.addIdToSkipUpdating(item.getId());
 	        itemIds.push(item.getId());
 	      });
 	      this.requestSender.attachFilesToTask({
@@ -10786,10 +10936,10 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        groupItems.forEach(function (item) {
 	          item.setFiles(response.data.attachedFilesCount[item.getId()]);
 	        });
-	        _this22.destroyActionPanel();
+	        _this20.destroyActionPanel();
 	        entity.deactivateGroupMode();
 	      })["catch"](function (response) {
-	        _this22.requestSender.showErrorAlert(response);
+	        _this20.requestSender.showErrorAlert(response);
 	      });
 	    }
 	  }, {
@@ -10823,17 +10973,17 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "showTagSearcher",
 	    value: function showTagSearcher(entity, item, bindButton) {
-	      var _this23 = this;
+	      var _this21 = this;
 	      this.tagSearcher.showTagsDialog(item, bindButton);
 	      this.tagSearcher.unsubscribeAll('attachTagToTask');
 	      this.tagSearcher.subscribe('attachTagToTask', function (innerBaseEvent) {
 	        var tag = innerBaseEvent.getData();
 	        var itemIds = [];
 	        entity.getGroupModeItems().forEach(function (groupModeItem) {
-	          _this23.pullItem.addIdToSkipUpdating(groupModeItem.getId());
+	          _this21.pullItem.addIdToSkipUpdating(groupModeItem.getId());
 	          itemIds.push(groupModeItem.getId());
 	        });
-	        _this23.requestSender.updateTaskTags({
+	        _this21.requestSender.updateTaskTags({
 	          itemIds: itemIds,
 	          tag: tag
 	        }).then(function (response) {
@@ -10845,7 +10995,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            groupModeItem.setTags(currentTags);
 	          });
 	        })["catch"](function (response) {
-	          _this23.requestSender.showErrorAlert(response);
+	          _this21.requestSender.showErrorAlert(response);
 	        });
 	      });
 	      this.tagSearcher.unsubscribeAll('deAttachTagToTask');
@@ -10853,10 +11003,10 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        var tag = innerBaseEvent.getData();
 	        var itemIds = [];
 	        entity.getGroupModeItems().forEach(function (groupModeItem) {
-	          _this23.pullItem.addIdToSkipUpdating(groupModeItem.getId());
+	          _this21.pullItem.addIdToSkipUpdating(groupModeItem.getId());
 	          itemIds.push(groupModeItem.getId());
 	        });
-	        _this23.requestSender.removeTaskTags({
+	        _this21.requestSender.removeTaskTags({
 	          itemIds: itemIds,
 	          tag: tag
 	        }).then(function (response) {
@@ -10866,13 +11016,13 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            groupModeItem.setTags(currentTags);
 	          });
 	        })["catch"](function (response) {
-	          _this23.requestSender.showErrorAlert(response);
+	          _this21.requestSender.showErrorAlert(response);
 	        });
 	      });
 	      this.tagSearcher.unsubscribeAll('hideTagDialog');
 	      this.tagSearcher.subscribe('hideTagDialog', function () {
-	        if (!_this23.tagSearcher.isEpicDialogShown()) {
-	          _this23.destroyActionPanel();
+	        if (!_this21.tagSearcher.isEpicDialogShown()) {
+	          _this21.destroyActionPanel();
 	          entity.deactivateGroupMode();
 	        }
 	      });
@@ -10880,7 +11030,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "showEpicSearcher",
 	    value: function showEpicSearcher(entity, item, bindButton) {
-	      var _this24 = this;
+	      var _this22 = this;
 	      this.tagSearcher.showEpicDialog(item, bindButton);
 	      this.tagSearcher.unsubscribeAll('updateItemEpic');
 	      this.tagSearcher.subscribe('updateItemEpic', function (innerBaseEvent) {
@@ -10889,35 +11039,35 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        entity.getGroupModeItems().forEach(function (groupModeItem) {
 	          groupModeItem.setEpic(epic);
 	          itemIds.push(groupModeItem.getId());
-	          _this24.pullItem.addIdToSkipUpdating(groupModeItem.getId());
+	          _this22.pullItem.addIdToSkipUpdating(groupModeItem.getId());
 	        });
-	        _this24.requestSender.updateItemEpics({
+	        _this22.requestSender.updateItemEpics({
 	          itemIds: itemIds,
 	          epicId: epic.id
 	        }).then(function (response) {})["catch"](function (response) {
-	          _this24.requestSender.showErrorAlert(response);
+	          _this22.requestSender.showErrorAlert(response);
 	        });
 	      });
 	      this.tagSearcher.unsubscribeAll('hideEpicDialog');
 	      this.tagSearcher.subscribe('hideEpicDialog', function () {
-	        _this24.destroyActionPanel();
+	        _this22.destroyActionPanel();
 	        entity.deactivateGroupMode();
 	      });
 	    }
 	  }, {
 	    key: "removeGroupItems",
 	    value: function removeGroupItems(entity) {
-	      var _this25 = this;
+	      var _this23 = this;
 	      var itemIds = [];
 	      entity.getGroupModeItems().forEach(function (groupModeItem) {
 	        itemIds.push(groupModeItem.getId());
-	        _this25.pullItem.addIdToSkipRemoving(groupModeItem.getId());
+	        _this23.pullItem.addIdToSkipRemoving(groupModeItem.getId());
 	      });
 	      return this.requestSender.removeItems({
 	        itemIds: itemIds,
 	        sortInfo: this.itemMover.calculateSort(entity.getListItemsNode())
 	      })["catch"](function (response) {
-	        _this25.requestSender.showErrorAlert(response);
+	        _this23.requestSender.showErrorAlert(response);
 	      });
 	    }
 	  }, {
@@ -10936,7 +11086,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	  }, {
 	    key: "startSprintDecomposition",
 	    value: function startSprintDecomposition(entity, parentItem) {
-	      var _this26 = this;
+	      var _this24 = this;
 	      this.decomposition = new Decomposition({
 	        parentItem: parentItem
 	      });
@@ -10946,7 +11096,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	          entity.appendNodeAfterItem(subTasks.render(), parentItem.getNode());
 	        }
 	        parentItem.showSubTasks();
-	        _this26.showInput(entity, subTasks.getNode());
+	        _this24.showInput(entity, subTasks.getNode());
 	      };
 	      if (parentItem.isParentTask()) {
 	        var subTasks = parentItem.getSubTasks();
@@ -10962,7 +11112,7 @@ this.BX.Tasks = this.BX.Tasks || {};
 	            });
 	            renderInputAfterSubTasks(subTasks);
 	          })["catch"](function (response) {
-	            _this26.requestSender.showErrorAlert(response);
+	            _this24.requestSender.showErrorAlert(response);
 	          });
 	        } else {
 	          renderInputAfterSubTasks(subTasks);
@@ -11405,6 +11555,14 @@ this.BX.Tasks = this.BX.Tasks || {};
 	        main_core.Dom.removeClass(element, 'menu-popup-item-accept');
 	      });
 	      main_core.Dom.addClass(item, 'menu-popup-item-accept');
+	    }
+	  }, {
+	    key: "changeShortView",
+	    value: function changeShortView(isShortView) {
+	      var view = this.getView();
+	      if (view instanceof View) {
+	        this.getView().changeShortView(isShortView);
+	      }
 	    }
 	  }]);
 	  return Entry;

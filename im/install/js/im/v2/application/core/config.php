@@ -4,7 +4,10 @@ if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true)
 	die();
 }
 
-\Bitrix\Main\Loader::includeModule('im');
+if (!\Bitrix\Main\Loader::includeModule('im'))
+{
+	return [];
+}
 
 return [
 	'js' => [
@@ -23,7 +26,7 @@ return [
 	],
 	'skip_core' => false,
 	'settings' => [
-		'v2' => \Bitrix\Im\Settings::isBetaActivated(),
 		'isCloud' => \Bitrix\Main\ModuleManager::isModuleInstalled('bitrix24'),
+		'v2' => !\Bitrix\Im\Settings::isLegacyChatActivated(),
 	]
 ];

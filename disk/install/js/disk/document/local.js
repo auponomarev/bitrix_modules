@@ -73,7 +73,6 @@
 
 		handlePullEvent: function (command, params)
 		{
-			console.log('handlePullEvent or handleClientEvent', command, params);
 			if (command === 'bdisk' && params.uidRequest)
 			{
 				this.stopWaiting(params.uidRequest);
@@ -102,7 +101,6 @@
 
 		editFile: function (params)
 		{
-			console.log('editFile', params);
 			params = this.prepareParametersToWorkWithFile(params);
 
 			this.goToBx('v2openFile', {
@@ -157,7 +155,6 @@
 
 		viewFile: function (params)
 		{
-			console.log('viewFile', params);
 			params = this.prepareParametersToWorkWithFile(params);
 
 			this.goToBx('v2viewFile', {
@@ -204,6 +201,7 @@
 
 		goToBx: function (action, params)
 		{
+			console.log('waiting for GoToBx', action, params);
 			var link = 'bx://' + action;
 			params = BX.type.isPlainObject(params)? params : {};
 			params.uidRequest = BX.util.getRandomString(16);
@@ -223,23 +221,54 @@
 
 			if (typeof (BXFileStorage) == 'undefined')
 			{
-				console.log('runningCheck to go to bx', link);
-				top.BX.desktopUtils.runningCheck(function() {
-					console.log('Ok, there is running desktop');
-					top.BX.desktopUtils.goToBx(link);
-				}, function() {
-					console.log('Oh no, try to run desktop');
-					this.registerFallback(params.uidRequest);
+				console.log('BXFileStorage is undefined');
+				if (BX.Reflection.getClass('top.BX.Messenger.v2.Lib.DesktopManager'))
+				{
+					console.log('v2.Lib.DesktopManager start checkStatusInDifferentContext');
+					const desktop = top.BX.Messenger.v2.Lib.DesktopManager.getInstance();
+					desktop.checkStatusInDifferentContext().then((result) => {
+						console.log('v2.Lib.DesktopManager checkStatusInDifferentContext result', result, link);
+						if (result)
+						{
+							desktop.openBxLink(link);
+						}
+						else
+						{
+							this.registerFallback(params.uidRequest);
 
-					top.BX.desktopUtils.goToBx(link);
-				}.bind(this));
+							desktop.openBxLink(link);
+						}
+					});
+				}
+				else if (BX.getClass('top.BX.desktopUtils'))
+				{
+					console.log('desktopUtils start runningCheck');
+					top.BX.desktopUtils.runningCheck(() => {
+						console.log('desktopUtils successful check', link);
+						top.BX.desktopUtils.goToBx(link);
+					}, () => {
+						console.log('desktopUtils failed check', link);
+						this.registerFallback(params.uidRequest);
+
+						top.BX.desktopUtils.goToBx(link);
+					});
+				}
 			}
 			else
 			{
-				console.log('Seems it\'s Desktop app');
-				top.BX.desktopUtils.goToBx(link);
+				console.log('BXFileStorage is defined; inside Desktop', link);
+				if (BX.Reflection.getClass('top.BX.Messenger.v2.Lib.DesktopManager'))
+				{
+					console.log('v2.Lib.DesktopManager openBxLink', link);
+					const desktop = top.BX.Messenger.v2.Lib.DesktopManager.getInstance();
+					desktop.openBxLink(link);
+				}
+				else if (BX.getClass('top.BX.desktopUtils'))
+				{
+					console.log('desktopUtils goToBx', link);
+					top.BX.desktopUtils.goToBx(link);
+				}
 			}
-
 		},
 
 		registerFallback: function(uidRequest)

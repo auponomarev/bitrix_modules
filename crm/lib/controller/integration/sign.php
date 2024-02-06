@@ -5,10 +5,12 @@ use Bitrix\DocumentGenerator\Document;
 use Bitrix\Main\ArgumentException;
 use Bitrix\Main\DI\ServiceLocator;
 use Bitrix\Main\Engine\Controller;
+use Bitrix\Main\Engine\CurrentUser;
 use Bitrix\Main\Loader;
 use Bitrix\Main\ObjectPropertyException;
 use Bitrix\Main\Request;
 use Bitrix\Main\SystemException;
+use Bitrix\Sign\Config\Storage;
 use Bitrix\Sign\Service\Integration\Crm\DocumentService;
 
 class Sign extends Controller
@@ -41,8 +43,17 @@ class Sign extends Controller
 		{
 			$this->addErrors($result->getErrors());
 		}
-		
-		return $result->getData();
+
+		$docId = $result->getData()['SMART_DOCUMENT'] ?? null;
+		$document = \Bitrix\Sign\Document::resolveByEntity('SMART', $docId);
+		$response = $result->getData();
+
+		if (Storage::instance()->isNewSignEnabled() && $document)
+		{
+			$response['uid'] = $document->getUid();
+		}
+
+		return $response;
 	}
 
 	/**
@@ -55,6 +66,12 @@ class Sign extends Controller
 	public function getLinkedBlankAction(int $documentId): array
 	{
 		if (!Loader::includeModule('documentgenerator'))
+		{
+			return [];
+		}
+
+		$currentUserId = CurrentUser::get()->getId();
+		if (!$this->signService->checkUserPermissionToDealDocumentByDocument($documentId, $currentUserId))
 		{
 			return [];
 		}

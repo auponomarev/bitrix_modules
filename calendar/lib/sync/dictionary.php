@@ -17,7 +17,7 @@ class Dictionary
 		'failed'    => 'failed',
 		'delete'    => 'delete',
 		'create'    => 'create',
-		'recreate' => 'recreate',
+		'recreate'  => 'recreate',
 		'update'    => 'update',
 		'next'      => 'next',
 		'parent'    => 'parent',
@@ -49,6 +49,13 @@ class Dictionary
 		'update' => 'update',
 		'delete' => 'delete',
 		'success' => 'success',
+	];
+
+	public const NEW_SYNC_PROVIDERS_TYPE = [
+		Google\Helper::GOOGLE_ACCOUNT_TYPE_CALDAV,
+		Google\Helper::GOOGLE_ACCOUNT_TYPE_API,
+		Icloud\Helper::ACCOUNT_TYPE,
+		Office365\Helper::ACCOUNT_TYPE
 	];
 
 	public const FIRST_SYNC_FLAG_NAME = 'IsFirstSynchronization';

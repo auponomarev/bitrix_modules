@@ -1,6 +1,8 @@
-import {Core} from 'im.v2.application.core';
-import {QuickAccess} from 'im.v2.component.quick-access';
-import {ApplicationName} from 'im.v2.const';
+import { Core } from 'im.v2.application.core';
+import { QuickAccess } from 'im.v2.component.quick-access';
+import { GetParameter } from 'im.v2.const';
+
+import { Messenger } from 'im.public';
 
 type QuickAccessApplicationParams = {
 	node?: string | HTMLElement,
@@ -30,45 +32,72 @@ export class QuickAccessApplication
 
 		this.rootNode = this.params.node || document.createElement('div');
 
+		// eslint-disable-next-line promise/catch-or-return
 		this.initCore()
 			.then(() => this.initComponent())
 			.then(() => this.initComplete())
+			.then(() => this.checkGetParams())
 		;
 	}
 
-	initCore()
+	async initCore(): Promise
 	{
-		return new Promise((resolve) => {
-			Core.ready().then(controller => {
-				this.controller = controller;
-				Core.setApplicationData(ApplicationName.quickAccess, this.params);
-				resolve();
-			});
-		});
+		Core.setApplicationData(this.params);
+		this.controller = await Core.ready();
+
+		return true;
 	}
 
-	initComponent()
+	async initComponent(): Promise
 	{
-		return this.controller.createVue(this, {
+		this.vueInstance = await this.controller.createVue(this, {
 			name: this.#applicationName,
 			el: this.rootNode,
-			components: {QuickAccess},
-			template: `<QuickAccess :compactMode="true"/>`,
-		})
-		.then(vue => {
-			this.vueInstance = vue;
-
-			return Promise.resolve();
+			components: { QuickAccess },
+			template: '<QuickAccess :compactMode="true"/>',
 		});
+
+		return true;
 	}
 
-	initComplete()
+	initComplete(): Promise
 	{
 		this.inited = true;
 		this.initPromiseResolver(this);
+
+		return Promise.resolve();
 	}
 
-	ready()
+	checkGetParams(): void
+	{
+		const urlParams = new URLSearchParams(window.location.search);
+		if (urlParams.has(GetParameter.openNotifications))
+		{
+			Messenger.openNotifications();
+		}
+		else if (urlParams.has(GetParameter.openHistory))
+		{
+			const dialogId = urlParams.get(GetParameter.openHistory);
+			Messenger.openLinesHistory(dialogId);
+		}
+		else if (urlParams.has(GetParameter.openLines))
+		{
+			const dialogId = urlParams.get(GetParameter.openLines);
+			Messenger.openLines(dialogId);
+		}
+		else if (urlParams.has(GetParameter.openChat))
+		{
+			const dialogId = urlParams.get(GetParameter.openChat);
+			Messenger.openChat(dialogId);
+		}
+		else if (urlParams.has(GetParameter.openSettings))
+		{
+			const settingsSection = urlParams.get(GetParameter.openSettings);
+			Messenger.openSettings({ onlyPanel: settingsSection?.toLowerCase() });
+		}
+	}
+
+	ready(): Promise
 	{
 		if (this.inited)
 		{

@@ -156,7 +156,7 @@ $isAjax = $component->isAjax();
 		if ($arParams['TYPE'] === 'PAGE')
 		{
 			$title = Loc::getMessage('LANDING_SITE_TILE_DEV_HELP');
-			$text = Loc::getMessage('LANDING_SITE_TILE_DEV_ORDER');
+			$text = Loc::getMessage('LANDING_SITE_TILE_DEV_ORDER_MSGVER_1');
 			$buttonText = Loc::getMessage('LANDING_SITE_TILE_DEV_BTN');
 		}
 		else
@@ -250,7 +250,16 @@ $isAjax = $component->isAjax();
 								.getInstance()
 								.setEntityType('landing_site')
 								.setEntityId(item.id)
-								.startVerify({mandatory: false})
+								.startVerify({
+									mandatory: false,
+									callback: function (verified) {
+										if (verified)
+										{
+											item.unLock();
+											publicationFunc(item);
+										}
+									}
+								})
 							;
 						}
 						else if (typeof BX.Landing.AlertShow !== 'undefined')

@@ -1,5 +1,6 @@
 <?php
 
+use Bitrix\Crm\Integration\OpenLineManager;
 use Bitrix\Crm\Order\Order;
 use Bitrix\Crm\RequisiteAddress;
 use Bitrix\Crm\Service\Container;
@@ -21,6 +22,10 @@ class CCrmEntitySelectorHelper
 	public static function getHiddenTitle(string $entityName): ?string
 	{
 		$message = Loc::getMessage('CRM_ENT_SEL_HLP_HIDDEN_' . $entityName);
+		if (!(is_string($message) && $message !== ''))
+		{
+			$message = Loc::getMessage('CRM_ENT_SEL_HLP_HIDDEN_' . $entityName . '_MSGVER_1');
+		}
 
 		if (!$message)
 		{
@@ -251,7 +256,7 @@ class CCrmEntitySelectorHelper
 						if (
 							$arRes['TYPE_ID'] === 'PHONE'
 							|| $arRes['TYPE_ID'] === 'EMAIL'
-							|| ($arRes['TYPE_ID'] === 'IM' && preg_match('/^imol\|/', $arRes['VALUE']) === 1)
+							|| ($arRes['TYPE_ID'] === 'IM' && OpenLineManager::isImOpenLinesValue($arRes['VALUE']))
 						)
 						{
 							$formattedValue = $arRes['TYPE_ID'] === 'PHONE'
@@ -285,7 +290,8 @@ class CCrmEntitySelectorHelper
 								],
 								'VALUE_FORMATTED' => $formattedValue,
 								'COMPLEX_ID' => $arRes['COMPLEX_ID'],
-								'COMPLEX_NAME' => \CCrmFieldMulti::GetEntityNameByComplex($arRes['COMPLEX_ID'], false)
+								'COMPLEX_NAME' => \CCrmFieldMulti::GetEntityNameByComplex($arRes['COMPLEX_ID'], false),
+								'TITLE' => OpenLineManager::isImOpenLinesValue($arRes['VALUE']) ? OpenLineManager::getOpenLineTitle($arRes['VALUE']) : '',
 							];
 						}
 					}
@@ -1091,7 +1097,7 @@ class CCrmEntitySelectorHelper
 			'contact' => GetMessage('CRM_FF_CONTACT'),
 			'company' => GetMessage('CRM_FF_COMPANY'),
 			'deal'=> GetMessage('CRM_FF_DEAL'),
-			'quote'=> GetMessage('CRM_FF_QUOTE'),
+			'quote'=> GetMessage('CRM_FF_QUOTE_MSGVER_1'),
 			'ok' => GetMessage('CRM_FF_OK'),
 			'cancel' => GetMessage('CRM_FF_CANCEL'),
 			'close' => GetMessage('CRM_FF_CLOSE'),
@@ -1125,6 +1131,10 @@ class CCrmEntitySelectorHelper
 			isset($options['ADDRESS_AS_JSON'])
 			&& ($options['ADDRESS_AS_JSON'] === true || $options['ADDRESS_AS_JSON'] === 'Y')
 		);
+		$skipCheckMyCompanyPermission = (
+			isset($options['SKIP_CHECK_MY_COMPANY_PERMISSION'])
+			&& $options['SKIP_CHECK_MY_COMPANY_PERMISSION'] === true
+		);
 
 		$result = array();
 
@@ -1132,7 +1142,14 @@ class CCrmEntitySelectorHelper
 		$preset = new \Bitrix\Crm\EntityPreset();
 		$fieldsInfo = $requisite->getFormFieldsInfo();
 
-		if ($requisite->validateEntityReadPermission($entityTypeId, $entityId))
+		if (
+			(
+				$skipCheckMyCompanyPermission
+				&& $entityTypeId === CCrmOwnerType::Company
+				&& CCrmCompany::isMyCompany($entityId)
+			)
+			|| $requisite->validateEntityReadPermission($entityTypeId, $entityId)
+		)
 		{
 			// selected
 			$requisiteIdSelected = 0;

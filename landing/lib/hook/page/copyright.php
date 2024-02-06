@@ -10,6 +10,8 @@ use Bitrix\Landing\Internals\HookDataTable;
 use Bitrix\Landing\Restriction\Site;
 use Bitrix\Main\Application;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\Web\Uri;
+use Bitrix\Main\UI\Extension;
 
 class Copyright extends \Bitrix\Landing\Hook\Page
 {
@@ -99,7 +101,7 @@ class Copyright extends \Bitrix\Landing\Hook\Page
 
 	/**
 	 * Save current site language
-	 * @param string $lang
+	 * @param string|null $lang Language.
 	 * @return void
 	 */
 	public function setLang(?string $lang): void
@@ -118,10 +120,10 @@ class Copyright extends \Bitrix\Landing\Hook\Page
 
 	/**
 	 * Save current site id
-	 * @param int $siteId
+	 * @param int|null $siteId SiteId.
 	 * @return void
 	 */
-	public function setSiteId(?string $siteId): void
+	public function setSiteId(?int $siteId): void
 	{
 		$this->siteId = $this->siteId ?: $siteId;
 	}
@@ -171,13 +173,16 @@ class Copyright extends \Bitrix\Landing\Hook\Page
 			$footer .= '</span>';
 			$footer .= '</div>';
 
+			Extension::load('ui.hint');
+			$footer .= "<script>BX.ready(function() {BX.UI.Hint.init(BX('.bitrix-footer-terms'))})</script>";
+
 			return $footer;
 		}
 
 		return '';
 	}
 
-	protected function getCommonText(): string
+	protected function getCommonText(): ?string
 	{
 		$isB24 = Manager::isB24();
 		$lang = $this->getLang();
@@ -208,9 +213,8 @@ class Copyright extends \Bitrix\Landing\Hook\Page
 			);
 		}
 
-		$component = $this->getPublicComponent();
-
 		// SMN
+		$component = $this->getPublicComponent();
 		if (!$isB24)
 		{
 			$advCode = $component->getAdvCode();
@@ -223,26 +227,17 @@ class Copyright extends \Bitrix\Landing\Hook\Page
 			;
 		}
 
-		// Not RU
-		$linkLogo = $component->getRefLink('bitrix24_logo', true, true);
+		// Not RU and B24
 		$linkSite = $component->getRefLink('websites', true, true);
-		$linkCrm = $component->getRefLink('crm', true, true);
-		if ($linkLogo && $linkSite && $linkCrm)
+		if ($linkSite)
 		{
-			return str_replace(
-				[
-					'#LOGO#',
-					'<linklogo>', '</linklogo>',
-					'<linksite>', '</linksite>',
-					'<linkcrm>', '</linkcrm>',
-				],
-				[
-					$logo,
-					'<a rel="nofollow" target="_blank" href="' . $linkLogo . '">', '</a>',
-					'<a class="bitrix-footer-link" target="_blank" href="' . $linkSite . '">', '</a>',
-					'<a rel="nofollow" class="bitrix-footer-link" target="_blank" href="' . $linkCrm . '">', '</a>',
-				],
-				$commonText
+			return Loc::getMessage(
+				'LANDING_HOOK_COPYRIGHT_TEXT_COMMON_EN', [
+				'#LOGO#' => $logo,
+				'<linksite>' => '<a class="bitrix-footer-link" target="_blank" href="' . $linkSite . '">',
+				'</linksite>' => '</a>',
+			],
+				$lang
 			);
 		}
 
@@ -276,6 +271,10 @@ class Copyright extends \Bitrix\Landing\Hook\Page
 		$phrases = $this->getRandomPhraseCollection($type);
 		$code = (int)$this->fields['CODE']->getValue() ?: 1;
 		$text = $phrases[$code] ?: $phrases[1];
+		if (is_array($text))
+		{
+			$text = $text[0];
+		}
 		$component = $this->getPublicComponent();
 
 		$link = $component->getRefLink('websites', true, true);
@@ -284,7 +283,7 @@ class Copyright extends \Bitrix\Landing\Hook\Page
 			$link = str_replace('features/sites.php', 'features/shop.php', $link);
 		}
 
-		return '. <a href="' . $link . '">' . $text . '</a>';
+		return '. <a href="' . $link . '" class="bitrix-footer-link">' . $text . '</a>';
 	}
 
 	protected function getPublicComponent(): \LandingPubComponent
@@ -335,10 +334,11 @@ class Copyright extends \Bitrix\Landing\Hook\Page
 			],
 		];
 		$region = Application::getInstance()->getLicense()->getRegion();
-		$hrefLinkReport = $setLinks[$region]['report'] ?? $setLinks['com']['report'];
-		$url = "http://" . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+		$hrefLinkReport = new Uri($setLinks[$region]['report'] ?? $setLinks['com']['report']);
+		$protocol = Manager::isHttps() ? 'https://' : 'http://';
+		$url = $protocol . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
 		$siteId = $this->getSiteId();
-		$portalName = \COption::GetOptionString("main", "server_name", '');
+		$portalName = \COption::getOptionString("main", "server_name", '');
 		$senderPage = strtoupper(Landing::getSiteType());
 		$urlParams = [
 			'sender_page' => urlencode($senderPage),
@@ -346,12 +346,17 @@ class Copyright extends \Bitrix\Landing\Hook\Page
 			'siteId' => urlencode($siteId),
 			'from_url' => urlencode($url),
 		];
-		$hrefLinkReportWithParams = $hrefLinkReport . '?' . http_build_query($urlParams);
-		$linkReport = '<a class="bitrix-footer-link bitrix-footer-link-report" target="_blank" href="' . $hrefLinkReportWithParams . '">'. Loc::getMessage('LANDING_HOOK_COPYRIGHT_TEXT_CONTENT_LINK_REPORT', null, $lang) . '</a>';
+		$hrefLinkReportWithParams = $hrefLinkReport->addParams($urlParams);
+		$linkReport = '<a class="bitrix-footer-link bitrix-footer-link-report" target="_blank" rel="nofollow"  href="'
+			. $hrefLinkReportWithParams
+			. '">'
+			. Loc::getMessage('LANDING_HOOK_COPYRIGHT_TEXT_CONTENT_LINK_REPORT', null, $lang)
+			. '</a>';
 		$hintText = Loc::getMessage('LANDING_HOOK_COPYRIGHT_TEXT_CONTENT_LINK_REPORT_HINT', null, $lang);
 		$hint = '<span class="bitrix-footer-hint" data-hint="' . $hintText . '"></span>';
 		$content .= $linkReport . $hint;
 		$content .= '</div>';
+
 		return $content;
 	}
 
@@ -395,6 +400,15 @@ class Copyright extends \Bitrix\Landing\Hook\Page
 		return rand(1, self::RANDOM_PHRASE_COUNT);
 	}
 
+	/**
+	 * Hook copy handler for save editor value, randomizer
+	 * @param array|null $data Data.
+	 * @param int $entityId Entity.
+	 * @param string $type Type.
+	 * @param bool $publication Is publication.
+	 *
+	 * @return array|null
+	 */
 	public static function onCopy(?array $data, int $entityId, string $type, bool $publication = false): ?array
 	{
 		// only for site

@@ -14,7 +14,11 @@ BX.UI.InfoHelper =
 		if (!this.inited && !params['availableDomainList'])
 		{
 			this.inited = true;
-			BX.ajax.runAction('ui.infoHelper.getInitParams').then(
+			BX.ajax.runAction('ui.infoHelper.getInitParams', {
+				data: {
+					currentUrl: window.location.href,
+				}
+			}).then(
 				function (response)
 				{
 					this.init(response.data)
@@ -218,7 +222,11 @@ BX.UI.InfoHelper =
 			{
 				contentCallback: function(slider) {
 					return new Promise(function(resolve, reject) {
-						BX.ajax.runAction("ui.infoHelper.getInitParams").then(function(response)
+						BX.ajax.runAction("ui.infoHelper.getInitParams", {
+							data: {
+								currentUrl: window.location.href,
+							}
+						}).then(function(response)
 						{
 							frame.src = this.frameUrlTemplate.replace(/code/, code);
 
@@ -274,7 +282,11 @@ BX.UI.InfoHelper =
 		BX.SidePanel.Instance.open(this.getSliderId(), {
 			contentCallback: function(slider) {
 				return new Promise(function(resolve, reject) {
-					BX.ajax.runAction("ui.infoHelper.getInitParams").then(function(response)
+					BX.ajax.runAction("ui.infoHelper.getInitParams", {
+						data: {
+							currentUrl: window.location.href,
+						}
+					}).then(function(response)
 					{
 						this.init(response.data);
 
@@ -311,14 +323,14 @@ BX.UI.InfoHelper =
 			cacheable: false,
 			customRightBoundary: 0,
 			events: {
-				onCloseComplete: function() {
-					BX.UI.InfoHelper.close();
-				},
 				onLoad: function () {
 					BX.UI.InfoHelper.showFrame();
 				},
-				onClose: function () {
-					BX.UI.InfoHelper.frameNode.contentWindow.postMessage({action: 'onCloseWidget'}, '*');
+				onClose: () => {
+					if (BX.UI.InfoHelper.frameNode)
+					{
+						BX.UI.InfoHelper.frameNode.contentWindow.postMessage({action: 'onCloseWidget'}, '*');
+					}
 				}
 			}
 		});
@@ -351,7 +363,7 @@ BX.UI.InfoHelper =
 	close: function()
 	{
 		var slider = this.getSlider();
-		if (slider)
+		if (slider && slider.isOpen())
 		{
 			slider.close();
 		}

@@ -3,6 +3,7 @@
  */
 jn.define('crm/timeline/stream/pinned', (require, exports, module) => {
 	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
 	const { TimelineStreamBase } = require('crm/timeline/stream/base');
 
 	/**
@@ -24,6 +25,7 @@ jn.define('crm/timeline/stream/pinned', (require, exports, module) => {
 		{
 			const model = super.makeItemModel(props);
 			model.isPinned = true;
+
 			return model;
 		}
 
@@ -37,9 +39,9 @@ jn.define('crm/timeline/stream/pinned', (require, exports, module) => {
 					type: 'Divider',
 					key: 'Divider_pinned',
 					props: {
-						color: '#e6e7e9',
+						color: AppTheme.colors.bgSeparatorPrimary,
 						text: Loc.getMessage('CRM_TIMELINE_PINNED_TITLE'),
-						textColor: '#6e7273',
+						textColor: AppTheme.colors.base3,
 					},
 				});
 			}
@@ -53,3 +55,4 @@ jn.define('crm/timeline/stream/pinned', (require, exports, module) => {
 
 	module.exports = { TimelineStreamPinned };
 });
+

@@ -12,6 +12,7 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 /** @global CUser $USER */
 /** @global CMain $APPLICATION */
 
+use Bitrix\Main\Application;
 use Bitrix\Main\Localization\Loc;
 
 \Bitrix\Main\UI\Extension::load([
@@ -25,6 +26,8 @@ use Bitrix\Main\Localization\Loc;
 	'ui.feedback.form',
 	'ui.design-tokens',
 	'ui.fonts.opensans',
+	'ui.switcher',
+	'ui.analytics',
 ]);
 
 \CJSCore::Init(['phone_number']);
@@ -111,24 +114,7 @@ if ($arResult["IS_CLOUD"] && $arResult['canCurrentUserInvite'])
 						<span class="invite-dialog-fast-reg-control-label">
 							<?=Loc::getMessage("BX24_INVITE_DIALOG_REGISTER_ALLOW_N")?>
 						</span>
-						<input
-							type="checkbox"
-							name="allow_register"
-							data-role="selfToggleSettingsButton"
-							id="allow_register"
-							value="Y"
-							<?= ($isSelfRegisterEnable ? 'checked' : '') ?>
-							style="display: none;"
-						/>
-						<div class="invite-dialog-fast-reg-control-switcher" data-role="self-switcher">
-							<span class="invite-dialog-fast-reg-control-switcher-btn"></span>
-							<span class="invite-dialog-fast-reg-control-switcher-on">
-								<?=ToUpper(Loc::getMessage("INTRANET_INVITE_DIALOG_REG_ON"))?>
-							</span>
-							<span class="invite-dialog-fast-reg-control-switcher-off">
-								<?=ToUpper(Loc::getMessage("INTRANET_INVITE_DIALOG_REG_OFF"))?>
-							</span>
-						</div>
+						<div class="invite-dialog-fast-reg-control-switcher" data-role="self-switcher"></div>
 					</label>
 
 					<div class="invite-content-container">
@@ -487,7 +473,7 @@ $APPLICATION->IncludeComponent("bitrix:ui.button.panel", "", array(
 	BX.message(<?=CUtil::phpToJsObject(Loc::loadLanguageFile(__FILE__))?>);
 	BX.message({
 		BX24_INVITE_DIALOG_USERS_LIMIT_TEXT: "<?=GetMessageJS("BX24_INVITE_DIALOG_USERS_LIMIT_TEXT", array(
-			"#NUM#" => COption::GetOptionString("main", "PARAM_MAX_USERS")))?>",
+			"#NUM#" => Application::getInstance()->getLicense()->getMaxUsers()))?>",
 		INTRANET_INVITE_DIALOG_EMAIL_OR_PHONE_VALIDATE_ERROR: "<?=Loc::getMessage("INTRANET_INVITE_DIALOG_VALIDATE_ERROR_".($arResult["IS_SMS_INVITATION_AVAILABLE"] ? "EMAIL_AND_PHONE" : "EMAIL"))?>",
 		INTRANET_INVITE_DIALOG_EMAIL_OR_PHONE_EMPTY_ERROR: "<?=Loc::getMessage("INTRANET_INVITE_DIALOG_EMPTY_ERROR_".($arResult["IS_SMS_INVITATION_AVAILABLE"] ? "EMAIL_AND_PHONE" : "EMAIL"))?>",
 		INTRANET_INVITE_DIALOG_EMAIL_OR_PHONE_INPUT: "<?=Loc::getMessage("INTRANET_INVITE_DIALOG_INPUT_".($arResult["IS_SMS_INVITATION_AVAILABLE"] ? "EMAIL_AND_PHONE" : "EMAIL"))?>"
@@ -504,10 +490,12 @@ $APPLICATION->IncludeComponent("bitrix:ui.button.panel", "", array(
 			contentContainerNode: document.querySelector('[data-id="<?=$contentContainerId?>"]'),
 			contentNodes: BX.findChildren(BX('intranet-dialog-tabs'), {className: 'popup-window-tab-content'}, true),
 			isExtranetInstalled: '<?=$arResult["IS_EXTRANET_INSTALLED"] ? "Y" : "N"?>',
-			regenerateUrlBase: '<?=$arResult["REGISTER_URL_BASE"]?>',
+			regenerateUrlBase: '<?=$arResult["REGISTER_URL_BASE"] ?? ''?>',
 			isInvitationBySmsAvailable: '<?=$arResult["IS_SMS_INVITATION_AVAILABLE"] ? "Y" : "N"?>',
 			isCreatorEmailConfirmed: '<?=$arResult["IS_CREATOR_EMAIL_CONFIRMED"] ? "Y" : "N"?>',
-			firstInvitationBlock: '<?=$arResult['FIRST_INVITATION_BLOCK']?>'
+			firstInvitationBlock: '<?=$arResult['FIRST_INVITATION_BLOCK']?>',
+			isSelfRegisterEnabled: <?= CUtil::phpToJsObject(isset($arResult["REGISTER_SETTINGS"]["REGISTER"]) && $arResult["REGISTER_SETTINGS"]["REGISTER"] === "Y") ?>,
+			analyticsLabel: <?= CUtil::phpToJsObject(\Bitrix\Main\Application::getInstance()->getContext()->getRequest()->get('analyticsLabel')) ?>,
 		});
 
 		var imageMail = document.getElementById("invite-wrap-decal");

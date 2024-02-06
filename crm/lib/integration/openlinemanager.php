@@ -7,9 +7,11 @@ use Bitrix\Im\Counter;
 use Bitrix\ImOpenLines\Chat;
 use Bitrix\ImOpenLines\Config;
 use Bitrix\ImOpenLines\Model\SessionTable;
+use Bitrix\ImOpenLines\Operator;
 use Bitrix\Main\Loader;
-use Bitrix\Main\ModuleManager;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\ModuleManager;
+use Bitrix\Main\Result;
 
 Loc::loadMessages(__FILE__);
 
@@ -59,10 +61,6 @@ class OpenLineManager
 		'imessage',
 	];
 
-	/**
-	 * Check if current manager enabled.
-	 * @return bool
-	 */
 	public static function isEnabled()
 	{
 		if (self::$isEnabled === null)
@@ -89,11 +87,11 @@ class OpenLineManager
 
 		$typeID = $items[1];
 		$suffix = mb_strtoupper(preg_replace('/[^a-z0-9]/i', '', $typeID));
-		$text = Loc::getMessage("CRM_OPEN_LINE_{$suffix}");
-		if ($text === null)
-		{
-			$text = Loc::getMessage('CRM_OPEN_LINE_SEND_MESSAGE');
-		}
+		$text =
+			Loc::getMessage("CRM_OPEN_LINE_{$suffix}")
+			?? Loc::getMessage("CRM_OPEN_LINE_{$suffix}_MSGVER_1")
+			?? Loc::getMessage('CRM_OPEN_LINE_SEND_MESSAGE')
+		;
 
 		return [
 			'HREF' => '#',
@@ -159,7 +157,7 @@ class OpenLineManager
 
 	public static function getLineConnectorType(?string $code): ?string
 	{
-		if (!isset($code))
+		if (!isset($code) || !self::isEnabled())
 		{
 			return null;
 		}
@@ -175,7 +173,7 @@ class OpenLineManager
 
 	public static function getLineTitle(?string $code): ?string
 	{
-		if (!isset($code))
+		if (!isset($code) || !self::isEnabled())
 		{
 			return null;
 		}
@@ -189,9 +187,19 @@ class OpenLineManager
 		return (new Config())->get($lineId)['LINE_NAME'] ?? null;
 	}
 
+	public static function isImOpenLinesValue(string $value): bool
+	{
+		return preg_match('/^imol\|/', $value) === 1;
+	}
+
+	public static function getOpenLineTitle(string $value): ?string
+	{
+		return self::getLineTitle(mb_substr($value, 5));
+	}
+
 	public static function getChatTitle(?string $code): ?string
 	{
-		if (!isset($code))
+		if (!isset($code) || !self::isEnabled())
 		{
 			return null;
 		}
@@ -204,7 +212,7 @@ class OpenLineManager
 
 	public static function getSessionData(?int $sessionId): array
 	{
-		if (!isset($sessionId))
+		if (!isset($sessionId) || !self::isEnabled())
 		{
 			return [];
 		}
@@ -234,5 +242,27 @@ class OpenLineManager
 		}
 
 		return 0;
+	}
+
+	public static function closeDialog(?string $code): ?Result
+	{
+		if (
+			!isset($code)
+			|| !Loader::includeModule('im')
+			|| !Loader::includeModule('imopenlines')
+		)
+		{
+			return null;
+		}
+
+		$chatId = Chat::getChatIdByUserCode($code);
+		if (isset($chatId))
+		{
+			$control = new Operator($chatId);
+
+			return $control->closeDialog();
+		}
+
+		return null;
 	}
 }

@@ -44,6 +44,16 @@ final class State
 			return false;
 		}
 
+		return self::isEnabledInventoryManagement();
+	}
+
+	/**
+	 * Returns true if warehouse inventory management is enabled, without feature check.
+	 *
+	 * @return bool
+	 */
+	public final static function isEnabledInventoryManagement(): bool
+	{
 		return (Main\Config\Option::get('catalog', 'default_use_store_control') === 'Y');
 	}
 
@@ -889,5 +899,20 @@ final class State
 		}
 
 		return Main\Config\Option::get('catalog', 'product_card_slider_enabled') === 'Y';
+	}
+
+	/**
+	 * Returns true if product batch method calculation is selected.
+	 *
+	 * @return bool
+	 */
+	public static function isProductBatchMethodSelected(): bool
+	{
+		if (!Feature::isStoreBatchEnabled())
+		{
+			return false;
+		}
+
+		return \Bitrix\Catalog\Product\Store\CostPriceCalculator::getMethod() !== '';
 	}
 }

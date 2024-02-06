@@ -3,19 +3,20 @@
  */
 jn.define('utils/copy', (require, exports, module) => {
 	const { Loc } = require('loc');
+	const AppTheme = require('apptheme');
+	const { Feature } = require('feature');
 
 	const defaultParams = {
 		id: 'copySnackbar',
 		title: Loc.getMessage('MOBILE_COPY_DEFAULT_NOTIFICATION_TITLE'),
-		backgroundColor: '#E6000000',
-		textColor: '#ffffff',
+		backgroundColor: AppTheme.colors.baseBlackFixed,
+		textColor: AppTheme.colors.baseWhiteFixed,
 		showCloseButton: true,
 		hideOnTap: true,
 		autoHide: true,
 	};
 
-	const callback = () => {
-	};
+	const doNothing = () => {};
 
 	/**
 	 * Copies the value to the clipboard with a notification
@@ -26,14 +27,25 @@ jn.define('utils/copy', (require, exports, module) => {
 	{
 		Application.copyToClipboard(value);
 
+		if (!Feature.hasCopyToClipboardAutoNotification())
+		{
+			showCopyNotification(notificationTitle);
+		}
+	}
+
+	/**
+	 * @param {?string} notificationTitle
+	 */
+	function showCopyNotification(notificationTitle)
+	{
 		const params = { ...defaultParams };
 
-		if (notificationTitle !== null)
+		if (notificationTitle)
 		{
 			params.title = notificationTitle;
 		}
 
-		dialogs.showSnackbar(params, callback);
+		dialogs.showSnackbar(params, doNothing);
 	}
 
 	module.exports = { copyToClipboard };

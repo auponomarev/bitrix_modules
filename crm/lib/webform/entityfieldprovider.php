@@ -7,10 +7,10 @@
  */
 namespace Bitrix\Crm\WebForm;
 
+use Bitrix\Crm\Category\DealCategory;
+use Bitrix\Crm\StatusTable;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\SystemException;
-use Bitrix\Crm\StatusTable;
-use Bitrix\Crm\Category\DealCategory;
 
 Loc::loadMessages(__FILE__);
 
@@ -171,7 +171,7 @@ class EntityFieldProvider
 		return $fields;
 	}
 
-	public static function getAllFieldsDescription()
+	public static function getAllFieldsDescription(?int $requisitePresetId = null)
 	{
 		$result = [];
 
@@ -179,7 +179,7 @@ class EntityFieldProvider
 			\CCrmOwnerType::SmartDocument,
 		];
 
-		$availableFields = EntityFieldProvider::getFields($hiddenTypes);
+		$availableFields = EntityFieldProvider::getFields($hiddenTypes, $requisitePresetId);
 		foreach($availableFields as $fieldAvailable)
 		{
 			$result[] = self::getFieldDescription($fieldAvailable);
@@ -232,7 +232,7 @@ class EntityFieldProvider
 		}
 
 
-		if(!empty($field['CODE']) && $field['CODE'] != $fieldAvailable['name'])
+		if (!empty($field['CODE']) && $field['CODE'] != $fieldAvailable['name'])
 		{
 			return null;
 		}
@@ -240,10 +240,11 @@ class EntityFieldProvider
 		$field['CODE'] = $fieldAvailable['name'];
 		$field['TYPE_ORIGINAL'] = $fieldAvailable['type'];
 		$field['MULTIPLE_ORIGINAL'] = $fieldAvailable['multiple'];
-		$field['VALUE_TYPE_ORIGINAL'] = $fieldAvailable['value_type'] ? $fieldAvailable['value_type'] : array();
+		$field['VALUE_TYPE_ORIGINAL'] = empty($fieldAvailable['value_type']) ? [] : $fieldAvailable['value_type'];
 
-		$isSetOriginalType = ($field['TYPE'] != 'section' && (!in_array($field['TYPE'], $stringTypes)));
-		$isSetOriginalType = $isSetOriginalType && !($field['TYPE'] == 'radio' && $fieldAvailable['type'] == 'checkbox');
+		$fieldType = $field['TYPE'] ?? null;
+		$isSetOriginalType = ($fieldType != 'section' && (!in_array($fieldType, $stringTypes)));
+		$isSetOriginalType = $isSetOriginalType && !($fieldType == 'radio' && $fieldAvailable['type'] === 'checkbox');
 		if($isSetOriginalType)
 		{
 			$field['TYPE'] = $fieldAvailable['type'];
@@ -401,14 +402,15 @@ class EntityFieldProvider
 						$field['name'] = 'RQ_' . $field['name'];
 					}
 
+					$fieldName = $field['name'] ?? '';
 					$fieldsMap[] = [
 						'type' => $field['type'],
-						'entity_field_name' => $field['name'],
+						'entity_field_name' => $fieldName,
 						'entity_name' => $entityName,
-						'name' => "{$entityName}_{$field['name']}",
-						'caption' => $field['label'],
-						'multiple' => $field['multiple'],
-						'required' => $field['required'],
+						'name' => "{$entityName}_$fieldName",
+						'caption' => $field['label'] ?? '',
+						'multiple' => $field['multiple'] ?? false,
+						'required' => $field['required'] ?? false,
 						'size' => $field['size'] ?? null,
 					];
 				}

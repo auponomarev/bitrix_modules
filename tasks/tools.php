@@ -1,4 +1,8 @@
 <?php
+
+use Bitrix\Tasks\Internals\Task\MetaStatus;
+use Bitrix\Tasks\Internals\Task\Status;
+
 IncludeModuleLangFile(__FILE__);
 
 class TasksException extends \Bitrix\Tasks\Exception
@@ -626,8 +630,8 @@ function tasksGetItemMenu($task, $arPaths, $site_id = SITE_ID, $bGantt = false, 
 		if ($arAllowedTaskActions['ACTION_DISAPPROVE'])
 		{
 			?>{
-				text : "<?=GetMessage("TASKS_REDO_TASK")?>",
-				title : "<?=GetMessage("TASKS_REDO_TASK")?>",
+				text : "<?=GetMessage("TASKS_REDO_TASK_MSGVER_1")?>",
+				title : "<?=GetMessage("TASKS_REDO_TASK_MSGVER_1")?>",
 				className : "menu-popup-item-remake",
 				onclick : BX.CJSTask.fixWindow(function(window, top, event) {
 					var fn = (window && window.tasksListNS) || (top && top.tasksListNS) || BX.DoNothing;
@@ -1057,18 +1061,18 @@ function tasksJSDateObject($date, $top = false)
 
 function tasksStatus2String($status)
 {
-	$arMap = array(
-		CTasks::METASTATE_EXPIRED          => 'overdue',
-		CTasks::METASTATE_VIRGIN_NEW       => 'new',
-		CTasks::STATE_NEW                  => 'accepted',
-		CTasks::METASTATE_EXPIRED_SOON     => 'overdue-soon',
-		CTasks::STATE_PENDING              => 'accepted',
-		CTasks::STATE_IN_PROGRESS          => 'in-progress',
-		CTasks::STATE_SUPPOSEDLY_COMPLETED => 'waiting',
-		CTasks::STATE_COMPLETED            => 'completed',
-		CTasks::STATE_DEFERRED             => 'delayed',
-		CTasks::STATE_DECLINED             => 'declined'
-	);
+	$arMap = [
+		MetaStatus::EXPIRED => 'overdue',
+		MetaStatus::UNSEEN => 'new',
+		Status::NEW => 'accepted',
+		MetaStatus::EXPIRED_SOON => 'overdue-soon',
+		Status::PENDING => 'accepted',
+		Status::IN_PROGRESS => 'in-progress',
+		Status::SUPPOSEDLY_COMPLETED => 'waiting',
+		Status::COMPLETED => 'completed',
+		Status::DEFERRED => 'delayed',
+		Status::DECLINED => 'declined',
+	];
 
 	$strStatus = "";
 	if (isset($arMap[$status]))

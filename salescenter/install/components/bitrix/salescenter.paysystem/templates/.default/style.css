@@ -70,8 +70,15 @@
 
 .salescenter-editor-section-content {
 	position: relative;
-	padding: 15px 0;
 	transition: 250ms linear padding, 250ms linear height;
+}
+
+.ui-slider-section .salescenter-editor-section-content {
+	padding: 0;
+}
+
+#salescenter-paysystem-cashbox .salescenter-editor-section-content {
+	padding: 15px 0;
 }
 
 .salescenter-editor-block-title {
@@ -251,13 +258,6 @@
 	background-image: url(images/yandexcheckout_qiwi.svg);
 	background-size: 80% auto;
 	background-color: #E9832C;
-}
-
-.salescenter-yandexcheckout-webmoney-icon { width: 97px; }
-.salescenter-yandexcheckout-webmoney-icon i {
-	background-image: url(images/yandexcheckout_webmoney.svg);
-	background-size: 90% auto;
-	background-color: #006FA8;
 }
 
 .salescenter-yandexcheckout-embedded-icon { width: 97px; }
@@ -646,6 +646,13 @@
 .salescenter-paysystem-angle-icon-after {
 	cursor: pointer;
 }
+
+.salescenter-paysystem-section-title-block {
+	display: flex;
+	flex-direction: row;
+	align-items: baseline;
+}
+
 .salescenter-paysystem-angle-icon {
 	width: 10px;
 	height: 10px;

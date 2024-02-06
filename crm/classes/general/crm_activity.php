@@ -5,6 +5,7 @@
 IncludeModuleLangFile(__FILE__);
 
 use Bitrix\Crm;
+use Bitrix\Crm\Activity\FillActLightCounter;
 use Bitrix\Crm\Activity\LightCounter\ActCounterLightTimeRepo;
 use Bitrix\Crm\Activity\Provider\Eventable\PingOffset;
 use Bitrix\Crm\Activity\Provider\Eventable\PingQueue;
@@ -14,14 +15,16 @@ use Bitrix\Crm\Integration\Disk\HiddenStorage;
 use Bitrix\Crm\Integration\StorageFileType;
 use Bitrix\Crm\Integration\StorageManager;
 use Bitrix\Crm\Integration\StorageType;
+use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Settings;
 use Bitrix\Crm\Settings\ActivitySettings;
 use Bitrix\Disk\SpecificFolder;
 use Bitrix\Main\DI\ServiceLocator;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Type\DateTime;
-use Bitrix\Crm\Activity\FillActLightCounter;
 use Bitrix\Main\Web\Uri;
+use Bitrix\Crm\Activity\FastSearch;
+use Bitrix\Crm\Activity\Provider;
 
 class CAllCrmActivity
 {
@@ -91,7 +94,7 @@ class CAllCrmActivity
 		{
 			$params['PRESERVE_CREATION_TIME'] = $options['PRESERVE_CREATION_TIME'];
 		}
-		if (!self::CheckFields('ADD', $arFields, 0, $params))
+		if (!self::rebuildFieldsForDataBase('ADD', $arFields, 0, $params))
 		{
 			return false;
 		}
@@ -156,6 +159,10 @@ class CAllCrmActivity
 		}
 
 		self::getInstance()->normalizeEntityFields($arFields);
+
+		$arFields['OWNER_ID'] = (int)$arFields['OWNER_ID'];
+		$arFields['OWNER_TYPE_ID'] = (int)$arFields['OWNER_TYPE_ID'];
+
 		$ID = $DB->Add(
 			CCrmActivity::TABLE_NAME,
 			$arFields,
@@ -252,7 +259,7 @@ class CAllCrmActivity
 		$deadline = isset($arFields['DEADLINE']) ? $arFields['DEADLINE'] : '';
 		if($completed && $deadline !== '')
 		{
-			$deadline = new \Bitrix\Main\Type\DateTime($deadline);
+			$deadline = \Bitrix\Main\Type\DateTime::createFromUserTime($deadline);
 			$deadline->setTime(0, 0, 0);
 			foreach($arBindings as $arBinding)
 			{
@@ -336,6 +343,10 @@ class CAllCrmActivity
 			}
 		}
 		\Bitrix\Crm\Counter\Monitor::getInstance()->onActivityAdd($arFields, $arBindings, $lightTimeDate);
+
+		FastSearch\Sync\Monitor::getInstance()->onActivityAdd(
+			FastSearch\Sync\ActivityChangeSet::build(null, $arFields)
+		);
 		// <-- Synchronize user activity
 
 		$provider = self::GetActivityProvider($arFields);
@@ -370,7 +381,17 @@ class CAllCrmActivity
 
 		if(is_int($ID) && $ID > 0)
 		{
-			$USER_FIELD_MANAGER->update(static::UF_ENTITY_TYPE, $ID, $arFields, $arFields['EDITOR_ID']);
+			/*
+			 * Messages are linked by the owner of the mailbox
+			 */
+			if (isset($arFields['TYPE_ID']) && $arFields['TYPE_ID'] == CCrmActivityType::Email)
+			{
+				$USER_FIELD_MANAGER->update(static::UF_ENTITY_TYPE, $ID, $arFields, $arFields['AUTHOR_ID']);
+			}
+			else
+			{
+				$USER_FIELD_MANAGER->update(static::UF_ENTITY_TYPE, $ID, $arFields, $arFields['EDITOR_ID']);
+			}
 
 			if ($provider !== null && $provider::canUseLiveFeedEvents($providerTypeId) === false)
 				$options['REGISTER_SONET_EVENT'] = false;
@@ -417,27 +438,6 @@ class CAllCrmActivity
 				ExecuteModuleEventEx($arEvent, array($ID, &$arFields));
 			}
 
-			if (\Bitrix\Main\Loader::includeModule('pull'))
-			{
-				\Bitrix\Pull\Event::add($arFields['RESPONSIBLE_ID'], array(
-								'module_id' => 'crm',
-								'command' => 'activity_add',
-								'params' => array(
-									'TYPE_ID' => $arFields['TYPE_ID'],
-									'SUBJECT' => $arFields['SUBJECT'],
-									'RESPONSIBLE_ID' => $arFields['RESPONSIBLE_ID'],
-									'PRIORITY' => $arFields['PRIORITY'],
-									'COMPLETED' => $arFields['COMPLETED'],
-									'START_TIME' => $arFields['START_TIME'],
-									'END_TIME' => $arFields['END_TIME'],
-									'OWNER_TYPE_ID' => $arFields['OWNER_TYPE_ID'],
-									'OWNER_TYPE_NAME' => CCrmOwnerType::ResolveName($arFields['OWNER_TYPE_ID']),
-									'OWNER_ID' => $arFields['OWNER_ID'],
-									'DEADLINE' => $arFields['DEADLINE']
-								),
-							));
-			}
-
 			if($arFields['COMPLETED'] === 'Y')
 			{
 				Crm\Ml\Scoring::queuePredictionUpdate($arFields['OWNER_TYPE_ID'], $arFields['OWNER_ID'], [
@@ -478,7 +478,7 @@ class CAllCrmActivity
 		{
 			$checkFieldParams['INITIATED_BY_CALENDAR'] = $options['INITIATED_BY_CALENDAR'];
 		}
-		if (!self::CheckFields('UPDATE', $arFields, $ID, $checkFieldParams))
+		if (!self::rebuildFieldsForDataBase('UPDATE', $arFields, $ID, $checkFieldParams))
 		{
 			return false;
 		}
@@ -748,7 +748,7 @@ class CAllCrmActivity
 			&& $prevDeadline
 			&& ($bindingsChanged || $prevCompletedForStatistics != $curCompletedForStatistics || $prevDeadline !== $curDeadline))
 		{
-			$deadline = new \Bitrix\Main\Type\DateTime($prevDeadline);
+			$deadline = \Bitrix\Main\Type\DateTime::createFromUserTime($prevDeadline);
 			$deadline->setTime(0, 0, 0);
 			foreach($arPrevBindings as $arBinding)
 			{
@@ -770,7 +770,7 @@ class CAllCrmActivity
 
 		if($curCompletedForStatistics && $curDeadline !== '')
 		{
-			$deadline = new \Bitrix\Main\Type\DateTime($curDeadline);
+			$deadline = \Bitrix\Main\Type\DateTime::createFromUserTime($curDeadline);
 			$deadline->setTime(0, 0, 0);
 			foreach($arBindings as $arBinding)
 			{
@@ -884,6 +884,10 @@ class CAllCrmActivity
 			$arBindings,
 			$oldLightTimeDate,
 			$lightTimeDate
+		);
+
+		FastSearch\Sync\Monitor::getInstance()->onActivityUpdate(
+			FastSearch\Sync\ActivityChangeSet::build($arPrevEntity, $arCurEntity)
 		);
 
 		if($regEvent)
@@ -1047,8 +1051,8 @@ class CAllCrmActivity
 
 		if(($arFields['COMPLETED'] ?? null) === 'Y')
 		{
-			$ownerId = $arFields['OWNER_ID'] ?: $arPrevEntity['OWNER_ID'];
-			$ownerTypeId = $arFields['OWNER_TYPE_ID'] ?: $arPrevEntity['OWNER_TYPE_ID'];
+			$ownerId = $arFields['OWNER_ID'] ?? $arPrevEntity['OWNER_ID'];
+			$ownerTypeId = $arFields['OWNER_TYPE_ID'] ?? $arPrevEntity['OWNER_TYPE_ID'];
 			Crm\Ml\Scoring::queuePredictionUpdate($ownerTypeId, $ownerId, [
 				'EVENT_TYPE' => Crm\Ml\Scoring::EVENT_ACTIVITY,
 				'ASSOCIATED_ACTIVITY_ID'=> $ID
@@ -1213,7 +1217,7 @@ class CAllCrmActivity
 				$deadline = isset($ary['DEADLINE']) ? $ary['DEADLINE'] : '';
 				if($completed && $deadline)
 				{
-					$deadline = new \Bitrix\Main\Type\DateTime($deadline);
+					$deadline = \Bitrix\Main\Type\DateTime::createFromUserTime($deadline);
 					$deadline->setTime(0, 0, 0);
 					foreach($arBindings as $arBinding)
 					{
@@ -1285,6 +1289,8 @@ class CAllCrmActivity
 		{
 			\Bitrix\Crm\Counter\Monitor::getInstance()->onActivityDelete($ary, $arBindings, $oldLightTimeDate);
 		}
+
+		FastSearch\Sync\Monitor::getInstance()->onActivityDelete($ID, $ary);
 
 		\Bitrix\Crm\Ml\Scoring::onActivityDelete($ID);
 
@@ -1672,8 +1678,8 @@ class CAllCrmActivity
 			self::Update($entityID, $arEntity, false, true);
 		}
 	}
-	//Check fields before ADD and UPDATE.
-	private static function CheckFields($action, &$fields, $ID, $params = null)
+
+	private static function rebuildFieldsForDataBase($action, &$fields, $ID, $params = null)
 	{
 		global $DB, $USER_FIELD_MANAGER, $APPLICATION;
 		self::ClearErrors();
@@ -1793,7 +1799,10 @@ class CAllCrmActivity
 				$fields['AUTHOR_ID'] = $currentUserId > 0 ? $currentUserId : $fields['RESPONSIBLE_ID'];
 			}
 
-			$fields['EDITOR_ID'] = $fields['AUTHOR_ID'];
+			if(!isset($fields['EDITOR_ID']))
+			{
+				$fields['EDITOR_ID'] = $fields['AUTHOR_ID'];
+			}
 
 			if (!isset($fields['~END_TIME']) && !isset($fields['END_TIME']) && isset($fields['START_TIME']))
 			{
@@ -1986,6 +1995,13 @@ class CAllCrmActivity
 				$fields['~DEADLINE'] = CCrmDateTimeHelper::GetMaxDatabaseDate();
 			}
 		}
+
+		if ($action == 'ADD' && empty($fields['DEADLINE'] ?? null) && empty($fields['~DEADLINE'] ?? null))
+		{
+			unset($fields['DEADLINE']);
+			$fields['~DEADLINE'] = CCrmDateTimeHelper::GetMaxDatabaseDate();
+		}
+
 		// incoming channel activity cannot have a deadline
 		if (($fields['IS_INCOMING_CHANNEL'] ?? null) === 'Y')
 		{
@@ -2210,13 +2226,46 @@ class CAllCrmActivity
 
 	/**
 	 * @param array $activity - Activity fields.
-	 * @return null|\Bitrix\Crm\Activity\Provider\Base
+	 * @return null|Provider\Base
 	 */
 	public static function GetActivityProvider(array $activity)
 	{
-		$provider = !empty($activity['PROVIDER_ID']) ? self::GetProviderById($activity['PROVIDER_ID']) : null;
+		return self::activityProvider($activity);
+	}
+
+	/**
+	 * return activity provider even if is disabled
+	 * @param array $activity
+	 * @return Provider\Base|null
+	 */
+	public static function GetActivityProviderSafelyByDisabled(array $activity)
+	{
+		return self::activityProvider($activity, true);
+	}
+
+	/**
+	 * @param array $activity
+	 * @param bool $withInactiveProviders
+	 * @return Provider\Base|null
+	 */
+	private static function activityProvider(array $activity, bool $withInactiveProviders = false)
+	{
+		$providerId = $activity['PROVIDER_ID'] ?? null;
+
+		if ($withInactiveProviders)
+		{
+			$provider = $providerId ? self::GetProviderByIdSafelyByDisabled($providerId) : null;
+		}
+		else
+		{
+			$provider = $providerId ? self::GetProviderById($providerId) : null;
+		}
+
 		if ($provider === null && !empty($activity['TYPE_ID']))
+		{
 			$provider = self::GetProviderByType($activity['TYPE_ID']);
+		}
+
 		return $provider;
 	}
 
@@ -2228,6 +2277,18 @@ class CAllCrmActivity
 	{
 		$providerId = (string) $providerId;
 		$providers = static::GetProviders();
+
+		return array_key_exists($providerId, $providers) ? $providers[$providerId] : null;
+	}
+
+	/**
+	 * return activity provider even if is disabled
+	 * @param string $providerId Provider id.
+	 * @return null|\Bitrix\Crm\Activity\Provider\Base
+	 */
+	public static function GetProviderByIdSafelyByDisabled(string $providerId)
+	{
+		$providers = Provider\ProviderManager::getAllProviders();
 
 		return array_key_exists($providerId, $providers) ? $providers[$providerId] : null;
 	}
@@ -2388,7 +2449,7 @@ class CAllCrmActivity
 		$userID =
 			($userPermissions !== null && is_object($userPermissions))
 				? $userPermissions->GetUserID()
-				: Crm\Service\Container::getInstance()->getContext()->getUserId()
+				: Container::getInstance()->getContext()->getUserId()
 		;
 		if (CCrmPerms::IsAdmin($userID))
 		{
@@ -2417,8 +2478,8 @@ class CAllCrmActivity
 		$entitiesSql[(string)CCrmOwnerType::Quote] =
 			CCrmPerms::BuildSql(CCrmOwnerType::QuoteName, $aliasPrefix, $permType, $permOptions);
 
-		$userPermissions = Crm\Service\Container::getInstance()->getUserPermissions($userID);
-		$typesMap = Crm\Service\Container::getInstance()->getTypesMap();
+		$userPermissions = Container::getInstance()->getUserPermissions($userID);
+		$typesMap = Container::getInstance()->getTypesMap();
 
 		foreach ($typesMap->getFactories() as $factory)
 		{
@@ -3839,7 +3900,7 @@ class CAllCrmActivity
 		elseif($entityTypeID === CCrmOwnerType::Contact)
 		{
 			// Empty TYPE is person to person communiation, empty ENTITY_ID is unbound communication - no method to build title
-			if(!($arComm['TYPE'] === '' && intval($arComm['ENTITY_ID']) === 0))
+			if (!(empty($arComm['TYPE']) && intval($arComm['ENTITY_ID']) === 0))
 			{
 				$honorific = '';
 				$name = '';
@@ -3945,19 +4006,21 @@ class CAllCrmActivity
 		}
 		elseif($storageTypeID === StorageType::Disk)
 		{
-			$infos = array();
+			$infos = [];
 			foreach($storageElementIDs as $elementID)
 			{
 				$diskFileInfo = Bitrix\Crm\Integration\DiskManager::getFileInfo(
 					$elementID,
 					false,
-					array('OWNER_TYPE_ID' => CCrmOwnerType::Activity, 'OWNER_ID' => $arFields['ID'])
+					['OWNER_TYPE_ID' => CCrmOwnerType::Activity, 'OWNER_ID' => $arFields['ID'] ?? null]
 				);
+
 				if ($diskFileInfo)
 				{
 					$infos[] = $diskFileInfo;
 				}
 			}
+
 			$arFields['DISK_FILES'] = &$infos;
 			unset($infos);
 		}
@@ -4117,16 +4180,18 @@ class CAllCrmActivity
 		$dbRes = CCrmActivity::GetList(array(), $filter, false, false, array('ID'));
 		return is_array($dbRes->Fetch());
 	}
-	public static function Complete($ID, $completed = true, $options = array())
+
+	public static function Complete($ID, $completed = true, $options = [])
 	{
-		$ID = intval($ID);
-		if($ID <= 0)
+		$ID = (int)($ID ?? 0);
+		if ($ID <= 0)
 		{
-			self::RegisterError(array('text' => 'Invalid arguments are supplied.'));
+			self::RegisterError(['text' => 'Invalid arguments are supplied.']);
+
 			return false;
 		}
 
-		if(is_string($completed))
+		if (is_string($completed))
 		{
 			$completed = mb_strtoupper($completed) === 'Y' ? 'Y' : 'N';
 		}
@@ -4136,24 +4201,34 @@ class CAllCrmActivity
 		}
 
 		$dbRes = CCrmActivity::GetList(
-			array(),
-				array('ID'=> $ID, 'CHECK_PERMISSIONS' => 'N'),
-				false,
-				false,
-				array('ID', 'COMPLETED')
+			[],
+			['ID'=> $ID, 'CHECK_PERMISSIONS' => 'N'],
+			false,
+			false,
+			['ID', 'COMPLETED', 'PROVIDER_ID', 'PROVIDER_PARAMS']
 		);
 		$fields = $dbRes->Fetch();
-		if(!is_array($fields))
+		if (!is_array($fields))
 		{
 			return false;
 		}
 
-		if(isset($fields['COMPLETED']) && $fields['COMPLETED'] === $completed)
+		if (isset($fields['COMPLETED']) && $fields['COMPLETED'] === $completed)
 		{
 			return true;
 		}
 
-		return self::Update($ID, array('COMPLETED' => $completed), true, true, $options);
+		$skipBeforeHandler = $options['SKIP_BEFORE_HANDLER'] ?? false;
+		if (!$skipBeforeHandler)
+		{
+			$provider = self::GetActivityProvider($fields);
+			if ($provider !== null)
+			{
+				$provider::onBeforeComplete($ID, $fields);
+			}
+		}
+
+		return self::Update($ID, ['COMPLETED' => $completed], true, true, $options);
 	}
 
 	public static function SetAutoCompleted($ID, $options = array())
@@ -4930,14 +5005,20 @@ class CAllCrmActivity
 				break;
 			}
 
-			$connection->queryExecute(/** @lang MySQL */
-				"UPDATE b_crm_act a1 INNER JOIN (SELECT ACTIVITY_ID, OWNER_ID, OWNER_TYPE_ID FROM b_crm_act_bind b1
+			$connection->queryExecute($connection->getSqlHelper()->prepareCorrelatedUpdate(
+				'b_crm_act',
+				'a1',
+				[
+					'OWNER_ID' => 'a2.OWNER_ID',
+					'OWNER_TYPE_ID' => 'a2.OWNER_TYPE_ID',
+				],
+				"(SELECT ACTIVITY_ID, OWNER_ID, OWNER_TYPE_ID FROM b_crm_act_bind b1
 					INNER JOIN (SELECT MIN(ID) ID FROM b_crm_act_bind
 						WHERE ACTIVITY_ID IN ({$conditionSql}) GROUP BY ACTIVITY_ID
 					) b2 ON b1.ID = b2.ID
-				) a2 ON a1.ID = a2.ACTIVITY_ID
-				SET a1.OWNER_ID = a2.OWNER_ID, a1.OWNER_TYPE_ID = a2.OWNER_TYPE_ID"
-			);
+				) a2",
+				'a1.ID = a2.ACTIVITY_ID'
+			));
 
 			foreach ($existedActivityIds as $existedActivityId)
 			{
@@ -5275,13 +5356,13 @@ class CAllCrmActivity
 		$providerID = $arRow['PROVIDER_ID'] ?? '';
 		$typeName = self::ResolveEventTypeName($typeID, self::ACTIVITY_DEFAULT, $providerID);
 
-		$subject = isset($arRow['SUBJECT']) ? $arRow['SUBJECT'] : '';
-		$location = isset($arRow['LOCATION']) ? $arRow['LOCATION'] : '';
-		$description = isset($arRow['DESCRIPTION']) ? $arRow['DESCRIPTION'] : '';
+		$subject = $arRow['SUBJECT'] ?? '';
+		$location = $arRow['LOCATION'] ?? '';
+		$description = $arRow['DESCRIPTION'] ?? '';
 		$descriptionType = isset($arRow['DESCRIPTION_TYPE']) ? (int)$arRow['DESCRIPTION_TYPE'] : CCrmContentType::PlainText;
 
 		$eventText = '';
-		if($subject !== '' && $providerId != \Bitrix\Crm\Activity\Provider\ToDo::getId())
+		if($subject !== '' && $providerID != \Bitrix\Crm\Activity\Provider\ToDo::getId())
 		{
 			$eventText .= GetMessage('CRM_ACTIVITY_SUBJECT').': '.$subject.PHP_EOL;
 		}
@@ -5489,14 +5570,15 @@ class CAllCrmActivity
 			$suffix = "_{$suffix}";
 		}
 
+		$communicationType = $arComm['TYPE'] ?? '';
 		$eventName = GetMessage(
-			"CRM_ACTIVITY_COMM_{$arComm['TYPE']}_{$eventType}{$suffix}",
+			"CRM_ACTIVITY_COMM_{$communicationType}_{$eventType}{$suffix}",
 			array('#NAME#' => self::GetEventName($arFields))
 		);
 
-		if($eventName !== '')
+		if ($eventName !== '')
 		{
-			$arBindings = isset($arFields['BINDINGS']) ? $arFields['BINDINGS'] : self::GetBindings($ID);
+			$arBindings = $arFields['BINDINGS'] ?? self::GetBindings($ID);
 			foreach($arBindings as &$arBinding)
 			{
 				self::RegisterEvents(
@@ -5505,9 +5587,9 @@ class CAllCrmActivity
 					array(
 						array(
 							'EVENT_NAME' => $eventName,
-							'EVENT_TEXT_1' => $arComm['VALUE'],
+							'EVENT_TEXT_1' => $arComm['VALUE'] ?? '',
 							'EVENT_TEXT_2' => '',
-							'USER_ID' => isset($arFields['EDITOR_ID']) ? $arFields['EDITOR_ID'] : 0
+							'USER_ID' => $arFields['EDITOR_ID'] ?? 0
 						)
 					),
 					$checkPerms
@@ -5515,6 +5597,7 @@ class CAllCrmActivity
 			}
 			unset($arBinding);
 		}
+		
 		return true;
 	}
 	public static function GetActivityType(&$arFields)
@@ -7849,7 +7932,13 @@ class CAllCrmActivity
 			$provider = self::GetActivityProvider($arFields);
 			if ($provider !== null)
 			{
-				$arPingOffsets = $provider::getDefaultPingOffsets();
+				$categoryId = Container::getInstance()->getFactory($arFields['OWNER_TYPE_ID'])?->getItemCategoryId($arFields['OWNER_ID']);
+				$arPingOffsets = $provider::getDefaultPingOffsets(
+					[
+						'entityTypeId' => (int)$arFields['OWNER_TYPE_ID'],
+						'categoryId' => (int)($categoryId ?? 0),
+					]
+				);
 			}
 		}
 
@@ -7909,12 +7998,16 @@ class CCrmActivityType
 
 	public static function PrepareListItems()
 	{
-		return CCrmEnumeration::PrepareListItems(self::GetAllDescriptions(), array(self::Undefined));
+		$desctiptions = self::GetAllDescriptions();
+
+		return CCrmEnumeration::PrepareListItems($desctiptions, array(self::Undefined));
 	}
 
 	public static function PrepareFilterItems()
 	{
-		return CCrmEnumeration::PrepareFilterItems(self::GetAllDescriptions(), array(self::Undefined));
+		$desctiptions = self::GetAllDescriptions();
+
+		return CCrmEnumeration::PrepareFilterItems($desctiptions, array(self::Undefined));
 	}
 }
 
@@ -8043,12 +8136,16 @@ class CCrmActivityPriority
 
 	public static function PrepareListItems()
 	{
-		return CCrmEnumeration::PrepareListItems(self::GetAllDescriptions(), array(self::None));
+		$descriptions = self::GetAllDescriptions();
+
+		return CCrmEnumeration::PrepareListItems($descriptions, array(self::None));
 	}
 
 	public static function PrepareFilterItems()
 	{
-		return CCrmEnumeration::PrepareFilterItems(self::GetAllDescriptions(), array(self::None));
+		$descriptions = self::GetAllDescriptions();
+
+		return CCrmEnumeration::PrepareFilterItems($descriptions, array(self::None));
 	}
 
 	public static function ResolveDescription($priorityID)

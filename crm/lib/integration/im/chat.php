@@ -75,7 +75,7 @@ class Chat
 		}
 		if($entityTypeId === \CCrmOwnerType::Company)
 		{
-			return Crm\Entity\Contact::getResponsibleID($entityId);
+			return Crm\Entity\Company::getResponsibleID($entityId);
 		}
 
 		$factory = Crm\Service\Container::getInstance()->getFactory($entityTypeId);
@@ -195,7 +195,8 @@ class Chat
 			return;
 		}
 
-		if ($activity['COMPLETED'] === 'Y')
+		// open activity again when user send message (but ignore system messages)
+		if ($activity['COMPLETED'] === 'Y' && $messageFields['SYSTEM'] !== 'Y')
 		{
 			\CCrmActivity::Update($activity['ID'], ['COMPLETED' => false]);
 		}
@@ -776,9 +777,13 @@ class Chat
 			}
 		}
 
-		if ($entityData['HAS_PHONE'] == 'Y' && isset($entityData['FM']['PHONE']))
+		if (
+			isset($entityData['HAS_PHONE'])
+			&& $entityData['HAS_PHONE'] === 'Y'
+			&& isset($entityData['FM']['PHONE'])
+		)
 		{
-			$fields = Array();
+			$fields = [];
 			foreach ($entityData['FM']['PHONE'] as $phones)
 			{
 				foreach ($phones as $phone)
@@ -788,9 +793,14 @@ class Chat
 			}
 			$entityGrid[] = Array('DISPLAY' => 'LINE', 'NAME' => Loc::getMessage('CRM_INTEGRATION_IM_CHAT_CARD_PHONE'), 'VALUE' => implode('[br]', $fields), 'HEIGHT' => '20');
 		}
-		if ($entityData['HAS_EMAIL'] == 'Y' && $entityData['FM']['EMAIL'])
+
+		if (
+			isset($entityData['HAS_EMAIL'])
+			&& $entityData['HAS_EMAIL'] === 'Y'
+			&& $entityData['FM']['EMAIL']
+		)
 		{
-			$fields = Array();
+			$fields = [];
 			foreach ($entityData['FM']['EMAIL'] as $emails)
 			{
 				foreach ($emails as $email)

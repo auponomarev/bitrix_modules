@@ -4,14 +4,21 @@ use Bitrix\Bizproc\Activity\PropertiesDialog;
 use Bitrix\Bizproc\FieldType;
 use Bitrix\Crm;
 use Bitrix\Main\Error;
-use Bitrix\Main\Result;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Main\Result;
 
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 {
 	die();
 }
 
+/**
+ * @property-write int DynamicTypeId
+ * @property-write array DynamicEntitiesFields
+ * @property-write bool OnlyDynamicEntities
+ * @property-write int|null ItemId
+ * @property-write string|null ErrorMessage
+ */
 class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 {
 	protected static $requiredModules = ['crm'];
@@ -27,10 +34,12 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 
 			// return
 			'ItemId' => null,
+			'ErrorMessage' => null,
 		];
 
 		$this->SetPropertiesTypes([
 			'DynamicTypeId' => ['Type' => FieldType::INT],
+			'ErrorMessage' => ['Type' => FieldType::STRING],
 		]);
 	}
 
@@ -38,6 +47,7 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 	{
 		parent::reInitialize();
 		$this->ItemId = 0;
+		$this->ErrorMessage = null;
 	}
 
 	protected function prepareProperties(): void
@@ -87,6 +97,18 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 		try
 		{
 			$creationResult = static::getDocumentService()->CreateDocument($documentType, $fieldsValues);
+			if (CBPHelper::getBool($fieldsValues['BindToCurrentElement'] ?? false))
+			{
+				$moduleId = $this->getDocumentType()[0] ?? '';
+				if (is_int($creationResult) && $moduleId === 'crm')
+				{
+					[$currentEntityTypeId, $currentEntityId] = CCrmBizProcHelper::resolveEntityId($this->getDocumentId());
+					$this->bindElements(
+						new Crm\ItemIdentifier($currentEntityTypeId, $currentEntityId),
+						new Crm\ItemIdentifier($this->DynamicTypeId, $creationResult),
+					);
+				}
+			}
 		}
 		catch (\Bitrix\Main\NotImplementedException $exception)
 		{
@@ -96,10 +118,12 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 		if (is_string($creationResult))
 		{
 			$errorCollection->setError(new Error($creationResult));
+			$this->ErrorMessage = $creationResult;
 		}
 		elseif ($creationResult === false)
 		{
 			$errorCollection->setError(new Error(Loc::getMessage('CRM_CDA_ITEM_CREATION_ERROR')));
+			$this->ErrorMessage = Loc::getMessage('CRM_CDA_ITEM_CREATION_ERROR');
 		}
 		elseif (is_int($creationResult))
 		{
@@ -120,6 +144,24 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 		);
 	}
 
+	private function bindElements(Crm\ItemIdentifier $parent, Crm\ItemIdentifier $child): void
+	{
+		$itemRelations = new Crm\Automation\Connectors\ItemRelations($child);
+		if ($itemRelations->hasParentElement())
+		{
+			return;
+		}
+		$bindResult = $itemRelations->bindParentElement($parent);
+
+		if (!$bindResult->isSuccess())
+		{
+			foreach ($bindResult->getErrorMessages() as $message)
+			{
+				$this->logError($message);
+			}
+		}
+	}
+
 	protected static function getFileName(): string
 	{
 		return __FILE__;
@@ -136,10 +178,20 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 			$currentValues = $result->getData();
 			$entityTypeId = (int)$currentValues['DynamicTypeId'];
 
+			$originalDocType = $dialog->getDocumentType();
+			$entityDocumentType = \CCrmBizProcHelper::ResolveDocumentType($entityTypeId);
+
+			if ($entityDocumentType)
+			{
+				$dialog->setDocumentType($entityDocumentType);
+			}
+
 			$extractingFieldsResult = parent::extractPropertiesValues(
 				$dialog,
 				$fieldsMap['DynamicEntitiesFields']['Map'][$entityTypeId] ?? []
 			);
+
+			$dialog->setDocumentType($originalDocType);
 
 			if ($extractingFieldsResult->isSuccess())
 			{
@@ -160,6 +212,15 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 	{
 		$typesMap = Crm\Service\Container::getInstance()->getTypesMap();
 
+		$currentModuleId = null;
+		$currentEntityTypeId = null;
+
+		if (isset($dialog))
+		{
+			$currentModuleId = $dialog->getDocumentType()[0];
+			$currentEntityTypeId = CCrmOwnerType::ResolveID($dialog->getDocumentType()[2]) ?: null;
+		}
+
 		$typeNames = [];
 		$entitiesFields = [];
 		foreach ($typesMap->getFactories() as $factory)
@@ -170,7 +231,29 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 			if (isset($documentType) && static::isTypeSupported($entityTypeId))
 			{
 				$typeNames[$entityTypeId] = static::getDocumentService()->getDocumentTypeName($documentType);
-				$entitiesFields[$entityTypeId] = static::getEntityFieldsWithPrefix($entityTypeId);
+				$typeRelations = new Crm\Automation\Connectors\TypeRelations($factory);
+
+				foreach (static::getEntityFieldsWithPrefix($entityTypeId) as $fieldId => $field)
+				{
+					$parentFieldName = $typeRelations->getParentFieldName($currentEntityTypeId ?? 0);
+					$parentFieldName = "{$entityTypeId}_{$parentFieldName}";
+
+					if (
+						$currentModuleId === 'crm'
+						&& $fieldId === $parentFieldName
+						&& $typeRelations->isParentType($currentEntityTypeId)
+					)
+					{
+						$entitiesFields[$entityTypeId]["{$entityTypeId}_BindToCurrentElement"] = [
+							'Name' => Loc::getMessage('CRM_CDA_ITEM_FIELD_BIND_TO_CURRENT_ELEMENT'),
+							'FieldName' => "{$entityTypeId}_bind_to_current_element",
+							'Type' => FieldType::BOOL,
+							'Default' => 'Y',
+						];
+					}
+
+					$entitiesFields[$entityTypeId][$fieldId] = $field;
+				}
 			}
 		}
 
@@ -200,6 +283,13 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 				],
 			],
 		];
+	}
+
+	private static function getFieldIdWithoutPrefix(int $entityTypeId, string $fieldId): string
+	{
+		$fieldIdPrefixLength = mb_strlen($entityTypeId . '_');
+
+		return mb_substr($fieldId, $fieldIdPrefixLength);
 	}
 
 	protected static function getPropertiesMap(array $documentType, array $context = []): array
@@ -234,7 +324,12 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 
 		foreach (static::getDocumentService()->GetDocumentFields($documentType) as $fieldId => $field)
 		{
-			$isIgnoredField = !$field['Editable'] || static::isInternalField($fieldId) || static::isMultiField($field);
+			$isIgnoredField = (
+				!isset($field['Editable'])
+				|| !$field['Editable']
+				|| static::isInternalField($fieldId)
+				|| static::isMultiField($field)
+			);
 
 			if (!$isIgnoredField || static::isRequiredFieldId($fieldId))
 			{
@@ -281,7 +376,7 @@ class CBPCrmCreateDynamicActivity extends \Bitrix\Bizproc\Activity\BaseActivity
 		}
 
 		$context = $dialog->getContext() ?? [];
-		if ($context['addMenuGroup'] === 'digitalWorkplace')
+		if (isset($context['addMenuGroup']) && $context['addMenuGroup'] === 'digitalWorkplace')
 		{
 			return true;
 		}

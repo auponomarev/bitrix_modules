@@ -27,6 +27,9 @@ abstract class BaseMessage extends Base
 	public const PROVIDER_TYPE_SALESCENTER_TERMINAL_PAYMENT_PAID = 'SALESCENTER_TERMINAL_PAYMENT_PAID';
 	public const PROVIDER_TYPE_SALESCENTER_DELIVERY = 'SALESCENTER_DELIVERY';
 
+	public const PROVIDER_TYPE_CRM_ORDER_COMPLETED = 'CRM_ORDER_COMPLETED';
+	public const PROVIDER_TYPE_CRM_ORDER_PAID = 'CRM_ORDER_PAID';
+
 	public const MESSAGE_FAILURE = 0;
 	public const MESSAGE_SUCCESS = 1;
 	public const MESSAGE_READ = 2;
@@ -189,17 +192,31 @@ abstract class BaseMessage extends Base
 			static::PROVIDER_TYPE_SALESCENTER_PAYMENT_SENT,
 			static::PROVIDER_TYPE_SALESCENTER_TERMINAL_PAYMENT_PAID,
 			static::PROVIDER_TYPE_SALESCENTER_DELIVERY,
+			static::PROVIDER_TYPE_CRM_ORDER_COMPLETED,
+			static::PROVIDER_TYPE_CRM_ORDER_PAID,
 		];
 		foreach ($availableProviderTypeIds as $providerTypeId)
 		{
-			$result[] = [
-				'NAME' => Loc::getMessage(
+			$providerTypeName = Loc::getMessage(
+				sprintf(
+					'CRM_ACTIVITY_PROVIDER_%s_%s_NAME',
+					static::getLangProviderId(),
+					$providerTypeId
+				)
+			);
+			if (!$providerTypeName)
+			{
+				$providerTypeName = Loc::getMessage(
 					sprintf(
-						'CRM_ACTIVITY_PROVIDER_%s_%s_NAME',
+						'CRM_ACTIVITY_PROVIDER_%s_%s_NAME_MSGVER_1',
 						static::getLangProviderId(),
 						$providerTypeId
 					)
-				),
+				);
+			}
+
+			$result[] = [
+				'NAME' => $providerTypeName,
 				'PROVIDER_ID' => static::getId(),
 				'PROVIDER_TYPE_ID' => $providerTypeId,
 				'DIRECTIONS' => [
@@ -387,6 +404,11 @@ abstract class BaseMessage extends Base
 			);
 
 			ProviderManager::syncBadgesOnActivityUpdate((int)$activity['ID'], $activity);
+
+			if ($status === static::MESSAGE_FAILURE)
+			{
+				static::syncActivitySettings($id, $activity);
+			}
 		}
 	}
 
@@ -418,6 +440,18 @@ abstract class BaseMessage extends Base
 		return [];
 	}
 
+	/**
+	 * Synchronize the settings field for the activity
+	 *
+	 * @param int $messageId
+	 * @param array $activity
+	 *
+	 * @return void
+	 */
+	protected static function syncActivitySettings(int $messageId, array $activity): void
+	{
+	}
+
 	private static function makeActivityFields(array $additionalFields): array
 	{
 		$result = [];
@@ -433,6 +467,11 @@ abstract class BaseMessage extends Base
 				'ORDER_ID' => $payment->getOrder()->getId(),
 				'PAYMENT_ID' => $payment->getId(),
 			];
+		}
+
+		if (isset($additionalFields['HIGHLIGHT_URL']))
+		{
+			$result['HIGHLIGHT_URL'] = $additionalFields['HIGHLIGHT_URL'];
 		}
 
 		return $result;
@@ -454,7 +493,7 @@ abstract class BaseMessage extends Base
 		}
 	}
 
-	protected static function unBindBadge(string $badgeItemValue, array $bindings): void
+	protected static function unBindBadge(array $bindings, string $badgeItemValue = null): void
 	{
 		foreach ($bindings as $singleBinding)
 		{

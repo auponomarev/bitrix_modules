@@ -2,8 +2,9 @@
  * @module layout/ui/fields/menu-select
  */
 jn.define('layout/ui/fields/menu-select', (require, exports, module) => {
-
+	const AppTheme = require('apptheme');
 	const { BaseSelectField } = require('layout/ui/fields/base-select');
+	const { chevronDown } = require('assets/common');
 
 	/**
 	 * @class MenuSelectField
@@ -29,13 +30,12 @@ jn.define('layout/ui/fields/menu-select', (require, exports, module) => {
 		{
 			let items = BX.prop.getArray(config, 'menuItems', []);
 
-			if (!items.length)
+			if (items.length === 0)
 			{
 				items = BX.prop.getArray(config, 'items', []);
 			}
 
 			return items;
-
 		}
 
 		shouldShowIcon()
@@ -131,9 +131,10 @@ jn.define('layout/ui/fields/menu-select', (require, exports, module) => {
 						width: 7,
 						height: 5,
 					},
+					tintColor: AppTheme.colors.base3,
 					resizeMode: 'center',
 					svg: {
-						content: `<svg width="7" height="5" viewBox="0 0 7 5" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.09722 0.235352L4.02232 2.31025L3.49959 2.8249L2.98676 2.31025L0.91186 0.235352L0.179688 0.967524L3.50451 4.29235L6.82933 0.967524L6.09722 0.235352Z" fill="#A8ADB4"/></svg>`,
+						content: chevronDown(),
 					},
 				}),
 			);
@@ -158,7 +159,8 @@ jn.define('layout/ui/fields/menu-select', (require, exports, module) => {
 					super.renderEmptyContent(),
 				);
 			}
-			else if (this.props.emptyValue)
+
+			if (this.props.emptyValue)
 			{
 				return View(
 					{
@@ -183,7 +185,7 @@ jn.define('layout/ui/fields/menu-select', (require, exports, module) => {
 						},
 						resizeMode: 'center',
 						svg: {
-							content: `<svg width="7" height="5" viewBox="0 0 7 5" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.09722 0.235352L4.02232 2.31025L3.49959 2.8249L2.98676 2.31025L0.91186 0.235352L0.179688 0.967524L3.50451 4.29235L6.82933 0.967524L6.09722 0.235352Z" fill="#A8ADB4"/></svg>`,
+							content: '<svg width="7" height="5" viewBox="0 0 7 5" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.09722 0.235352L4.02232 2.31025L3.49959 2.8249L2.98676 2.31025L0.91186 0.235352L0.179688 0.967524L3.50451 4.29235L6.82933 0.967524L6.09722 0.235352Z" fill="#A8ADB4"/></svg>',
 						},
 					}),
 				);
@@ -201,11 +203,17 @@ jn.define('layout/ui/fields/menu-select', (require, exports, module) => {
 
 		handleAdditionalFocusActions()
 		{
-			const { menuTitle, defaultSectionCode, shouldResizeContent, isCustomIconColor } = this.getConfig();
+			const {
+				menuTitle,
+				defaultSectionCode,
+				shouldResizeContent,
+				isCustomIconColor,
+				showCancelButton = false,
+			} = this.getConfig();
 
 			const contextMenu = new ContextMenu({
 				params: {
-					showCancelButton: false,
+					showCancelButton,
 					showActionLoader: false,
 					title: menuTitle,
 					showPartiallyHidden: this.shouldShowPartiallyHidden(),
@@ -230,11 +238,7 @@ jn.define('layout/ui/fields/menu-select', (require, exports, module) => {
 				})),
 			});
 
-			return contextMenu.show(this.getParentWidget()).then(
-				() => this.setListeners(contextMenu.layoutWidget),
-				() => {
-				},
-			);
+			return contextMenu.show(this.getParentWidget()).then(() => this.setListeners(contextMenu.layoutWidget));
 		}
 
 		setListeners(contextMenuWidget)
@@ -263,7 +267,74 @@ jn.define('layout/ui/fields/menu-select', (require, exports, module) => {
 			super.removeFocus();
 		}
 
+		renderLeftIcons()
+		{
+			if (this.isEmptyEditable() && this.getConfig().emptyValueIcon)
+			{
+				return Image(
+					{
+						style: {
+							width: 24,
+							height: 24,
+							marginRight: 8,
+						},
+						svg: {
+							content: this.getConfig().emptyValueIcon,
+						},
+					},
+				);
+			}
+
+			return null;
+		}
+
+		renderEditIcon()
+		{
+			if (this.props.editIcon)
+			{
+				return this.props.editIcon;
+			}
+
+			if (this.isEmptyEditable())
+			{
+				return View(
+					{
+						style: {
+							justifyContent: 'center',
+							alignItems: 'center',
+							width: 16,
+							height: 16,
+							marginLeft: 2,
+						},
+					},
+					Image(
+						{
+							style: {
+								height: 5,
+								width: 7,
+							},
+							svg: {
+								content: chevronDown(this.getTitleColor()),
+							},
+						},
+					),
+				);
+			}
+		}
+
 		getDefaultStyles()
+		{
+			const styles = this.getChildFieldStyles();
+
+			if (this.hasHiddenEmptyView())
+			{
+				return this.getHiddenEmptyChildFieldStyles(styles);
+			}
+
+			return styles;
+		}
+
+		getChildFieldStyles()
 		{
 			const styles = super.getDefaultStyles();
 
@@ -281,7 +352,7 @@ jn.define('layout/ui/fields/menu-select', (require, exports, module) => {
 					marginLeft: (this.getConfig().emptyValueIcon ? 6 : undefined),
 				},
 				value: {
-					color: '#333333',
+					color: AppTheme.colors.base1,
 					fontSize: 16,
 					marginRight: 4,
 					marginLeft: (this.getSelectedItemIcon() ? 6 : undefined),
@@ -293,11 +364,50 @@ jn.define('layout/ui/fields/menu-select', (require, exports, module) => {
 				},
 			};
 		}
+
+		getHiddenEmptyChildFieldStyles(styles)
+		{
+			const isEmptyEditable = this.isEmptyEditable();
+			const hasErrorMessage = this.hasErrorMessage();
+			const isEmpty = this.isEmpty();
+			const paddingBottomWithoutError = (isEmpty ? 18 : 9);
+
+			return {
+				...styles,
+				title: {
+					...styles.title,
+					marginBottom: (isEmptyEditable ? 0 : styles.title.marginBottom),
+				},
+				innerWrapper: {
+					flex: (isEmptyEditable ? null : 1),
+					flexShrink: 2,
+				},
+				container: {
+					...styles.container,
+					height: (isEmptyEditable ? 0 : null),
+					width: (isEmptyEditable ? 0 : null),
+				},
+				wrapper: {
+					...styles.wrapper,
+					paddingTop: (isEmpty ? 12 : 8),
+					paddingBottom: (hasErrorMessage ? 5 : paddingBottomWithoutError),
+				},
+			};
+		}
+
+		canCopyValue()
+		{
+			return true;
+		}
+
+		prepareValueToCopy()
+		{
+			return this.getSelectedItemTitle();
+		}
 	}
 
 	module.exports = {
 		MenuSelectType: 'menu-select',
 		MenuSelectField: (props) => new MenuSelectField(props),
 	};
-
 });

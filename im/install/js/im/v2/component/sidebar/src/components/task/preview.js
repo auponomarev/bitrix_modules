@@ -1,32 +1,29 @@
-import {ImModelSidebarTaskItem, ImModelDialog} from 'im.v2.model';
-import {EntityCreator} from 'im.v2.lib.entity-creator';
-import {Button, ButtonColor, ButtonSize} from 'im.v2.component.elements';
-import {SidebarBlock, SidebarDetailBlock} from 'im.v2.const';
-import {TaskMenu} from '../../classes/context-menu/task/task-menu';
-import {DetailEmptyState} from '../detail-empty-state';
-import {TaskItem} from './task-item';
+import { ImModelSidebarTaskItem, ImModelChat } from 'im.v2.model';
+import { EntityCreator } from 'im.v2.lib.entity-creator';
+import { Button as MessengerButton, ButtonColor, ButtonSize } from 'im.v2.component.elements';
+import { SidebarBlock, SidebarDetailBlock } from 'im.v2.const';
+
+import { TaskMenu } from '../../classes/context-menu/task/task-menu';
+import { DetailEmptyState } from '../detail-empty-state';
+import { TaskItem } from './task-item';
+
 import '../../css/task/preview.css';
 
 // @vue/component
 export const TaskPreview = {
 	name: 'TaskPreview',
-	components: {DetailEmptyState, TaskItem, Button},
+	components: { DetailEmptyState, TaskItem, MessengerButton },
 	props: {
 		isLoading: {
 			type: Boolean,
-			default: false
+			default: false,
 		},
 		dialogId: {
 			type: String,
-			required: true
-		}
+			required: true,
+		},
 	},
 	emits: ['openDetail'],
-	data() {
-		return {
-			showAddButton: false
-		};
-	},
 	computed:
 	{
 		SidebarDetailBlock: () => SidebarDetailBlock,
@@ -36,22 +33,14 @@ export const TaskPreview = {
 		{
 			return this.$store.getters['sidebar/tasks/get'](this.chatId)[0];
 		},
-		dialog(): ImModelDialog
+		dialog(): ImModelChat
 		{
-			return this.$store.getters['dialogues/get'](this.dialogId, true);
+			return this.$store.getters['chats/get'](this.dialogId, true);
 		},
 		chatId(): number
 		{
 			return this.dialog.chatId;
 		},
-		dialogInited()
-		{
-			return this.dialog.inited;
-		},
-		isLoadingState(): boolean
-		{
-			return !this.dialogInited || this.isLoading;
-		}
 	},
 	created()
 	{
@@ -83,26 +72,24 @@ export const TaskPreview = {
 				return;
 			}
 
-			this.$emit('openDetail', {block: SidebarBlock.task, detailBlock: SidebarDetailBlock.task});
+			this.$emit('openDetail', { block: SidebarBlock.task, detailBlock: SidebarDetailBlock.task });
 		},
 		onContextMenuClick(event, target)
 		{
 			const item = {
 				...event,
-				dialogId: this.dialogId
+				dialogId: this.dialogId,
 			};
 
 			this.contextMenu.openMenu(item, target);
-		}
+		},
 	},
 	template: `
 		<div class="bx-im-sidebar-task-preview__scope">
-			<div v-if="isLoadingState" class="bx-im-sidebar-task-preview__skeleton"></div>
+			<div v-if="isLoading" class="bx-im-sidebar-task-preview__skeleton"></div>
 			<div v-else class="bx-im-sidebar-task-preview__container">
 				<div 
 					class="bx-im-sidebar-task-preview__header_container"
-					@mouseover="showAddButton = true"
-					@mouseleave="showAddButton = false"
 					:class="[firstTask ? '--active': '']"
 					@click="onOpenDetail"
 				>
@@ -113,8 +100,7 @@ export const TaskPreview = {
 						<div v-if="firstTask" class="bx-im-sidebar__forward-icon"></div>
 					</div>
 					<transition name="add-button">
-						<Button
-							v-if="showAddButton"
+						<MessengerButton
 							:text="$Bitrix.Loc.getMessage('IM_SIDEBAR_ADD_BUTTON_TEXT')"
 							:size="ButtonSize.S"
 							:color="ButtonColor.PrimaryLight"
@@ -134,5 +120,5 @@ export const TaskPreview = {
 				/>
 			</div>
 		</div>
-	`
+	`,
 };

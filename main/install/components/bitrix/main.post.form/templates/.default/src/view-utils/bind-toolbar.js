@@ -101,4 +101,19 @@ export default function bindToolbar(editor: Editor, htmlEditor)
 				editor.showPanelEditor();
 			});
 	}
+
+	const copilot = toolbar.querySelector('[data-id="copilot"]');
+	if (copilot)
+	{
+		copilot.addEventListener('click', () => {
+			if (!editor.isTextCopilotEnabledBySettings())
+			{
+				top.BX.UI.InfoHelper.show('limit_copilot_off');
+
+				return;
+			}
+
+			editor.showCopilot();
+		});
+	}
 }

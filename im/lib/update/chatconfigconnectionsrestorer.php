@@ -86,11 +86,17 @@ class ChatConfigConnectionsRestorer extends Stepper
 		$flippedNotRecoveredUserIdList = array_flip($notRecoveredUserIdList);
 		foreach ($userPresetList as $userPreset)
 		{
-			OptionUserTable::add([
+			$insertFields = [
 				'USER_ID' => (int)$userPreset['USER_ID'],
 				'GENERAL_GROUP_ID' => (int)$userPreset['ID'],
 				'NOTIFY_GROUP_ID' => (int)$userPreset['ID'],
-			]);
+			];
+			$updateFields = [
+				'GENERAL_GROUP_ID' => (int)$userPreset['ID'],
+				'NOTIFY_GROUP_ID' => (int)$userPreset['ID'],
+			];
+
+			OptionUserTable::merge($insertFields, $updateFields);
 
 			$params['last_recovered_user'] = (int)$userPreset['ID'];
 			unset($flippedNotRecoveredUserIdList[(int)$userPreset['USER_ID']]);
@@ -98,11 +104,17 @@ class ChatConfigConnectionsRestorer extends Stepper
 
 		foreach (array_flip($flippedNotRecoveredUserIdList) as $userId)
 		{
-			OptionUserTable::add([
+			$insertFields = [
 				'USER_ID' => $userId,
 				'GENERAL_GROUP_ID' => $params['default_group_id'],
+				'NOTIFY_GROUP_ID' => $params['default_group_id']
+			];
+			$updateFields = [
+				'GENERAL_GROUP_ID' => $params['default_group_id'],
 				'NOTIFY_GROUP_ID' => $params['default_group_id'],
-			]);
+			];
+
+			OptionUserTable::merge($insertFields, $updateFields);
 
 			$params['last_recovered_user'] = $userId;
 		}
@@ -161,37 +173,6 @@ class ChatConfigConnectionsRestorer extends Stepper
 			return (int)$defaultGroupId['ID'];
 		}
 
-		return $this->installDefaultPreset();
-	}
-
-	public function installDefaultPreset(): int
-	{
-		$defaultGroupId =
-			\Bitrix\Im\Model\OptionGroupTable::add([
-				'NAME' => Configuration::DEFAULT_PRESET_NAME,
-				'SORT' => 0,
-				'CREATE_BY_ID' => 0,
-			])
-				->getId()
-		;
-
-		$generalDefaultSettings = General::getDefaultSettings();
-		General::setSettings($defaultGroupId, $generalDefaultSettings);
-
-		$notifySettings = Notification::getSimpleNotifySettings($generalDefaultSettings);
-		Notification::setSettings($defaultGroupId, $notifySettings);
-
-		if (Loader::includeModule('intranet'))
-		{
-			$topDepartmentId = Department::getTopDepartmentId();
-			OptionAccessTable::add([
-				'GROUP_ID' => $defaultGroupId,
-				'ACCESS_CODE' => $topDepartmentId ? 'DR' . $topDepartmentId : 'AU'
-			]);
-		}
-
-		Option::set('im', Configuration::DEFAULT_PRESET_SETTING_NAME, (int)$defaultGroupId);
-
-		return (int)$defaultGroupId;
+		return Configuration::createDefaultPreset();
 	}
 }

@@ -1,13 +1,14 @@
-import {RecentMenu} from 'im.v2.lib.menu';
+import { RecentMenu } from 'im.v2.lib.menu';
+
+import type { MenuItem } from 'im.v2.lib.menu';
 
 export class SearchContextMenu extends RecentMenu
 {
-	getMenuItems(): Array
+	getMenuItems(): MenuItem[]
 	{
 		return [
-			this.getSendMessageItem(),
+			this.getOpenItem(),
 			this.getCallItem(),
-			this.getHistoryItem(),
 			this.getOpenProfileItem(),
 		];
 	}

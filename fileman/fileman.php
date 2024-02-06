@@ -273,25 +273,27 @@ class CFileMan
 			if($i>1)
 				$strMenuLinksTmp .= ",";
 
+			$strMenuLinkHref = $arMenuItem[1] ?? '';
+
 			$strMenuLinksTmp .= "\n".
 				"	Array(\n".
-				"		\"".CFileMan::EscapePHPString($arMenuItem[0])."\", \n".
-				"		\"".CFileMan::EscapePHPString($arMenuItem[1])."\", \n".
+				"		\"".CFileMan::EscapePHPString(($arMenuItem[0] ?? null))."\", \n".
+				"		\"".CFileMan::EscapePHPString($strMenuLinkHref)."\", \n".
 				"		Array(";
 
-			if(is_array($arMenuItem[2]))
+			if(is_array(($arMenuItem[2] ?? null)))
 			{
-				for($j = 0, $l = count($arMenuItem[2]); $j < $l; $j++)
+				for($j = 0, $l = count(($arMenuItem[2] ?? [])); $j < $l; $j++)
 				{
 					if($j>0)
 						$strMenuLinksTmp .= ", ";
-					$strMenuLinksTmp .= "\"".CFileMan::EscapePHPString($arMenuItem[2][$j])."\"";
+					$strMenuLinksTmp .= "\"".CFileMan::EscapePHPString($arMenuItem[2][$j] ?? null)."\"";
 				}
 			}
 			$strMenuLinksTmp .= "), \n";
 
 			$strMenuLinksTmp .= "		Array(";
-			if(is_array($arMenuItem[3]))
+			if(is_array($arMenuItem[3] ?? null))
 			{
 				$arParams = array_keys($arMenuItem[3]);
 				for($j = 0, $l = count($arParams); $j < $l; $j++)
@@ -303,7 +305,7 @@ class CFileMan
 			}
 
 			$strMenuLinksTmp .= "), \n".
-				"		\"".CFileMan::EscapePHPString($arMenuItem[4])."\" \n".
+				"		\"".CFileMan::EscapePHPString($arMenuItem[4] ?? null)."\" \n".
 				"	)";
 
 			$strMenuLinks .= $strMenuLinksTmp;
@@ -321,7 +323,17 @@ class CFileMan
 
 		$io = CBXVirtualIo::GetInstance();
 		if ($io->FileExists($abs_path))
-			include($io->GetPhysicalName($abs_path));
+		{
+			global $APPLICATION;
+			$arrMenuContent = $APPLICATION->GetFileContent($io->GetPhysicalName($abs_path));
+			$arrMenuContent = str_replace(['<?php', '<?', '?>'], '', $arrMenuContent);
+			if (SITE_DIR === '')
+			{
+				$arrMenuContent = str_replace('SITE_DIR."', '"/', $arrMenuContent);
+			}
+
+			eval($arrMenuContent);
+		}
 
 		return Array("aMenuLinks"=>$aMenuLinks, "sMenuTemplate" => $sMenuTemplate);
 	}
@@ -345,7 +357,7 @@ class CFileMan
 
 		$path = $io->CombinePath($path);
 
-		$p = mb_strrpos($path, "/");
+		$p = mb_strrpos($path ?? '', "/");
 
 		while($p!==false)
 		{
@@ -1045,7 +1057,7 @@ class CFileMan
 		if ($textType == 'html')
 		{
 			$curType = CUserOptions::GetOption('html_editor', "type_selector_".$name.$key, false, $USER->GetId());
-			$curType = $curType['type'];
+			$curType = $curType['type'] ?? null;
 			if ($curType && in_array($curType, array('html', 'editor')))
 			{
 				$textType = $curType;
@@ -1330,7 +1342,7 @@ class CFileMan
 		$strTextValue = htmlspecialcharsback($strTextValue);
 		$dontShowTA = isset($arAdditionalParams['dontshowta']) ? $arAdditionalParams['dontshowta'] : false;
 
-		if ($arAdditionalParams['hideTypeSelector'])
+		if ($arAdditionalParams['hideTypeSelector'] ?? null)
 		{
 			$textType = $strTextTypeValue == 'html' ? 'editor' : 'text';
 			?><input type="hidden" name="<?= $strTextTypeFieldName?>" value="<?= $strTextTypeValue?>"/><?
@@ -1339,10 +1351,10 @@ class CFileMan
 		{
 			$textType = CFileMan::ShowTypeSelector(array(
 				'name' => $strTextFieldName,
-				'key' => $arAdditionalParams['saveEditorKey'],
+				'key' => ($arAdditionalParams['saveEditorKey'] ?? null),
 				'strTextTypeFieldName' => $strTextTypeFieldName,
 				'strTextTypeValue' => $strTextTypeValue,
-				'bSave' => $arAdditionalParams['saveEditorState'] !== false
+				'bSave' => ($arAdditionalParams['saveEditorState'] ?? null) !== false
 			));
 		}
 
@@ -1357,7 +1369,7 @@ class CFileMan
 		else if (!$arTaskbars)
 			$arTaskbars = Array("BXPropertiesTaskbar", "BXSnippetsTaskbar", "BXComponents2Taskbar");
 
-		$minHeight = $arAdditionalParams['minHeight'] ? intval($arAdditionalParams['minHeight']) : 450;
+		$minHeight = ($arAdditionalParams['minHeight'] ?? null) ? intval($arAdditionalParams['minHeight']) : 450;
 		$arParams = Array(
 			"bUseOnlyDefinedStyles"=>COption::GetOptionString("fileman", "show_untitled_styles", "N")!="Y",
 			"bFromTextarea" => true,
@@ -1427,7 +1439,7 @@ class CFileMan
 		}
 
 		static $bFirstUsed;
-		$template = $arParams["templateID"];
+		$template = $arParams["templateID"] ?? null;
 
 		if (!isset($template) && defined('SITE_TEMPLATE_ID'))
 		{
@@ -1466,7 +1478,7 @@ class CFileMan
 				'name' => $name,
 				'id' => $name,
 				'siteId' => $arParams["site"],
-				'width' => $arParams["width"],
+				'width' => ($arParams["width"]  ?? null),
 				'height' => $arParams["height"],
 				'content' => $content,
 				'bAllowPhp' => !$arParams["bWithoutPHP"] && $USER->CanDoOperation('edit_php'),
@@ -1485,7 +1497,11 @@ class CFileMan
 		//Toolbars
 		$arToolbars = (isset($arParams["arToolbars"])) ? $arParams["arToolbars"] : false;
 		// Toolbar config
-		$arParams["toolbarConfig"] = (is_array($arParams["toolbarConfig"])) ? $arParams["toolbarConfig"] : false;
+		$arParams["toolbarConfig"] =
+			is_array($arParams["toolbarConfig"] ?? null)
+				? $arParams["toolbarConfig"]
+				: false
+		;
 
 		$arParams["use_advanced_php_parser"] = COption::GetOptionString("fileman", "use_advanced_php_parser", "Y");
 		$arParams["ar_entities"] = COption::GetOptionString("fileman", "ar_entities", 'umlya,greek,other');
@@ -1507,8 +1523,10 @@ class CFileMan
 
 		$arResult = CFileman::GetAllTemplateParams($template, $site, ($arParams["bWithoutPHP"] != true),$arAdditionalParams);
 		$arParams["TEMPLATE"] = $arResult;
-		if($bUseOnlyDefinedStyles && !is_set($arResult, "STYLES_TITLE"))
+		if(($bUseOnlyDefinedStyles ?? null) && !is_set($arResult, "STYLES_TITLE"))
+		{
 			$bUseOnlyDefinedStyles = false;
+		}
 
 		$arParams["body_class"] = COption::GetOptionString("fileman", "editor_body_class", "");
 		$arParams["body_id"] = COption::GetOptionString("fileman", "editor_body_id", "");
@@ -1654,10 +1672,12 @@ class CFileMan
 				BX("<?= $name?>_object").style.display = "none";
 		</script>
 		<?
-		if(!$arParams["bFromTextarea"])
+		if(!($arParams["bFromTextarea"] ?? null))
+		{
 			echo '<input type="hidden" name="'.$name.'" id="bxed_'.$name.'" value="'.htmlspecialcharsbx($content).'">';
+		}
 
-		if($arParams["bDisplay"] !== false)
+		if(($arParams["bDisplay"] ?? null) !== false)
 		{
 			setEditorEventHandlers($name);
 			?>

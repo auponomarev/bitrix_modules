@@ -48,8 +48,8 @@ export default BitrixVue.cloneComponent(EditableDescription, {
 				'crm-timeline__editable-text_content',
 				{
 					'--is-editor-loaded': this.isEdit,
-				}
-			]
+				},
+			];
 		}
 	},
 
@@ -103,15 +103,40 @@ export default BitrixVue.cloneComponent(EditableDescription, {
 
 		checkIsLongText(): boolean
 		{
-			return this.parentCheckIsLongText() || this.hasInlineFiles;
+			const textBlock = this.$refs.text;
+			if (!textBlock)
+			{
+				return false;
+			}
+
+			const textBlockMaxHeightStyle = window.getComputedStyle(textBlock)
+				.getPropertyValue('--crm-timeline__editable-text_max-height')
+			;
+			const textBlockMaxHeight = parseFloat(textBlockMaxHeightStyle.slice(0, -2));
+
+			const root = this.filesCount > 0
+				? this.$refs.rootElement
+				: this.$refs.rootWrapperElement;
+
+			const parentComputedStyles = window.getComputedStyle(root);
+			const parentHeight = root?.offsetHeight
+				- parseFloat(parentComputedStyles.paddingTop)
+				- parseFloat(parentComputedStyles.paddingBottom)
+			;
+
+			const isLongText = parentHeight > textBlockMaxHeight;
+
+			return isLongText || this.hasInlineFiles;
 		},
 
 		saveContent(): void
 		{
-			if (
-				this.saveTextButtonState === ButtonState.DISABLED
-				|| this.saveTextButtonState === ButtonState.LOADING || !this.isEdit
-			)
+			const isSaveDisabled = this.saveTextButtonState === ButtonState.LOADING
+				|| !this.isEdit
+				|| !this.saveAction
+			;
+
+			if (isSaveDisabled)
 			{
 				return;
 			}
@@ -149,16 +174,6 @@ export default BitrixVue.cloneComponent(EditableDescription, {
 
 		executeSaveAction(content: String, attachmentList: Array): Promise
 		{
-			if (!this.saveAction)
-			{
-				return;
-			}
-
-			if (!this.value)
-			{
-				return;
-			}
-
 			// to avoid unintended props mutation
 			const actionDescription = Runtime.clone(this.saveAction);
 
@@ -329,7 +344,7 @@ export default BitrixVue.cloneComponent(EditableDescription, {
 			{
 				return;
 			}
-			
+
 			this.isFilesBlockDisplayed = newValue > 0;
 
 			this.$nextTick((): void => {
@@ -352,7 +367,7 @@ export default BitrixVue.cloneComponent(EditableDescription, {
 	},
 
 	template: `
-		<div class="crm-timeline__editable-text_wrapper">
+		<div ref="rootWrapperElement" class="crm-timeline__editable-text_wrapper">
 			<div ref="rootElement" :class="className">
 				<button
 					v-if="isLongText && !isEdit && isEditable && isEditButtonVisible"
@@ -415,6 +430,7 @@ export default BitrixVue.cloneComponent(EditableDescription, {
 				v-if="!isEdit && isFilesBlockDisplayed"
 				ref="files"
 				class="crm-timeline__comment_files_wrapper"
+				:class="{'--long-comment': isLongText}"
 				v-html="filesHtmlBlock"
 			>
 			</div>

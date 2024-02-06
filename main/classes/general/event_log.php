@@ -59,7 +59,7 @@ class CEventLog
 			"REMOTE_ADDR" => $_SERVER["REMOTE_ADDR"],
 			"USER_AGENT" => $_SERVER["HTTP_USER_AGENT"],
 			"REQUEST_URI" => $url,
-			"SITE_ID" => $arFields["SITE_ID"] == '' ? $SITE_ID : $arFields["SITE_ID"],
+			"SITE_ID" => empty($arFields["SITE_ID"]) ? $SITE_ID : $arFields["SITE_ID"],
 			"USER_ID" => is_object($USER) && ($USER->GetID() > 0)? $USER->GetID(): false,
 			"GUEST_ID" => ($session->isStarted() && $session->has("SESS_GUEST_ID") && $session["SESS_GUEST_ID"] > 0? $session["SESS_GUEST_ID"]: false),
 			"DESCRIPTION" => $arFields["DESCRIPTION"],
@@ -88,7 +88,6 @@ class CEventLog
 	public static function GetList($arOrder = Array("ID" => "DESC"), $arFilter = array(), $arNavParams = false)
 	{
 		global $DB;
-		$err_mess = "FILE: ".__FILE__."<br>LINE: ";
 
 		$arSqlSearch = array();
 		$arSqlOrder = array();
@@ -238,7 +237,7 @@ class CEventLog
 			if(!empty($arSqlOrder))
 				$strSql .=  " ORDER BY ".implode(", ", $arSqlOrder);
 
-			return $DB->Query("SELECT L.*, ".$DB->DateToCharFunction("L.TIMESTAMP_X")." as TIMESTAMP_X".$strSql, false, $err_mess.__LINE__);
+			return $DB->Query("SELECT L.*, ".$DB->DateToCharFunction("L.TIMESTAMP_X")." as TIMESTAMP_X".$strSql);
 		}
 	}
 

@@ -586,6 +586,22 @@ class Select extends Base
 	{
 		$value = parent::validateValueMultiple($value, $fieldType);
 
-		return array_values(array_filter($value, fn($v) => (!is_null($v))));
+		return array_values(array_filter($value, static fn($v) => ($v !== null)));
 	}
+
+	public static function convertPropertyToView(FieldType $fieldType, int $viewMode, array $property): array
+	{
+		if ($viewMode === FieldType::RENDER_MODE_JN_MOBILE)
+		{
+			$options = static::getFieldOptions($fieldType);
+			$property['Options'] = array_map(
+				fn($value, $name) => ['value' => $value, 'name' => $name],
+				array_keys($options),
+				array_values($options),
+			);
+		}
+
+		return parent::convertPropertyToView($fieldType, $viewMode, $property);
+	}
+
 }

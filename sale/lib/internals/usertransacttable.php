@@ -34,7 +34,20 @@ use Bitrix\Main\Type\DateTime;
  * </ul>
  *
  * @package Bitrix\Sale
- **/
+ *
+ * DO NOT WRITE ANYTHING BELOW THIS
+ *
+ * <<< ORMENTITYANNOTATION
+ * @method static EO_UserTransact_Query query()
+ * @method static EO_UserTransact_Result getByPrimary($primary, array $parameters = [])
+ * @method static EO_UserTransact_Result getById($id)
+ * @method static EO_UserTransact_Result getList(array $parameters = [])
+ * @method static EO_UserTransact_Entity getEntity()
+ * @method static \Bitrix\Sale\Internals\EO_UserTransact createObject($setDefaultValues = true)
+ * @method static \Bitrix\Sale\Internals\EO_UserTransact_Collection createCollection()
+ * @method static \Bitrix\Sale\Internals\EO_UserTransact wakeUpObject($row)
+ * @method static \Bitrix\Sale\Internals\EO_UserTransact_Collection wakeUpCollection($rows)
+ */
 class UserTransactTable extends DataManager
 {
 	/**
@@ -84,7 +97,7 @@ class UserTransactTable extends DataManager
 			'CURRENCY' =>
 				(new StringField('CURRENCY'))
 					->configureRequired(true)
-					->addValidator([__CLASS__, 'validateCurrency'])
+					->addValidator(new LengthValidator(null, 3))
 			,
 			'DEBIT' => (new BooleanField('DEBIT'))
 				->configureValues('N', 'Y')
@@ -94,7 +107,7 @@ class UserTransactTable extends DataManager
 			'DESCRIPTION' =>
 				(new StringField('DESCRIPTION'))
 					->configureRequired(true)
-					->addValidator([__CLASS__, 'validateDescription'])
+					->addValidator(new LengthValidator(null, 255))
 			,
 			'NOTES' => (new TextField('NOTES')),
 			'PAYMENT_ID' => (new IntegerField('PAYMENT_ID')),
@@ -110,30 +123,6 @@ class UserTransactTable extends DataManager
 				PaymentTable::class,
 				Join::on('this.PAYMENT_ID', 'ref.ID')
 			),
-		];
-	}
-
-	/**
-	 * Returns validators for CURRENCY field.
-	 *
-	 * @return array
-	 */
-	public static function validateCurrency(): array
-	{
-		return [
-			new LengthValidator(null, 3),
-		];
-	}
-
-	/**
-	 * Returns validators for DESCRIPTION field.
-	 *
-	 * @return array
-	 */
-	public static function validateDescription(): array
-	{
-		return [
-			new LengthValidator(null, 255),
 		];
 	}
 }

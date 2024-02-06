@@ -23,11 +23,6 @@ Class mail extends CModule
 			$this->MODULE_VERSION = $arModuleVersion["VERSION"];
 			$this->MODULE_VERSION_DATE = $arModuleVersion["VERSION_DATE"];
 		}
-		else
-		{
-			$this->MODULE_VERSION = MAIL_VERSION;
-			$this->MODULE_VERSION_DATE = MAIL_VERSION_DATE;
-		}
 
 		$this->MODULE_NAME = Loc::getMessage("MAIL_MODULE_NAME");
 		$this->MODULE_DESCRIPTION = Loc::getMessage("MAIL_MODULE_DESC");
@@ -36,12 +31,13 @@ Class mail extends CModule
 	function InstallDB($arParams = array())
 	{
 		global $DB, $APPLICATION;
+		$connection = \Bitrix\Main\Application::getConnection();
 		$this->errors = false;
 
 		// Database tables creation
-		if(!$DB->Query("SELECT 'x' FROM b_mail_mailbox WHERE 1=0", true))
+		if (!$DB->TableExists('b_mail_mailbox'))
 		{
-			$this->errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/mail/install/db/mysql/install.sql");
+			$this->errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/mail/install/db/' . $connection->getType() . '/install.sql');
 
 			if (\Bitrix\Main\Entity\CryptoField::cryptoAvailable())
 			{
@@ -79,14 +75,16 @@ Class mail extends CModule
 
 			$eventManager->registerEventHandler('mobile', 'onRequestSyncMail', 'mail', '\Bitrix\Mail\Integration\SyncRequest', 'onRequestSyncMail');
 
+			$eventManager->registerEventHandler('calendar', 'OnAfterCalendarEventDelete', 'mail', '\Bitrix\Mail\Integration\Calendar\ICal\ICalMailEventManager', 'onUnbindEvent');
+
+			$eventManager->registerEventHandler('ai', 'onTuningLoad', 'mail', '\Bitrix\Mail\Integration\AI\EventHandler', 'onTuningLoad');
+			$eventManager->registerEventHandler('ai', 'onContextGetMessages', 'mail', '\Bitrix\Mail\Integration\AI\Controller', 'onContextGetMessages');
+
 			RegisterModule("mail");
 
 			if (CModule::IncludeModule("mail"))
 			{
-				$errors = $DB->runSqlBatch(sprintf(
-					'%s/bitrix/modules/mail/install/db/mysql/install_ft.sql',
-					$_SERVER['DOCUMENT_ROOT']
-				));
+				$errors = $DB->runSqlBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/mail/install/db/' . $connection->getType() . '/install_ft.sql');
 				if ($errors === false)
 				{
 					\Bitrix\Mail\MailMessageTable::getEntity()->enableFullTextIndex('SEARCH_CONTENT');
@@ -247,11 +245,12 @@ Class mail extends CModule
 	function UnInstallDB($arParams = array())
 	{
 		global $DB, $APPLICATION;
+		$connection = \Bitrix\Main\Application::getConnection();
 		$this->errors = false;
 
 		if(!array_key_exists("savedata", $arParams) || $arParams["savedata"] != "Y")
 		{
-			$this->errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/mail/install/db/mysql/uninstall.sql");
+			$this->errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/mail/install/db/".$connection->getType()."/uninstall.sql");
 
 			if (\Bitrix\Main\Loader::includeModule('mail'))
 			{
@@ -280,8 +279,12 @@ Class mail extends CModule
 		$eventManager->unRegisterEventHandler('im', 'OnGetNotifySchema', 'mail', '\Bitrix\Mail\Integration\Im\Notification', 'getSchema');
 
 		$eventManager->unRegisterEventHandler('mail', 'onMailMessageNew', 'mail', '\Bitrix\Mail\Integration\Calendar\ICal\ICalMailEventManager', 'onMailMessageNew');
+		$eventManager->unRegisterEventHandler('calendar', 'OnAfterCalendarEventDelete', 'mail', '\Bitrix\Mail\Integration\Calendar\ICal\ICalMailEventManager', 'onUnbindEvent');
 
 		$eventManager->unRegisterEventHandler('mobile', 'onRequestSyncMail', 'mail', '\Bitrix\Mail\Integration\SyncRequest', 'onRequestSyncMail');
+
+		$eventManager->unRegisterEventHandler('ai', 'onTuningLoad', 'mail', '\Bitrix\Mail\Integration\AI\EventHandler', 'onTuningLoad');
+		$eventManager->unRegisterEventHandler('ai', 'onContextGetMessages', 'mail', '\Bitrix\Mail\Integration\AI\Controller', 'onContextGetMessages');
 
 		//delete agents
 		CAgent::RemoveModuleAgents("mail");

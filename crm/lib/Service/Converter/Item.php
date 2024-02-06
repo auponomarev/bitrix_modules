@@ -2,8 +2,6 @@
 
 namespace Bitrix\Crm\Service\Converter;
 
-use Bitrix\Crm\Entity\FieldContentType;
-use Bitrix\Crm\ItemIdentifier;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Service\Context;
 use Bitrix\Crm\Service\Converter;
@@ -34,14 +32,12 @@ class Item extends Converter
 			foreach ($factory->getFieldsCollection() as $field)
 			{
 				$fieldName = $field->getName();
-				$value = $data[$fieldName];
+				$value = $data[$fieldName] ?? null;
 				if ($field->isFileUserField() && !$field->isValueEmpty($value))
 				{
 					$data[$fieldName] = $this->processFile($model, $fieldName);
 				}
 			}
-
-			$data = FieldContentType::prepareFieldsFromRestToRead(ItemIdentifier::createByItem($model), $data);
 		}
 
 		$data['ENTITY_TYPE_ID'] = $model->getEntityTypeId();

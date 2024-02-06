@@ -15,6 +15,7 @@ class CompanyController extends BaseController
 	use ActivityControllerMixin;
 	use AddressControllerMixin;
 	use RequisiteControllerMixin;
+	use ObserverControllerMixin;
 
 	/** @var CompanyController|null */
 	protected static $instance = null;
@@ -117,10 +118,7 @@ class CompanyController extends BaseController
 		}
 
 		$slots = [
-			'FIELDS' => Crm\Entity\FieldContentType::enrichRecycleBinFields(
-				new Crm\ItemIdentifier($this->getEntityTypeID(), $entityID),
-				array_intersect_key($fields, array_flip(self::getFieldNames())),
-			),
+			'FIELDS' => array_intersect_key($fields, array_flip(self::getFieldNames())),
 		];
 
 		if(isset($fields['LEAD_ID']) && $fields['LEAD_ID'] > 0)
@@ -171,6 +169,15 @@ class CompanyController extends BaseController
 		if(!empty($storeDocumentIds))
 		{
 			$slots['STORE_DOCUMENT_IDS'] = $storeDocumentIds;
+		}
+
+		$agentContractIds = AgentContractBinder::getInstance()->getBoundEntityIDs(
+			\CCrmOwnerType::Company,
+			$entityID
+		);
+		if(!empty($agentContractIds))
+		{
+			$slots['AGENT_CONTRACT_IDS'] = $agentContractIds;
 		}
 
 		$slots = array_merge(
@@ -291,8 +298,13 @@ class CompanyController extends BaseController
 		$this->suspendRequisites($entityID, $recyclingEntityID);
 		$this->suspendUtm($entityID, $recyclingEntityID);
 		$this->suspendTracing($entityID, $recyclingEntityID);
+		$this->suspendObservers($entityID, $recyclingEntityID);
 		$this->suspendCustomRelations((int)$entityID, (int)$recyclingEntityID);
 		$this->suspendBadges((int)$entityID, (int)$recyclingEntityID);
+		\Bitrix\Crm\Integration\AI\EventHandler::onItemMoveToBin(
+			new Crm\ItemIdentifier($this->getEntityTypeID(), $entityID),
+			new Crm\ItemIdentifier($this->getSuspendedEntityTypeID(), $recyclingEntityID),
+		);
 
 		//region Relations
 		foreach($relations as $relation)
@@ -370,7 +382,6 @@ class CompanyController extends BaseController
 			array(
 				'IS_RESTORATION' => true,
 				'DISABLE_USER_FIELD_CHECK' => true,
-				'PRESERVE_CONTENT_TYPE' => true,
 			)
 		);
 		if($newEntityID <= 0)
@@ -423,6 +434,16 @@ class CompanyController extends BaseController
 			);
 		}
 
+		$agentContractIds = isset($slots['AGENT_CONTRACT_IDS']) ? $slots['AGENT_CONTRACT_IDS'] : null;
+		if(is_array($agentContractIds) && !empty($agentContractIds))
+		{
+			AgentContractBinder::getInstance()->bindEntities(
+				\CCrmOwnerType::Company,
+				$newEntityID,
+				$agentContractIds
+			);
+		}
+
 		$this->eraseSuspendedUserFields($recyclingEntityID);
 
 		$this->recoverMultiFields($recyclingEntityID, $newEntityID);
@@ -433,8 +454,13 @@ class CompanyController extends BaseController
 		$this->recoverRequisites($recyclingEntityID, $newEntityID);
 		$this->recoverUtm($recyclingEntityID, $newEntityID);
 		$this->recoverTracing($recyclingEntityID, $newEntityID);
+		$this->recoverObservers($recyclingEntityID, $newEntityID);
 		$this->recoverCustomRelations((int)$recyclingEntityID, (int)$newEntityID);
 		$this->recoverBadges((int)$recyclingEntityID, (int)$newEntityID);
+		\Bitrix\Crm\Integration\AI\EventHandler::onItemRestoreFromRecycleBin(
+			new Crm\ItemIdentifier($this->getEntityTypeID(), $newEntityID),
+			new Crm\ItemIdentifier($this->getSuspendedEntityTypeID(), $recyclingEntityID),
+		);
 
 		$requisiteLinks = isset($slots['REQUISITE_LINKS']) ? $slots['REQUISITE_LINKS'] : null;
 		if(is_array($requisiteLinks) && !empty($requisiteLinks))
@@ -513,9 +539,13 @@ class CompanyController extends BaseController
 		$this->eraseSuspendedRequisites($recyclingEntityID);
 		$this->eraseSuspendedUtm($recyclingEntityID);
 		$this->eraseSuspendedTracing($recyclingEntityID);
+		$this->eraseSuspendedObservers($recyclingEntityID);
 		$this->eraseSuspendedUserFields($recyclingEntityID);
 		$this->eraseSuspendedCustomRelations($recyclingEntityID);
 		$this->eraseSuspendedBadges($recyclingEntityID);
+		\Bitrix\Crm\Integration\AI\EventHandler::onItemDelete(
+			new Crm\ItemIdentifier($this->getSuspendedEntityTypeID(), $recyclingEntityID),
+		);
 
 		//region Files
 		if(isset($params['FILES']) && is_array($params['FILES']) && !empty($params['FILES']))

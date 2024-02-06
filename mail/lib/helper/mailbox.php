@@ -4,10 +4,13 @@ namespace Bitrix\Mail\Helper;
 
 use Bitrix\Mail;
 use Bitrix\Mail\MailboxTable;
+use Bitrix\Mail\MailServicesTable;
 use Bitrix\Main;
+use Bitrix\Main\Loader;
 use Bitrix\Main\ORM;
 use Bitrix\Main\ORM\Query\Query;
 use Bitrix\Mail\Helper;
+use Bitrix\Mail\MailMessageTable;
 
 abstract class Mailbox
 {
@@ -16,6 +19,11 @@ abstract class Mailbox
 	const MESSAGE_RESYNCHRONIZATION_TIME = 360;
 	const MESSAGE_DELETION_LIMIT_AT_A_TIME = 1000;
 	const NUMBER_OF_BROKEN_MESSAGES_TO_RESYNCHRONIZE = 2;
+
+	const MAIL_SERVICES_ONLY_FOR_THE_RU_ZONE = [
+		'yandex',
+		'mail.ru',
+	];
 
 	protected $dirsMd5WithCounter;
 	protected $mailbox;
@@ -33,6 +41,55 @@ abstract class Mailbox
 		'newMessageId' => null,
 	];
 
+	public static function isRuZone(): bool
+	{
+		return Loader::includeModule('bitrix24')
+			? in_array(\CBitrix24::getPortalZone(), ['ru', 'kz', 'by'])
+			: in_array(LANGUAGE_ID, ['ru', 'kz', 'by']);
+	}
+
+	public static function getServices(): array
+	{
+		$res = MailServicesTable::getList([
+			'filter' => [
+				'=ACTIVE' => 'Y',
+				'=SITE_ID' => SITE_ID,
+			],
+			'order' => [
+				'SORT' => 'ASC',
+				'NAME' => 'ASC',
+			],
+		]);
+
+		$services = [];
+
+		while ($service = $res->fetch())
+		{
+			if(!self::isRuZone() && in_array($service['NAME'], self::MAIL_SERVICES_ONLY_FOR_THE_RU_ZONE, true))
+			{
+				continue;
+			}
+
+			$serviceFinal = [
+				'id'         => $service['ID'],
+				'type'       => $service['SERVICE_TYPE'],
+				'name'       => $service['NAME'],
+				'link'       => $service['LINK'],
+				'icon'       => MailServicesTable::getIconSrc($service['NAME'], $service['ICON']),
+				'server'     => $service['SERVER'],
+				'port'       => $service['PORT'],
+				'encryption' => $service['ENCRYPTION'],
+				'token'      => $service['TOKEN'],
+				'flags'      => $service['FLAGS'],
+				'sort'       => $service['SORT']
+			];
+
+			$services[] = $serviceFinal;
+		}
+
+		return $services;
+	}
+
 	/**
 	 * Creates active mailbox helper instance by ID
 	 *
@@ -41,7 +98,7 @@ abstract class Mailbox
 	 * @return \Bitrix\Mail\Helper\Mailbox|false
 	 * @throws \Exception
 	 */
-	public static function createInstance($id, $throw = true)
+	public static function createInstance($id, $throw = true): Mailbox|bool
 	{
 		return static::rawInstance(array('=ID' => (int) $id, '=ACTIVE' => 'Y'), $throw);
 	}
@@ -53,35 +110,41 @@ abstract class Mailbox
 			return $this->dirsMd5WithCounter;
 		}
 
-		$foldersWithCounter = Mail\Internals\MailCounterTable::getList([
-			'runtime' => array(
-				new ORM\Fields\Relations\Reference(
-					'DIRECTORY',
-					'Bitrix\Mail\Internals\MailboxDirectoryTable',
-					[
-						'=this.ENTITY_ID' => 'ref.ID',
-					],
-					[
-						'join_type' => 'INNER',
-					]
-				),
-			),
+		$countersById = [];
+		$counterResult = Mail\Internals\MailCounterTable::getList([
 			'select' => [
+				'DIRECTORY_ID' => 'ENTITY_ID',
 				'UNSEEN' => 'VALUE',
-				'DIR_MD5' => 'DIRECTORY.DIR_MD5'
 			],
 			'filter' => [
-				'=DIRECTORY.MAILBOX_ID' => $mailboxId,
 				'=ENTITY_TYPE' => 'DIR',
 				'=MAILBOX_ID' => $mailboxId,
 			],
 		]);
+		while ($item = $counterResult->fetch()) {
+			$countersById[(int)$item['DIRECTORY_ID']] = (int)$item['UNSEEN'];
+		}
+
+		if (empty($countersById)) {
+			return [];
+		}
 
 		$directoriesWithCounter = [];
-
-		while ($folderTable = $foldersWithCounter->fetch())
-		{
-			$directoriesWithCounter[$folderTable['DIR_MD5']] = $folderTable;
+		$res = Mail\Internals\MailboxDirectoryTable::query()
+			->whereIn('ID', array_keys($countersById))
+			->setSelect([
+				'ID',
+				'DIR_MD5',
+			])
+			->where('MAILBOX_ID', $mailboxId)
+			->exec();
+		while ($item = $res->fetch()) {
+			$id = $item['ID'];
+			$dirMd5 = $item['DIR_MD5'];
+			$directoriesWithCounter[$dirMd5] = [
+				'UNSEEN' => $countersById[$id] ?? 0,
+				'DIR_MD5' => $dirMd5,
+			];
 		}
 
 		$this->dirsMd5WithCounter = $directoriesWithCounter;
@@ -294,6 +357,30 @@ abstract class Mailbox
 		return $this->mailbox;
 	}
 
+	public function getMailboxId(): int
+	{
+		$mailbox = self::getMailbox();
+
+		if (isset($mailbox['ID']))
+		{
+			return (int) $mailbox['ID'];
+		}
+
+		return 0;
+	}
+
+	public function getMailboxOwnerId(): int
+	{
+		$mailbox = self::getMailbox();
+
+		if (isset($mailbox['USER_ID']))
+		{
+			return (int) $mailbox['USER_ID'];
+		}
+
+		return 0;
+	}
+
 	/*
 	Additional check that the quota has not been exceeded
 	since the actual creation of the mailbox instance in php
@@ -331,13 +418,13 @@ abstract class Mailbox
 			[
 				'select' => ['ENTITY_ID'],
 				'filter' =>
-				[
-					'=MAILBOX_ID' => $mailboxId,
-					'=ENTITY_TYPE' => 'MESSAGE',
-					'=PROPERTY_NAME' => 'UNSYNC_BODY',
-					'=VALUE' => 'Y',
-					'<=DATE_INSERT' => $reSyncTime,
-				]
+					[
+						'=MAILBOX_ID' => $mailboxId,
+						'=ENTITY_TYPE' => 'MESSAGE',
+						'=PROPERTY_NAME' => 'UNSYNC_BODY',
+						'=VALUE' => 'Y',
+						'<=DATE_INSERT' => $reSyncTime,
+					]
 				,
 				'limit' => $count,
 			]
@@ -415,7 +502,7 @@ abstract class Mailbox
 			Setting a new time for an attempt to synchronize the mailbox
 			through the agent for users with a free tariff
 		*/
-		if (!LicenseManager::isSyncAvailable())
+		if (!LicenseManager::isSyncAvailable() || !LicenseManager::checkTheMailboxForSyncAvailability($this->mailbox['ID']))
 		{
 			$this->mailbox['OPTIONS']['next_sync'] = time() + 3600 * 24;
 
@@ -563,7 +650,7 @@ abstract class Mailbox
 
 	protected function pushSyncStatus($params, $force = false)
 	{
-		if (Main\Loader::includeModule('pull'))
+		if (Loader::includeModule('pull'))
 		{
 			$status = $this->getSyncStatus();
 
@@ -674,15 +761,18 @@ abstract class Mailbox
 			)
 		);
 
+		$sqlHelper = $connection->getSqlHelper();
+		$messageDeleteTable = $sqlHelper->quote(Mail\Internals\MessageDeleteQueueTable::getTableName());
+		$entityTable = $sqlHelper->quote($entity->getDbTableName());
 		do
 		{
-			$connection->query(sprintf(
-				'INSERT IGNORE INTO %s (ID, MAILBOX_ID, MESSAGE_ID)
-				(SELECT ID, MAILBOX_ID, MESSAGE_ID FROM %s WHERE %s ORDER BY ID LIMIT 1000)',
-				$connection->getSqlHelper()->quote(Mail\Internals\MessageDeleteQueueTable::getTableName()),
-				$connection->getSqlHelper()->quote($entity->getDbTableName()),
+			$selectFrom = sprintf(
+				'SELECT ID, MAILBOX_ID, MESSAGE_ID FROM %s WHERE %s ORDER BY ID LIMIT 1000',
+				$entityTable,
 				$where
-			));
+			);
+			$connection->query($sqlHelper
+				->getInsertIgnore($messageDeleteTable, ' (ID, MAILBOX_ID, MESSAGE_ID) ', "($selectFrom)"));
 
 			$connection->query(sprintf(
 				"UPDATE %s SET IS_OLD = 'Y', IS_SEEN = 'Y' WHERE %s ORDER BY ID LIMIT 1000",
@@ -1085,6 +1175,7 @@ abstract class Mailbox
 		{
 			$params['lazy_attachments'] = $this->isSupportLazyAttachments();
 		}
+		$params[MailMessageTable::FIELD_SANITIZE_ON_VIEW] ??= $this->isSupportSanitizeOnView();
 
 		return \CMailMessage::addMessage(
 			$this->mailbox['ID'],
@@ -1795,7 +1886,7 @@ abstract class Mailbox
 
 	public function notifyNewMessages()
 	{
-		if (Main\Loader::includeModule('im'))
+		if (Loader::includeModule('im'))
 		{
 			$lastSyncResult = $this->getLastSyncResult();
 			$count = $lastSyncResult['newMessagesNotify'];
@@ -1830,6 +1921,59 @@ abstract class Mailbox
 		}
 	}
 
+	/**
+	 * Could we sanitize message on view?
+	 * if there is no filters that can use sanitized body
+	 *
+	 * @return bool
+	 */
+	public function isSupportSanitizeOnView(): bool
+	{
+		$supportedActionTypes = [
+			// doesn't use BODY_HTML or BODY_BB
+			"forumsocnet",
+			"support",
+			"crm",
+		];
+		foreach ($this->getFilters() as $filter)
+		{
+			if (
+				!in_array($filter['ACTION_TYPE'], $supportedActionTypes, true)
+				&& (
+					$this->hasActionWithoutSanitizeSupport($filter['__actions'])
+					|| !empty($filter['PHP_CONDITION'])
+					|| !empty($filter['ACTION_PHP'])
+				)
+			)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Is any action that don't have sanitize on view support
+	 *
+	 * @param array|null|false $actions Filter actions
+	 *
+	 * @return bool
+	 */
+	private function hasActionWithoutSanitizeSupport($actions): bool
+	{
+		if (is_array($actions))
+		{
+			foreach ($actions as $action)
+			{
+				if (empty($action['SANITIZE_ON_VIEW']))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	/*
 	Returns the minimum time between possible re-synchronization
 	The time is taken from the option 'max_execution_time', but no more than static::SYNC_TIMEOUT
@@ -1837,5 +1981,41 @@ abstract class Mailbox
 	final public static function getTimeout()
 	{
 		return min(max(0, ini_get('max_execution_time')) ?: static::SYNC_TIMEOUT, static::SYNC_TIMEOUT);
+	}
+
+	final public static function getForUserByEmail($email)
+	{
+		$mailbox = Mail\MailboxTable::getUserMailboxWithEmail($email);
+		if (isset($mailbox['EMAIL']))
+		{
+			return static::createInstance($mailbox['ID'], false);
+		}
+
+		return null;
+	}
+
+	final public static function findBy($id, $email): ?Mailbox
+	{
+		$instance = null;
+
+		if ($id > 0)
+		{
+			if ($mailbox = Mail\MailboxTable::getUserMailbox($id))
+			{
+				$instance = static::createInstance($mailbox['ID'], false);
+			}
+		}
+
+		if (!empty($email) && empty($instance))
+		{
+			$instance = static::getForUserByEmail($email);
+		}
+
+		if (!empty($instance))
+		{
+			return $instance;
+		}
+
+		return null;
 	}
 }

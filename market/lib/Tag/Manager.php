@@ -136,7 +136,10 @@ class Manager
 						}
 						catch (SqlQueryException $e)
 						{
-							if (mb_strpos($e->getMessage(), 'Duplicate entry') !== false)
+							if (
+								mb_strpos($e->getMessage(), 'Duplicate entry') !== false
+								|| mb_strpos($e->getMessage(), 'ux_b_market_tag_type_module_id_code_date_value') !== false
+							)
 							{
 								if (
 									in_array(
@@ -312,7 +315,18 @@ class Manager
 		$fields = $event->getParameters();
 		if (!empty($fields[0]))
 		{
-			static::loadByModule($fields[0]);
+			\CAgent::AddAgent(
+				static::class . "::doAgentOnceLoad('".EscapePHPString($fields[0], "'")."');",
+				'market',
+				'Y',
+				1,
+				'',
+				'Y',
+				\ConvertTimeStamp(time() + \CTimeZone::GetOffset() + 60, 'FULL'),
+				100,
+				false,
+				false
+			);
 		}
 	}
 

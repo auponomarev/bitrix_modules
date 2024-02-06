@@ -28,13 +28,16 @@ class UserSettings
 				'fullDay' => [
 					'type' => 'daybefore',
 					'before' => 0,
-           			'time' => 480,
+					'time' => 480,
 				],
 				'withTime' => [
 					'type' => 'min',
 					'count' => 15
 				]
 			],
+			// 'enableLunchTime' => 'N',
+			// 'lunchStart' => '13:00',
+			// 'lunchEnd' => '14:00',
 		];
 
 	public static function set($settings = [], $userId = false)
@@ -281,7 +284,7 @@ class UserSettings
 		\CUserOptions::setOption("calendar", "superpose_tracking_groups", serialize($value), false, $userId);
 	}
 
-	public static function getHiddenSections($userId = false, $options = [])
+	public static function getHiddenSections($userId = false, $options = []): array
 	{
 		$res = [];
 		if (class_exists('CUserOptions') && $userId > 0)
@@ -289,7 +292,7 @@ class UserSettings
 			$optionName = ($options['isPersonalCalendarContext'] ?? null) ? 'hidden_sections' : 'hidden_sections_'.$options['type'];
 			$res = \CUserOptions::getOption('calendar', $optionName, false, $userId);
 
-			if (is_array($res) && isset($res[$optionName]))
+			if (is_array($res) && isset($res[$optionName]) && is_string($res[$optionName]))
 			{
 				$res = explode(',', $res[$optionName]);
 			}
@@ -308,6 +311,11 @@ class UserSettings
 		}
 
 		return is_array($res) ? $res : [];
+	}
+
+	public static function saveHiddenSections(int $userId, array $sections)
+	{
+		\CUserOptions::SetOption('calendar', 'hidden_sections', $sections, false, $userId);
 	}
 
 	public static function getSectionCustomization($userId = false)

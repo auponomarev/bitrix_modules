@@ -42,7 +42,7 @@ jn.define('crm/entity-detail/component/smart-activity-menu-item', (require, expo
 		const menu = new ContextMenu({
 			actions,
 			params: {
-				title: getEntityMessage('M_CRM_ACTION_SMART_ACTIVITY_SKIP_TITLE', entityTypeId),
+				title: getEntityMessage('M_CRM_ACTION_SMART_ACTIVITY_SKIP_TITLE2', entityTypeId),
 				showCancelButton: true,
 				showActionLoader: false,
 			},

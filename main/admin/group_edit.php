@@ -15,7 +15,6 @@
 use Bitrix\Main\Authentication\Policy;
 
 require_once(__DIR__."/../include/prolog_admin_before.php");
-require_once($_SERVER["DOCUMENT_ROOT"].BX_ROOT."/modules/main/prolog.php");
 define("HELP_FILE", "users/group_edit.php");
 
 ClearVars();
@@ -60,7 +59,7 @@ if($ID!=1 || $COPY_ID>0 || (COption::GetOptionString("main", "controller_member"
 }
 $tabControl = new CAdminTabControl("tabControl", $aTabs);
 
-if($_SERVER["REQUEST_METHOD"] == "POST" && ($_REQUEST["save"] <> '' || $_REQUEST["apply"] <> '') && $USER->CanDoOperation('edit_groups') && check_bitrix_sessid())
+if($_SERVER["REQUEST_METHOD"] == "POST" && (!empty($_REQUEST["save"]) || !empty($_REQUEST["apply"])) && $USER->CanDoOperation('edit_groups') && check_bitrix_sessid())
 {
 	if($ID <= 2 && $ID != 0)
 		$ACTIVE = "Y";
@@ -70,15 +69,15 @@ if($_SERVER["REQUEST_METHOD"] == "POST" && ($_REQUEST["save"] <> '' || $_REQUEST
 	$arGroupPolicy = array();
 	foreach (new Policy\RulesCollection() as $key => $value)
 	{
-		$curVal = ${"gp_".$key};
-		$curValParent = ${"gp_".$key."_parent"};
+		$curVal = $_POST["gp_".$key] ?? '';
+		$curValParent = $_POST["gp_".$key."_parent"] ?? '';
 
 		if ($curValParent != "Y")
 			$arGroupPolicy[$key] = $curVal;
 	}
 
 	$arFields = array(
-		"ACTIVE" => $_POST["ACTIVE"],
+		"ACTIVE" => $_POST["ACTIVE"] ?? '',
 		"C_SORT" => $_POST["C_SORT"],
 		"NAME" => $_POST["NAME"],
 		"DESCRIPTION" => $_POST["DESCRIPTION"],
@@ -93,12 +92,12 @@ if($_SERVER["REQUEST_METHOD"] == "POST" && ($_REQUEST["save"] <> '' || $_REQUEST
 		$ind = -1;
 		for ($i = 0; $i <= $USER_ID_NUMBER; $i++)
 		{
-			if (${"USER_ID_ACT_".$i} == "Y")
+			if (isset($_POST["USER_ID_ACT_".$i]) && $_POST["USER_ID_ACT_".$i] == "Y")
 			{
 				$ind++;
-				$USER_ID[$ind]["USER_ID"] = intval(${"USER_ID_".$i});
-				$USER_ID[$ind]["DATE_ACTIVE_FROM"] = ${"USER_ID_FROM_".$i};
-				$USER_ID[$ind]["DATE_ACTIVE_TO"] = ${"USER_ID_TO_".$i};
+				$USER_ID[$ind]["USER_ID"] = intval($_POST["USER_ID_".$i]);
+				$USER_ID[$ind]["DATE_ACTIVE_FROM"] = $_POST["USER_ID_FROM_".$i];
+				$USER_ID[$ind]["DATE_ACTIVE_TO"] = $_POST["USER_ID_TO_".$i];
 			}
 		}
 
@@ -395,8 +394,8 @@ $tabControl->BeginNextTab();
 							?> OnChange="CatGroupsActivate(this, <?=$ind?>)"></td>
 					<td align="left"><label for="USER_ID_ACT_ID_<?=$ind?>">[<a href="/bitrix/admin/user_edit.php?ID=<?=$arUsers["ID"]?>&lang=<?=LANGUAGE_ID?>" title="<?=GetMessage("MAIN_VIEW_USER")?>"><?=$arUsers["ID"]?></a>] (<?=htmlspecialcharsbx($arUsers["LOGIN"])?>) <?=htmlspecialcharsbx($arUsers["NAME"])?> <?=htmlspecialcharsbx($arUsers["LAST_NAME"])?></label></td>
 					<td>
-						<?=CalendarDate("USER_ID_FROM_".$ind, (array_key_exists($arUsers["ID"], $str_USER_ID) ? htmlspecialcharsbx($str_USER_ID[$arUsers["ID"]]["DATE_ACTIVE_FROM"]) : ""), "form1", "10", (array_key_exists($arUsers["ID"], $str_USER_ID) ? " " : " disabled"))?>
-						<?=CalendarDate("USER_ID_TO_".$ind, (array_key_exists($arUsers["ID"], $str_USER_ID) ? htmlspecialcharsbx($str_USER_ID[$arUsers["ID"]]["DATE_ACTIVE_TO"]) : ""), "form1", "10", (array_key_exists($arUsers["ID"], $str_USER_ID) ? " " : " disabled"))?>
+						<?=CalendarDate("USER_ID_FROM_".$ind, (array_key_exists($arUsers["ID"], $str_USER_ID) ? htmlspecialcharsbx($str_USER_ID[$arUsers["ID"]]["DATE_ACTIVE_FROM"]) : ""), "form1", "22", (array_key_exists($arUsers["ID"], $str_USER_ID) ? " " : " disabled"))?>
+						<?=CalendarDate("USER_ID_TO_".$ind, (array_key_exists($arUsers["ID"], $str_USER_ID) ? htmlspecialcharsbx($str_USER_ID[$arUsers["ID"]]["DATE_ACTIVE_TO"]) : ""), "form1", "22", (array_key_exists($arUsers["ID"], $str_USER_ID) ? " " : " disabled"))?>
 					</td>
 				</tr>
 				<?
@@ -437,7 +436,7 @@ $arBXGroupPolicy = [
 
 	foreach (new Policy\RulesCollection() as $key => $rule):
 
-		$curVal = $arGroupPolicy[$key];
+		$curVal = $arGroupPolicy[$key] ?? '';
 		$curValParent = !array_key_exists($key, $arGroupPolicy);
 		if ($strError <> '')
 		{

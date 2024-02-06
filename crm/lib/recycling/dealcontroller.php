@@ -138,10 +138,7 @@ class DealController extends BaseController
 		}
 
 		$slots = [
-			'FIELDS' => Crm\Entity\FieldContentType::enrichRecycleBinFields(
-				new Crm\ItemIdentifier($this->getEntityTypeID(), $entityID),
-				array_intersect_key($fields, array_flip(self::getFieldNames())),
-			),
+			'FIELDS' => array_intersect_key($fields, array_flip(self::getFieldNames())),
 		];
 
 		if(isset($fields['LEAD_ID']) && $fields['LEAD_ID'] > 0)
@@ -278,6 +275,10 @@ class DealController extends BaseController
 		$this->suspendScoringHistory($entityID, $recyclingEntityID);
 		$this->suspendCustomRelations((int)$entityID, (int)$recyclingEntityID);
 		$this->suspendBadges((int)$entityID, (int)$recyclingEntityID);
+		\Bitrix\Crm\Integration\AI\EventHandler::onItemMoveToBin(
+			new Crm\ItemIdentifier($this->getEntityTypeID(), $entityID),
+			new Crm\ItemIdentifier($this->getSuspendedEntityTypeID(), $recyclingEntityID),
+		);
 
 		//region Relations
 		foreach($relations as $relation)
@@ -357,7 +358,6 @@ class DealController extends BaseController
 			array(
 				'IS_RESTORATION' => true,
 				'DISABLE_USER_FIELD_CHECK' => true,
-				'PRESERVE_CONTENT_TYPE' => true,
 			)
 		);
 		if($newEntityID <= 0)
@@ -404,6 +404,10 @@ class DealController extends BaseController
 		$this->recoverScoringHistory($recyclingEntityID, $newEntityID);
 		$this->recoverCustomRelations((int)$recyclingEntityID, (int)$newEntityID);
 		$this->recoverBadges((int)$recyclingEntityID, (int)$newEntityID);
+		\Bitrix\Crm\Integration\AI\EventHandler::onItemRestoreFromRecycleBin(
+			new Crm\ItemIdentifier($this->getEntityTypeID(), $newEntityID),
+			new Crm\ItemIdentifier($this->getSuspendedEntityTypeID(), $recyclingEntityID),
+		);
 
 		$requisiteLinks = isset($slots['REQUISITE_LINKS']) ? $slots['REQUISITE_LINKS'] : null;
 		if(is_array($requisiteLinks) && !empty($requisiteLinks))
@@ -477,6 +481,9 @@ class DealController extends BaseController
 		$this->eraseSuspendedScoringHistory($recyclingEntityID);
 		$this->eraseSuspendedCustomRelations($recyclingEntityID);
 		$this->eraseSuspendedBadges($recyclingEntityID);
+		\Bitrix\Crm\Integration\AI\EventHandler::onItemDelete(
+			new Crm\ItemIdentifier($this->getSuspendedEntityTypeID(), $recyclingEntityID),
+		);
 
 		Relation::deleteByRecycleBin($recyclingEntityID);
 	}

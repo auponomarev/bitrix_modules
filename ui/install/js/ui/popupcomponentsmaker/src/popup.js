@@ -10,7 +10,18 @@ import './style.css';
 
 class PopupComponentsMaker
 {
-	constructor({ id, target, content, width, cacheable, contentPadding, padding, blurBackground })
+	constructor({
+		id,
+		target,
+		content,
+		width,
+		cacheable,
+		contentPadding,
+		padding,
+		offsetTop,
+		blurBackground,
+		useAngle,
+	})
 	{
 		this.id = Type.isString(id) ? id : null;
 		this.target = Type.isElementNode(target) ? target : null;
@@ -23,7 +34,9 @@ class PopupComponentsMaker
 		this.cacheable = Type.isBoolean(cacheable) ? cacheable : true;
 		this.contentPadding = Type.isNumber(contentPadding) ? contentPadding : 0;
 		this.padding = Type.isNumber(padding) ? padding : 13;
+		this.offsetTop = Type.isNumber(offsetTop) ? offsetTop : 0;
 		this.blurBlackground = Type.isBoolean(blurBackground) ? blurBackground : false;
+		this.useAngle = (Type.isUndefined(useAngle) || useAngle !== false);
 	}
 
 	getItems()
@@ -58,12 +71,14 @@ class PopupComponentsMaker
 
 			this.popup = new Popup(popupId, this.target, {
 				className: 'ui-popupcomponentmaker',
-
 				contentBackground: 'transparent',
 				contentPadding: this.contentPadding,
-				angle: {
-					offset: (popupWidth / 2) - 16
-				},
+				angle: this.useAngle
+					? {
+						offset: (popupWidth / 2) - 16,
+					}
+					: false,
+				offsetTop: this.offsetTop,
 				width: popupWidth,
 				offsetLeft: -(popupWidth / 2) + (this.target ? this.target.offsetWidth / 2 : 0) + 40,
 				autoHide: true,

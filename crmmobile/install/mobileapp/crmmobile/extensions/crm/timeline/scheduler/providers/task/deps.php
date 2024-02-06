@@ -3,9 +3,11 @@
 return [
 	'extensions' => [
 		'loc',
+		'apptheme',
 		'crm:timeline/scheduler/providers/base',
 		'crm:type',
-		'tasks:layout/task/create',
 		'analytics-label',
+		'utils/object',
+		'tasks:layout/task/create',
 	],
 ];

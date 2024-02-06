@@ -118,5 +118,15 @@ export type RawMessage = {
 	templateFileId: string,
 	templateId: string,
 	text: string,
-	textLegacy: string
+	textLegacy: string,
+	isImportant: boolean,
+	importantFor: number[],
+	additionalEntities: {
+		additionalMessages: RawMessage[],
+		files: RawFile[],
+		messages: RawMessage[],
+		reactions: RawReaction[],
+		users: RawUser[],
+		usersShort: RawShortUser[],
+	},
 };

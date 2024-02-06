@@ -11,79 +11,66 @@ namespace Bitrix\Tasks\Internals\Counter;
 use Bitrix\Tasks\Internals\Counter;
 use Bitrix\Tasks\Internals\Registry\UserRegistry;
 
-class CounterState implements \Iterator
+abstract class CounterState implements \Iterator
 {
-	private static $instance;
+	private Counter\Loader $loader;
 
-	private $userId;
-	private $state = [];
-	private $counters = [
-		CounterDictionary::META_PROP_ALL => [],
-		CounterDictionary::META_PROP_PROJECT => [],
-		CounterDictionary::META_PROP_GROUP => [],
-		CounterDictionary::META_PROP_SONET => [],
-		CounterDictionary::META_PROP_NONE => [],
-	];
-
-	private $flagCounted;
-	private $flagCleared = 0;
-
-	/**
-	 * @param int $userId
-	 * @return static
-	 */
-	public static function getInstance(int $userId): self
-	{
-		if (
-			!self::$instance
-			|| !array_key_exists($userId, self::$instance)
-		)
-		{
-			self::$instance[$userId] = new self($userId);
-		}
-
-		return self::$instance[$userId];
-	}
-
-	/**
-	 * @throws \Bitrix\Main\DB\SqlQueryException
-	 */
-	public static function reload(int $userId)
-	{
-		if (
-			self::$instance
-			&& array_key_exists($userId, self::$instance)
-		)
-		{
-			$state = self::$instance[$userId];
-			$state->loadCounters();
-		}
-	}
+	protected int $userId;
+	protected array $counters = [];
 
 	/**
 	 * CounterState constructor.
 	 * @param int $userId
 	 */
-	private function __construct(int $userId)
+	protected function __construct(int $userId, Counter\Loader $loader)
 	{
 		$this->userId = $userId;
+		$this->loader = $loader;
+		$this->init();
+	}
+
+	abstract public function rewind(): void;
+
+	#[\ReturnTypeWillChange]
+	abstract public function current();
+
+	#[\ReturnTypeWillChange]
+	abstract public function key();
+
+	abstract public function next(): void;
+
+	abstract public function valid(): bool;
+
+	abstract public function getSize(): int;
+
+	abstract protected function loadCounters(): void;
+
+	abstract public function updateState(array $rawCounters, array $types = [], array $taskIds = []): void;
+
+	public function init(): void
+	{
+		$this->counters = $this->getCountersEmptyState();
 		$this->loadCounters();
 	}
 
-	/**
-	 * @return bool
-	 */
-	public function isCounted(): bool
+	public function getLoader(): Counter\Loader
 	{
-		return (bool) $this->flagCounted;
+		return $this->loader;
 	}
 
-	/**
-	 * @return int
-	 */
+	public function isCounted(): bool
+	{
+		return $this->loader->isCounted();
+	}
+
 	public function getClearedDate(): int
 	{
-		return $this->flagCleared;
+		return $this->loader->getClearedDate();
+	}
+
+	public function resetCache(): void
+	{
+		$this->loader->resetCache();
 	}
 
 	/**
@@ -92,95 +79,7 @@ class CounterState implements \Iterator
 	 */
 	public function getRawCounters(string $meta = CounterDictionary::META_PROP_ALL): array
 	{
-		if (!array_key_exists($meta, $this->counters))
-		{
-			return [];
-		}
-		return $this->counters[$meta];
-	}
-
-	/**
-	 *
-	 */
-	public function rewind(): void
-	{
-		reset($this->state);
-	}
-
-	/**
-	 * @return mixed
-	 */
-	#[\ReturnTypeWillChange]
-	public function current()
-	{
-		return current($this->state);
-	}
-
-	/**
-	 * @return int|string|null
-	 */
-	#[\ReturnTypeWillChange]
-	public function key()
-	{
-		return key($this->state);
-	}
-
-	/**
-	 * @return void
-	 */
-	public function next(): void
-	{
-		next($this->state);
-	}
-
-	/**
-	 * @return bool
-	 */
-	public function valid(): bool
-	{
-		$key = key($this->state);
-		return ($key !== null && $key !== false);
-	}
-
-	/**
-	 * @param array $rawCounters
-	 */
-	public function updateState(array $rawCounters, array $types = [], array $taskIds = []): void
-	{
-		if (empty($taskIds) && empty($types))
-		{
-			$this->state = [];
-		}
-		foreach ($this->state as $k => $row)
-		{
-			if (
-				!empty($taskIds)
-				&& !in_array($row['TASK_ID'], $taskIds)
-			)
-			{
-				continue;
-			}
-
-			if (
-				!empty($types)
-				&& !in_array($row['TYPE'], $types)
-			)
-			{
-				continue;
-			}
-			unset($this->state[$k]);
-		}
-		foreach ($rawCounters as $k => $row)
-		{
-			if (is_null($row))
-			{
-				unset($rawCounters[$k]);
-			}
-		}
-
-		$this->state = array_merge($this->state, $rawCounters);
-
-		$this->updateRawCounters();
+		return $this->counters[$meta] ?? [];
 	}
 
 	/**
@@ -214,104 +113,12 @@ class CounterState implements \Iterator
 	}
 
 	/**
-	 * @return int
+	 * Updates counters based on current state
+	 * @return void
 	 */
-	public function getSize(): int
+	protected function updateRawCounters(): void
 	{
-		return count($this->state);
-	}
-
-	/**
-	 * @throws \Bitrix\Main\DB\SqlQueryException
-	 */
-	private function loadCounters(): void
-	{
-		$limit = Counter::getGlobalLimit();
-		if ($limit === 0)
-		{
-			$rowsFlag = $this->loadFlags();
-			if ($rowsFlag)
-			{
-				$this->updateState($rowsFlag);
-			}
-			return;
-		}
-
-		$query = CounterTable::query()
-			->setSelect([
-				'VALUE',
-				'TASK_ID',
-				'GROUP_ID',
-				'TYPE'
-			])
-			->where('USER_ID', $this->userId);
-
-		$rowsFlag = null;
-		if (!is_null($limit))
-		{
-			$rowsFlag = $this->loadFlags();
-			$query->setLimit($limit);
-		}
-
-		$rows = $query->exec()->fetchAll();
-		if (!is_null($rowsFlag))
-		{
-			$rows = array_merge($rows, $rowsFlag);
-		}
-
-		$this->updateState($rows);
-	}
-
-	/**
-	 * @return array|null
-	 * @throws \Bitrix\Main\ArgumentException
-	 * @throws \Bitrix\Main\ObjectPropertyException
-	 * @throws \Bitrix\Main\SystemException
-	 */
-	private function loadFlags(): ?array
-	{
-		$query = CounterTable::query()
-			->setSelect([
-				'VALUE',
-				'TASK_ID',
-				'GROUP_ID',
-				'TYPE'
-			])
-			->where('USER_ID', $this->userId)
-			->whereIn('TYPE', [CounterDictionary::COUNTER_FLAG_COUNTED, CounterDictionary::COUNTER_FLAG_CLEARED])
-			->setLimit(2);
-
-		$rows = $query->exec()->fetchAll();
-
-		foreach ($rows as $row)
-		{
-			switch ($row['TYPE'])
-			{
-				case CounterDictionary::COUNTER_FLAG_COUNTED:
-					$this->flagCounted = (int) $row['VALUE'];
-					break;
-				case CounterDictionary::COUNTER_FLAG_CLEARED:
-					$this->flagCleared = (int) $row['VALUE'];
-					break;
-			}
-		}
-
-		return $rows ? $rows : null;
-	}
-
-	/**
-	 *
-	 */
-	private function updateRawCounters(): void
-	{
-		$this->counters = [
-			CounterDictionary::META_PROP_ALL => [],
-			CounterDictionary::META_PROP_PROJECT => [],
-			CounterDictionary::META_PROP_GROUP => [],
-			CounterDictionary::META_PROP_SONET => [],
-			CounterDictionary::META_PROP_SCRUM => [],
-			CounterDictionary::META_PROP_NONE => [],
-		];
+		$this->counters = $this->getCountersEmptyState();
 
 		$user = UserRegistry::getInstance($this->userId);
 		$groups = $user->getUserGroups(UserRegistry::MODE_GROUP);
@@ -319,12 +126,9 @@ class CounterState implements \Iterator
 		$scrum = $user->getUserGroups(UserRegistry::MODE_SCRUM);
 
 		$tmpHeap[] = [];
-		foreach ($this->state as $item)
+		foreach ($this as $item)
 		{
-			if (
-				$item['TYPE'] === CounterDictionary::COUNTER_FLAG_COUNTED
-				|| $item['TYPE'] === CounterDictionary::COUNTER_FLAG_CLEARED
-			)
+			if ($this->getLoader()->isCounterFlag($item['TYPE']))
 			{
 				continue;
 			}
@@ -537,6 +341,18 @@ class CounterState implements \Iterator
 		}
 
 		unset($tmpHeap);
+	}
+
+	private function getCountersEmptyState(): array
+	{
+		return [
+			CounterDictionary::META_PROP_ALL => [],
+			CounterDictionary::META_PROP_PROJECT => [],
+			CounterDictionary::META_PROP_GROUP => [],
+			CounterDictionary::META_PROP_SONET => [],
+			CounterDictionary::META_PROP_SCRUM => [],
+			CounterDictionary::META_PROP_NONE => [],
+		];
 	}
 
 	/**

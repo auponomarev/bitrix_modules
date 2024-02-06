@@ -2,8 +2,10 @@
  * @module tasks/layout/task/fields/deadline
  */
 jn.define('tasks/layout/task/fields/deadline', (require, exports, module) => {
-	const {Loc} = require('loc');
-	const {DateTimeFieldClass} = require('layout/ui/fields/datetime');
+	const { Loc } = require('loc');
+	const { chevronDown } = require('assets/common');
+	const AppTheme = require('apptheme');
+	const { DateTimeFieldClass } = require('layout/ui/fields/datetime');
 
 	class Deadline extends LayoutComponent
 	{
@@ -19,6 +21,8 @@ jn.define('tasks/layout/task/fields/deadline', (require, exports, module) => {
 				showBalloonDate: props.showBalloonDate,
 				counter: props.counter,
 			};
+
+			this.handleOnChange = this.handleOnChange.bind(this);
 		}
 
 		componentWillReceiveProps(props)
@@ -45,6 +49,16 @@ jn.define('tasks/layout/task/fields/deadline', (require, exports, module) => {
 			});
 		}
 
+		handleOnChange(date)
+		{
+			const { datesResolver } = this.props;
+
+			if (datesResolver)
+			{
+				datesResolver.updateDeadline(date);
+			}
+		}
+
 		render()
 		{
 			return View(
@@ -61,15 +75,14 @@ jn.define('tasks/layout/task/fields/deadline', (require, exports, module) => {
 					config: {
 						deepMergeStyles: this.props.deepMergeStyles,
 						enableTime: true,
-						dateFormat: 'd MMMM, HH:mm',
+						dateFormat: 'd MMMM HH:mm',
 						items: this.state.deadlines,
 						taskState: this.state.taskState,
 						showBalloonDate: this.state.showBalloonDate,
 						counter: this.state.counter,
-						balloonArrowDownUri: `${this.props.pathToImages}/tasksmobile-layout-task-balloon-arrow-down.png`,
 					},
 					testId: 'deadline',
-					onChange: date => this.props.datesResolver.updateDeadline(date),
+					onChange: this.handleOnChange,
 				}),
 			);
 		}
@@ -88,21 +101,16 @@ jn.define('tasks/layout/task/fields/deadline', (require, exports, module) => {
 					{
 						this.props.datesResolver.updateDeadline(date / 1000, true);
 					}
-				}
+				},
 			);
 		}
 	}
 
 	class DeadlineField extends DateTimeFieldClass
 	{
-		constructor(props)
-		{
-			super(props);
-		}
-
 		renderContent()
 		{
-			const {counter} = this.getConfig();
+			const { counter } = this.getConfig();
 
 			return View(
 				{
@@ -129,6 +137,13 @@ jn.define('tasks/layout/task/fields/deadline', (require, exports, module) => {
 
 		renderBalloonArrowDown()
 		{
+			let tintColor = this.isEmpty() ? AppTheme.colors.base3 : AppTheme.colors.baseWhiteFixed;
+
+			if (this.styles.chevronDownColor)
+			{
+				tintColor = this.styles.chevronDownColor;
+			}
+
 			return Image({
 				style: {
 					width: 14,
@@ -136,13 +151,16 @@ jn.define('tasks/layout/task/fields/deadline', (require, exports, module) => {
 					alignSelf: 'center',
 					marginLeft: 2,
 				},
-				uri: this.getImageUrl(this.getConfig().balloonArrowDownUri),
+				tintColor,
+				svg: {
+					content: chevronDown(tintColor, { box: true }),
+				},
 			});
 		}
 
 		renderCounter()
 		{
-			const {counter} = this.getConfig();
+			const { counter } = this.getConfig();
 
 			return View(
 				{
@@ -162,22 +180,11 @@ jn.define('tasks/layout/task/fields/deadline', (require, exports, module) => {
 					style: {
 						fontSize: 12,
 						fontWeight: '500',
-						color: '#ffffff',
+						color: AppTheme.colors.base8,
 					},
 					text: counter.value.toString(),
 				}),
 			);
-		}
-
-		getImageUrl(imageUrl)
-		{
-			if (imageUrl.indexOf(currentDomain) !== 0)
-			{
-				imageUrl = imageUrl.replace(`${currentDomain}`, '');
-				imageUrl = (imageUrl.indexOf('http') !== 0 ? `${currentDomain}${imageUrl}` : imageUrl);
-			}
-
-			return encodeURI(imageUrl);
 		}
 
 		getDefaultStyles()
@@ -210,9 +217,10 @@ jn.define('tasks/layout/task/fields/deadline', (require, exports, module) => {
 					fontColor: taskState.fontColor,
 					color: taskState.fontColor,
 				},
+				chevronDownColor: taskState.fontColor,
 			};
 		}
 	}
 
-	module.exports = {Deadline};
+	module.exports = { Deadline };
 });

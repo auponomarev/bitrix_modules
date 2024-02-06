@@ -2,10 +2,24 @@
  * @module layout/ui/detail-card/tabs/product
  */
 jn.define('layout/ui/detail-card/tabs/product', (require, exports, module) => {
-
+	const AppTheme = require('apptheme');
 	const { Tab } = require('layout/ui/detail-card/tabs');
 	const { TabType } = require('layout/ui/detail-card/tabs/factory/type');
 	const { stringify } = require('utils/string');
+
+	/** @var StoreProductGrid */
+	let StoreProductList = null;
+
+	try
+	{
+		StoreProductList = require('catalog/store/product-list').StoreProductList;
+	}
+	catch (e)
+	{
+		console.warn(e);
+
+		return;
+	}
 
 	/**
 	 * @class ProductTab
@@ -59,7 +73,7 @@ jn.define('layout/ui/detail-card/tabs/product', (require, exports, module) => {
 			return new Promise((resolve) => {
 				if (this.productsRef)
 				{
-					resolve({ PRODUCTS: this.productsRef.getItems() });
+					resolve({ PRODUCTS: this.productsRef.getItems().map((item) => item.getRawValues()) });
 				}
 				else
 				{
@@ -77,7 +91,8 @@ jn.define('layout/ui/detail-card/tabs/product', (require, exports, module) => {
 			{
 				const errors = [];
 
-				this.productsRef.getItems().map((item, index) => {
+				this.productsRef.getItems().forEach((row, index) => {
+					const item = row.getRawValues();
 					if (stringify(item.name) === '')
 					{
 						errors.push({
@@ -86,7 +101,7 @@ jn.define('layout/ui/detail-card/tabs/product', (require, exports, module) => {
 						});
 					}
 
-					const hasLoadingPhotos = item.gallery.some(file => BX.type.isPlainObject(file) && file.isLoading);
+					const hasLoadingPhotos = item.gallery.some((file) => BX.type.isPlainObject(file) && file.isLoading);
 					if (hasLoadingPhotos)
 					{
 						errors.push({
@@ -95,7 +110,7 @@ jn.define('layout/ui/detail-card/tabs/product', (require, exports, module) => {
 						});
 					}
 
-					const hasErrorPhotos = item.gallery.some(file => BX.type.isPlainObject(file) && file.hasError);
+					const hasErrorPhotos = item.gallery.some((file) => BX.type.isPlainObject(file) && file.hasError);
 					if (hasErrorPhotos)
 					{
 						errors.push({
@@ -146,7 +161,7 @@ jn.define('layout/ui/detail-card/tabs/product', (require, exports, module) => {
 					style: {
 						flexDirection: 'column',
 						flexGrow: 1,
-						backgroundColor: '#eef2f4',
+						backgroundColor: AppTheme.colors.bgPrimary,
 					},
 				},
 				new StoreProductList({
@@ -170,3 +185,4 @@ jn.define('layout/ui/detail-card/tabs/product', (require, exports, module) => {
 
 	module.exports = { ProductTab };
 });
+

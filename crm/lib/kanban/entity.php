@@ -2,6 +2,7 @@
 
 namespace Bitrix\Crm\Kanban;
 
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
 use Bitrix\Crm\Attribute\FieldAttributeManager;
 use Bitrix\Crm\Automation\Starter;
 use Bitrix\Crm\Component\EntityDetails\BaseComponent;
@@ -22,11 +23,13 @@ use Bitrix\Crm\Service;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Service\Display\Field;
 use Bitrix\Crm\Statistics\StatisticEntryManager;
+use Bitrix\Crm\StatusTable;
 use Bitrix\Crm\UserField\Visibility\VisibilityManager;
 use Bitrix\Main\Application;
 use Bitrix\Main\DI\ServiceLocator;
 use Bitrix\Main\Engine\CurrentUser;
 use Bitrix\Main\Error;
+use Bitrix\Main\Filter\DataProvider;
 use Bitrix\Main\IO\Path;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Result;
@@ -168,16 +171,22 @@ abstract class Entity
 	/**
 	 * Get ENTITY_ID identifier to StatusTable.
 	 *
-	 * @return string
+	 * @return null|string
 	 */
-	public function getStatusEntityId(): string
+	public function getStatusEntityId(): ?string
 	{
 		return $this->factory->getStagesEntityId($this->getCategoryId());
 	}
 
 	public function getStagesList(): array
 	{
-		return \Bitrix\Crm\StatusTable::getStatusesByEntityId($this->getStatusEntityId());
+		$statusEntityId = $this->getStatusEntityId();
+		if ($statusEntityId === null)
+		{
+			return [];
+		}
+
+		return StatusTable::getStatusesByEntityId($statusEntityId);
 	}
 
 	/**
@@ -199,7 +208,9 @@ abstract class Entity
 
 	public function getTitle(): string
 	{
-		return Loc::getMessage('CRM_KANBAN_TITLE2_' . $this->getTypeName());
+		$message = Loc::getMessage('CRM_KANBAN_TITLE2_' . $this->getTypeName() . '_MSGVER_1');
+
+		return $message ? $message : Loc::getMessage('CRM_KANBAN_TITLE2_' . $this->getTypeName());
 	}
 
 	public function getConfigurationPlacementUrlCode(): string
@@ -1013,6 +1024,11 @@ abstract class Entity
 				{
 					$select[] = $fieldSum;
 				}
+				if (is_array($filter) && (int)($filter['CATEGORY_ID'] ?? -1) === 0)
+				{
+					$filter['@CATEGORY_ID'] = $filter['CATEGORY_ID'];
+					unset($filter['CATEGORY_ID']);
+				}
 				$res = $provider::GetListEx(
 					[],
 					$filter,
@@ -1175,7 +1191,7 @@ abstract class Entity
 			$item['PRICE'] = $item['OPPORTUNITY_ACCOUNT'];
 		}
 
-		$item['ENTITY_CURRENCY_ID'] = $item['CURRENCY_ID'];
+		$item['ENTITY_CURRENCY_ID'] = $item['CURRENCY_ID'] ?? null;
 		if (!empty($item['ACCOUNT_CURRENCY_ID']))
 		{
 			$item['CURRENCY_ID'] = $item['ACCOUNT_CURRENCY_ID'];
@@ -1186,25 +1202,31 @@ abstract class Entity
 		$currency = $this->getCurrency();
 		if (empty($item['CURRENCY_ID']) || $item['CURRENCY_ID'] === $currency)
 		{
-			$item['PRICE'] = (float)$item['PRICE'];
-			$item['PRICE_FORMATTED'] = \CCrmCurrency::MoneyToString($item['OPPORTUNITY'], $item['ENTITY_CURRENCY_ID']);
+			$item['PRICE'] = (float)($item['PRICE'] ?? 0.0);
+			$item['PRICE_FORMATTED'] = \CCrmCurrency::MoneyToString(
+				$item['OPPORTUNITY'] ?? 0.0,
+				$item['ENTITY_CURRENCY_ID']
+			);
 		}
 		else
 		{
 			$item['PRICE'] = \CCrmCurrency::ConvertMoney($item['PRICE'], $item['CURRENCY_ID'], $currency);
-			$item['PRICE_FORMATTED'] = \CCrmCurrency::MoneyToString($item['OPPORTUNITY'], $item['ENTITY_CURRENCY_ID']);
+			$item['PRICE_FORMATTED'] = \CCrmCurrency::MoneyToString(
+				$item['OPPORTUNITY'] ?? 0.0,
+				$item['ENTITY_CURRENCY_ID']
+			);
 		}
 
-		$item['OPPORTUNITY_VALUE'] = $item['OPPORTUNITY'];
+		$item['OPPORTUNITY_VALUE'] = $item['OPPORTUNITY'] ?? 0.0;
 
 		$item['OPPORTUNITY'] = [
-			'SUM' => $item['OPPORTUNITY'],
+			'SUM' => $item['OPPORTUNITY'] ?? 0.0,
 			'CURRENCY' => $item['ENTITY_CURRENCY_ID'],
 		];
 
 		$opened = $item['OPENED'] ?? null;
 		$item['OPENED'] = in_array($opened, ['Y', '1', 1, true], true) ? 'Y' : 'N';
-		$item['DATE_FORMATTED'] = $this->dateFormatter->format($item['DATE'], (bool)$item['FORMAT_TIME']);
+		$item['DATE_FORMATTED'] = $this->dateFormatter->format($item['DATE'] ?? '', (bool)$item['FORMAT_TIME']);
 
 		return $item;
 	}
@@ -1336,14 +1358,24 @@ abstract class Entity
 		$fieldName = $this->getAssignedByFieldName();
 		foreach ($ids as $id)
 		{
-			if(!$this->checkUpdatePermissions($id, $permissions))
+			if (!$this->checkUpdatePermissions($id, $permissions))
 			{
 				continue;
 			}
+
 			$fields = [
 				$fieldName => $assignedId,
 			];
-			$entity->update($id, $fields);
+
+			if ($this->isItemsAssignedNotificationSupported())
+			{
+				$entity->update($id, $fields, true, true, ['REGISTER_SONET_EVENT' => true]);
+			}
+			else
+			{
+				$entity->update($id, $fields);
+			}
+
 			if (!empty($entity->LAST_ERROR))
 			{
 				$result->addError(new Error($entity->LAST_ERROR));
@@ -1580,7 +1612,7 @@ abstract class Entity
 	protected function getPersistentFilterFields(): array
 	{
 		return [
-			'ASSIGNED_BY_ID', 'ACTIVITY_COUNTER', 'STAGE_ID',
+			'ASSIGNED_BY_ID', 'ACTIVITY_COUNTER', 'STAGE_ID', 'ACTIVITY_RESPONSIBLE_IDS'
 		];
 	}
 
@@ -2004,7 +2036,7 @@ abstract class Entity
 			{
 				$this->displayedFields[$fieldId] =
 					(Field::createByType('string', $fieldId))
-						->setTitle($title)
+					->setTitle($title)
 				;
 			}
 
@@ -2067,7 +2099,10 @@ abstract class Entity
 		$factory = Container::getInstance()->getFactory($this->getTypeId());
 		if ($factory && $factory->isObserversEnabled())
 		{
-			$result['OBSERVER'] =
+			$observerFieldCode = \CCrmOwnerType::isUseDynamicTypeBasedApproach($this->getTypeId())
+				? Item::FIELD_NAME_OBSERVERS
+				: 'OBSERVER';
+			$result[$observerFieldCode] =
 				(Field::createByType('user', 'OBSERVER'))
 					->setIsMultiple(true)
 			;
@@ -2075,6 +2110,12 @@ abstract class Entity
 		if ($factory && $factory->isCrmTrackingEnabled())
 		{
 			$result['TRACKING_SOURCE_ID'] = Field::createByType('string', 'TRACKING_SOURCE_ID');
+		}
+		if ($factory && $factory->isClientEnabled())
+		{
+			$result['CLIENT'] = (Field::createByType('string', 'CLIENT'))
+				->setTitle(Loc::getMessage('CRM_COMMON_CLIENT'))
+			;
 		}
 
 		return $result;
@@ -2173,9 +2214,9 @@ abstract class Entity
 		}
 	}
 
-	public function getFieldsRestrictions(): array
+	public function getFieldsRestrictionsEngine(): string
 	{
-		return $this->fieldRestrictionManager->fetchRestrictedFields(
+		return $this->fieldRestrictionManager->fetchRestrictedFieldsEngine(
 			$this->getGridId(),
 			[],
 			$this->getFilter()
@@ -2451,17 +2492,40 @@ abstract class Entity
 		return $this;
 	}
 
-	public function applyCountersFilter(array &$filter): void
+	/**
+	 * Apply filter fields that have to transform to sql query
+	 * @param array $filter
+	 * @return void
+	 * @throws \Bitrix\Main\NotSupportedException
+	 */
+	public function applySubQueryBasedFilters(array &$filter, ?string $viewMode = null): void
+	{
+		$filterFactory = Container::getInstance()->getFilterFactory();
+		$provider = $filterFactory->getDataProvider(
+			$filterFactory::getSettingsByGridId($this->getTypeId(), $this->getGridId()),
+		);
+
+		// counters
+		if ($this->isActivityCountersFilterSupported())
+		{
+			$this->applyCountersFilter($filter, $provider);
+		}
+
+		if ($provider instanceof Filter\EntityDataProvider && $viewMode !== ViewMode::MODE_ACTIVITIES)
+		{
+			$provider->applyActivityResponsibleFilter($this->getTypeId(), $filter);
+		}
+
+		$provider->applyActivityFastSearchFilter($this->getTypeId(), $filter);
+	}
+
+	public function applyCountersFilter(array &$filter, DataProvider $provider): void
 	{
 		if (!$this->isActivityCountersFilterSupported())
 		{
 			return;
 		}
 
-		$filterFactory = Container::getInstance()->getFilterFactory();
-		$provider = $filterFactory->getDataProvider(
-			$filterFactory::getSettingsByGridId($this->getTypeId(), $this->getGridId()),
-		);
 		if ($provider instanceof Filter\EntityDataProvider)
 		{
 			$provider->applyCounterFilter(
@@ -2470,7 +2534,6 @@ abstract class Entity
 				EntityCounter::internalizeExtras($_REQUEST)
 			);
 		}
-		unset($filterFactory, $provider);
 	}
 
 	public function getSortSettings(): Sort\Settings
@@ -2663,6 +2726,31 @@ abstract class Entity
 		return $result;
 	}
 
+	final public function prepareMultipleItemsPingSettings(int $entityTypeId): array
+	{
+		if ($entityTypeId <= 0)
+		{
+			return [];
+		}
+
+		$categories = $this->getCategories(\CCrmPerms::getCurrentUserPermissions());
+		if (empty($categories))
+		{
+			return [];
+		}
+
+		$result = [];
+		$categoryIds = array_column($categories, 'ID');
+		foreach ($categoryIds as $categoryId)
+		{
+			$result[$categoryId] = (new TodoPingSettingsProvider($entityTypeId, $categoryId))
+				->fetchForJsComponent()
+			;
+		}
+
+		return $result;
+	}
+
 	public function isLastActivityEnabled(): bool
 	{
 		return ($this->factory && $this->factory->isLastActivityEnabled());
@@ -2700,5 +2788,15 @@ abstract class Entity
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Returns true if this entity supports notification about add/update assigned user field.
+	 *
+	 * @return bool
+	 */
+	protected function isItemsAssignedNotificationSupported(): bool
+	{
+		return false;
 	}
 }

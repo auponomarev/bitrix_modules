@@ -13,6 +13,9 @@
 		this.fields = fields;
 		this.options = options;
 
+		this.helpDeskCalendarCode = 17198666;
+		this.helpDeskCRMCalendarCode = 17502612;
+
 		BXMainMailForm.__forms[this.id] = this;
 	};
 
@@ -128,6 +131,7 @@
 		if (this.__inited)
 			return;
 
+		this.configureMenuItemId = 'signature-configure';
 		this.formId = 'main_mail_form_'+this.id;
 		this.formWrapper = BX(this.formId);
 		this.htmlForm = BX.findParent(this.formWrapper, {tag: 'form'});
@@ -143,45 +147,25 @@
 		this.quoteNodeId = this.formId + '_quote_' + this.timestamp.toString(16);
 		this.signatureNodeId = this.formId + '_signature_' + this.timestamp.toString(16);
 
+		this.sharingLinkClassPrefix = '_sharing_calendar_link';
+		this.sharingLinkNodeClass = this.formId + this.sharingLinkClassPrefix;
+
 		// insert signature on change 'from' field
 		BX.addCustomEvent(this, 'MailForm::from::change', BX.proxy(function(field, signature)
 		{
 			if(!BX.type.isString(signature))
 			{
 				signature = '';
-				var currentSender;
-				var input = BX(field.fieldId+'_value');
-				if(input)
+				var currentSignatures = form.getSenderSignatures(field);
+				var firstSignature = currentSignatures[0];
+				if (BX.type.isNotEmptyObject(firstSignature) && BX.type.isNotEmptyString(firstSignature.full))
 				{
-					currentSender = input.value;
-				}
-				if(currentSender && field.params && BX.type.isArray(field.params.mailboxes) && BX.type.isNotEmptyObject(field.params.signatures))
-				{
-					for(var i in field.params.mailboxes)
-					{
-						if(field.params.mailboxes.hasOwnProperty(i))
-						{
-							if(field.params.mailboxes[i].formated === currentSender)
-							{
-								if(BX.type.isNotEmptyString(field.params.signatures[field.params.mailboxes[i].formated]))
-								{
-									signature = field.params.signatures[field.params.mailboxes[i].formated];
-								}
-								else if(BX.type.isNotEmptyString(field.params.signatures[field.params.mailboxes[i].email]))
-								{
-									signature = field.params.signatures[field.params.mailboxes[i].email];
-								}
-								else if(BX.type.isNotEmptyString(field.params.signatures['']))
-								{
-									signature = field.params.signatures[''];
-								}
-								break;
-							}
-						}
-					}
+					signature = firstSignature.full;
 				}
 			}
+			this.rebuildSignatureMenu(currentSignatures, field.params);
 			this.insertSignature(signature);
+			this.appendCalendarLinkButton(field.params);
 		}, this));
 
 		this.initFields();
@@ -192,7 +176,21 @@
 		this.__inited = true;
 
 		BX.onCustomEvent(BXMainMailForm, 'MailForm:init:'+this.id, [this]);
-	}
+
+		BX.addCustomEvent(this, 'MailForm::editor::init', () => {
+			this.showCalendarSharingInitialTour();
+			BX(this.editor.GetIframeDoc()).onmouseup = () => {
+				this.userSelection = this.editor.GetIframeDoc().body;
+			};
+			this.userSelection = this.editor.GetIframeDoc().body;
+		});
+
+		document.addEventListener('selectionchange', () => {
+			this.userSelection = document.getSelection();
+		});
+
+		this.hideAiImageGeneratorButton();
+	};
 
 	BXMainMailForm.prototype.initScrollable = function()
 	{
@@ -398,6 +396,13 @@
 				{
 					BX.remove(signatureNode);
 				}
+
+				const quoteNode = this.editor.GetIframeDoc().getElementById(this.quoteNodeId);
+				if (quoteNode && !quoteNode.previousSibling)
+				{
+					BX.Dom.insertBefore(BX.Tag.render`<br>`, quoteNode);
+				}
+
 				return;
 			}
 			var signatureHtml = '--<br />' + signature;
@@ -940,15 +945,22 @@
 		var postForm = field.form.postForm;
 		var editor = field.form.editor;
 
-		if (field.params.value === null || field.params.value === undefined)
-			field.params.value = '';
-
-		field.quoteNode = document.createElement('DIV');
-		var quoteContentNode = document.createElement('DIV');
-		quoteContentNode.setAttribute('id', field.form.quoteNodeId);
-		quoteContentNode.innerHTML = field.params.value;
-		field.quoteNode.appendChild(quoteContentNode);
-		field.quoteNode.__folded = field.form.options.foldQuote;
+		field.quoteNode = document.createElement('div');
+		if (field.form.options.foldQuote || field.params.value)
+		{
+			const quoteContentNode = document.createElement('div');
+			quoteContentNode.setAttribute('id', field.form.quoteNodeId);
+			if (field.params.value)
+			{
+				quoteContentNode.innerHTML = field.params.value;
+			}
+			else
+			{
+				quoteContentNode.innerHTML = '<br>';
+			}
+			BX.Dom.append(quoteContentNode, field.quoteNode);
+		}
+		field.quoteNode.__folded = field.form.options.foldQuote ?? false;
 
 		//postForm.controllerInit('hide');
 		BX.onCustomEvent(postForm.eventNode, 'OnShowLHE', ['justShow']);
@@ -984,6 +996,18 @@
 				editor.Focus(false);
 
 				BX.hide(quoteButton.parentNode.parentNode || quoteButton.parentNode)
+
+				const editorIframeCopilot = editor.iframeView?.copilot;
+				if (
+					!editorIframeCopilot
+					|| BX.Type.isFunction(editorIframeCopilot?.copilot?.setContextParameters)
+				)
+				{
+					return;
+				}
+				const newContextParams = editorIframeCopilot.copilotParams?.contextParameters ?? {};
+				newContextParams.isAddedQuote = true;
+				editorIframeCopilot.copilot.setContextParameters(newContextParams);
 			}
 		};
 		BX.bind(quoteButton, 'click', quoteHandler);
@@ -1213,33 +1237,20 @@
 
 	BXMainMailFormField.__types['editor'].setValue = function(field, value, options)
 	{
-		var postForm = field.form.postForm;
-		var editor = field.form.editor;
-
-		if (value.length > 0)
+		const filesInfo = options.filesInfo;
+		if (Array.isArray(filesInfo))
 		{
-			for (var uid in postForm.controllers)
+			const files = new Map(options.filesInfo.map((file) => [file.serverFileId, file.serverPreviewUrl]));
+			if (value.length > 0 && files.size > 0)
 			{
-				if (!postForm.controllers.hasOwnProperty(uid))
-					continue;
-
-				var ctrl = postForm.controllers[uid];
-
-				if (ctrl.storage != 'disk')
-					continue;
-
-				if (!ctrl.values)
-					break;
-
-				for (var id in ctrl.values)
+				for (let [id, previewUrl] of files)
 				{
-					if (ctrl.values.hasOwnProperty(id) && ctrl.values[id].src)
-						value = value.replace('bxacid:'+id, ctrl.values[id].src+'&__bxacid='+id);
+					value = value.replace('bxacid:' + id, previewUrl + '&__bxacid=' + id)
 				}
-
-				break;
 			}
 		}
+
+		const editor = field.form.editor;
 
 		if (options && options.signature)
 		{
@@ -1261,7 +1272,11 @@
 
 		var regex = /[&?]__bxacid=(n?\d+)/;
 
-		var types = {'IMG': 'src', 'A': 'href'};
+		var types = {
+			'IMG': 'src',
+			'A': 'href'
+		};
+
 		for (var name in types)
 		{
 			var nodeList = editor.GetIframeDoc().getElementsByTagName(name);
@@ -1315,9 +1330,507 @@
 				}
 			}
 
+			if (ctrl.handler.removeFiles)
+			{
+				ctrl.handler.removeFiles(postForm.currentTemplateFiles);
+			}
+
 			ctrl.handler.selectFile({}, {}, value);
+			postForm.currentTemplateFiles = value.map(item => item.serverFileId);
 
 			break;
+		}
+	};
+
+	BXMainMailForm.prototype.rebuildSignatureMenu = function(signatures, params)
+	{
+		if (BX.type.isNotEmptyObject(params)
+			&& BX.type.isNotEmptyString(params.signatureSelectTitle)
+			&& BX.type.isNotEmptyString(params.signatureConfigureTitle)
+			&& BX.type.isNotEmptyString(params.pathToMailSignatures))
+		{
+			if (!this.signatureSelectButton) {
+				this.appendSignatureSelectButton(params.signatureSelectTitle);
+			}
+			if (this.signatureSelectButton)
+			{
+				this.initSignatureMenu(params.signatureConfigureTitle, params.pathToMailSignatures);
+				this.removeSignaturesFromMenu();
+				this.appendSignaturesToMenu(signatures);
+			}
+		}
+	};
+
+	BXMainMailForm.prototype.appendSignatureSelectButton = function(title)
+	{
+		var id = 'signature-select';
+		this.postForm.getToolbar().insertAfter({
+			BODY: '<i></i>' + title,
+			ID: id,
+		});
+		this.signatureSelectButton = this.getSelectButton(id);
+	};
+
+	BXMainMailForm.prototype.getSelectButton = function(id)
+	{
+		var items = this.postForm.getToolbar().getItems();
+		for (var i in items)
+		{
+			if (items.hasOwnProperty(i)
+				&& items[i].attributes
+				&& items[i].attributes.getNamedItem('data-id')
+				&& items[i].attributes.getNamedItem('data-id').value === id)
+			{
+				return items[i];
+			}
+		}
+		return null;
+	};
+
+	BXMainMailForm.prototype.initSignatureMenu = function(configureTitle, configurePath)
+	{
+		if (!this.signatureSelectMenu)
+		{
+			var form = this;
+			this.signatureSelectMenu = new BX.PopupMenuWindow({
+				maxWidth: 300,
+				maxHeight: 300,
+				bindElement: this.signatureSelectButton,
+				items: [
+					{
+						id: this.configureMenuItemId,
+						text: configureTitle,
+						onclick: function(event, item)
+						{
+							item.getMenuWindow().close();
+							BX.SidePanel.Instance.open(configurePath, {
+								cacheable: false,
+								events: {
+									onCloseComplete: function()
+									{
+										form.ajaxRefreshSignatures();
+									}
+								}
+							});
+						},
+					}
+				]
+			});
+			var signatureSelectMenu = this.signatureSelectMenu;
+			this.signatureSelectButton.addEventListener("click", function()
+			{
+				if (signatureSelectMenu.getMenuItems().length > 1) {
+					signatureSelectMenu.show();
+				} else {
+					BX.SidePanel.Instance.open(configurePath, {
+						cacheable: false,
+						events: {
+							onCloseComplete: function()
+							{
+								form.ajaxRefreshSignatures();
+							}
+						}
+					});
+				}
+			});
+		}
+	}
+
+	BXMainMailForm.prototype.ajaxRefreshSignatures = function()
+	{
+		var form = this;
+		BX.ajax.runComponentAction(
+			'bitrix:main.mail.form',
+			'signatures',
+			{ mode: 'class' }
+		).then(function(response)
+		{
+			if (BX.type.isNotEmptyObject(response)
+				&& BX.type.isNotEmptyObject(response.data)
+				&& response.data.hasOwnProperty('signatures'))
+			{
+				for (var i in form.fields)
+				{
+					if (form.fields.hasOwnProperty(i)
+						&& BX.type.isNotEmptyObject(form.fields[i])
+						&& BX.type.isNotEmptyObject(form.fields[i].params)
+						&& form.fields[i].params.hasOwnProperty('allUserSignatures')) {
+						var field = form.fields[i];
+						field.params.allUserSignatures = response.data.signatures;
+						var currentSignatures = form.getSenderSignatures(field);
+						form.rebuildSignatureMenu(currentSignatures, field.params);
+						break;
+					}
+				}
+			}
+		});
+	}
+
+	BXMainMailForm.prototype.getSenderSignatures = function(field)
+	{
+		var currentSender;
+		var input = BX(field.fieldId+'_value');
+		var currentSignatures = [];
+		if (input)
+		{
+			currentSender = input.value;
+		}
+		if (currentSender
+			&& field.params
+			&& BX.type.isArray(field.params.mailboxes)
+			&& BX.type.isNotEmptyObject(field.params.allUserSignatures))
+		{
+			for (var i in field.params.mailboxes)
+			{
+				if (field.params.mailboxes.hasOwnProperty(i))
+				{
+					if (field.params.mailboxes[i].formated === currentSender)
+					{
+						var mailbox = field.params.mailboxes[i];
+						var signatures = field.params.allUserSignatures;
+						if (BX.type.isArrayFilled(signatures[mailbox.formated]))
+						{
+							currentSignatures.push.apply(currentSignatures ,signatures[mailbox.formated]);
+						}
+						if (BX.type.isArrayFilled(signatures[mailbox.email]))
+						{
+							currentSignatures.push.apply(currentSignatures ,signatures[mailbox.email]);
+						}
+						if (BX.type.isArrayFilled(signatures['']))
+						{
+							currentSignatures.push.apply(currentSignatures , signatures['']);
+						}
+						break;
+					}
+				}
+			}
+		}
+		return currentSignatures;
+	}
+
+	BXMainMailForm.prototype.removeSignaturesFromMenu = function()
+	{
+		var ids = this.signatureSelectMenu.getMenuItems().map(function(item)
+		{
+			return item.getId();
+		});
+		for (var i in ids)
+		{
+			if (ids.hasOwnProperty(i) && ids[i] !== this.configureMenuItemId)
+			{
+				this.signatureSelectMenu.removeMenuItem(ids[i]);
+			}
+		}
+	}
+
+	BXMainMailForm.prototype.appendSignaturesToMenu = function(signatures) {
+		var items = this.getSignatureSelectItemsMenu(signatures);
+		for (var i in items)
+		{
+			if (items.hasOwnProperty(i))
+			{
+				this.signatureSelectMenu.addMenuItem(items[i], this.configureMenuItemId);
+			}
+		}
+	}
+
+	BXMainMailForm.prototype.getSignatureSelectItemsMenu = function(signatures)
+	{
+		var signatureSelectItems = [];
+
+		if (BX.type.isArrayFilled(signatures))
+		{
+
+			var form = this;
+			for(var i in signatures)
+			{
+				if (signatures.hasOwnProperty(i)
+					&& BX.type.isNotEmptyObject(signatures[i])
+					&& BX.type.isNotEmptyString(signatures[i].list)
+					&& BX.type.isNotEmptyString(signatures[i].full))
+				{
+					signatureSelectItems.push({
+						id: 'signature-' + i,
+						text: signatures[i].list,
+						title: signatures[i].list,
+						fullSignature: signatures[i].full,
+						onclick: function(event, item)
+						{
+							item.getMenuWindow().close();
+							form.insertSignature(item.fullSignature);
+						},
+					})
+				}
+			}
+
+			if (signatureSelectItems.length)
+			{
+				signatureSelectItems.push({
+					id: 'after-signatures-delimiter',
+					delimiter: true,
+				})
+			}
+		}
+		return signatureSelectItems;
+	};
+
+	BXMainMailForm.prototype.appendCalendarLinkButton = function(params)
+	{
+		if (BX.type.isNotEmptyObject(params)
+			&& BX.type.isBoolean(params.showCalendarSharingButton)
+			&& !this.calendarSharingLinkButton)
+		{
+			const id = 'calendar-sharing-link';
+			this.postForm.getToolbar().insertAfter({
+				BODY: `<i></i>${BX.Loc.getMessage('MAIN_MAIL_FORM_EDITOR_CALENDAR_SHARING_SELECT')}`,
+				ID: id,
+			});
+			this.calendarSharingLinkButton = this.getSelectButton(id);
+			BX.Event.bind(this.calendarSharingLinkButton, 'click', this.insertCalendarSharingLink.bind(this));
+			this.calendarSharingLoader = new BX.Loader({
+				target: this.calendarSharingLinkButton,
+				size: 20,
+				mode: 'inline',
+				offset: {
+					left: '4%',
+					top: '-2%',
+				},
+			});
+			this.initPopupOpenCalendar();
+		}
+	};
+
+	BXMainMailForm.prototype.insertCalendarSharingLink = function()
+	{
+		const ownerId = this.options.ownerId ?? null;
+		const ownerType = this.options.ownerType ?? null;
+
+		this.calendarSharingLoader.show();
+		BX.ajax.runComponentAction(
+			'bitrix:main.mail.form',
+			'getCalendarSharingLink',
+			{
+				mode: 'class',
+				data: {
+					entityId: ownerId,
+					entityType: ownerType,
+				},
+			},
+		).then((response) => {
+			if (BX.type.isNotEmptyObject(response)
+				&& BX.type.isNotEmptyObject(response.data)
+				&& Object.hasOwn(response.data, 'isSharingFeatureEnabled'))
+			{
+				if (response.data.isSharingFeatureEnabled === true)
+				{
+					const sharingLink = BX.Text.encode(response.data.sharingUrl);
+					const sharingTextNode = this.getCalendarSharingText(sharingLink);
+					this.insertCalendarSharingMessage(sharingTextNode);
+					const range = this.editor.selection.GetRange();
+					range.setStartAfter(sharingTextNode);
+					range.setEndAfter(sharingTextNode);
+					this.editor.selection.SetSelection(range);
+				}
+				else
+				{
+					this.popupOpenCalendar.show();
+				}
+			}
+			this.calendarSharingLoader.hide();
+		});
+	};
+
+	BXMainMailForm.prototype.insertCalendarSharingMessage = function(sharingLinkNode)
+	{
+		const range = this.editor.selection.GetRange();
+		if (this.userSelection === this.editor.GetIframeDoc().body)
+		{
+			const containerTags = ['DIV', 'HTML', 'BODY'];
+			const parentTag = range.endContainer.parentElement.tagName;
+			if (containerTags.includes(parentTag))
+			{
+				this.editor.selection.InsertNode(sharingLinkNode, range);
+
+				return;
+			}
+			range.endContainer.parentElement.after(sharingLinkNode);
+
+			return;
+		}
+		const signatureNode = this.editor.GetIframeDoc().getElementById(this.signatureNodeId);
+
+		if (signatureNode)
+		{
+			signatureNode.before(sharingLinkNode);
+
+			return;
+		}
+		const quoteNode = this.editor.GetIframeDoc().getElementById(this.quoteNodeId);
+		if (quoteNode)
+		{
+			quoteNode.before(sharingLinkNode);
+
+			return;
+		}
+
+		range.setStartAfter(this.editor.GetIframeDoc().body.lastChild);
+		range.setEndAfter(this.editor.GetIframeDoc().body.lastChild);
+		this.editor.selection.SetSelection(range);
+		this.editor.selection.InsertNode(sharingLinkNode, range);
+	};
+
+	BXMainMailForm.prototype.getCalendarSharingText = function(sharingLink)
+	{
+		return BX.Tag.render`
+			<span>
+				${BX.Loc.getMessage(
+					'MAIN_MAIL_FORM_EDITOR_CALENDAR_SHARING_TEXT_MSGVER_1',
+					{
+						'[sharing_link]': `<a class="${this.sharingLinkNodeClass}" href="${sharingLink}">`,
+						'[/sharing_link]': '</a>',
+						'#SHARING_LINK#': sharingLink,
+					},
+				)}
+			</span>
+		`;
+	};
+
+	BXMainMailForm.prototype.initPopupOpenCalendar = function()
+	{
+		this.popupOpenCalendar = BX.Main.PopupManager.create(
+			{
+				id: 'popup-calendar-sharing-link',
+				titleBar: BX.Loc.getMessage('MAIN_MAIL_FORM_EDITOR_CALENDAR_SHARING_POPUP_CALENDAR_TITLE'),
+				content: BX.Loc.getMessage('MAIN_MAIL_FORM_EDITOR_CALENDAR_SHARING_POPUP_CALENDAR_TEXT'),
+				width: 400,
+				angle: true,
+				overlay: true,
+				bindElement: this.calendarSharingLinkButton,
+				offsetLeft: 40,
+				buttons: [
+					new BX.UI.CloseButton({
+						text: BX.Loc.getMessage('MAIN_MAIL_FORM_EDITOR_CALENDAR_SHARING_POPUP_CALENDAR_OPEN_BUTTON'),
+						color: BX.UI.ButtonColor.PRIMARY,
+						events: {
+							click: () => {
+								BX.SidePanel.Instance.open(
+									this.options.userCalendarPath,
+								);
+								this.popupOpenCalendar.close();
+							},
+						},
+					}),
+					new BX.UI.CancelButton({
+						events: {
+							click: () => {
+								this.popupOpenCalendar.close();
+							},
+						},
+					}),
+				],
+			},
+		);
+	};
+
+	BXMainMailForm.prototype.needShowCalendarTour = function()
+	{
+		const hasShowParam = function hasShowCalendarSharingTour(field)
+		{
+			return BX.type.isNotEmptyObject(field)
+				&& Object.hasOwn(field.params, 'showCalendarSharingTour');
+		};
+
+		return this.fields.find((element) => hasShowParam(element))?.params?.showCalendarSharingTour ?? false;
+	};
+
+	BXMainMailForm.prototype.showCalendarSharingInitialTour = function()
+	{
+		if (!this.needShowCalendarTour())
+		{
+			return;
+		}
+
+		const tourId = this.options.calendarSharingTourId;
+		const ownerType = this.options.ownerType;
+
+		BX.ajax.runComponentAction(
+			'bitrix:main.mail.form',
+			'getCalendarSharingLink',
+			{ mode: 'class' },
+		).then((response) => {
+			if (BX.type.isNotEmptyObject(response)
+				&& BX.type.isNotEmptyObject(response.data)
+				&& Object.hasOwn(response.data, 'isSharingFeatureEnabled'))
+			{
+				let titleText = BX.Loc.getMessage('MAIN_MAIL_FORM_EDITOR_CALENDAR_SHARING_TOUR_TITLE');
+				let tourText = '';
+				let helpDeskCode = this.helpDeskCalendarCode;
+				if (ownerType === 'DEAL' && response.data.sharingLink !== '')
+				{
+					titleText = BX.Loc.getMessage('MAIN_MAIL_FORM_EDITOR_CALENDAR_SHARING_TOUR_DEAL_TITLE');
+					tourText = BX.Loc.getMessage('MAIN_MAIL_FORM_EDITOR_CALENDAR_SHARING_TOUR_DEAL_TEXT');
+					helpDeskCode = this.helpDeskCRMCalendarCode;
+				}
+				else if (response.data.isSharingFeatureEnabled === true)
+				{
+					tourText = BX.Loc.getMessage('MAIN_MAIL_FORM_EDITOR_CALENDAR_SHARING_TOUR_SETTING_IS_ACTIVATE_TEXT');
+				}
+				else
+				{
+					tourText = BX.Loc.getMessage('MAIN_MAIL_FORM_EDITOR_CALENDAR_SHARING_TOUR_SETTING_IS_DEACTIVATE_TEXT');
+				}
+
+				const guide = new BX.UI.Tour.Guide({
+					id: tourId,
+					autoSave: true,
+					simpleMode: true,
+					steps: [{
+						target: this.calendarSharingLinkButton,
+						position: 'top',
+						title: titleText,
+						text: tourText,
+						article: helpDeskCode,
+					}],
+				});
+				const guidePopup = guide.getPopup();
+				guidePopup.setWidth(400);
+				setTimeout(() => {
+					window.scrollTo(0, this.calendarSharingLinkButton.getBoundingClientRect().y + window.pageYOffset);
+					guide.start();
+				}, 1500);
+			}
+		});
+	};
+
+	BXMainMailForm.prototype.updateSharingLinkNode = function(text, sharingLink = null) {
+		const element = new DOMParser().parseFromString(text, 'text/html');
+		const sharingLinkNodes = element.getElementsByClassName(this.sharingLinkNodeClass);
+		for (const sharingLinkNode of sharingLinkNodes)
+		{
+			if (sharingLink)
+			{
+				sharingLinkNode.innerText = sharingLink;
+				sharingLinkNode.href = sharingLink;
+			}
+			else
+			{
+				sharingLinkNode.remove();
+			}
+		}
+
+		return element.documentElement.innerHTML;
+	};
+
+	BXMainMailForm.prototype.hideAiImageGeneratorButton = function() {
+		if (this.editorInited)
+		{
+			this.editor.toolbar.HideControl('ai-image-generator');
+		}
+		else
+		{
+			BX.addCustomEvent(this, 'MailForm::editor::init', () => {
+				this.editor.toolbar.HideControl('ai-image-generator');
+			});
 		}
 	};
 

@@ -1,9 +1,24 @@
-<?
-if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED!==true)die();
+<?php
+
+if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
+{
+	die();
+}
+
+use Bitrix\Crm\Restriction\AvailabilityManager;
 
 if (!CModule::IncludeModule('crm'))
 {
 	ShowError(GetMessage('CRM_MODULE_NOT_INSTALLED'));
+	return;
+}
+
+$toolsManager = \Bitrix\Crm\Service\Container::getInstance()->getIntranetToolsManager();
+$isAvailable = $toolsManager->checkCrmAvailability();
+if (!$isAvailable)
+{
+	print AvailabilityManager::getInstance()->getCrmInaccessibilityContent();
+
 	return;
 }
 
@@ -34,7 +49,7 @@ if ($arParams['SEF_MODE'] == 'Y')
 
 	foreach ($arUrlTemplates as $url => $value)
 	{
-		if($arParams['PATH_TO_ACTIVITY_'.mb_strtoupper($url)] == '')
+		if(($arParams['PATH_TO_ACTIVITY_'.mb_strtoupper($url)] ?? '') == '')
 			$arResult['PATH_TO_ACTIVITY_'.mb_strtoupper($url)] = $arParams['SEF_FOLDER'].$value;
 		else
 			$arResult['PATH_TO_ACTIVITY_'.mb_strtoupper($url)] = $arParams['PATH_TO_'.mb_strtoupper($url)];

@@ -2,9 +2,11 @@
  * @module crm/terminal/payment-pay/components/payment-button/button
  */
 jn.define('crm/terminal/payment-pay/components/payment-button/button', (require, exports, module) => {
+	const AppTheme = require('apptheme');
 	const { EventEmitter } = require('event-emitter');
 	const { PureComponent } = require('layout/pure-component');
 	const { withPressed } = require('utils/color');
+	const { Random } = require('utils/random');
 
 	/**
 	 * @class PaymentButton
@@ -31,14 +33,17 @@ jn.define('crm/terminal/payment-pay/components/payment-button/button', (require,
 					style: {
 						paddingTop: 10,
 						paddingBottom: 10,
+						paddingRight: 5,
+						paddingLeft: 5,
 						borderRadius: 6,
 						borderWidth: 1,
-						borderColor: '#00A2E8',
-						backgroundColor: withPressed('#EEF2F4'),
+						borderColor: AppTheme.colors.accentMainPrimary,
+						backgroundColor: withPressed(AppTheme.colors.bgPrimary),
 						flexDirection: 'row',
 						alignItems: 'center',
 						justifyContent: 'center',
-						height: 48,
+						width: '100%',
+						height: PaymentButton.getHeight(),
 						...this.containerStyles,
 					},
 					onClick: this.onClick,
@@ -60,12 +65,14 @@ jn.define('crm/terminal/payment-pay/components/payment-button/button', (require,
 				),
 				this.text && Text({
 					style: {
-						color: '#333333',
+						color: AppTheme.colors.base1,
 						fontSize: 17,
 						fontWeight: '500',
-						numberOfLines: 1,
+						flexShrink: 1,
 						...this.textStyles,
 					},
+					numberOfLines: 1,
+					ellipsize: 'end',
 					text: this.text,
 				}),
 			);
@@ -123,7 +130,14 @@ jn.define('crm/terminal/payment-pay/components/payment-button/button', (require,
 		{
 			return this.props.uid || this.randomUid;
 		}
+
+		static getHeight()
+		{
+			return HEIGHT;
+		}
 	}
+
+	const HEIGHT = 48;
 
 	module.exports = { PaymentButton };
 });

@@ -79,17 +79,6 @@ class Date extends Base
 					}
 				}
 				break;
-			case FieldType::TIME:
-				if ($value instanceof Value\Date)
-				{
-					$systemObject = $value->toSystemObject();
-					$value = new \Bitrix\Bizproc\BaseType\Value\Time(
-						$systemObject->format(\Bitrix\Bizproc\BaseType\Value\Time::getFormat()),
-						$value->getOffset()
-					);
-				}
-
-				break;
 			default:
 				$value = null;
 		}
@@ -483,6 +472,11 @@ class Date extends Base
 
 	public static function externalizeValue(FieldType $fieldType, $context, $value)
 	{
+		if ($context === FieldType::VALUE_CONTEXT_JN_MOBILE)
+		{
+			return \CBPHelper::makeTimestamp($value) ?: null;
+		}
+
 		//serialized date string
 		if (is_string($value) && preg_match('#(.+)\s\[([0-9\-]+)\]#', $value))
 		{
@@ -491,10 +485,10 @@ class Date extends Base
 
 		if ($value instanceof Value\Date)
 		{
-			return $context === 'rest' ? $value->toSystemObject()->format('c') : (string) $value->toSystemObject();
+			return $context === FieldType::VALUE_CONTEXT_REST ? $value->toSystemObject()->format('c') : (string) $value->toSystemObject();
 		}
 
-		if (is_string($value) && $context === 'rest')
+		if (is_string($value) && $context === FieldType::VALUE_CONTEXT_REST)
 		{
 			return date('c', strtotime($value));
 		}

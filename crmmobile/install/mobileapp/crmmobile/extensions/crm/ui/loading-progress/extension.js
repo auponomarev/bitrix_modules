@@ -2,6 +2,8 @@
  * @module crm/ui/loading-progress
  */
 jn.define('crm/ui/loading-progress', (require, exports, module) => {
+	const AppTheme = require('apptheme');
+	const { isNil } = require('utils/type');
 	const { transparent } = require('utils/color');
 	const { NotifyManager } = require('notify-manager');
 	const { ProgressBar } = require('layout/ui/progress-bar');
@@ -12,32 +14,65 @@ jn.define('crm/ui/loading-progress', (require, exports, module) => {
 	 */
 	class LoadingProgressBar extends LayoutComponent
 	{
-		constructor(props)
+		constructor(props = {})
 		{
 			super(props);
 
-			this.setValue = this.setValue.bind(this);
-			this.progress = this.getProgress();
+			const {
+				show = false,
+				value = 0,
+				maxValue = 0,
+				button = {},
+				title = '',
+				description = '',
+			} = props;
+
+			this.progressBar = null;
+			this.state = {
+				value,
+				maxValue,
+				button,
+				title,
+				description,
+				show,
+			};
+			this.updateProgress = this.updateProgress.bind(this);
 		}
 
-		setValue(value)
+		updateProgress(params)
 		{
-			this.progress.setValue(value);
+			const { show, value } = params;
+			const { show: stateShow } = this.state;
+
+			if (!isNil(show) && stateShow !== show)
+			{
+				this.setState(params);
+			}
+
+			if (this.progressBar && value)
+			{
+				this.progressBar.setValue(value);
+			}
 		}
 
 		componentDidMount()
 		{
-			BX.addCustomEvent('Crm.LoadingProgress::updateProgress', this.setValue);
+			BX.addCustomEvent('Crm.LoadingProgress::updateProgress', this.updateProgress);
 		}
 
 		componentWillUnmount()
 		{
-			BX.removeCustomEvent('Crm.LoadingProgress::updateProgress', this.setValue);
+			BX.removeCustomEvent('Crm.LoadingProgress::updateProgress', this.updateProgress);
 		}
 
-		getProgress()
+		getProgressBar()
 		{
-			const { value, maxValue, title = '', description = '' } = this.props;
+			const { value, maxValue, title = '', description = '' } = this.state;
+
+			if (Number(maxValue) <= 0 || !Number.isInteger(Number(maxValue)))
+			{
+				return null;
+			}
 
 			return new ProgressBar({
 				title,
@@ -47,10 +82,10 @@ jn.define('crm/ui/loading-progress', (require, exports, module) => {
 				showCaption: true,
 				styles: {
 					description: {
-						color: '#7d858f',
+						color: AppTheme.colors.base4,
 					},
 					caption: {
-						color: '#6a737f',
+						color: AppTheme.colors.base4,
 					},
 				},
 			});
@@ -58,7 +93,7 @@ jn.define('crm/ui/loading-progress', (require, exports, module) => {
 
 		renderButton()
 		{
-			const { button } = this.props;
+			const { button } = this.state;
 
 			if (!button)
 			{
@@ -72,7 +107,7 @@ jn.define('crm/ui/loading-progress', (require, exports, module) => {
 				style: {
 					position: 'relative',
 					borderWidth: 1,
-					borderColor: '#dfe0e3',
+					borderColor: AppTheme.colors.base6,
 					borderRadius: 6,
 					...style,
 				},
@@ -88,26 +123,26 @@ jn.define('crm/ui/loading-progress', (require, exports, module) => {
 
 		render()
 		{
-			const { maxValue } = this.props;
+			const { show } = this.state;
 			NotifyManager.hideLoadingIndicatorWithoutFallback();
 
-			if (Number(maxValue) <= 0 || !Number.isInteger(Number(maxValue)))
+			if (!this.progressBar)
 			{
-				console.error(`maxValue:${maxValue} not integer`);
-				return null;
+				this.progressBar = this.getProgressBar();
 			}
 
 			return View(
 				{
 					style: {
+						position: show ? 'absolute' : 'relative',
+						display: show ? 'flex' : 'none',
 						top: 0,
-						position: 'absolute',
 						width: '100%',
 						height: '100%',
 						justifyContent: 'center',
 						alignItems: 'center',
 						paddingHorizontal: 36,
-						backgroundColor: transparent('#ffffff', 0.95),
+						backgroundColor: transparent(AppTheme.colors.bgContentPrimary, 0.95),
 					},
 					clickable: true,
 				},
@@ -120,7 +155,7 @@ jn.define('crm/ui/loading-progress', (require, exports, module) => {
 						},
 					},
 				}),
-				this.progress,
+				this.progressBar,
 				this.renderButton(),
 			);
 		}

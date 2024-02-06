@@ -1,6 +1,7 @@
 <?php
 namespace Bitrix\Im\Disk;
 
+use Bitrix\Im\Access\ChatAuthProvider;
 use \Bitrix\Main\Type\DateTime,
 	\Bitrix\Im\Model\NoRelationPermissionDiskTable;
 
@@ -25,6 +26,12 @@ class NoRelationPermission
 		));
 		if(empty($rowRelation))
 		{
+			$provider = new ChatAuthProvider();
+			if ($provider->isCodeAlreadyExists($chatId, $userId))
+			{
+				return $result;
+			}
+
 			if(\CIMDisk::ChangeFolderMembers($chatId, $userId))
 			{
 				$raw = NoRelationPermissionDiskTable::getList(array(
@@ -106,7 +113,7 @@ class NoRelationPermission
 		return $result;
 	}
 
-	public static function cleaningAgent()
+	public static function cleaningAgent(): string
 	{
 		if (!\Bitrix\Main\ModuleManager::isModuleInstalled('disk'))
 		{
@@ -119,11 +126,12 @@ class NoRelationPermission
 		$noRelationPermTbl = NoRelationPermissionDiskTable::getTableName();
 
 		$connection->queryExecute("
-			DELETE nrd
+			DELETE 
 			FROM 
-				{$noRelationPermTbl} nrd
-				inner join {$relationTbl} r 
-					on r.CHAT_ID = nrd.CHAT_ID and r.USER_ID = nrd.USER_ID
+				{$noRelationPermTbl}
+			WHERE (CHAT_ID, USER_ID) in (
+				select CHAT_ID, USER_ID FROM {$relationTbl}
+			)
 		");
 
 		$result = NoRelationPermissionDiskTable::getList([

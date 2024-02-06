@@ -1,4 +1,4 @@
-<?
+<?php
 $MESS["CRM_ACTIVITY_EDITOR_ADD_TASK"] = "Добавить задачу";
 $MESS["CRM_ACTIVITY_EDITOR_ADD_CALL"] = "Добавить звонок";
 $MESS["CRM_ACTIVITY_EDITOR_ADD_MEETING"] = "Добавить встречу";
@@ -87,9 +87,11 @@ $MESS["CRM_ACTIVITY_DLG_FIELD_SET_REMINDER"] = "напомнить за";
 $MESS["CRM_ACTIVITY_DISK_ATTACH_FILE"] = "Прикрепить файлы";
 $MESS["CRM_ACTIVITY_DISK_ATTACHED_FILES"] = "Прикрепленные файлы";
 $MESS["CRM_ACTIVITY_DISK_SELECT_FILE"] = "Найти в Битрикс24";
-$MESS["CRM_ACTIVITY_DISK_SELECT_FILE_LEGEND"] = "Открыть окно \"Битрикс24.Диск\"";
+$MESS["CRM_ACTIVITY_DISK_SELECT_FILE_LEGEND_MSGVER_1"] = "Открыть окно \"Битрикс24 Диск\"";
 $MESS["CRM_ACTIVITY_DISK_UPLOAD_FILE"] = "Загрузить файл";
 $MESS["CRM_ACTIVITY_DISK_UPLOAD_FILE_LEGEND"] = "Перетащить с помощью Drag'n'drop";
 $MESS["CRM_SIP_MGR_UNKNOWN_RECIPIENT"] = "Неизвестный абонент";
 $MESS["CRM_SIP_MGR_MAKE_CALL"] = "Позвонить";
-?>
+$MESS["CRM_ACTIVITY_TODO_OPENLINE_COMPLETE_CONF"] = "При завершении дела диалог с клиентом автоматически закрывается";
+$MESS["CRM_ACTIVITY_TODO_OPENLINE_COMPLETE_CONF_OK_TEXT"] = "Завершить дело";
+$MESS["CRM_ACTIVITY_TODO_OPENLINE_COMPLETE_CONF_TITLE"] = "Вы уверены, что хотите завершить дело?";

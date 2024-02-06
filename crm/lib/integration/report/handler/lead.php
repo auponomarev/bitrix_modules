@@ -179,7 +179,8 @@ class Lead extends Base implements IReportSingleData, IReportMultipleData, IRepo
 		switch ($groupingValue)
 		{
 			case self::GROUPING_BY_DATE:
-				$query->registerRuntimeField(new ExpressionField('DATE_CREATE_DAY', "DATE_FORMAT(%s, '%%Y-%%m-%%d 00:00')", 'DATE_CREATE'));
+				$helper = Application::getConnection()->getSqlHelper();
+				$query->registerRuntimeField(new ExpressionField('DATE_CREATE_DAY', $helper->formatDate('%%Y-%%m-%%d 00:00', '%s'), 'DATE_CREATE'));
 				$query->addSelect('DATE_CREATE_DAY');
 				$query->addGroup('DATE_CREATE_DAY');
 				break;
@@ -1024,7 +1025,7 @@ class Lead extends Base implements IReportSingleData, IReportMultipleData, IRepo
 					$config['valuesAmount'] = [
 						'firstAdditionalAmount' => [
 							'title' => Loc::getMessage('CRM_REPORT_LEAD_HANDLER_LEAD_SUM_SHORT_TITLE'),
-							'value' => \CCrmCurrency::MoneyToString($calculatedData['amount']['sum'], $amountLeadCurrencyId),
+							'value' => \CCrmCurrency::MoneyToString($calculatedData['amount']['sum'], $amountLeadCurrencyId ?? ''),
 							'targetUrl' => $this->getTargetUrl('/crm/lead/analytics/list/'),
 						],
 //						'secondAdditionalAmount' => [
@@ -1041,7 +1042,7 @@ class Lead extends Base implements IReportSingleData, IReportMultipleData, IRepo
 //						]
 					];
 
-					if ($calculatedData['amount']['successPassTime'])
+					if ($calculatedData['amount']['successPassTime'] ?? false)
 					{
 						$config['valuesAmount']['secondAdditionalAmount'] = [
 							'title' => Loc::getMessage('CRM_REPORT_LEAD_HANDLER_LEAD_PASS_AVG_TIME_SHORT_TITLE'),
@@ -1055,7 +1056,9 @@ class Lead extends Base implements IReportSingleData, IReportMultipleData, IRepo
 							$config['topAdditionalTitle'] = Loc::getMessage('CRM_REPORT_LEAD_HANDLER_LEAD_CONVERSION_SHORT_TITLE');
 							$config['topAdditionalValue'] = !empty($items[0]['additionalValues']['forthAdditionalValue']['value']) ? $items[0]['additionalValues']['forthAdditionalValue']['value'] : 0;
 							$config['topAdditionalValueUnit'] = '%';
-							$config['valuesAmount']['firstAdditionalAmount']['value'] = $items[0]['additionalValues']['secondAdditionalValue']['value'];
+							$config['valuesAmount']['firstAdditionalAmount']['value'] =
+								($items[0]['additionalValues']['secondAdditionalValue']['value'] ?? null)
+							;
 							//$config['valuesAmount']['secondAdditionalAmount']['value'] = $items[0]['additionalValues']['thirdAdditionalValue']['value'];
 
 							if ($shortModeValue)
@@ -1063,7 +1066,6 @@ class Lead extends Base implements IReportSingleData, IReportMultipleData, IRepo
 								$config['mode'] = 'singleData';
 							}
 							unset($config['valuesAmount']['thirdAdditionalAmount']);
-							$config['additionalValues']['thirdAdditionalValue'];
 							break;
 					}
 			}

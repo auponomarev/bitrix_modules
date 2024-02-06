@@ -21,7 +21,10 @@ class Crm implements Tabable
 
 	public function isAvailable(): bool
 	{
-		if (!Loader::includeModule('crm') || !Loader::includeModule('crmmobile'))
+		if (
+			!Loader::includeModule('crm')
+			|| !Loader::includeModule('crmmobile')
+		)
 		{
 			return false;
 		}
@@ -31,16 +34,12 @@ class Crm implements Tabable
 			return false;
 		}
 
-		$userPermissions = Container::getInstance()->getUserPermissions();
+		if (!\Bitrix\Crm\Service\Container::getInstance()->getIntranetToolsManager()->checkCrmAvailability())
+		{
+			return false;
+		}
 
-		return (
-			$userPermissions->checkReadPermissions(\CCrmOwnerType::Lead)
-			|| $userPermissions->checkReadPermissions(\CCrmOwnerType::Deal)
-			|| $userPermissions->checkReadPermissions(\CCrmOwnerType::Contact, 0, 0)
-			|| $userPermissions->checkReadPermissions(\CCrmOwnerType::Company, 0, 0)
-			|| $userPermissions->checkReadPermissions(\CCrmOwnerType::Quote)
-			|| $userPermissions->checkReadPermissions(\CCrmOwnerType::SmartInvoice)
-		);
+		return \CCrmPerms::IsAccessEnabled();
 	}
 
 	public function getData(): ?array
@@ -71,7 +70,6 @@ class Crm implements Tabable
 				'settings' => [
 					'objectName' => 'layout',
 					'useLargeTitleMode' => true,
-					'backgroundColor' => '#f5f7f8',
 				],
 			],
 			'params' => [],
@@ -131,5 +129,10 @@ class Crm implements Tabable
 	public function getId(): string
 	{
 		return 'crm';
+	}
+
+	public function getIconId(): string
+	{
+		return $this->getId();
 	}
 }

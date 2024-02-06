@@ -3,6 +3,8 @@
  */
 jn.define('crm/in-app-url/routes/open-actions', (require, exports, module) => {
 	const { Type } = require('crm/type');
+	const { DisablingTools } = require('crm/disabling-tools');
+	const { InfoHelper } = require('layout/ui/info-helper');
 
 	const SUPPORTED_QUERY_PARAMS = [
 		'uid',
@@ -36,11 +38,11 @@ jn.define('crm/in-app-url/routes/open-actions', (require, exports, module) => {
 
 	/**
 	 * @function openEntityDetail
-	 * @param {string} entityTypeId
-	 * @param {string} entityId
+	 * @param {number} entityTypeId
+	 * @param {number} entityId
 	 * @param {object} [options]
 	 */
-	const openEntityDetail = (
+	const openEntityDetail = async (
 		entityTypeId,
 		entityId,
 		{
@@ -51,6 +53,21 @@ jn.define('crm/in-app-url/routes/open-actions', (require, exports, module) => {
 			...restPayload
 		} = {},
 	) => {
+		if (!Type.isEntitySupportedById(entityTypeId))
+		{
+			return;
+		}
+
+		const sliderCode = await DisablingTools.getSliderCode(entityTypeId);
+		if (sliderCode)
+		{
+			const sliderUrl = await InfoHelper.getUrlByCode(sliderCode);
+
+			helpdesk.openHelp(sliderUrl);
+
+			return;
+		}
+
 		const filteredQueryParams = filterQueryParams(SUPPORTED_QUERY_PARAMS, queryParams);
 
 		const payload = {
@@ -66,28 +83,35 @@ jn.define('crm/in-app-url/routes/open-actions', (require, exports, module) => {
 			widgetParams.titleParams = { text: linkText };
 		}
 
-		jn.import('crm:entity-detail/opener')
-			.then(() => {
-				const { EntityDetailOpener } = require('crm/entity-detail/opener');
+		const { EntityDetailOpener } = await requireLazy('crm:entity-detail/opener');
 
-				EntityDetailOpener.open(
-					payload,
-					widgetParams,
-					parentWidget || null,
-					canOpenInDefault,
-				);
-			})
-			.catch(console.error);
+		EntityDetailOpener.open(
+			payload,
+			widgetParams,
+			parentWidget || null,
+			canOpenInDefault,
+		);
 	};
 
 	/**
 	 * @function openEntityList
 	 * @param {object} options
 	 * @param {string} [options.activeTabName]
+	 * @param {number} entityTypeId
 	 */
-	const openEntityList = ({ activeTabName }) => {
+	const openEntityList = async ({ activeTabName, entityTypeId }) => {
 		if (!Type.isEntitySupportedByName(activeTabName))
 		{
+			return;
+		}
+
+		const sliderCode = await DisablingTools.getSliderCode(entityTypeId);
+		if (sliderCode)
+		{
+			const sliderUrl = await InfoHelper.getUrlByCode(sliderCode);
+
+			helpdesk.openHelp(sliderUrl);
+
 			return;
 		}
 

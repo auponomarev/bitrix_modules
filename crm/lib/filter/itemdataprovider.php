@@ -13,9 +13,9 @@ use Bitrix\Crm\Service\ParentFieldManager;
 use Bitrix\Crm\StatusTable;
 use Bitrix\Crm\UI\EntitySelector;
 use Bitrix\Crm\UtmTable;
+use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Text\StringHelper;
-use Bitrix\Main\Loader;
 
 class ItemDataProvider extends EntityDataProvider
 {
@@ -183,6 +183,19 @@ class ItemDataProvider extends EntityDataProvider
 			];
 		}
 
+		if ($this->factory->isObserversEnabled())
+		{
+			$fields[Item::FIELD_NAME_OBSERVERS] = [
+				'type' => static::TYPE_USER,
+				'displayGrid' => true,
+				'displayFilter' => true,
+				'defaultGrid' => false,
+				'defaultFilter' => false,
+				'sortField' => null,
+				'filterOptionPreset' => static::PRESET_ENTITY_SELECTOR,
+			];
+		}
+
 		$fields[Item::FIELD_NAME_CREATED_BY] = [
 			'type' => static::TYPE_USER,
 			'displayGrid' => true,
@@ -243,9 +256,9 @@ class ItemDataProvider extends EntityDataProvider
 		if ($this->factory->isLastActivityEnabled())
 		{
 			$fields[Item::FIELD_NAME_LAST_ACTIVITY_TIME] = [
-				'type' => static::PRESET_DATETIME,
+				'type' => static::TYPE_DATE,
 				'displayGrid' => true,
-				'displayFilter' => false,
+				'displayFilter' => true,
 				'defaultGrid' => false,
 				'defaultFilter' => false,
 				'filterOptionPreset' => static::PRESET_DATETIME,
@@ -393,7 +406,7 @@ class ItemDataProvider extends EntityDataProvider
 			];
 		}
 
-		if($this->factory->isCountersEnabled()) {
+		if ($this->factory->isCountersEnabled()) {
 			$fields['ACTIVITY_COUNTER'] = [
 				'type' => static::TYPE_LIST,
 				'displayGrid' => false,
@@ -402,6 +415,18 @@ class ItemDataProvider extends EntityDataProvider
 				'defaultFilter' => false,
 				'filterOptionPreset' => static::PRESET_LIST,
 				'customCaption' => Loc::getMessage('CRM_FILTER_ITEMDATAPROVIDER_ACTIVITY_COUNTER')
+			];
+		}
+
+		if ($this->factory->isCountersEnabled() && $this->isActivityResponsibleEnabled()) {
+			$fields['ACTIVITY_RESPONSIBLE_IDS'] = [
+				'type' => static::TYPE_USER,
+				'displayGrid' => false,
+				'displayFilter' => true,
+				'defaultGrid' => false,
+				'defaultFilter' => false,
+				'filterOptionPreset' => static::PRESET_ENTITY_SELECTOR,
+				'customCaption' => Loc::getMessage('CRM_FILTER_ITEMDATAPROVIDER_ACTIVITY_RESPONSIBLE_IDS')
 			];
 		}
 
@@ -706,16 +731,24 @@ class ItemDataProvider extends EntityDataProvider
 		)
 		{
 			$factory = \Bitrix\Crm\Service\Container::getInstance()->getFactory($this->getEntityTypeId());
+			$referenceClass = ($factory ? $factory->getDataClass() : null);
 
 			$params = [
 				'fieldName' => $fieldID,
 				'entityTypeId' => $this->getEntityTypeId(),
 				'module' => 'crm',
-				'referenceClass' => ($factory ? $factory->getDataClass() : null),
+				'referenceClass' => $fieldID !== Item::FIELD_NAME_OBSERVERS ? $referenceClass : null,
 			];
 
 			if ($factory->isCountersEnabled() && $fieldID === Item::FIELD_NAME_ASSIGNED)
 			{
+				$params['isEnableAllUsers'] = true;
+				$params['isEnableOtherUsers'] = true;
+			}
+
+			if ($fieldID === 'ACTIVITY_RESPONSIBLE_IDS')
+			{
+				$params['referenceClass'] = null;
 				$params['isEnableAllUsers'] = true;
 				$params['isEnableOtherUsers'] = true;
 			}

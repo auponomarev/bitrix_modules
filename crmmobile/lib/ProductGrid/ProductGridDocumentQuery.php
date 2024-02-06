@@ -3,33 +3,37 @@
 namespace Bitrix\CrmMobile\ProductGrid;
 
 use Bitrix\Catalog\VatTable;
+use Bitrix\CatalogMobile\Catalog;
+use Bitrix\CatalogMobile\PermissionsProvider;
+use Bitrix\CatalogMobile\ProductGrid\SkuDataProvider;
+use Bitrix\CatalogMobile\Repository\MeasureRepository;
 use Bitrix\Crm;
 use Bitrix\Crm\Service\Accounting;
 use Bitrix\Crm\Service\Container;
 use Bitrix\CrmMobile\Dto\VatRate;
 use Bitrix\Main\Config\Option;
-use Bitrix\Mobile\Integration\Catalog\Catalog;
-use Bitrix\Mobile\Integration\Catalog\PermissionsProvider;
-use Bitrix\Mobile\Integration\Catalog\ProductGrid\SkuDataProvider;
-use Bitrix\Mobile\Integration\Catalog\Repository\MeasureRepository;
+use Bitrix\Main\Loader;
 use Bitrix\Mobile\UI\File;
+use Bitrix\Sale\Payment;
 use Bitrix\Sale\Repository\PaymentRepository;
 use Bitrix\Sale\Tax\VatCalculator;
+
+Loader::requireModule('crm');
+Loader::requireModule('catalogmobile');
 
 final class ProductGridDocumentQuery
 {
 	protected int $documentId;
 	protected Accounting $accounting;
 	protected PermissionsProvider $permissionsProvider;
-	private string $currencyId;
 	private array $productsInfo;
+	private ?Payment $payment = null;
 
 	public function __construct(int $documentId)
 	{
 		$this->documentId = $documentId;
 		$this->accounting = Container::getInstance()->getAccounting();
 		$this->permissionsProvider = PermissionsProvider::getInstance();
-		$this->currencyId = Catalog::getBaseCurrency();
 		$this->productsInfo = [];
 	}
 
@@ -48,8 +52,9 @@ final class ProductGridDocumentQuery
 				'currencyId' => Catalog::getBaseCurrency(),
 			],
 			'inventoryControl' => [
-				'enabled' => null,
-				'reservationEnabled' => null,
+				'isAllowedReservation' => null,
+				'isReservationRestrictedByPlan' => null,
+				'defaultDateReserveEnd' => null,
 			],
 			'measures' => array_values(MeasureRepository::findAll()),
 			'taxes' => [
@@ -62,7 +67,11 @@ final class ProductGridDocumentQuery
 
 	protected function getSummaryQuery(array $products): DocumentSummaryQuery
 	{
-		return new DocumentSummaryQuery($this->documentId, $products, $this->currencyId);
+		return new DocumentSummaryQuery(
+			$this->documentId,
+			$products,
+			$this->payment->getOrder()->getCurrency()
+		);
 	}
 
 	private function fetchVatRates(): array
@@ -118,13 +127,13 @@ final class ProductGridDocumentQuery
 	private function getProductRows(): array
 	{
 		$productList = [];
-		$payment = PaymentRepository::getInstance()->getById($this->documentId);
-		if (!$payment)
+		$this->payment = PaymentRepository::getInstance()->getById($this->documentId);
+		if (!$this->payment)
 		{
 			return [];
 		}
 		/** @var Crm\Order\PayableItemCollection $shipmentItemCollection */
-		$payableItemCollection = $payment->getPayableItemCollection()->getBasketItems();
+		$payableItemCollection = $this->payment->getPayableItemCollection()->getBasketItems();
 
 		/** @var Crm\Order\PayableBasketItem $payableItem */
 		foreach ($payableItemCollection as $payableItem)

@@ -541,12 +541,6 @@ elseif($action === 'SAVE')
 				);
 			}
 
-			$fields = Crm\Entity\FieldContentType::prepareFieldsFromDetailsToSave(
-				\CCrmOwnerType::Lead,
-				$ID,
-				$fields
-			);
-
 			Tracking\UI\Details::appendEntityFieldValue($fields, $_POST);
 
 			if ($enableProductRows)
@@ -555,6 +549,8 @@ elseif($action === 'SAVE')
 			}
 
 			$entity = new \CCrmLead(!CCrmPerms::IsAdmin());
+			$eventId = $_POST['EVENT_ID'] ?? null;
+
 			if($isNew)
 			{
 				/*
@@ -592,17 +588,15 @@ elseif($action === 'SAVE')
 
 				$fields['EXCH_RATE'] = CCrmCurrency::GetExchangeRate($fields['CURRENCY_ID']);
 
-				$options = array_merge(
-					Crm\Entity\FieldContentType::prepareSaveOptionsForDetails(\CCrmOwnerType::Lead, $ID),
-					[
-						'REGISTER_SONET_EVENT' => true,
-						'FIELD_CHECK_OPTIONS' => $fieldCheckOptions,
-						'ITEM_OPTIONS' => [
-							'VIEW_MODE' => $viewMode,
-							'STATUS_ID' => $fields['STATUS_ID'],
-						],
+				$options = [
+					'REGISTER_SONET_EVENT' => true,
+					'FIELD_CHECK_OPTIONS' => $fieldCheckOptions,
+					'ITEM_OPTIONS' => [
+						'VIEW_MODE' => $viewMode,
+						'STATUS_ID' => $fields['STATUS_ID'],
 					],
-				);
+					'eventId' => $eventId,
+				];
 
 				if(!$enableRequiredUserFieldCheck)
 				{
@@ -657,7 +651,11 @@ elseif($action === 'SAVE')
 					unset($fields['STATUS_ID']);
 				}
 
-				$options = array('REGISTER_SONET_EVENT' => true, 'FIELD_CHECK_OPTIONS' => $fieldCheckOptions);
+				$options = [
+					'REGISTER_SONET_EVENT' => true,
+					'FIELD_CHECK_OPTIONS' => $fieldCheckOptions,
+					'eventId' => $eventId,
+				];
 				if(!$enableRequiredUserFieldCheck)
 				{
 					$options['DISABLE_REQUIRED_USER_FIELD_CHECK'] = true;
@@ -711,7 +709,13 @@ elseif($action === 'SAVE')
 			__CrmLeadDetailsEndJsonResponse($responseData);
 		}
 
-		if(!$isExternal && $enableProductRows && (!$isNew || !empty($productRows)))
+		if (
+			!$isExternal
+			&& $enableProductRows
+			&& (!$isNew || !empty($productRows))
+			// if factory was used, product rows were saved already on lead save
+			&& !Crm\Settings\LeadSettings::getCurrent()->isFactoryEnabled()
+		)
 		{
 			if(!\CCrmLead::SaveProductRows($ID, $productRows, true, true, false))
 			{
@@ -838,7 +842,7 @@ elseif($action === 'LOAD')
 	{
 		__CrmLeadDetailsEndJsonResponse(['ERROR'=>'ENTITY ID IS NOT FOUND!']);
 	}
-	if(!\CCrmDeal::CheckReadPermission($ID, $currentUserPermissions))
+	if (!\CCrmLead::CheckReadPermission($ID, $currentUserPermissions))
 	{
 		__CrmLeadDetailsEndJsonResponse(['ERROR'=> \Bitrix\Main\Localization\Loc::getMessage('CRM_COMMON_ERROR_ACCESS_DENIED')]);
 	}

@@ -388,15 +388,24 @@ class Event
 			self::processDeferredMessages();
 		}
 
-		static::executeEvents();
+		$executeResult = static::executeEvents();
+		if (!$executeResult->isSuccess())
+		{
+			foreach ($executeResult->getErrors() as $error)
+			{
+				$message = $error->getCode() ? $error->getCode() . ": " . $error->getMessage() : $error->getMessage();
+				trigger_error("Pull send error; {$message}; remote endpoint: {$executeResult->getRemoteAddress()}", E_USER_WARNING);
+			}
+		}
+
 		static::executePushEvents();
 
 		return true;
 	}
 
-	public static function executeEvents(): Main\Result
+	public static function executeEvents(): TransportResult
 	{
-		$result = new Main\Result();
+		$result = new TransportResult();
 		if (empty(self::$messages))
 		{
 			return $result;
@@ -414,13 +423,14 @@ class Event
 		if (Config::isJsonRpcUsed())
 		{
 			$messageList = self::convertEventsToMessages(self::$messages);
-			$sendResult = JsonRpcTransport::sendMessages($messageList);
+			$sendResult = (new JsonRpcTransport())->sendMessages($messageList);
 			if ($sendResult->isSuccess())
 			{
 				self::$messages = [];
 			}
 			else
 			{
+				$result->withRemoteAddress($sendResult->getRemoteAddress());
 				$result->addErrors($sendResult->getErrors());
 			}
 		}
@@ -431,6 +441,7 @@ class Event
 				$sendResult = ProtobufTransport::sendMessages(self::$messages);
 				if (!$sendResult->isSuccess())
 				{
+					$result->withRemoteAddress($sendResult->getRemoteAddress());
 					$result->addErrors($sendResult->getErrors());
 				}
 			}

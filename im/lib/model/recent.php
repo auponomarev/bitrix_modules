@@ -1,6 +1,7 @@
 <?php
 namespace Bitrix\Im\Model;
 
+use Bitrix\Im\V2\Common\UpdateByFilterTrait;
 use Bitrix\Main,
 	Bitrix\Main\Localization\Loc;
 Loc::loadMessages(__FILE__);
@@ -34,6 +35,8 @@ Loc::loadMessages(__FILE__);
 
 class RecentTable extends Main\Entity\DataManager
 {
+	use \Bitrix\Main\ORM\Data\Internal\DeleteByFilterTrait;
+	use UpdateByFilterTrait;
 	/**
 	 * Returns DB table name for entity.
 	 *
@@ -128,6 +131,9 @@ class RecentTable extends Main\Entity\DataManager
 			'MARKED_ID' => array(
 				'data_type' => 'integer',
 				'default_value' => 0,
+			),
+			'PIN_SORT' => array(
+				'data_type' => 'integer',
 			),
 		);
 	}

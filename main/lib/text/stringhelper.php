@@ -79,11 +79,26 @@ class StringHelper
 				}
 			}
 		}
-		else
+		elseif (is_scalar($str))
 		{
 			$str = str_replace($search, $replace, $str);
 		}
 
 		return $str;
+	}
+
+	/**
+	 * Checks if $value is convertable in string
+	 *
+	 * @param $value
+	 * @return bool
+	 */
+	public static function isStringable($value): bool
+	{
+		return !is_array($value)
+			&& (
+				(!is_object($value) && settype($value, 'string') !== false)
+				|| (is_object($value) && method_exists($value, '__toString'))
+			);
 	}
 }

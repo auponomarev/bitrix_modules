@@ -3,14 +3,20 @@
 namespace Bitrix\CrmMobile\Command;
 
 use Bitrix\Crm\Currency;
+use Bitrix\Crm\EntityAddress;
+use Bitrix\Crm\EntityAddressType;
 use Bitrix\Crm\Field;
 use Bitrix\Crm\FileUploader\EntityFieldController;
 use Bitrix\Crm\Integration\UI\EntitySelector\DynamicMultipleProvider;
 use Bitrix\Crm\Item;
 use Bitrix\Crm\Multifield\Type\Link;
+use Bitrix\Crm\Reservation\Internals\ProductRowReservationTable;
 use Bitrix\Crm\Service\Container;
+use Bitrix\Crm\Service\Context;
 use Bitrix\Crm\Service\Factory;
 use Bitrix\CrmMobile\ProductGrid\UpdateCatalogProductsCommand;
+use Bitrix\Location\Entity\Address;
+use Bitrix\Main\ArgumentException;
 use Bitrix\Main\Error;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
@@ -34,14 +40,16 @@ final class SaveEntityCommand extends Command
 	private Factory $factory;
 	private Item $entity;
 	private array $data;
+	private ?Context $context;
 
 	private array $temporaryFiles = [];
 
-	public function __construct(Factory $factory, Item $entity, array $data)
+	public function __construct(Factory $factory, Item $entity, array $data, ?Context $context = null)
 	{
 		$this->factory = $factory;
 		$this->entity = $entity;
 		$this->data = $data;
+		$this->context = $context;
 	}
 
 	public function execute(): Result
@@ -80,6 +88,7 @@ final class SaveEntityCommand extends Command
 			$this->prepareFields($data);
 			$this->prepareMultiFields($data);
 			$this->prepareCurrencyIdForCompanyRevenue($data);
+			$this->prepareProductRowData($data);
 
 			$result->setData($data);
 		}
@@ -95,10 +104,7 @@ final class SaveEntityCommand extends Command
 	{
 		$aliases = [];
 
-		if (
-			$this->factory->getEntityTypeId() === \CCrmOwnerType::Deal
-			|| $this->factory->getEntityTypeId() === \CCrmOwnerType::Lead
-		)
+		if ($this->factory->isObserversEnabled())
 		{
 			$aliases['OBSERVER_IDS'] = 'OBSERVER';
 		}
@@ -167,7 +173,6 @@ final class SaveEntityCommand extends Command
 		if (isset($fields['COMMENTS']) && $fields['COMMENTS'] !== '')
 		{
 			$fields['COMMENTS'] = trim(strip_tags($fields['COMMENTS']));
-			$fields['COMMENTS'] = str_replace("\n", "<br>\n", $fields['COMMENTS']);
 		}
 	}
 
@@ -252,10 +257,14 @@ final class SaveEntityCommand extends Command
 		$isDateTimeField = $field->getType() === Field::TYPE_DATETIME;
 		$timezoneOffset = \CTimeZone::getOffset();
 		$useTimezone = ($field->getUserField()['SETTINGS']['USE_TIMEZONE'] ?? 'Y') === 'Y';
+		$isDynamicEntityType = \CCrmOwnerType::isPossibleDynamicTypeId($this->entity->getEntityTypeId());
 
-		$createFromTimestamp = static function ($timestamp) use ($isDateTimeField, $timezoneOffset, $useTimezone) {
+		$createFromTimestamp = static function ($timestamp) use ($isDateTimeField, $timezoneOffset, $useTimezone, $isDynamicEntityType) {
 			$object = $isDateTimeField
-				? DateTime::createFromTimestamp($timestamp)
+				? ($isDynamicEntityType && $useTimezone
+					? DateTime::createFromTimestamp($timestamp + $timezoneOffset)
+					: DateTime::createFromTimestamp($timestamp)
+				)
 				: Date::createFromTimestamp($timestamp + $timezoneOffset);
 
 			if ($isDateTimeField && !$useTimezone)
@@ -322,6 +331,7 @@ final class SaveEntityCommand extends Command
 	{
 		if (!empty($data) && is_array($data))
 		{
+			$isMultipleEntityType = count(array_filter($field->getSettings(), static fn($val) => $val === 'Y')) > 1;
 			foreach ($data as $key => $value)
 			{
 				if (!empty($value) && is_array($value))
@@ -340,8 +350,9 @@ final class SaveEntityCommand extends Command
 
 					if ($entityTypeAbbr)
 					{
-						$data[$key] = "{$entityTypeAbbr}_{$entityId}";
+						$data[$key] = $isMultipleEntityType ? "{$entityTypeAbbr}_{$entityId}" : $entityId;
 					}
+
 				}
 				else
 				{
@@ -570,6 +581,74 @@ final class SaveEntityCommand extends Command
 		}
 	}
 
+	private function prepareProductRowData(array &$fields): void
+	{
+		if ($this->entity->getEntityTypeId() !== \CCrmOwnerType::Deal)
+		{
+			return;
+		}
+
+		if (empty($fields['PRODUCT_ROWS']))
+		{
+			return;
+		}
+
+		$existReserveIds = [];
+		foreach ($fields['PRODUCT_ROWS'] as $productRow)
+		{
+			if (!isset($productRow['ID']) || !is_numeric($productRow['ID']))
+			{
+				continue;
+			}
+			$existReserveIds[] = $productRow['ID'];
+		}
+		$existReserves = self::getReserves($existReserveIds);
+
+		foreach ($fields['PRODUCT_ROWS'] as $productRowIndex => $productRow)
+		{
+			$isAutoReservation = $productRow['INPUT_RESERVE_QUANTITY'] === $productRow['QUANTITY'];
+			$existReserve =
+				isset($productRow['ID']) && is_numeric($productRow['ID'])
+					? $existReserves[(int)$productRow['ID']]
+					: null;
+			if ($existReserve)
+			{
+				$isAuto = $isAutoReservation && $existReserve['IS_AUTO'] === 'Y' ? 'Y' : 'N';
+			}
+			else
+			{
+				$isAuto =
+					!isset($productRow['INPUT_RESERVE_QUANTITY'])
+					|| $productRow['QUANTITY'] === 0
+					|| $isAutoReservation
+						? 'Y'
+						: 'N';
+			}
+			$fields['PRODUCT_ROWS'][$productRowIndex]['IS_AUTO'] = $isAuto;
+		}
+	}
+
+	private static function getReserves(array $productRowIds): ?array
+	{
+		$productRowsMap = [];
+		$dbResult = ProductRowReservationTable::getList([
+			'select' => [
+				'ROW_ID',
+				'IS_AUTO',
+			],
+			'filter' => [
+				'=ROW_ID' => $productRowIds,
+			],
+		]);
+
+		while ($productRow = $dbResult->fetch())
+		{
+			$productRowsMap[(int)$productRow['ROW_ID']] = $productRow;
+		}
+
+		return $productRowsMap;
+	}
+
 	private function prepareCurrencyIdForCompanyRevenue(array &$fields): void
 	{
 		if ($this->entity->getEntityTypeId() !== \CCrmOwnerType::Company)
@@ -594,11 +673,11 @@ final class SaveEntityCommand extends Command
 		$isNew = $entityId === 0;
 		if ($isNew)
 		{
-			$operation = $this->factory->getAddOperation($this->entity);
+			$operation = $this->factory->getAddOperation($this->entity, $this->context);
 		}
 		else
 		{
-			$operation = $this->factory->getUpdateOperation($this->entity);
+			$operation = $this->factory->getUpdateOperation($this->entity, $this->context);
 		}
 
 		$productRows = $this->extractProductRowsData($fields);
@@ -609,6 +688,7 @@ final class SaveEntityCommand extends Command
 			if (!$res->isSuccess())
 			{
 				$result->addErrors($res->getErrors());
+
 				return $result;
 			}
 		}
@@ -619,6 +699,8 @@ final class SaveEntityCommand extends Command
 		if ($res->isSuccess())
 		{
 			$result->setData(['ID' => $this->entity->getId()]);
+
+			$this->onSavedFactoryBasedEntities($fields);
 		}
 		else
 		{
@@ -626,6 +708,68 @@ final class SaveEntityCommand extends Command
 		}
 
 		return $result;
+	}
+
+	private function onSavedFactoryBasedEntities(array $fields)
+	{
+		if (
+			$this->entity->getEntityTypeId() === \CCrmOwnerType::Lead
+			&& array_key_exists('ADDRESS', $fields)
+		)
+		{
+			$this->saveLeadAddress($fields['ADDRESS']);
+		}
+	}
+
+	private function saveLeadAddress($address): void
+	{
+		if (
+			!(
+				is_null($address)
+				|| is_string($address))
+		)
+		{
+			return;
+		}
+
+		if (empty($address))
+		{
+			EntityAddress::unregister(
+				\CCrmOwnerType::Lead,
+				$this->entity->getId(),
+				EntityAddressType::Primary
+			);
+
+			return;
+		}
+
+		if (!Loader::includeModule('location'))
+		{
+			return;
+		}
+
+		try
+		{
+			$locAddr = Address::fromJson(EntityAddress::prepareJsonValue($address));
+		}
+		catch (ArgumentException $exception)
+		{
+			$locAddr = Address::fromArray([
+				'fieldCollection' => [
+					Address\FieldType::ADDRESS_LINE_2 => $address,
+				],
+				'languageId' => LANGUAGE_ID,
+			]);
+		}
+
+		EntityAddress::register(
+			\CCrmOwnerType::Lead,
+			$this->entity->getId(),
+			EntityAddressType::Primary,
+			[
+				'LOC_ADDR' => $locAddr,
+			]
+		);
 	}
 
 	private function extractProductRowsData(array &$fields): ?array

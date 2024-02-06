@@ -32,12 +32,7 @@ if (CModule::IncludeModule('bitrix24') && !\Bitrix\Crm\CallList\CallList::isAvai
 	CBitrix24::initLicenseInfoPopupJS();
 }
 
-Bitrix\Main\UI\Extension::load(
-	[
-		'crm.restriction.filter-fields',
-		'ui.fonts.opensans'
-	]
-);
+Bitrix\Main\UI\Extension::load(['ui.fonts.opensans']);
 
 Bitrix\Main\Page\Asset::getInstance()->addJs('/bitrix/js/crm/common.js');
 Bitrix\Main\Page\Asset::getInstance()->addJs('/bitrix/js/crm/progress_control.js');
@@ -412,7 +407,12 @@ $APPLICATION->IncludeComponent("bitrix:calendar.interface.grid", "", Array(
 ));
 //endregion
 
-echo $arResult['ACTIVITY_FIELD_RESTRICTIONS'] ?? '';
+if (!empty($arResult['RESTRICTED_FIELDS_ENGINE']))
+{
+	Bitrix\Main\UI\Extension::load(['crm.restriction.filter-fields']);
+
+	echo $arResult['RESTRICTED_FIELDS_ENGINE'];
+}
 
 ?>
 
@@ -462,7 +462,14 @@ BX.ready(function(){
 			BX.SidePanel.Instance.open(params.entry.data.OPEN_URL,
 				{
 					cacheable: false,
-					loader: "crm-entity-details-loader"
+					loader: "crm-entity-details-loader",
+					label: {
+						text: "<?= Loc::getMessage('CRM_COMMON_LEAD')?>",
+						bgColor: "#55D0E0",
+					},
+					width: window.innerWidth < 1500
+						? null
+						: 1500 + Math.floor((window.innerWidth - 1500) / 3)
 				});
 		}
 	});
@@ -488,7 +495,20 @@ BX.ready(function(){
 				url = url.replace('#DATE_TO#', to);
 			}
 
-			BX.SidePanel.Instance.open(url, {cacheable: false, loader: "crm-entity-details-loader"});
+			BX.SidePanel.Instance.open(
+				url,
+				{
+					cacheable: false,
+					loader: "crm-entity-details-loader",
+					label: {
+						text: "<?= Loc::getMessage('CRM_COMMON_LEAD')?>",
+						bgColor: "#55D0E0",
+					},
+					width: window.innerWidth < 1500
+						? null
+						: 1500 + Math.floor((window.innerWidth - 1500) / 3)
+				}
+			);
 		}
 	});
 	<?endif;?>

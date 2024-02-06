@@ -82,6 +82,7 @@ class SmartDocument extends Dynamic
 				->setIsAutomationEnabled(true)
 				->setIsBizProcEnabled(true)
 				->setIsPaymentsEnabled(false)
+				->setIsSetOpenPermissions(false)
 		;
 
 		/** @var AddResult $result */
@@ -114,6 +115,8 @@ class SmartDocument extends Dynamic
 
 		$clientField = $adapter->getAdditionalField($adapter::FIELD_CLIENT);
 		$clientField['data']['fixedLayoutType'] = 'CONTACT';
+
+		unset($clientField['data']['duplicateControl']);
 		$adapter->addEntityField($clientField);
 
 		return $adapter;
@@ -205,7 +208,9 @@ class SmartDocument extends Dynamic
 	{
 		return [
 			(new Fields\StringField(Item\SmartDocument::FIELD_NAME_NUMBER))
-				->configureTitle(Loc::getMessage('CRM_TYPE_SMART_DOCUMENT_FIELD_NUMBER')),
+				->configureTitle(Loc::getMessage('CRM_TYPE_SMART_DOCUMENT_FIELD_NUMBER'))
+				->configureDefaultValue('')
+			,
 		];
 	}
 

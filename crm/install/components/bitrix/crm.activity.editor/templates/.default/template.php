@@ -101,31 +101,11 @@ if($curUser)
 }
 
 $mailTemplateData = array();
+$templatesId = \Bitrix\Crm\MailTemplate\MailTemplateAccess::getAllAvailableSharedTemplatesId($USER->getId());
+
 if($curUser && $arResult['OWNER_TYPE_ID'] !== CCrmOwnerType::Undefined)
 {
-	$mailTemplateResult = \CCrmMailTemplate::getList(
-		array('SORT' => 'ASC', 'ENTITY_TYPE_ID' => 'DESC', 'TITLE'=> 'ASC'),
-		array(
-			'IS_ACTIVE' => 'Y',
-			'__INNER_FILTER_TYPE' => array(
-				'LOGIC' => 'OR',
-				'__INNER_FILTER_TYPE_1' => array('ENTITY_TYPE_ID' => $arResult['OWNER_TYPE_ID']),
-				'__INNER_FILTER_TYPE_2' => array('ENTITY_TYPE_ID' => 0),
-			),
-			'__INNER_FILTER_SCOPE' => array(
-				'LOGIC' => 'OR',
-				'__INNER_FILTER_PERSONAL' => array(
-					'OWNER_ID' => $USER->getId(),
-					'SCOPE'    => \CCrmMailTemplateScope::Personal,
-				),
-				'__INNER_FILTER_COMMON' => array(
-					'SCOPE' => \CCrmMailTemplateScope::Common,
-				),
-			),
-		),
-		false, false,
-		array('TITLE', 'SCOPE', 'ENTITY_TYPE_ID', 'BODY_TYPE')
-	);
+	$mailTemplateResult = \CCrmMailTemplate::getUserAvailableTemplatesList($arResult['OWNER_TYPE_ID']);
 
 	while($mailTemplateFields = $mailTemplateResult->Fetch())
 	{
@@ -463,7 +443,10 @@ endif;
 						"CRM_TASK_CREATION_PATH": "<?=CUtil::JSEscape(\Bitrix\Main\Config\Option::get('socialnetwork', 'user_page', SITE_DIR.'company/personal/').'user/#user_id#/tasks/task/edit/0/')?>",
 						"CRM_TASK_EDIT_PATH": "<?=CUtil::JSEscape(\Bitrix\Main\Config\Option::get('socialnetwork', 'user_page', SITE_DIR.'company/personal/').'user/#user_id#/tasks/task/edit/#task_id#/')?>",
 						"CRM_TASK_VIEW_PATH": "<?=CUtil::JSEscape(\Bitrix\Main\Config\Option::get('socialnetwork', 'user_page', SITE_DIR.'company/personal/').'user/#user_id#/tasks/task/view/#task_id#/')?>",
-						"CMR_DEAL_DETAILS_PATH": "<?=CUtil::JSEscape(\Bitrix\Main\Config\Option::get('crm', 'path_to_deal_details'))?>"
+						"CMR_DEAL_DETAILS_PATH": "<?=CUtil::JSEscape(\Bitrix\Main\Config\Option::get('crm', 'path_to_deal_details'))?>",
+						"CRM_ACTIVITY_TODO_OPENLINE_COMPLETE_CONF": "<?= GetMessageJS('CRM_ACTIVITY_TODO_OPENLINE_COMPLETE_CONF')?>",
+						"CRM_ACTIVITY_TODO_OPENLINE_COMPLETE_CONF_OK_TEXT": "<?= GetMessageJS('CRM_ACTIVITY_TODO_OPENLINE_COMPLETE_CONF_OK_TEXT')?>",
+						"CRM_ACTIVITY_TODO_OPENLINE_COMPLETE_CONF_TITLE": "<?= GetMessageJS('CRM_ACTIVITY_TODO_OPENLINE_COMPLETE_CONF_TITLE')?>"
 					}
 				);
 
@@ -471,7 +454,7 @@ endif;
 					BX.CrmActivityEditor.messages["diskAttachFiles"] = "<?= GetMessageJS('CRM_ACTIVITY_DISK_ATTACH_FILE')?>";
 					BX.CrmActivityEditor.messages["diskAttachedFiles"] = "<?= GetMessageJS('CRM_ACTIVITY_DISK_ATTACHED_FILES')?>";
 					BX.CrmActivityEditor.messages["diskSelectFile"] = "<?= GetMessageJS('CRM_ACTIVITY_DISK_SELECT_FILE')?>";
-					BX.CrmActivityEditor.messages["diskSelectFileLegend"] = "<?= GetMessageJS('CRM_ACTIVITY_DISK_SELECT_FILE_LEGEND')?>";
+					BX.CrmActivityEditor.messages["diskSelectFileLegend"] = "<?= GetMessageJS('CRM_ACTIVITY_DISK_SELECT_FILE_LEGEND_MSGVER_1')?>";
 					BX.CrmActivityEditor.messages["diskUploadFile"] = "<?= GetMessageJS('CRM_ACTIVITY_DISK_UPLOAD_FILE')?>";
 					BX.CrmActivityEditor.messages["diskUploadFileLegend"] = "<?= GetMessageJS('CRM_ACTIVITY_DISK_UPLOAD_FILE_LEGEND')?>";
 				<?endif;?>

@@ -6,6 +6,8 @@
  * @copyright 2001-2013 Bitrix
  */
 
+use Bitrix\Rest\RestException;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Util\User;
 
 if(!CModule::IncludeModule('rest'))
@@ -276,13 +278,13 @@ final class CTaskRestService extends IRestService
 
 			if ( ! in_array(
 				$statusId,
-				array(
-					CTasks::STATE_PENDING,
-					CTasks::STATE_IN_PROGRESS,
-					CTasks::STATE_SUPPOSEDLY_COMPLETED,
-					CTasks::STATE_COMPLETED,
-					CTasks::STATE_DEFERRED
-				),
+				[
+					Status::PENDING,
+					Status::IN_PROGRESS,
+					Status::SUPPOSEDLY_COMPLETED,
+					Status::COMPLETED,
+					Status::DEFERRED,
+				],
 				true	// forbid type casting
 			))
 			{
@@ -390,6 +392,8 @@ final class CTaskRestService extends IRestService
 
 	/**
 	 * This is an entry point for running any task.* rest method
+	 *
+	 * @throws RestException
 	 */
 	public static function __callStatic($transitMethodName, $args)
 	{
@@ -461,6 +465,10 @@ final class CTaskRestService extends IRestService
 				{
 					$errors = [['text' => $message]];
 				}
+				elseif (!empty($errors) && empty(array_column($errors, 'text')))
+				{
+					$errors = array_map(fn (string $error): array => ['text' => $error], $errors);
+				}
 			}
 			else
 			{
@@ -487,7 +495,7 @@ final class CTaskRestService extends IRestService
 		}
 
 		self::_emitError($errors);
-		throw new Exception();
+		throw new RestException($errors[0]['text']);
 	}
 
 

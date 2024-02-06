@@ -137,28 +137,12 @@ class BuilderSyncEventFromExternalData implements Core\Builders\Builder
 			$event->setIsPrivate(true);
 		}
 
-		if (!empty($this->item['created']))
-		{
-			$event->setDateCreate(
-				Core\Base\Date::createDateTimeFromFormat($this->item['created'],
-					Sync\Google\Helper::DATE_TIME_FORMAT_WITH_MICROSECONDS)
-			);
-		}
-
-		if (!empty($this->item['updated']))
-		{
-			$event->setDateModified(
-				Core\Base\Date::createDateTimeFromFormat($this->item['updated'],
-					Sync\Google\Helper::DATE_TIME_FORMAT_WITH_MICROSECONDS)
-			);
-		}
-
 		if (!empty($this->item['reminders']))
 		{
 			$event->setRemindCollection($this->getReminders($event->getStart()));
 		}
 
-		$event->setRecurringRule($this->prepareRecurringRule());
+		$event->setRecurringRule($this->prepareRecurringRule($event->getStart()));
 		$event->setExcludedDateCollection($this->prepareExcludedDatesCollection());
 
 		$event->setOriginalDateFrom($this->prepareOriginalStart());
@@ -187,10 +171,11 @@ class BuilderSyncEventFromExternalData implements Core\Builders\Builder
 		;
 	}
 
-	/**
-	 * @return RecurringEventRules|null
-	 */
-	private function prepareRecurringRule(): ?RecurringEventRules
+    /**
+     * @param Core\Base\Date $start
+     * @return RecurringEventRules|null
+     */
+	private function prepareRecurringRule(Core\Base\Date $start): ?RecurringEventRules
 	{
 		if (empty($this->item['recurrence']))
 		{
@@ -251,9 +236,21 @@ class BuilderSyncEventFromExternalData implements Core\Builders\Builder
 						return null;
 					}
 				}
-				if (!empty($rrule['BYDAY']) && $rrule['FREQ'] === RecurringEventRules::FREQUENCY_WEEKLY)
+				if ($rrule['FREQ'] === RecurringEventRules::FREQUENCY_WEEKLY)
 				{
-					$property->setByDay(explode(',', $rrule['BYDAY']));
+                    if (!empty($rrule['BYDAY']))
+                    {
+                        $property->setByDay(explode(',', $rrule['BYDAY']));
+                    }
+                    else
+                    {
+                        $dayOfWeek = $start->format('w');
+                        $day = \CCalendar::WeekDayByInd($dayOfWeek);
+                        if ($day)
+                        {
+                            $property->setByDay([$day]);
+                        }
+                    }
 				}
 
 				return $property;

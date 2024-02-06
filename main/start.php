@@ -1,1 +1,95 @@
-<? $GLOBALS['____1470760939']= array(base64_decode('ZXJyb3JfcmVwb'.'3J0a'.'W5n'),base64_decode('ZG'.'VmaW5l'),base64_decode('bWljcm90aW1l'),base64_decode('ZGVm'.'aW5lZA=='),base64_decode('ZGVmaW'.'5l'),base64_decode('ZGVmaW'.'5l'),base64_decode(''.'Z'.'GV'.'maW5lZA=='),base64_decode('ZGVmaW5l'),base64_decode('Z'.'G'.'V'.'maW5'.'l'),base64_decode('ZGVmaW'.'5l'),base64_decode('ZGVmaW5lZA='.'='),base64_decode('ZGVmaW5l'),base64_decode('ZGVm'.'aW5'.'lZA='.'='),base64_decode('ZGV'.'maW5l'),base64_decode('ZG'.'Vma'.'W5'.'lZA=='),base64_decode('ZGVm'.'aW'.'5l'),base64_decode('Z'.'GVm'.'aW5l'.'ZA'.'=='),base64_decode(''.'ZG'.'Vma'.'W5l'),base64_decode('ZGVmaW5'.'lZA'.'='.'='),base64_decode('ZGVm'.'aW5l'),base64_decode('ZGV'.'maW5lZA=='),base64_decode('Z'.'GVm'.'aW5l'),base64_decode('ZG'.'VmaW5lZA=='),base64_decode(''.'ZGV'.'m'.'aW5l'),base64_decode('ZGVmaW5lZA=='),base64_decode(''.'ZGVmaW5l'),base64_decode('ZG'.'V'.'maW'.'5l'.'ZA=='),base64_decode('Z'.'GV'.'ma'.'W5'.'l'),base64_decode('ZGVma'.'W5lZA=='),base64_decode('ZG'.'Vma'.'W5l'),base64_decode(''.'ZGV'.'ma'.'W5'.'lZA=='),base64_decode('ZG'.'VmaW5l'),base64_decode(''.'ZGVmaW5l'.'ZA='.'='),base64_decode(''.'ZGVmaW5l'),base64_decode('Z'.'GVma'.'W5lZA'.'=='),base64_decode('ZGV'.'maW5'.'l'),base64_decode(''.'Z'.'GVm'.'aW5'.'lZA'.'='.'='),base64_decode('Z'.'G'.'Vma'.'W5l'),base64_decode('ZG'.'V'.'maW5lZA'.'=='),base64_decode(''.'ZG'.'Vm'.'aW5l'),base64_decode('ZGV'.'maW5lZA='.'='),base64_decode(''.'ZGVmaW5l'),base64_decode('ZGVmaW5'.'lZ'.'A=='),base64_decode('ZG'.'V'.'ma'.'W'.'5l'),base64_decode('Z'.'GVm'.'aW5lZA=='),base64_decode('ZGVm'.'aW5l'),base64_decode('Z'.'GVma'.'W5lZA'.'='.'='),base64_decode('Z'.'G'.'VmaW'.'5l'),base64_decode('ZGVm'.'aW5lZ'.'A=='),base64_decode(''.'ZG'.'VmaW5l'),base64_decode(''.'ZGVm'.'aW5lZA=='),base64_decode('ZGVmaW5l'),base64_decode(''.'ZGVmaW5lZA'.'=='),base64_decode('ZGVm'.'aW'.'5'.'l'),base64_decode('YXJ'.'y'.'Y'.'Xlfa'.'2V5'.'X2V4aXN0c'.'w='.'='),base64_decode('c'.'3RydG9'.'1cHB'.'lc'.'g='.'='),base64_decode('c'.'2V0'.'Y29va2'.'ll'),base64_decode(''.'YXJy'.'YX'.'lfa2V5X'.'2V4aXN'.'0cw=='),base64_decode('ZGVma'.'W5'.'l'),base64_decode('ZX'.'Jyb3'.'Jf'.'cmVwb3J'.'0aW5n'),base64_decode('ZmlsZV9leGlzdHM='));if(!function_exists(__NAMESPACE__.'\\___1090520803')){function ___1090520803($_569052971){static $_837216906= false; if($_837216906 == false) $_837216906=array('L2J'.'4X'.'3Jvb3QucGhw','L2'.'xpY'.'i'.'9sb2FkZX'.'IucGhw',''.'L2luY2x1ZGU'.'vYXV0b'.'2'.'xvY'.'W'.'Qu'.'c'.'Ghw','U'.'1RBUlRf'.'R'.'VhF'.'Q19USU1'.'F','Ql'.'9QUk9M'.'T0'.'dfS'.'U5'.'DTFVERUQ=','Ql9QUk9MT0dfS'.'U5DT'.'FVERUQ=','L'.'2NsY'.'XNzZXMvZ2VuZXJhbC'.'92'.'ZX'.'JzaW'.'9uLnBo'.'c'.'A==','L'.'3Rvb2'.'xzLnBoc'.'A='.'=','RE9DVU1FT'.'lRfUk9PVA==','L3BocF9pbnRl'.'c'.'mZhY2U'.'vZGJjb2'.'5uLnBocA'.'==','b'.'Xlz'.'c'.'Ww'.'=','','','','','QlhfV'.'VRGX1BDU'.'kVf'.'TU9E'.'SUZJRVI=','Qlhf'.'VVRG','dQ'.'='.'=','','Ql'.'hfUk'.'VTS'.'V'.'p'.'FX0lN'.'Q'.'UdFX1B'.'ST1BPUlR'.'JT05'.'BTF'.'9BTFQ=','Qlhf'.'UkVTSVpFX0'.'lNQUd'.'FX'.'1B'.'ST1'.'BPUl'.'RJT05'.'BTA==','Qlh'.'f'.'U'.'k'.'VTSVpFX0lNQUdFX0'.'V'.'YQUNU','Q0FDSEVEX'.'2J'.'fb'.'G'.'FuZ'.'w==',''.'Q0FDS'.'EVEX2Jfb'.'GFuZw'.'==','Q0FDSEVEX2Jfb3B0aW9u','Q0FDS'.'EV'.'EX'.'2Jfb'.'3'.'B0aW9u','Q0FDS'.'EVEX2JfbGFuZ19kb21haW4=','Q0FDSEVE'.'X'.'2JfbGFu'.'Z19kb21ha'.'W4=','Q0FDS'.'EVEX2Jfc2l0Z'.'V90'.'ZW'.'1wbGF'.'0ZQ==','Q0FDS'.'EVEX2Jf'.'c2l0ZV9'.'0'.'ZW1wbGF0'.'ZQ==','Q0FDSEVEX2JfZXZlbnQ=','Q0F'.'DS'.'EVEX2Jf'.'ZX'.'ZlbnQ=','Q0FDS'.'EVE'.'X2'.'JfYWd'.'l'.'bnQ=','Q'.'0'.'FDSE'.'VE'.'X2JfYWd'.'lbnQ=',''.'Q0FD'.'S'.'EVEX2'.'1'.'l'.'bnU'.'=','Q0FDSEVE'.'X2'.'1lbnU=','Q0F'.'D'.'SEVEX2'.'JfZml'.'sZQ==','Q0'.'FDSEVEX2Jf'.'Z'.'mlsZQ'.'='.'=','Q'.'0'.'F'.'DS'.'EVEX2JfZmlsZV9idWN'.'r'.'ZXRf'.'c'.'2l6ZQ==',''.'Q0FD'.'SEV'.'EX'.'2'.'J'.'fZmlsZV9i'.'dWNrZ'.'XRfc'.'2l'.'6ZQ'.'==','Q'.'0F'.'D'.'SE'.'VEX2Jf'.'Z3J'.'vdXA'.'=','Q'.'0'.'FDSEVEX2JfZ3'.'JvdX'.'A=','Q'.'0F'.'DSEVE'.'X2Jf'.'dXNl'.'c'.'l9'.'maWV'.'sZ'.'A==','Q'.'0FDSEVEX2JfdXNl'.'cl9ma'.'WVsZA'.'==','Q0FDS'.'EV'.'E'.'X2J'.'fd'.'XNlcl'.'9maWVsZF9lbnVt','Q0'.'F'.'DSEV'.'EX'.'2JfdXNlcl9ma'.'WVsZF9l'.'bnV'.'t','Q'.'0'.'FDSE'.'VEX2JfdGFzaw'.'==','Q0'.'FDSEVEX2JfdG'.'F'.'zaw==','Q0FDSE'.'VEX2Jf'.'dG'.'F'.'za19vcGVyY'.'XRpb24=','Q0'.'FD'.'SEVE'.'X2'.'J'.'fdGFza19vcGVy'.'YXRpb24=','Q0F'.'DSE'.'VE'.'X2JfcmF0'.'aW5n','Q'.'0FD'.'S'.'EVEX2J'.'f'.'c'.'mF0aW5n',''.'Q0F'.'DS'.'EVEX2'.'JfcmF0aW5nX'.'3ZvdGU'.'=','Q0FD'.'SEVE'.'X2'.'J'.'fcmF0'.'aW5nX'.'3'.'ZvdGU=','Q0'.'FDSEVEX2JfcmF0'.'aW5nX2'.'J1Y2t'.'ldF9zaXpl','Q'.'0'.'FDSEVEX2JfcmF'.'0'.'aW5nX2J1Y2tldF9zaXpl','Q'.'0FDSEVEX2'.'JfdX'.'Nlc'.'l'.'9h'.'Y'.'2'.'Nl'.'c3'.'Nf'.'Y2hlY2s=','Q0'.'FDSEVEX2'.'J'.'fdXN'.'l'.'c'.'l9hY2Nlc3N'.'fY2h'.'lY2'.'s=','Q0F'.'DSEVEX2JfdXN'.'lcl9'.'jb'.'3Vud'.'GV'.'y',''.'Q0'.'FDSEV'.'EX2JfdXNlc'.'l9'.'j'.'b3'.'Vud'.'GVy','Q0FDS'.'EVEX2Jf'.'Z3JvdX'.'Bfc3Vib3'.'Jk'.'aW5h'.'dGU=','Q0FD'.'SEVEX2JfZ'.'3JvdXB'.'fc3V'.'ib'.'3JkaW5hd'.'G'.'U=','Q0FDS'.'EVEX2Jfc2'.'1'.'pbGU=','Q0FDSE'.'VEX2Jfc2'.'1pb'.'GU'.'=','VEFHR0VEX'.'3VzZX'.'JfY2FyZF9zaXpl','VE'.'F'.'H'.'R0V'.'EX3'.'V'.'zZXJfY2FyZF9z'.'aX'.'pl',''.'L2NsYX'.'N'.'zZXMvb'.'X'.'lzcW'.'wvZGF0YWJh'.'c2Uuc'.'Ghw','REI=',''.'REI'.'=',''.'REI=','R'.'E'.'9DVU1FT'.'lRfUk9PVA==','L215c3'.'FsX2R'.'lY'.'n'.'VnL'.'nNxbA='.'=','','c2hv'.'d19z'.'cWxfc3'.'R'.'hd'.'A'.'==',''.'c2hvd1'.'9zcW'.'x'.'fc'.'3R'.'hdA==','WQ==','W'.'Q==','','c'.'2hvd1'.'9zc'.'Wxfc3'.'Rh'.'dA==','Lw='.'=','c2hvd'.'19zcWxfc3RhdA==','c2'.'hv'.'d19zcWxfc3R'.'hdA==','WQ==','REI'.'=','TEl'.'DRU5T'.'RV9LR'.'Vk=','L'.'2N'.'sY'.'XNzZXMvZ'.'2VuZXJh'.'bC9jYWN'.'oZS5'.'waHA=','L2Ns'.'YXNz'.'Z'.'XMv'.'Z2VuZXJhb'.'C9tb2R1bGUuc'.'Ghw','L2'.'Ns'.'YXN'.'zZX'.'MvZ2VuZXJhb'.'C9'.'1'.'cGRh'.'dGVfZ'.'G'.'Jf'.'d'.'XBkYXRlc'.'i5waHA=');return base64_decode($_837216906[$_569052971]);}};  $GLOBALS['____1470760939'][0](E_COMPILE_ERROR|E_ERROR|E_CORE_ERROR|E_PARSE); require_once(__DIR__.___1090520803(0)); require_once(__DIR__.___1090520803(1)); require_once(__DIR__.___1090520803(2)); $GLOBALS['____1470760939'][1](___1090520803(3), $GLOBALS['____1470760939'][2](true)); if(!$GLOBALS['____1470760939'][3](___1090520803(4))){ $GLOBALS['____1470760939'][4](___1090520803(5), true);} require_once(__DIR__.___1090520803(6));  require_once(__DIR__.___1090520803(7)); FormDecode(); $_1620528891= \Bitrix\Main\HttpApplication::getInstance();  global $DBType, $DBDebug, $DBDebugToFile, $DBHost, $DBName, $DBLogin, $DBPassword;  require_once($_SERVER[___1090520803(8)].BX_PERSONAL_ROOT.___1090520803(9));  $DBType= ___1090520803(10); $DBHost= ___1090520803(11); $DBLogin= ___1090520803(12); $DBPassword= ___1090520803(13); $DBName= ___1090520803(14); $GLOBALS['____1470760939'][5](___1090520803(15),($GLOBALS['____1470760939'][6](___1090520803(16))? ___1090520803(17): ___1090520803(18))); $GLOBALS['____1470760939'][7](___1090520803(19),(902-2*451)); $GLOBALS['____1470760939'][8](___1090520803(20), round(0+0.2+0.2+0.2+0.2+0.2)); $GLOBALS['____1470760939'][9](___1090520803(21), round(0+1+1)); if(!$GLOBALS['____1470760939'][10](___1090520803(22))) $GLOBALS['____1470760939'][11](___1090520803(23), round(0+720+720+720+720+720)); if(!$GLOBALS['____1470760939'][12](___1090520803(24))) $GLOBALS['____1470760939'][13](___1090520803(25), round(0+3600)); if(!$GLOBALS['____1470760939'][14](___1090520803(26))) $GLOBALS['____1470760939'][15](___1090520803(27), round(0+1200+1200+1200)); if(!$GLOBALS['____1470760939'][16](___1090520803(28))) $GLOBALS['____1470760939'][17](___1090520803(29), round(0+720+720+720+720+720)); if(!$GLOBALS['____1470760939'][18](___1090520803(30))) $GLOBALS['____1470760939'][19](___1090520803(31), round(0+1800+1800)); if(!$GLOBALS['____1470760939'][20](___1090520803(32))) $GLOBALS['____1470760939'][21](___1090520803(33), round(0+1220+1220+1220)); if(!$GLOBALS['____1470760939'][22](___1090520803(34))) $GLOBALS['____1470760939'][23](___1090520803(35), round(0+900+900+900+900)); if(!$GLOBALS['____1470760939'][24](___1090520803(36))) $GLOBALS['____1470760939'][25](___1090520803(37), false); if(!$GLOBALS['____1470760939'][26](___1090520803(38))) $GLOBALS['____1470760939'][27](___1090520803(39), round(0+50+50)); if(!$GLOBALS['____1470760939'][28](___1090520803(40))) $GLOBALS['____1470760939'][29](___1090520803(41), round(0+900+900+900+900)); if(!$GLOBALS['____1470760939'][30](___1090520803(42))) $GLOBALS['____1470760939'][31](___1090520803(43), round(0+1800+1800)); if(!$GLOBALS['____1470760939'][32](___1090520803(44))) $GLOBALS['____1470760939'][33](___1090520803(45), round(0+1800+1800)); if(!$GLOBALS['____1470760939'][34](___1090520803(46))) $GLOBALS['____1470760939'][35](___1090520803(47), round(0+1200+1200+1200)); if(!$GLOBALS['____1470760939'][36](___1090520803(48))) $GLOBALS['____1470760939'][37](___1090520803(49), round(0+1800+1800)); if(!$GLOBALS['____1470760939'][38](___1090520803(50))) $GLOBALS['____1470760939'][39](___1090520803(51), round(0+1800+1800)); if(!$GLOBALS['____1470760939'][40](___1090520803(52))) $GLOBALS['____1470760939'][41](___1090520803(53), round(0+43200+43200)); if(!$GLOBALS['____1470760939'][42](___1090520803(54))) $GLOBALS['____1470760939'][43](___1090520803(55), round(0+33.333333333333+33.333333333333+33.333333333333)); if(!$GLOBALS['____1470760939'][44](___1090520803(56))) $GLOBALS['____1470760939'][45](___1090520803(57), round(0+1200+1200+1200)); if(!$GLOBALS['____1470760939'][46](___1090520803(58))) $GLOBALS['____1470760939'][47](___1090520803(59), round(0+900+900+900+900)); if(!$GLOBALS['____1470760939'][48](___1090520803(60))) $GLOBALS['____1470760939'][49](___1090520803(61), round(0+15768000+15768000)); if(!$GLOBALS['____1470760939'][50](___1090520803(62))) $GLOBALS['____1470760939'][51](___1090520803(63), round(0+10512000+10512000+10512000)); if(!$GLOBALS['____1470760939'][52](___1090520803(64))) $GLOBALS['____1470760939'][53](___1090520803(65), round(0+20+20+20+20+20));  require_once(__DIR__.___1090520803(66)); $GLOBALS[___1090520803(67)]= new CDatabase; $GLOBALS[___1090520803(68)]->debug= $DBDebug; if($DBDebugToFile){ $GLOBALS[___1090520803(69)]->DebugToFile= true; $_1620528891->getConnection()->startTracker()->startFileLog($_SERVER[___1090520803(70)].___1090520803(71));}  $_1287664919= ___1090520803(72); if($GLOBALS['____1470760939'][54](___1090520803(73), $_GET)){ $_1287664919=($GLOBALS['____1470760939'][55]($_GET[___1090520803(74)]) == ___1090520803(75)? ___1090520803(76):___1090520803(77)); $GLOBALS['____1470760939'][56](___1090520803(78), $_1287664919, false, ___1090520803(79));} elseif($GLOBALS['____1470760939'][57](___1090520803(80), $_COOKIE)){ $_1287664919= $_COOKIE[___1090520803(81)];} if($_1287664919 == ___1090520803(82)){ $GLOBALS[___1090520803(83)]->ShowSqlStat= true; $_1620528891->getConnection()->startTracker();}  $GLOBALS['____1470760939'][58](___1090520803(84), $_1620528891->getLicense()->getKey());  require_once(__DIR__.___1090520803(85)); require_once(__DIR__.___1090520803(86)); $GLOBALS['____1470760939'][59](E_COMPILE_ERROR|E_ERROR|E_CORE_ERROR|E_PARSE); if($GLOBALS['____1470760939'][60](($_1503981498= __DIR__.___1090520803(87)))){ $US_HOST_PROCESS_MAIN= true; include($_1503981498);}?>
+<?php
+
+/**
+ * Bitrix Framework
+ * @package bitrix
+ * @subpackage main
+ * @copyright 2001-2023 Bitrix
+ */
+
+error_reporting(E_COMPILE_ERROR | E_ERROR | E_CORE_ERROR | E_PARSE);
+
+define("START_EXEC_TIME", microtime(true));
+
+if (!defined('B_PROLOG_INCLUDED'))
+{
+	define("B_PROLOG_INCLUDED", true);
+}
+
+require_once __DIR__ . '/bx_root.php';
+require_once __DIR__ . '/lib/loader.php';
+require_once __DIR__ . '/include/autoload.php';
+require_once __DIR__ . '/classes/general/version.php';
+
+// global functions
+require_once __DIR__ . '/tools.php';
+
+/**
+ * @todo Get rid of
+ */
+FormDecode();
+
+$application = \Bitrix\Main\HttpApplication::getInstance();
+
+//Defined in dbconn.php
+global $DBType, $DBDebug, $DBDebugToFile, $DBHost, $DBName, $DBLogin, $DBPassword;
+
+//read various parameters
+require_once($_SERVER["DOCUMENT_ROOT"] . BX_PERSONAL_ROOT . '/php_interface/dbconn.php');
+
+// not used anymore
+$DBType = 'mysql';
+$DBHost = '';
+$DBLogin = '';
+$DBPassword = '';
+$DBName = '';
+
+// need to be after dbconn.php
+require_once __DIR__ . '/include/constants.php';
+
+// Database-dependent classes
+CAllDatabase::registerAutoload();
+
+// From here global variable $DB is available (CDatabase class)
+$GLOBALS['DB'] = new CDatabase();
+
+$GLOBALS['DB']->debug = $DBDebug;
+if ($DBDebugToFile)
+{
+	$GLOBALS['DB']->DebugToFile = true;
+	$application->getConnection()->startTracker()->startFileLog($_SERVER['DOCUMENT_ROOT'] . '/mysql_debug.sql');
+}
+
+//magic parameters: show sql queries statistics
+$show_sql_stat = '';
+if (isset($_GET['show_sql_stat']))
+{
+	$show_sql_stat = (strtoupper($_GET['show_sql_stat']) == 'Y' ? 'Y' : '');
+	setcookie('show_sql_stat', $show_sql_stat, false, '/');
+}
+elseif (isset($_COOKIE['show_sql_stat']))
+{
+	$show_sql_stat = $_COOKIE['show_sql_stat'];
+}
+if ($show_sql_stat == 'Y')
+{
+	$GLOBALS['DB']->ShowSqlStat = true;
+	$application->getConnection()->startTracker();
+}
+
+/**
+ * License key.
+ * @deprecated Use $application->getLicense()->getKey().
+ */
+define('LICENSE_KEY', $application->getLicense()->getKey());
+
+/** @todo Change globals to getInstance() */
+$GLOBALS['CACHE_STAT_BYTES'] = 0;
+$GLOBALS['CACHE_MANAGER'] = new CCacheManager;
+$GLOBALS['stackCacheManager'] = new CStackCacheManager();
+
+if (file_exists(($fname = __DIR__ . '/classes/general/update_db_updater.php')))
+{
+	$US_HOST_PROCESS_MAIN = true;
+	include $fname;
+}

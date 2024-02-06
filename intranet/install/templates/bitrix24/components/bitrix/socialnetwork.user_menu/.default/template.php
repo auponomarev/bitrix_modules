@@ -21,6 +21,26 @@ use Bitrix\Tasks\Util\User;
 
 CUtil::InitJSCore(array("popup"));
 
+if (!function_exists('checkEffectiveRights'))
+{
+	function checkEffectiveRights($viewedUser)
+	{
+		//TODO move to tasks/security later
+		Loader::includeModule('tasks');
+		$currentUser = User::getId();
+
+		if (!$viewedUser)
+		{
+			return false;
+		}
+
+		return
+			$currentUser == $viewedUser ||
+			User::isSuper($currentUser) ||
+			User::isBossRecursively($currentUser, $viewedUser);
+	}
+}
+
 if (
 	!isset($arResult["User"]["ID"])
 	|| (
@@ -84,7 +104,14 @@ $profileItem = array(
 
 if (!$isCurrentUserPage)
 {
-	$profileItem['profile']['URL'] = SITE_DIR . "company/personal/user/{$userId}/";
+	if (str_contains($APPLICATION->GetCurPage(), 'extranet'))
+	{
+		$profileItem['profile']['URL'] = "/extranet/contacts/personal/user/{$userId}/";
+	}
+	else
+	{
+		$profileItem['profile']['URL'] = "/company/personal/user/{$userId}/";
+	}
 }
 
 $items = array_merge($items, $profileItem);
@@ -113,7 +140,11 @@ if (
 		$sublink = new Uri(SITE_DIR . "company/personal/user/{$userId}/tasks/task/edit/0/");
 		if (!$isCurrentUserPage)
 		{
-			$sublink->addParams(['RESPONSIBLE_ID' => $userId]);
+			$sublink->addParams([
+				'RESPONSIBLE_ID' => $userId,
+				'ta_sec' => 'user',
+				'ta_el' => 'horizontal_menu',
+			]);
 		}
 		$taskItem['tasks']['SUB_LINK'] = [
 			'CLASS' => '',
@@ -240,23 +271,6 @@ foreach($items as $key => $item)
 }
 
 $items = array_values($items);
-
-function checkEffectiveRights($viewedUser)
-{
-	//TODO move to tasks/security later
-	Loader::includeModule('tasks');
-	$currentUser = User::getId();
-
-	if (!$viewedUser)
-	{
-		return false;
-	}
-
-	return
-		$currentUser == $viewedUser ||
-		User::isSuper($currentUser) ||
-		User::isBossRecursively($currentUser, $viewedUser);
-}
 
 if (
 	is_array($arResult["CurrentUserPerms"])

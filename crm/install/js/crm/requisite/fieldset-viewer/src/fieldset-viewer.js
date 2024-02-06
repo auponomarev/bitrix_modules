@@ -19,6 +19,11 @@ type FieldsetViewerOptions = {
 	},
 };
 
+type RequestError = {
+	message: string,
+	code: string | null,
+	customData: any,
+};
 
 /**
  * @namespace BX.Crm.Requisite
@@ -48,16 +53,18 @@ export class FieldsetViewer extends EventEmitter
 
 	load(): Promise<any>
 	{
-		return new Promise((resolve) => {
-			const {entityTypeId, entityId, fieldListEditorOptions} = this.getOptions();
-			const presetId = fieldListEditorOptions
-				? (fieldListEditorOptions.fieldsPanelOptions ? fieldListEditorOptions.fieldsPanelOptions.presetId : null)
-				: null;
+		return new Promise((resolve, reject) => {
+			const { entityTypeId, entityId, fieldListEditorOptions } = this.getOptions();
+
+			const presetId = fieldListEditorOptions?.fieldsPanelOptions?.presetId ?? null;
 
 			BX.ajax
-				.runAction('crm.api.fieldset.load', {json: {entityTypeId, entityId, presetId}})
+				.runAction('crm.api.fieldset.load', { json: { entityTypeId, entityId, presetId } })
 				.then((result) => {
 					resolve(result.data);
+				})
+				.catch((result) => {
+					reject(result.errors);
 				});
 		});
 	}
@@ -117,12 +124,16 @@ export class FieldsetViewer extends EventEmitter
 		Dom.clean(popup.getContentContainer());
 		void this.getLoader().show(popup.getContentContainer());
 
-		this.load().then((result) => {
-			this.setData({...result});
-			popup.setContent(
-				this.createPopupContent(result),
-			);
-		});
+		this.load()
+			.then((result) => {
+				this.setData({ ...result });
+				popup.setContent(
+					this.createPopupContent(result),
+				);
+			})
+			.catch((errors: Array<RequestError>) => {
+				this.emit('onFieldSetLoadError', { requestErrors: errors });
+			});
 
 		popup.show();
 	}
@@ -237,11 +248,15 @@ export class FieldsetViewer extends EventEmitter
 			return '';
 		})();
 
+		const value = Type.isObject(options?.value) ? Object.values(options?.value)?.reduce((a, b) => {
+			return `${a}, ${b}`;
+		}) : options?.value;
+
 		return Tag.render`
 			<div class="crm-requisite-fieldset-viewer-list-item">
 				<div class="crm-requisite-fieldset-viewer-list-item-left">
 					<div class="crm-requisite-fieldset-viewer-list-item-label">${Text.encode(options?.label)}</div>
-					<div class="crm-requisite-fieldset-viewer-list-item-value">${Text.encode(options?.value)}</div>
+					<div class="crm-requisite-fieldset-viewer-list-item-value">${Text.encode(value)}</div>
 				</div>
 				<div class="crm-requisite-fieldset-viewer-list-item-right">
 					${editButton}
@@ -272,7 +287,7 @@ export class FieldsetViewer extends EventEmitter
 			const options: FieldsetViewerOptions = this.getOptions();
 			return new ListEditor({
 				setId: this.getData().id,
-				title: Loc.getMessage('CRM_REQUISITE_FIELDSET_VIEWER__SET_EDITOR_TITLE'),
+				title: Loc.getMessage('CRM_REQUISITE_FIELDSET_VIEWER__SET_EDITOR_TITLE_MSGVER_1'),
 				editable: {
 					label: {
 						label: Loc.getMessage('CRM_REQUISITE_FIELDSET_VIEWER__SET_EDITOR_NAME_LABEL'),
@@ -301,7 +316,7 @@ export class FieldsetViewer extends EventEmitter
 	{
 		return this.cache.remember('editButton', () => {
 			return new Button({
-				text: Loc.getMessage('CRM_REQUISITE_FIELDSET_VIEWER_EDIT_BUTTON_LABEL'),
+				text: Loc.getMessage('CRM_REQUISITE_FIELDSET_VIEWER_EDIT_BUTTON_LABEL_MSGVER_1'),
 				color: Button.Color.LIGHT_BORDER,
 				icon: Button.Icon.EDIT,
 				size: Button.Size.SMALL,

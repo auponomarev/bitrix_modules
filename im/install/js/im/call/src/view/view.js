@@ -1,6 +1,7 @@
 import {Browser, Dom, Runtime, Text, Type} from 'main.core';
 import {BaseEvent, EventEmitter} from 'main.core.events';
 import {Popup} from 'main.popup';
+import {DesktopApi} from 'im.v2.lib.desktop-api';
 
 import {UserModel, UserRegistry} from './user-registry'
 import * as Buttons from './buttons';
@@ -74,6 +75,7 @@ const EventName = {
 	onUserPinned: 'onUserPinned',
 	onDeviceSelectorShow: 'onDeviceSelectorShow',
 	onOpenAdvancedSettings: 'onOpenAdvancedSettings',
+	onHasMainStream: 'onHasMainStream',
 };
 
 const newUserPosition = 999;
@@ -185,6 +187,9 @@ export class View
 			onUserRename: this._onUserRename.bind(this),
 			onUserRenameInputFocus: this._onUserRenameInputFocus.bind(this),
 			onUserRenameInputBlur: this._onUserRenameInputBlur.bind(this),
+			onClick: this._onUserClick.bind(this),
+			onPin: this._onUserPin.bind(this),
+			onUnPin: this._onUserUnPin.bind(this),
 		});
 
 		this.centralUser = this.localUser; //show local user until someone is connected
@@ -470,10 +475,7 @@ export class View
 		{
 			return;
 		}
-		if (userId == this.userId && this.getUsersWithVideo().length > 0)
-		{
-			return;
-		}
+
 		if (!this.users[userId] && userId != this.userId)
 		{
 			return;
@@ -483,7 +485,10 @@ export class View
 		this.centralUser = (userId == this.userId ? this.localUser : this.users[userId]);
 		if (this.layout == Layouts.Centered || this.layout == Layouts.Mobile)
 		{
-			previousCentralUser.dismount();
+			if (this.layout == Layouts.Mobile)
+			{
+				previousCentralUser.dismount();
+			}
 			this.updateUserList();
 		}
 		if (this.layout == Layouts.Mobile)
@@ -683,6 +688,7 @@ export class View
 
 	switchPresenter()
 	{
+		const currentPresenterId = this.presenterId || 0;
 		const newPresenterId = this.getPresenterUserId();
 
 		if (!newPresenterId)
@@ -696,6 +702,19 @@ export class View
 		if (this.pinnedUser === null)
 		{
 			this.setCentralUser(newPresenterId);
+
+			if (this.layout == Layouts.Centered && currentPresenterId !== newPresenterId)
+			{
+				this.eventEmitter.emit(EventName.onHasMainStream, {
+					userId: this.centralUser.id
+				});
+			}
+		}
+		else if (currentPresenterId !== newPresenterId)
+		{
+			this.eventEmitter.emit(EventName.onHasMainStream, {
+				userId: this.centralUser.id
+			});
 		}
 
 		if (this.layout == Layouts.Grid)
@@ -778,6 +797,9 @@ export class View
 				});
 			}
 			this.unpinUser();
+			this.eventEmitter.emit(EventName.onHasMainStream, {
+				userId: null
+			});
 		}
 		if (this.layout == Layouts.Centered && this.isFullScreen)
 		{
@@ -1045,7 +1067,9 @@ export class View
 
 	addUser(userId, state, direction)
 	{
-		userId = Number(userId);
+		// todo: revert after adding new provider to mobile apps
+		// userId = Number(userId);
+		userId = userId;
 		if (this.users[userId])
 		{
 			return;
@@ -1181,15 +1205,21 @@ export class View
 		{
 			user.order = this.getNextPosition();
 		}
+		else if (newState == UserState.Idle)
+		{
+			this.setUserFloorRequestState(userId, false);
+		}
 
 		if (userId == this.localUser.id)
 		{
-			this.setCameraState(this.localUser.hasVideo());
-			this.localUser.userModel.cameraState = this.localUser.hasVideo();
+			this.setCameraState(this.localUser.hasCameraVideo());
+			this.localUser.userModel.cameraState = this.localUser.hasCameraVideo();
 		}
 
+		const skippedElementsList = userId === this.localUser.id ? [] : ['panel'];
+
 		this.updateUserList();
-		this.updateButtons();
+		this.updateButtons(skippedElementsList);
 		this.updateUserButtons();
 	};
 
@@ -1231,6 +1261,18 @@ export class View
 			this.switchPresenter();
 		}
 	};
+
+	setUserStats(userId, stats)
+	{
+		if (this.users[userId])
+		{
+			this.users[userId].showStats(stats);
+		}
+		if (this.screenUsers[userId])
+		{
+			this.screenUsers[userId].showStats(stats);
+		}
+	}
 
 	setUserMicrophoneState(userId, isMicrophoneOn)
 	{
@@ -1291,16 +1333,19 @@ export class View
 
 	pinUser(userId)
 	{
-		if (!(userId in this.users))
+		if (!(userId in this.users) && userId !== Number(this.userId))
 		{
 			console.error("User " + userId + " is not known");
 			return;
 		}
-		this.pinnedUser = this.users[userId];
+		this.pinnedUser = !this.users[userId] ? this.localUser : this.users[userId];
 		this.userRegistry.users.forEach(userModel => userModel.pinned = userModel.id == userId);
 		this.setCentralUser(userId);
 		this.eventEmitter.emit(EventName.onUserPinned, {
 			userId: userId
+		});
+		this.eventEmitter.emit(EventName.onHasMainStream, {
+			userId: this.centralUser.id
 		});
 	};
 
@@ -1364,15 +1409,32 @@ export class View
 		this.localUser.flipVideo = !!flipVideo;
 	}
 
-	setLocalStream(mediaStream: MediaStream, flipVideo: ?boolean)
+	setLocalStream(streamData)
 	{
-		this.localUser.videoTrack = mediaStream.getVideoTracks().length > 0 ? mediaStream.getVideoTracks()[0] : null;
+		const mediaRenderer = streamData.mediaRenderer;
+		const mediaStream = streamData.stream;
+		const removed = streamData.removed;
+		const flipVideo = streamData.flipVideo;
+		if (removed)
+		{
+			mediaRenderer.stream = null;
+		}
+
+		if (mediaRenderer) // for Bitrix calls
+		{
+			this.localUser.videoRenderer = mediaRenderer;
+		}
+		else
+		{
+			this.localUser.videoTrack = mediaStream.getVideoTracks().length > 0 ? mediaStream.getVideoTracks()[0] : null;
+		}
+
 		if (!Type.isUndefined(flipVideo))
 		{
 			this.flipLocalVideo(flipVideo);
 		}
-		this.setCameraState(this.localUser.hasVideo());
-		this.localUser.userModel.cameraState = this.localUser.hasVideo();
+		this.setCameraState(this.localUser.hasCameraVideo());
+		this.localUser.userModel.cameraState = this.localUser.hasCameraVideo();
 
 		const videoTracks = mediaStream.getVideoTracks();
 		if (videoTracks.length > 0)
@@ -1380,7 +1442,7 @@ export class View
 			const videoTrackSettings = videoTracks[0].getSettings();
 			this.cameraId = videoTrackSettings.deviceId || '';
 		}
-		else
+		else if (!mediaRenderer)
 		{
 			this.cameraId = '';
 		}
@@ -1399,7 +1461,11 @@ export class View
 
 		if (this.layout !== Layouts.Grid && this.centralUser.id == this.userId)
 		{
-			if (videoTracks.length > 0 || Object.keys(this.users).length === 0)
+			if (mediaRenderer) // for Bitrix ca;ls
+			{
+				this.centralUser.videoRenderer = mediaRenderer;
+			}
+			else if (videoTracks.length > 0 || Object.keys(this.users).length === 0)
 			{
 				this.centralUser.videoTrack = videoTracks[0];
 			}
@@ -1501,6 +1567,31 @@ export class View
 			this.screenUsers[userId].videoTrack = track;
 			this.updateUserList();
 			this.setUserScreenState(userId, track !== null);
+		}
+	};
+
+	removeScreenUsers()
+	{
+		for (let userId in this.screenUsers)
+		{
+			this.screenUsers[userId].videoTrack = null;
+		}
+		this.updateUserList();
+	};
+
+	setBadNetworkIndicator(userId, badNetworkIndicator)
+	{
+		if (this.users[userId])
+		{
+			this.users[userId].badNetworkIndicator = badNetworkIndicator;
+		}
+	}
+
+	setUserHasConnectionProblem(userId, hasConnectionProblem)
+	{
+		if (this.users[userId])
+		{
+			this.users[userId].hasConnectionProblem = hasConnectionProblem;
 		}
 	};
 
@@ -1667,12 +1758,13 @@ export class View
 			speakerEnabled: !this.speakerMuted,
 			speakerId: this.speakerId,
 			allowHdVideo: Hardware.preferHdQuality,
-			faceImproveEnabled: Util.isDesktop() && typeof (BX.desktop) !== 'undefined' && BX.desktop.cameraSmoothingStatus(),
-			allowFaceImprove: Util.isDesktop() && typeof (BX.desktop) !== 'undefined' && BX.desktop.enableInVersion(64),
+			faceImproveEnabled: Util.isDesktop() && DesktopApi.isDesktop() && DesktopApi.getCameraSmoothingStatus(),
+			allowFaceImprove: Util.isDesktop() && DesktopApi.isDesktop() && DesktopApi.getApiVersion() > 64,
 			allowBackground: BackgroundDialog.isAvailable() && this.isIntranetOrExtranet,
 			allowMask: BackgroundDialog.isMaskAvailable() && this.isIntranetOrExtranet,
 			allowAdvancedSettings: typeof (BXIM) !== 'undefined' && this.isIntranetOrExtranet,
-			showCameraBlock: !this.isButtonBlocked('camera'),
+			switchCameraBlocked: this.blockedButtons['camera'],
+			switchMicrophoneBlocked: this.blockedButtons['microphone'],
 			events: {
 				[DeviceSelector.Events.onMicrophoneSelect]: this._onMicrophoneSelected.bind(this),
 				[DeviceSelector.Events.onMicrophoneSwitch]: this._onMicrophoneButtonClick.bind(this),
@@ -1967,6 +2059,8 @@ export class View
 	{
 		this.showMessage(params);
 		this.setUiState(UiState.Error);
+		// in some cases video elements may still be shown on the error screen, let's hide them
+		this.elements.userList.container.style.display = 'none';
 	};
 
 	close()
@@ -2183,11 +2277,37 @@ export class View
 	blockSwitchCamera()
 	{
 		this.blockedButtons['camera'] = true;
+		if (this.deviceSelector)
+		{
+			this.deviceSelector.toggleCameraAvailability(false);
+		}
 	};
 
 	unblockSwitchCamera()
 	{
 		delete this.blockedButtons['camera'];
+		if (this.deviceSelector)
+		{
+			this.deviceSelector.toggleCameraAvailability(true);
+		}
+	};
+
+	blockSwitchMicrophone()
+	{
+		this.blockedButtons['microphone'] = true;
+		if (this.deviceSelector)
+		{
+			this.deviceSelector.toggleMicrophoneAvailability(false);
+		}
+	};
+
+	unblockSwitchMicrophone()
+	{
+		delete this.blockedButtons['microphone'];
+		if (this.deviceSelector)
+		{
+			this.deviceSelector.toggleMicrophoneAvailability(true);
+		}
 	};
 
 	blockScreenSharing()
@@ -2571,6 +2691,9 @@ export class View
 		if (this.layout == Layouts.Centered || this.layout == Layouts.Mobile)
 		{
 			this.centralUser.mount(this.elements.center);
+			this.eventEmitter.emit(EventName.onHasMainStream, {
+				userId: this.centralUser.id
+			});
 			this.elements.root.classList.add("bx-messenger-videocall-centered");
 			if (this.layout != Layouts.Mobile)
 			{
@@ -2777,8 +2900,7 @@ export class View
 		else if (this.layout == Layouts.Centered)
 		{
 			containerSize = this.elements.center.getBoundingClientRect();
-			avatarSize = Math.round(containerSize.height * 0.45);
-			avatarSize = Math.min(avatarSize, 142);
+			avatarSize = Math.min(Math.round(containerSize.height * 0.45), Math.round(containerSize.width * 0.45));
 			this.centralUser.setIncomingVideoConstraints(Math.floor(containerSize.width), Math.floor(containerSize.height));
 		}
 		this.elements.center.style.setProperty('--avatar-size', avatarSize + 'px');
@@ -3004,6 +3126,7 @@ export class View
 						text: Object.keys(this.users).length > 1 ? BX.message("IM_M_CALL_BTN_DISCONNECT") : BX.message("IM_M_CALL_BTN_HANGUP"),
 						onClick: this._onHangupButtonClick.bind(this)
 					});
+
 					right.appendChild(this.buttons.hangup.render());
 					break;
 				case "close":
@@ -3318,6 +3441,9 @@ export class View
 				}
 
 				this.centralUser.mount(this.elements.center);
+				this.eventEmitter.emit(EventName.onHasMainStream, {
+					userId: this.centralUser.id
+				});
 				this.centralUser.visible = true;
 			}
 			return;
@@ -3406,15 +3532,20 @@ export class View
 		}
 	};
 
-	updateButtons()
+	updateButtons(skippedElementsList = [])
 	{
 		if (!this.elements.panel)
 		{
 			return;
 		}
-		Dom.clean(this.elements.panel);
+
+		if (!skippedElementsList.includes('panel'))
+		{
+			Dom.clean(this.elements.panel);
+			this.elements.panel.appendChild(this.renderButtons(this.getButtonList()));
+		}
+
 		Dom.clean(this.elements.topPanel);
-		this.elements.panel.appendChild(this.renderButtons(this.getButtonList()));
 		if (this.elements.topPanel)
 		{
 			this.elements.topPanel.appendChild(this.renderTopButtons(this.getTopButtonList()));
@@ -3883,6 +4014,10 @@ export class View
 		)
 		{
 			e.preventDefault();
+			if (this.deviceSelector)
+			{
+				this.deviceSelector.destroy();
+			}
 			this._onMicrophoneButtonClick(e);
 		}
 		else if (
@@ -3896,6 +4031,10 @@ export class View
 				this.pushToTalk = true;
 				this.microphoneHotkeyTimerId = setTimeout(function ()
 				{
+					if (this.deviceSelector)
+					{
+						this.deviceSelector.destroy();
+					}
 					this._onMicrophoneButtonClick(e);
 				}.bind(this), 100);
 			}
@@ -3914,6 +4053,10 @@ export class View
 		)
 		{
 			e.preventDefault();
+			if (this.deviceSelector)
+			{
+				this.deviceSelector.destroy();
+			}
 			this._onCameraButtonClick(e);
 		}
 		else if (
@@ -3991,6 +4134,10 @@ export class View
 		{
 			e.preventDefault();
 			this.pushToTalk = false;
+			if (this.deviceSelector)
+			{
+				this.deviceSelector.destroy();
+			}
 			this._onMicrophoneButtonClick(e);
 		}
 	};
@@ -3998,15 +4145,7 @@ export class View
 	_onUserClick(e)
 	{
 		const userId = e.userId;
-		if (userId == this.userId)
-		{
-			return;
-		}
 
-		/*if(this.layout == Layouts.Grid)
-		{
-			this.setLayout(Layouts.Centered);
-		}*/
 		if (userId == this.centralUser.id && this.layout != Layouts.Grid)
 		{
 			this.elements.root.classList.toggle("bx-messenger-videocall-hidden-panels");
@@ -4015,6 +4154,10 @@ export class View
 		if (this.layout == Layouts.Centered && userId != this.centralUser.id)
 		{
 			this.pinUser(userId);
+		}
+		else
+		{
+			(this.pinnedUser && this.pinnedUser.id === userId) ? this._onUserUnPin() : this._onUserPin({userId});
 		}
 
 		this.eventEmitter.emit(EventName.onUserClick, {
@@ -4049,6 +4192,10 @@ export class View
 
 	_onUserUnPin()
 	{
+		if (this.layout == Layouts.Centered)
+		{
+			this.setLayout(Layouts.Grid)
+		}
 		this.unpinUser();
 	};
 
@@ -4163,6 +4310,12 @@ export class View
 	_onGridButtonClick()
 	{
 		this.setLayout(this.layout == Layouts.Centered ? Layouts.Grid : Layouts.Centered);
+		if (this.layout == Layouts.Centered && this.localUser.id !== this.centralUser.id)
+		{
+			this.eventEmitter.emit(EventName.onHasMainStream, {
+				userId: this.centralUser.id
+			});
+		}
 	};
 
 	_onAddButtonClick(e)
@@ -4211,11 +4364,6 @@ export class View
 
 	_onMicrophoneSelected(e)
 	{
-		if (e.data.deviceId === this.microphoneId)
-		{
-			return;
-		}
-
 		this.eventEmitter.emit(EventName.onReplaceMicrophone, {
 			deviceId: e.data.deviceId
 		});
@@ -4241,11 +4389,6 @@ export class View
 
 	_onCameraSelected(e)
 	{
-		if (e.data.deviceId === this.cameraId)
-		{
-			return;
-		}
-
 		this.eventEmitter.emit(EventName.onReplaceCamera, {
 			deviceId: e.data.deviceId
 		});

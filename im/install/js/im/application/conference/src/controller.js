@@ -11,6 +11,7 @@
 import 'im.debug';
 import 'im.application.launch';
 import 'im.component.conference.conference-public';
+import {DesktopApi} from 'im.v2.lib.desktop-api';
 import * as Call from 'im.call';
 import { ConferenceModel, CallModel } from "im.model";
 import { Controller } from 'im.controller';
@@ -100,6 +101,7 @@ class ConferenceApplication
 		this.onCallRemoteMediaStoppedHandler = this.onCallRemoteMediaStopped.bind(this);
 		this.onCallUserVoiceStartedHandler = this.onCallUserVoiceStarted.bind(this);
 		this.onCallUserVoiceStoppedHandler = this.onCallUserVoiceStopped.bind(this);
+		this.onUserStatsReceivedHandler = this.onUserStatsReceived.bind(this);
 		this.onCallUserScreenStateHandler = this.onCallUserScreenState.bind(this);
 		this.onCallUserRecordStateHandler = this.onCallUserRecordState.bind(this);
 		this.onCallUserFloorRequestHandler = this.onCallUserFloorRequest.bind(this);
@@ -118,7 +120,6 @@ class ConferenceApplication
 		this.callEventReceived = false;
 		this.callRecordState = Call.View.RecordState.Stopped;
 
-		this.desktop = null;
 		this.floatingScreenShareWindow = null;
 		this.webScreenSharePopup = null;
 
@@ -144,14 +145,12 @@ class ConferenceApplication
 		/* region 01. Initialize methods */
 		initDesktopEvents()
 		{
-			if (!Utils.platform.isBitrixDesktop())
+			if (!DesktopApi.isDesktop())
 			{
 				return new Promise((resolve, reject) => resolve());
 			}
 
-			this.desktop = new Desktop();
 			this.floatingScreenShareWindow = new Call.FloatingScreenShare({
-				desktop: this.desktop,
 				onBackToCallClick: this.onFloatingScreenShareBackToCallClick.bind(this),
 				onStopSharingClick: this.onFloatingScreenShareStopClick.bind(this),
 				onChangeScreenClick: this.onFloatingScreenShareChangeScreenClick.bind(this)
@@ -159,7 +158,7 @@ class ConferenceApplication
 
 			if (this.floatingScreenShareWindow)
 			{
-				this.desktop.addCustomEvent("BXScreenMediaSharing", (id, title, x, y, width, height, app) =>
+				DesktopApi.subscribe("BXScreenMediaSharing", (id, title, x, y, width, height, app) =>
 				{
 					this.floatingScreenShareWindow.setSharingData({
 						title: title,
@@ -184,7 +183,7 @@ class ConferenceApplication
 				});
 			}
 
-			this.desktop.addCustomEvent('bxImUpdateCounterMessage', (counter) =>
+			DesktopApi.subscribe('bxImUpdateCounterMessage', (counter) =>
 			{
 				if (!this.controller)
 				{
@@ -527,10 +526,14 @@ class ConferenceApplication
 
 		tryJoinExistingCall()
 		{
+			const provider = Call.Util.isBitrixCallServerAllowed()
+				? Call.Provider.Bitrix
+				: Call.Provider.Voximplant;
+
 			this.restClient.callMethod("im.call.tryJoinCall", {
 					entityType: 'chat',
 					entityId: this.params.dialogId,
-					provider: Call.Provider.Voximplant,
+					provider: provider,
 					type: Call.Type.Permanent
 				})
 				.then(result => {
@@ -677,9 +680,9 @@ class ConferenceApplication
 				this.initPromise.resolve(this);
 			}
 
-			if (Utils.platform.isBitrixDesktop())
+			if (DesktopApi.isDesktop())
 			{
-				this.desktop.onCustomEvent('bxConferenceLoadComplete', []);
+				DesktopApi.emitToMainWindow('bxConferenceLoadComplete', []);
 			}
 
 			return new Promise((resolve, reject) => resolve());
@@ -731,7 +734,9 @@ class ConferenceApplication
 
 	startCall(videoEnabled, viewerMode = false)
 	{
-		const provider = Call.Provider.Voximplant;
+		const provider = Call.Util.isBitrixCallServerAllowed()
+			? Call.Provider.Bitrix
+			: Call.Provider.Voximplant;
 
 		if (Utils.device.isMobile())
 		{
@@ -748,11 +753,7 @@ class ConferenceApplication
 
 		if (this.localVideoStream)
 		{
-			if (videoEnabled)
-			{
-				this.callView.setLocalStream(this.localVideoStream, Call.Hardware.enableMirroring);
-			}
-			else
+			if (!videoEnabled)
 			{
 				this.stopLocalVideoStream();
 			}
@@ -1723,6 +1724,7 @@ class ConferenceApplication
 		this.currentCall.addEventListener(Call.Event.onRemoteMediaStopped, this.onCallRemoteMediaStoppedHandler);
 		this.currentCall.addEventListener(Call.Event.onUserVoiceStarted, this.onCallUserVoiceStartedHandler);
 		this.currentCall.addEventListener(Call.Event.onUserVoiceStopped, this.onCallUserVoiceStoppedHandler);
+		this.currentCall.addEventListener(Call.Event.onUserStatsReceived, this.onUserStatsReceivedHandler);
 		this.currentCall.addEventListener(Call.Event.onUserScreenState, this.onCallUserScreenStateHandler);
 		this.currentCall.addEventListener(Call.Event.onUserRecordState, this.onCallUserRecordStateHandler);
 		this.currentCall.addEventListener(Call.Event.onUserFloorRequest, this.onCallUserFloorRequestHandler);
@@ -1746,6 +1748,7 @@ class ConferenceApplication
 		this.currentCall.removeEventListener(Call.Event.onRemoteMediaStopped, this.onCallRemoteMediaStoppedHandler);
 		this.currentCall.removeEventListener(Call.Event.onUserVoiceStarted, this.onCallUserVoiceStartedHandler);
 		this.currentCall.removeEventListener(Call.Event.onUserVoiceStopped, this.onCallUserVoiceStoppedHandler);
+		this.currentCall.removeEventListener(Call.Event.onUserStatsReceived, this.onUserStatsReceivedHandler);
 		this.currentCall.removeEventListener(Call.Event.onUserScreenState, this.onCallUserScreenStateHandler);
 		this.currentCall.removeEventListener(Call.Event.onUserRecordState, this.onCallUserRecordStateHandler);
 		this.currentCall.removeEventListener(Call.Event.onUserFloorRequest, this.onCallUserFloorRequestHandler);
@@ -1770,6 +1773,14 @@ class ConferenceApplication
 	{
 		this.callView.setUserState(e.userId, e.state);
 		this.updateCallUser(e.userId,{state: e.state});
+
+		if (!this.isRecording())
+		{
+			this.callView.getConnectedUserCount(false)
+				? this.callView.unblockButtons(['record'])
+				: this.callView.blockButtons(['record'])
+			;
+		}
 		/*if (e.direction)
 		{
 			this.callView.setUserDirection(e.userId, e.direction);
@@ -1798,10 +1809,14 @@ class ConferenceApplication
 		//this.template.$emit('callLocalMediaReceived');
 
 		this.stopLocalVideoStream();
-		const enableVideoMirroring = e.tag == "main" ? Call.Hardware.enableMirroring : false;
-		this.callView.setLocalStream(e.stream, enableVideoMirroring);
-		this.callView.setButtonActive("screen", e.tag == "screen");
-		if(e.tag == "screen")
+		const enableVideoMirroring = (e.tag == "main" || e.mediaRenderer) ? Call.Hardware.enableMirroring : false;
+		const streamData = {
+			flipVideo: enableVideoMirroring,
+			...e,
+		};
+		this.callView.setLocalStream(streamData);
+		this.callView.setButtonActive("screen", this.currentCall.isScreenSharingStarted());
+		if(this.currentCall.isScreenSharingStarted())
 		{
 			if (!Utils.platform.isBitrixDesktop())
 			{
@@ -1852,7 +1867,8 @@ class ConferenceApplication
 			{
 				if (e.kind === 'video' || e.kind === 'sharing')
 				{
-					this.callView.setVideoRenderer(e.userId, null);
+					e.mediaRenderer.stream = null;
+					this.callView.setVideoRenderer(e.userId, e.mediaRenderer);
 				}
 			}
 			else
@@ -1882,6 +1898,14 @@ class ConferenceApplication
 	{
 		this.callView.setUserTalking(e.userId, false);
 		this.updateCallUser(e.userId, {talking: false});
+	}
+
+	onUserStatsReceived(e)
+	{
+		if (this.callView)
+		{
+			this.callView.setUserStats(e.userId, e.report);
+		}
 	}
 
 	onCallUserScreenState(e)
@@ -1970,8 +1994,14 @@ class ConferenceApplication
 
 		if (!this.isViewerMode())
 		{
-			this.callView.unblockButtons(['camera', 'floorRequest', 'screen', 'record']);
+			this.callView.unblockButtons(['camera', 'floorRequest', 'screen']);
 		}
+
+		if (this.callView.getConnectedUserCount(false))
+		{
+			this.callView.unblockButtons(['record']);
+		}
+
 		this.callView.setUiState(Call.View.UiState.Connected);
 	}
 
@@ -2128,12 +2158,12 @@ class ConferenceApplication
 
 		openChat(user)
 		{
-			this.desktop.onCustomEvent('bxConferenceOpenChat', [user.id]);
+			DesktopApi.emitToMainWindow('bxConferenceOpenChat', [user.id]);
 		}
 
 		openProfile(user)
 		{
-			this.desktop.onCustomEvent('bxConferenceOpenProfile', [user.id]);
+			DesktopApi.emitToMainWindow('bxConferenceOpenProfile', [user.id]);
 		}
 
 		setDialogInited()

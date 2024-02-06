@@ -14,7 +14,7 @@ $arParams['INPUT_NAME'] = CUtil::JSEscape($arParams['INPUT_NAME']);
 <? } ?>
 
 <? if ($arParams['SHOW_BUTTON'] == 'Y') { ?>
-<input type="button" onclick="<?=$name_x; ?>.Show()" value="<?=($arParams['BUTTON_CAPTION'] ? htmlspecialcharsex($arParams['BUTTON_CAPTION']) : '...'); ?>" />
+<input type="button" onclick="<?=$name_x; ?>.Show()" value="<?=(!empty($arParams['BUTTON_CAPTION']) ? htmlspecialcharsex($arParams['BUTTON_CAPTION']) : '...'); ?>" />
 <? } ?>
 
 <script type="text/javascript">
@@ -36,11 +36,18 @@ function GetInput_<?=$name_x; ?>(doc)
 	<? if ($arParams['FORM_NAME']) { ?>
 	return doc.forms['<?=$arParams['FORM_NAME']; ?>']['<?=$arParams['INPUT_NAME']; ?>'];
 	<? } else { ?>
-	return doc.getElementById('<?=$arParams['INPUT_NAME']; ?>');
+		const input = doc.getElementById('<?= $arParams['INPUT_NAME'] ?>');
+
+		if (input || doc === document)
+		{
+			return input;
+		}
+
+		return document.getElementById('<?= $arParams['INPUT_NAME'] ?>');
 	<? } ?>
 }
 
-<? if (!$arParams['ONSELECT']) { ?>
+<? if (empty($arParams['ONSELECT'])) { ?>
 
 function OnSelect_<?=$name_x; ?>(value)
 {

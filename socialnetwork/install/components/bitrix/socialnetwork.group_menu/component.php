@@ -21,6 +21,7 @@ global $CACHE_MANAGER, $USER_FIELD_MANAGER;
 
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Socialnetwork\Integration\Intranet\Settings;
 use Bitrix\Socialnetwork\UserToGroupTable;
 
 if (!Loader::includeModule("socialnetwork"))
@@ -249,8 +250,17 @@ if (
 				}
 			}
 
-			$arResult["CanView"]["tasks"] = (array_key_exists("tasks", $arResult["ActiveFeatures"]) && CSocNetFeaturesPerms::CanPerformOperation($USER->GetID(), SONET_ENTITY_GROUP, $arResult["Group"]["ID"], "tasks", "view", CSocNetUser::IsCurrentUserModuleAdmin()));
-			$arResult["CanView"]["calendar"] = (array_key_exists("calendar", $arResult["ActiveFeatures"]) && CSocNetFeaturesPerms::CanPerformOperation($USER->GetID(), SONET_ENTITY_GROUP, $arResult["Group"]["ID"], "calendar", "view", CSocNetUser::IsCurrentUserModuleAdmin()));
+			$settings = new Settings();
+			$arResult["CanView"]["tasks"] =
+				array_key_exists("tasks", $arResult["ActiveFeatures"])
+				&& CSocNetFeaturesPerms::CanPerformOperation($USER->GetID(), SONET_ENTITY_GROUP, $arResult["Group"]["ID"], "tasks", "view", CSocNetUser::IsCurrentUserModuleAdmin())
+				&& $settings->isToolAvailable(Settings::TASKS_TOOLS['base_tasks'])
+			;
+			$arResult["CanView"]["calendar"] =
+				array_key_exists("calendar", $arResult["ActiveFeatures"])
+				&& CSocNetFeaturesPerms::CanPerformOperation($USER->GetID(), SONET_ENTITY_GROUP, $arResult["Group"]["ID"], "calendar", "view", CSocNetUser::IsCurrentUserModuleAdmin())
+				&& $settings->isToolAvailable(Settings::CALENDAR_TOOLS['calendar'])
+			;
 			$arResult["CanView"]["forum"] = (array_key_exists("forum", $arResult["ActiveFeatures"]) && CSocNetFeaturesPerms::CanPerformOperation($USER->GetID(), SONET_ENTITY_GROUP, $arResult["Group"]["ID"], "forum", "view", CSocNetUser::IsCurrentUserModuleAdmin()));
 			$arResult["CanView"]["microblog"] = (array_key_exists("microblog", $arResult["ActiveFeatures"]) && CSocNetFeaturesPerms::CanPerformOperation($USER->GetID(), SONET_ENTITY_GROUP, $arResult["Group"]["ID"], "blog", "view_post", CSocNetUser::IsCurrentUserModuleAdmin()));
 			$arResult["CanView"]["blog"] = (array_key_exists("blog", $arResult["ActiveFeatures"]) && CSocNetFeaturesPerms::CanPerformOperation($USER->GetID(), SONET_ENTITY_GROUP, $arResult["Group"]["ID"], "blog", "view_post", CSocNetUser::IsCurrentUserModuleAdmin()));
@@ -272,7 +282,7 @@ if (
 
 			if($arResult["CanView"]["chat"])
 			{
-				$arResult["Urls"]["chat"] = "javascript:if (BXIM) { top.BXIM.openMessenger('sg".$arResult["Group"]["ID"]."'); }";
+				$arResult["Urls"]["chat"] = "javascript:BX.Socialnetwork.UI.Common.openMessenger('".$arResult["Group"]["ID"]."');";
 			}
 
 			$a = array_keys($arResult["Urls"]);

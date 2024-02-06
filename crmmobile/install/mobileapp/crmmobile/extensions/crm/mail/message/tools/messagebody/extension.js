@@ -2,6 +2,7 @@
  * @module crm/mail/message/tools/messagebody
  */
 jn.define('crm/mail/message/tools/messagebody', (require, exports, module) => {
+	const AppTheme = require('apptheme');
 	const { PureComponent } = require('layout/pure-component');
 	const { FileField } = require('layout/ui/fields/file');
 	const {
@@ -17,11 +18,13 @@ jn.define('crm/mail/message/tools/messagebody', (require, exports, module) => {
 
 		const galleryInfo = {};
 		const galleryValue = props.files.map((file) => {
-			if (file.id && Number.isInteger(parseInt(file.id)))
+			if (file.id && Number.isInteger(parseInt(file.id, 10)))
 			{
 				galleryInfo[file.id] = clone(file);
+
 				return file.id;
 			}
+
 			return clone(file);
 		});
 
@@ -86,7 +89,7 @@ jn.define('crm/mail/message/tools/messagebody', (require, exports, module) => {
 			style: {
 				height: 1,
 				borderTopWidth: 1,
-				borderTopColor: '#DBDDE0',
+				borderTopColor: AppTheme.colors.bgSeparatorPrimary,
 				marginLeft: 12,
 				marginRight: 12,
 			},
@@ -142,12 +145,7 @@ jn.define('crm/mail/message/tools/messagebody', (require, exports, module) => {
 						height: 24,
 					},
 					svg: {
-						content: `<svg width="41" height="24" viewBox="0 0 41 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-								<rect x="0.5" y="3.5" width="40" height="17" rx="8.5" fill="white" stroke="#D5D7DB"/>
-								<path d="M15 14C16.1046 14 17 13.1046 17 12C17 10.8954 16.1046 10 15 10C13.8954 10 13 10.8954 13 12C13 13.1046 13.8954 14 15 14Z" fill="#A8ADB4"/>
-								<path d="M21 14C22.1046 14 23 13.1046 23 12C23 10.8954 22.1046 10 21 10C19.8954 10 19 10.8954 19 12C19 13.1046 19.8954 14 21 14Z" fill="#A8ADB4"/>
-								<path d="M29 12C29 13.1046 28.1046 14 27 14C25.8954 14 25 13.1046 25 12C25 10.8954 25.8954 10 27 10C28.1046 10 29 10.8954 29 12Z" fill="#A8ADB4"/>
-							</svg>`,
+						content: '<svg width="41" height="24" viewBox="0 0 41 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="3.5" width="40" height="17" rx="8.5" fill="white" stroke="#D5D7DB"/><path d="M15 14C16.1046 14 17 13.1046 17 12C17 10.8954 16.1046 10 15 10C13.8954 10 13 10.8954 13 12C13 13.1046 13.8954 14 15 14Z" fill="#A8ADB4"/><path d="M21 14C22.1046 14 23 13.1046 23 12C23 10.8954 22.1046 10 21 10C19.8954 10 19 10.8954 19 12C19 13.1046 19.8954 14 21 14Z" fill="#A8ADB4"/><path d="M29 12C29 13.1046 28.1046 14 27 14C25.8954 14 25 13.1046 25 12C25 10.8954 25.8954 10 27 10C28.1046 10 29 10.8954 29 12Z" fill="#A8ADB4"/></svg>',
 					},
 				}),
 			);
@@ -159,6 +157,8 @@ jn.define('crm/mail/message/tools/messagebody', (require, exports, module) => {
 			{
 				return Body(this.props);
 			}
+
+			return null;
 		}
 
 		renderFileGallery()
@@ -192,7 +192,7 @@ jn.define('crm/mail/message/tools/messagebody', (require, exports, module) => {
 						style: {
 							fontSize: 16,
 							fontWeight: '700',
-							color: '#000000',
+							color: AppTheme.colors.base0,
 						},
 						text: this.props.subject,
 					}),

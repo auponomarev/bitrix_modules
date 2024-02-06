@@ -156,7 +156,7 @@ class Site
 			foreach ($templatesLimits as $code => $templateLimit)
 			{
 				if (
-					$templates[$code]
+					isset($templates[$code])
 					&& $templates[$code] > $templateLimit
 				)
 				{
@@ -406,10 +406,10 @@ class Site
 	{
 		if (Loader::includeModule('bitrix24'))
 		{
-			return Feature::isFeatureEnabled('landing_show_terms_footer');
+			return !Feature::isFeatureEnabled('landing_hide_terms_footer');
 		}
 
-		return true;
+		return false;
 	}
 
 	/**

@@ -73,9 +73,9 @@ if (BX.CommentAux)
 <? endif ?>
 
 BX.message({
-	MPL_HAVE_WRITTEN : ' <?=GetMessageJS("MPL_HAVE_WRITTEN")?>', // space here is important
-	MPL_HAVE_WRITTEN_M : ' <?=GetMessageJS("MPL_HAVE_WRITTEN_M")?>',
-	MPL_HAVE_WRITTEN_F : ' <?=GetMessageJS("MPL_HAVE_WRITTEN_F")?>',
+	MPL_HAVE_WRITTEN : '<?=GetMessageJS("MPL_HAVE_WRITTEN_MSGVER_1")?>',
+	MPL_HAVE_WRITTEN_M : '<?=GetMessageJS("MPL_HAVE_WRITTEN_M_MSGVER_1")?>',
+	MPL_HAVE_WRITTEN_F : '<?=GetMessageJS("MPL_HAVE_WRITTEN_F_MSGVER_1")?>',
 	B_B_MS_LINK : '<?=GetMessageJS("B_B_MS_LINK2")?>',
 	MPL_MES_HREF : '<?=GetMessageJS("MPL_MES_HREF")?>',
 	BPC_MES_EDIT : '<?=GetMessageJS("BPC_MES_EDIT")?>',
@@ -96,6 +96,10 @@ BX.message({
 	MPL_SAFE_EDIT : '<?=GetMessageJS('MPL_SAFE_EDIT')?>',
 	MPL_ERROR_OCCURRED : '<?=GetMessageJS('MPL_ERROR_OCCURRED')?>',
 	MPL_CLOSE : '<?=GetMessageJS('MPL_CLOSE')?>',
+	MPL_MOBILE_HINTS : '<?=GetMessageJS('MPL_MOBILE_HINTS')?>',
+	MPL_MOBILE_HINTS_DETAILS : '<?=GetMessageJS('MPL_MOBILE_HINTS_DETAILS')?>',
+	MPL_MOBILE_POPUP_TITLE : '<?=GetMessageJS('MPL_MOBILE_POPUP_TITLE')?>',
+	MPL_MOBILE_POPUP_BOTTOM_TEXT : '<?=GetMessageJS('MPL_MOBILE_POPUP_BOTTOM_TEXT')?>',
 	MPL_LINK_COPIED : '<?=GetMessageJS('MPL_LINK_COPIED')?>'
 	<?
 		if (IsModuleInstalled("socialnetwork"))

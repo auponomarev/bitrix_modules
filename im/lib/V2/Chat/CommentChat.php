@@ -71,7 +71,7 @@ class CommentChat extends GroupChat
 			return $result->addErrors($paramsResult->getErrors());
 		}
 
-		$chat = new CommentChat($params);
+		$chat = new static($params);
 		$chat->setParentChatId($params['PARENT_ID']);
 		if (!$chat->getParent())
 		{
@@ -79,7 +79,8 @@ class CommentChat extends GroupChat
 		}
 		$chat
 			->setExtranet($chat->getParent()->getExtranet())
-			->setManageUsers($chat->getParent()->getManageUsers())
+			->setManageUsersAdd($chat->getParent()->getManageUsersAdd())
+			->setManageUsersDelete($chat->getParent()->getManageUsersDelete())
 			->setManageUI($chat->getParent()->getManageUI())
 			->setParentMessageId($params['PARENT_MID'])
 		;
@@ -128,5 +129,15 @@ class CommentChat extends GroupChat
 		}
 
 		return false;
+	}
+
+	protected function addIndex(): Chat
+	{
+		return $this;
+	}
+
+	protected function updateIndex(): Chat
+	{
+		return $this;
 	}
 }

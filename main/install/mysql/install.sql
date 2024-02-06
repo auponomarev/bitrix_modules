@@ -338,7 +338,7 @@ CREATE TABLE b_module_to_module
 
 CREATE TABLE b_agent
 (
-	ID INT not null auto_increment,
+	ID bigint not null auto_increment,
 	MODULE_ID varchar(50),
 	SORT INT not null default '100',
 	NAME text null,
@@ -350,12 +350,13 @@ CREATE TABLE b_agent
 	IS_PERIOD char(1) default 'Y',
 	USER_ID INT,
 	RUNNING char(1) not null default 'N',
-	RETRY_COUNT int,
+	RETRY_COUNT int not null default 0,
 	PRIMARY KEY (ID),
-	INDEX ix_act_next_exec(ACTIVE, NEXT_EXEC),
 	INDEX ix_agent_user_id(USER_ID),
 	INDEX ix_agent_name(NAME(100)),
-	INDEX ix_agent_act_period_next_exec(ACTIVE, IS_PERIOD, NEXT_EXEC)
+	INDEX ix_agent_act_period_next_exec(ACTIVE, IS_PERIOD, NEXT_EXEC),
+	INDEX ix_agent_next_exec(NEXT_EXEC),
+	INDEX ix_agent_module_act(MODULE_ID, ACTIVE)
 );
 
 CREATE TABLE b_file
@@ -384,7 +385,7 @@ CREATE TABLE b_file_duplicate
 	COUNTER int not null default 1,
 	ORIGINAL_DELETED char(1) not null default 'N',
 	primary key (DUPLICATE_ID, ORIGINAL_ID),
-	index ix_file_duplicate_duplicate(ORIGINAL_ID)
+	index ix_file_duplicate_original_del(ORIGINAL_ID, ORIGINAL_DELETED)
 );
 
 CREATE TABLE b_file_hash
@@ -960,8 +961,8 @@ CREATE TABLE b_user_access
 	PROVIDER_ID varchar(50),
 	ACCESS_CODE varchar(100),
 	PRIMARY KEY (ID),
+	UNIQUE INDEX ux_ua_user_access (USER_ID, ACCESS_CODE),
 	INDEX ix_ua_user_provider (USER_ID, PROVIDER_ID),
-	INDEX ix_ua_user_access (USER_ID, ACCESS_CODE),
 	INDEX ix_ua_access (ACCESS_CODE),
 	INDEX ix_ua_provider (PROVIDER_ID)
 );
@@ -972,7 +973,8 @@ CREATE TABLE b_user_access_check
 (
 	USER_ID int,
 	PROVIDER_ID varchar(50),
-	UNIQUE ux_uac_user_provider (USER_ID, PROVIDER_ID)
+	DATE_CHECK datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE ux_uac_user_provider_date (USER_ID, PROVIDER_ID, DATE_CHECK)
 );
 
 CREATE TABLE b_user_counter
@@ -1411,7 +1413,8 @@ CREATE TABLE b_main_mail_sender
 	IS_PUBLIC TINYINT NOT NULL DEFAULT 0,
 	OPTIONS TEXT NULL,
 	PRIMARY KEY (ID),
-	INDEX IX_B_MAIN_MAIL_SENDER_USER_ID (USER_ID, IS_CONFIRMED, IS_PUBLIC)
+	INDEX IX_B_MAIN_MAIL_SENDER_USER_ID (USER_ID, IS_CONFIRMED, IS_PUBLIC),
+	INDEX IX_B_MAIN_MAIL_SENDER_EMAIL (EMAIL)
 );
 
 CREATE TABLE b_main_mail_sender_send_counter
@@ -1554,7 +1557,8 @@ CREATE TABLE b_user_device
 	USER_AGENT varchar(1000),
 	COOKABLE char(1) not null default 'N',
 	PRIMARY KEY(ID),
-	INDEX ix_user_device_user(USER_ID, DEVICE_UID)
+	INDEX ix_user_device_user(USER_ID, DEVICE_UID),
+	INDEX ix_user_device_user_cookable(USER_ID, COOKABLE)
 );
 
 CREATE TABLE b_user_device_login
@@ -1580,4 +1584,30 @@ CREATE TABLE b_geoname
 	LANGUAGE_CODE varchar(35),
 	NAME varchar(600),
 	PRIMARY KEY(ID, LANGUAGE_CODE)
+);
+
+CREATE TABLE b_sidepanel_toolbar
+(
+	ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	USER_ID INT NOT NULL,
+	CONTEXT VARCHAR(50) NOT NULL,
+	COLLAPSED CHAR(1) NOT NULL,
+	CREATED_DATE DATETIME NOT NULL,
+	PRIMARY KEY (ID),
+	UNIQUE UX_SIDEPANEL_TOOLBAR(USER_ID, CONTEXT)
+);
+
+CREATE TABLE b_sidepanel_toolbar_item
+(
+	ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+	TOOLBAR_ID BIGINT UNSIGNED NOT NULL,
+	URL VARCHAR(2000) NOT NULL,
+	TITLE varchar(255) NOT NULL,
+	ENTITY_TYPE varchar(50) NOT NULL,
+	ENTITY_ID varchar(50) NOT NULL,
+	CREATED_DATE DATETIME NOT NULL,
+	LAST_USE_DATE DATETIME NOT NULL,
+	PRIMARY KEY (ID),
+	UNIQUE(TOOLBAR_ID, ENTITY_TYPE, ENTITY_ID),
+	INDEX IX_SP_TOOLBAR_ITEM_TOOLBAR_ID_USE_DATE(TOOLBAR_ID, LAST_USE_DATE)
 );

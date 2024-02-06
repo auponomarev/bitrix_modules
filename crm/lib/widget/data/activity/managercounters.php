@@ -258,8 +258,8 @@ HTML;
 			$maxInner = array(0, 0);
 			foreach ($entities as $entityId => $entityName)
 			{
-				$user["VALUE"][$entityId][0] = ($user["VALUE"][$entityId][0] ?: 0);
-				$user["VALUE"][$entityId][1] = ($user["VALUE"][$entityId][1] ?: 0);
+				$user["VALUE"][$entityId][0] = ($user["VALUE"][$entityId][0] ?? 0);
+				$user["VALUE"][$entityId][1] = ($user["VALUE"][$entityId][1] ?? 0);
 				$maxInner[0] = max($maxInner[0], $user["VALUE"][$entityId][0]);
 				$maxInner[1] = max($maxInner[1], $user["VALUE"][$entityId][1]);
 			}
@@ -353,6 +353,7 @@ HTML;
 		$startTime->setTime(0,0,0);
 		$endTime = new DateTime();
 		$endTime->setTime(23, 59, 59);
+		$helper = Application::getConnection()->getSqlHelper();
 
 		while ($pointer)
 		{
@@ -363,7 +364,7 @@ HTML;
 				{
 					$dbRes = ActivityBindingTable::getList(array(
 						'select' => array(
-							new ExpressionField('CNT', "COUNT(DISTINCT CONCAT(%s, '_', %s))", array('OWNER_TYPE_ID', 'OWNER_ID')),
+							new ExpressionField('CNT', "COUNT(DISTINCT " . $helper->getConcatFunction('%s', "'_'", '%s') . ")", ['OWNER_TYPE_ID', 'OWNER_ID']),
 							'TODAY' => new ExpressionField('TODAY',
 								'CASE WHEN %s >= '.Application::getConnection()->getSqlHelper()->getCharToDateFunction($startTime->format("Y-m-d H:i:s")).' THEN 1 ELSE 0 END', array('AD.DEADLINE')),
 							'RESPONSIBLE_ID' => 'AD.RESPONSIBLE_ID'
@@ -455,7 +456,7 @@ HTML;
 					{
 						self::$personalCounterData['dbRes'] = ActivityBindingTable::getList(array(
 							'select' => array(
-								new ExpressionField('CNT', "COUNT(DISTINCT CONCAT(%s, '_', %s))", array('OWNER_TYPE_ID', 'OWNER_ID')),
+								new ExpressionField('CNT', "COUNT(DISTINCT " . $helper->getConcatFunction('%s', "'_'", '%s') . ")", array('OWNER_TYPE_ID', 'OWNER_ID')),
 								'TODAY' => new ExpressionField('TODAY',
 									'CASE WHEN %s >= '.Application::getConnection()->getSqlHelper()->getCharToDateFunction($startTime->format("Y-m-d H:i:s")).' THEN 1 ELSE 0 END', array('AD.DEADLINE')),
 								'RESPONSIBLE_ID' => 'AD.RESPONSIBLE_ID',

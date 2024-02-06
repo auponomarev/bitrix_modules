@@ -9,6 +9,7 @@ return [
 	'css' => 'dist/index.bundle.css',
 	'js' => 'dist/index.bundle.js',
 	'rel' => [
+		'ui.analytics',
 		'ui.notification',
 		'ui.dialogs.messagebox',
 		'crm.activity.file-uploader-popup',
@@ -31,6 +32,18 @@ return [
 		'loader',
 		'crm.timeline.editors.comment-editor',
 		'calendar.sharing.interface',
+		'ui.icon-set.api.vue',
+		'ui.icon-set.actions',
+		'ui.icon-set.main',
+		'crm.ai.call',
 	],
 	'skip_core' => false,
+	'oninit' => static function()
+	{
+		return [
+			'lang_additional' => [
+				'AI_APP_COLLECTION_MARKET_LINK' => \Bitrix\Crm\Integration\AI\AIManager::getAiAppCollectionMarketLink(),
+			]
+		];
+	}
 ];

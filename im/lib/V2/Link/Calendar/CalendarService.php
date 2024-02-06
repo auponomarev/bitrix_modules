@@ -91,6 +91,25 @@ class CalendarService
 		return new Result();
 	}
 
+	public function updateCalendarLink(CalendarItem $calendarLink): Result
+	{
+		$result = new Result();
+
+		$saveResult = $calendarLink->save();
+
+		if (!$saveResult->isSuccess())
+		{
+			return $result->addErrors($saveResult->getErrors());
+		}
+
+		Push::getInstance()
+			->setContext($this->context)
+			->sendFull($calendarLink, self::UPDATE_CALENDAR_EVENT, ['RECIPIENT' => $calendarLink->getEntity()->getMembersIds()])
+		;
+
+		return new Result();
+	}
+
 	public function prepareDataForCreateSlider(Chat $chat, ?Message $message = null): Result
 	{
 		$result = new Result();
@@ -101,15 +120,6 @@ class CalendarService
 		}
 
 		$chat->setContext($this->context);
-
-		$chatTypeModifier = ($chat->getType() === \IM_MESSAGE_PRIVATE) ? 'PRIVATE_' : '';
-		$from = isset($message) ? 'MESSAGE' : 'CHAT';
-		$from = $chatTypeModifier . $from;
-
-		$data['params']['entryName'] = Loc::getMessage(
-			"IM_CHAT_CALENDAR_SERVICE_FROM_{$from}_NEW_TITLE",
-			["#CHAT_TITLE#" => $chat->getTitle()]
-		);
 
 		$randomPostfix = mt_rand() & 1000; // get random number from 0 to 1000
 		$data['params']['sliderId'] = "im:chat{$chat->getChatId()}{$randomPostfix}";

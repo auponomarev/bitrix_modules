@@ -704,11 +704,11 @@ class ContactCenter
 				"LOGO_CLASS" => "ui-icon ui-icon-service-import",
 				"SELECTED" => (\Bitrix\Rest\AppTable::getRow([
 					'filter'=> [
-						'ACTIVE' => 'Y',
-						'CODE' => 'bitrix.eshop',
+						'=ACTIVE' => 'Y',
+						'=CODE' => 'bitrix.eshop',
 					],
 				])),
-				"ONCLICK" => "BX.SidePanel.Instance.open(" . Marketplace::getMainDirectory() . "'detail/bitrix.eshop/?from=contact_center_eshop')",
+				"ONCLICK" => "BX.SidePanel.Instance.open('" . Marketplace::getMainDirectory() . "detail/bitrix.eshop/?from=contact_center_eshop')",
 			];
 		}
 
@@ -928,7 +928,7 @@ class ContactCenter
 			foreach ($configList as &$configItem)
 			{
 				//getting status if connector is connected for the open line
-				$status = $statusList[$connectorCode][$configItem["ID"]];
+				$status = $statusList[$connectorCode][$configItem["ID"]] ?? null;
 				if (!empty($status) && ($status instanceof ImConnector\Status) && $status->isStatus())
 				{
 					$configItem["STATUS"] = 1;
@@ -939,22 +939,23 @@ class ContactCenter
 				}
 
 				//getting connected channel name
-				$channelInfo = $infoConnectors[$configItem["ID"]];
-				try
+				$channelName = '';
+				if (!empty($infoConnectors[$configItem["ID"]]['DATA']))
 				{
-					$channelData = JSON::decode($channelInfo['DATA']);
-					if (isset($channelData[$connectorCode]['name']) && is_string($channelData[$connectorCode]['name']))
+					try
 					{
-						$channelName = trim($channelData[$connectorCode]['name']);
+						$channelData = JSON::decode($infoConnectors[$configItem["ID"]]['DATA']);
+						if (
+							isset($channelData[$connectorCode]['name'])
+							&& is_string($channelData[$connectorCode]['name'])
+						)
+						{
+							$channelName = trim($channelData[$connectorCode]['name']);
+						}
 					}
-					else
+					catch (\Bitrix\Main\ArgumentException $exception)
 					{
-						$channelName = '';
 					}
-				}
-				catch (\Bitrix\Main\ArgumentException $exception)
-				{
-					$channelName = '';
 				}
 
 				$configItem["NAME"] = htmlspecialcharsbx($configItem["NAME"]);

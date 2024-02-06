@@ -22,7 +22,7 @@ if ($request->get('IFRAME') !== 'Y' && $context->getServer()->getRequestMethod()
 	{
 		$session->set('LANDING_OPEN_SIDE_PANEL', Application::getInstance()->getContext()->getRequest()->getRequestUri());
 		//when opening link to create page in existing site
-		if ($arResult['VARS']['site_show'] > 0 && $arResult['VARS']['landing_edit'] === '0' && $this->getPageName() === 'landing_edit')
+		if (($arResult['VARS']['site_show'] ?? 0) > 0 && $arResult['VARS']['landing_edit'] === '0' && $this->getPageName() === 'landing_edit')
 		{
 			localRedirect('/sites/site/' . $arResult['VARS']['site_show'] . '/');
 		}
@@ -35,7 +35,11 @@ if ($session->has('LANDING_OPEN_SIDE_PANEL'))
 	<script>
 		BX.ready(function()
 		{
+			<?php if (preg_match('/width=([\d]+)/', $session['LANDING_OPEN_SIDE_PANEL'], $matches)):?>
+			BX.SidePanel.Instance.open('<?= \CUtil::JSEscape($session['LANDING_OPEN_SIDE_PANEL'])?>', {allowChangeHistory: false, width: <?= $matches[0]?>});
+			<?php else:?>
 			BX.SidePanel.Instance.open('<?= \CUtil::JSEscape($session['LANDING_OPEN_SIDE_PANEL'])?>', {allowChangeHistory: false});
+			<?php endif?>
 		});
 	</script>
 	<?
@@ -191,30 +195,6 @@ elseif (in_array($this->getPageName(), ['template', 'site_show']))
 				'skipSlider' => true
 			],
 		];
-	}
-
-	if (\Bitrix\Landing\Manager::isAdmin() && \Bitrix\Landing\Connector\Ai::isAnyAvailable())
-	{
-		$settingsLink[] = [
-			'TITLE' => Loc::getMessage('LANDING_TPL_MENU_AI'),
-			'LINK' => $arParams['PAGE_URL_AI_SETTINGS'],
-		];
-		?>
-		<script>
-			BX.ready(function()
-			{
-				if (typeof BX.SidePanel !== 'undefined')
-				{
-					BX.SidePanel.Instance.bindAnchors({
-						rules: [{
-							condition: ['<?= CUtil::jsEscape($arParams['PAGE_URL_AI_SETTINGS'])?>'],
-							options: { allowChangeHistory: false, width: 600, }
-						}]
-					});
-				}
-			});
-		</script>
-		<?php
 	}
 
 	if (

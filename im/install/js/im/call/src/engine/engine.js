@@ -1,5 +1,7 @@
 import {Type} from 'main.core'
+import {DesktopApi} from 'im.v2.lib.desktop-api';
 import {PlainCall} from './plain_call'
+import {BitrixCall} from './bitrix_call'
 import {VoximplantCall} from './voximplant_call'
 import {CallStub} from './stub'
 import Util from '../util'
@@ -38,6 +40,8 @@ export const CallType = {
 export const Provider = {
 	Plain: 'Plain',
 	Voximplant: 'Voximplant',
+	Bitrix: 'Bitrix',
+	BitrixDev: 'BitrixDev',
 };
 
 export const StreamTag = {
@@ -80,6 +84,8 @@ export const CallEvent = {
 	onUserStateChanged: 'onUserStateChanged',
 	onUserMicrophoneState: 'onUserMicrophoneState',
 	onUserCameraState: 'onUserCameraState',
+	onCameraPublishing: 'onCameraPublishing',
+	onMicrophonePublishing: 'onMicrophonePublishing',
 	onUserVideoPaused: 'onUserVideoPaused',
 	onUserScreenState: 'onUserScreenState',
 	onUserRecordState: 'onUserRecordState',
@@ -87,6 +93,7 @@ export const CallEvent = {
 	onUserVoiceStopped: 'onUserVoiceStopped',
 	onUserFloorRequest: 'onUserFloorRequest', // request for a permission to speak
 	onUserEmotion: 'onUserEmotion',
+	onUserStatsReceived: 'onUserStatsReceived',
 	onCustomMessage: 'onCustomMessage',
 	onLocalMediaReceived: 'onLocalMediaReceived',
 	onLocalMediaStopped: 'onLocalMediaStopped',
@@ -96,6 +103,8 @@ export const CallEvent = {
 	onCallFailure: 'onCallFailure',
 	onRemoteMediaReceived: 'onRemoteMediaReceived',
 	onRemoteMediaStopped: 'onRemoteMediaStopped',
+	onBadNetworkIndicator: 'onBadNetworkIndicator',
+	onConnectionQualityChanged: 'onConnectionQualityChanged',
 	onNetworkProblem: 'onNetworkProblem',
 	onReconnecting: 'onReconnecting',
 	onReconnected: 'onReconnected',
@@ -109,6 +118,7 @@ export const CallEvent = {
 	onTransferRoomSpeakerRequest: 'onTransferRoomSpeakerRequest',
 	onTransferRoomSpeaker: 'onTransferRoomSpeaker',
 	onDestroy: 'onDestroy',
+	onGetUserMediaEnded: 'onGetUserMediaEnded',
 };
 
 const ajaxActions = {
@@ -207,6 +217,11 @@ class Engine
 						if (call.provider == config.provider && call.associatedEntity.type == config.entityType && call.associatedEntity.id == config.entityId)
 						{
 							this.log(callId, "Found existing call, attaching to it");
+
+							BX.onCustomEvent(window, "CallEvents::callCreated", [{
+								call: call
+							}]);
+
 							return resolve({
 								call: call,
 								isNew: false
@@ -268,6 +283,7 @@ class Engine
 					instanceId: Util.getUuidv4(),
 					direction: Direction.Outgoing,
 					users: createCallResponse.users,
+					userData: createCallResponse.userData,
 					videoEnabled: (config.videoEnabled === true),
 					enableMicAutoParameters: (config.enableMicAutoParameters !== false),
 					associatedEntity: callFields.ASSOCIATED_ENTITY,
@@ -277,7 +293,10 @@ class Engine
 						onDestroy: this.#onCallDestroy.bind(this)
 					},
 					debug: config.debug === true,
-					logToken: createCallResponse.logToken
+					logToken: createCallResponse.logToken,
+					connectionData: createCallResponse.connectionData,
+					// jwt: callFields['JWT'],
+					// endpoint: callFields['ENDPOINT'],
 				});
 
 				this.calls[callFields['ID']] = call;
@@ -342,6 +361,7 @@ class Engine
 					parentId: callFields['PARENT_ID'],
 					direction: Direction.Outgoing,
 					users: createCallResponse.users,
+					userData: createCallResponse.userData,
 					videoEnabled: parentCall.isVideoEnabled(),
 					enableMicAutoParameters: parentCall.enableMicAutoParameters !== false,
 					associatedEntity: callFields.ASSOCIATED_ENTITY,
@@ -350,7 +370,10 @@ class Engine
 					events: {
 						onDestroy: this.#onCallDestroy.bind(this)
 					},
-					logToken: createCallResponse.logToken
+					logToken: createCallResponse.logToken,
+					connectionData: createCallResponse.connectionData,
+					// jwt: callFields['JWT'],
+					// endpoint: callFields['ENDPOINT']
 				});
 
 				this.calls[callFields['ID']] = call;
@@ -366,7 +389,7 @@ class Engine
 		});
 	};
 
-	#instantiateCall(callFields, users, logToken): AbstractCall
+	#instantiateCall(callFields, users, logToken, connectionData, userData): AbstractCall
 	{
 		if (this.calls[callFields['ID']])
 		{
@@ -382,10 +405,14 @@ class Engine
 			parentId: callFields['PARENT_ID'],
 			direction: callFields['INITIATOR_ID'] == this.userId ? Direction.Outgoing : Direction.Incoming,
 			users: users,
+			userData: userData,
 			associatedEntity: callFields.ASSOCIATED_ENTITY,
 			type: callFields.TYPE,
 			startDate: callFields['START_DATE'],
 			logToken: logToken,
+			connectionData: connectionData,
+			// jwt: callFields['JWT'],
+			// endpoint: callFields['ENDPOINT'],
 
 			events: {
 				onDestroy: this.#onCallDestroy.bind(this)
@@ -417,7 +444,7 @@ class Engine
 			{
 				const data = answer.data();
 				resolve({
-					call: this.#instantiateCall(data.call, data.users, data.logToken),
+					call: this.#instantiateCall(data.call, data.users, data.logToken, data.connectionData, data.userData),
 					isNew: false
 				})
 			}).catch((error) =>
@@ -497,6 +524,7 @@ class Engine
 
 	#onPullIncomingCall(params, extra)
 	{
+		console.log('#onPullIncomingCall', location.href);
 		if (extra.server_time_ago > 30)
 		{
 			console.error("Call was started too long time ago");
@@ -531,14 +559,18 @@ class Engine
 				callFromMobile: params.isLegacyMobile === true,
 				direction: Direction.Incoming,
 				users: params.users,
+				userData: params.userData,
 				initiatorId: params.senderId,
 				associatedEntity: callFields.ASSOCIATED_ENTITY,
 				type: callFields.TYPE,
 				startDate: callFields.START_DATE,
 				logToken: params.logToken,
+				connectionData: params.connectionData,
 				events: {
 					onDestroy: this.#onCallDestroy.bind(this)
-				}
+				},
+				// jwt: callFields['JWT'],
+				// endpoint: callFields['ENDPOINT']
 			});
 
 			this.calls[callId] = call;
@@ -548,9 +580,10 @@ class Engine
 			}]);
 		}
 
-		call.addInvitedUsers(params.invitedUsers);
 		if (call)
 		{
+			call.addInvitedUsers(params.invitedUsers);
+
 			BX.onCustomEvent(window, "CallEvents::incomingCall", [{
 				call: call,
 				video: params.video === true,
@@ -650,6 +683,10 @@ class Engine
 		{
 			return PlainCallFactory;
 		}
+		else if (providerType == Provider.Bitrix)
+		{
+			return BitrixCallFactory;
+		}
 		else if (providerType == Provider.Voximplant)
 		{
 			return VoximplantCallFactory;
@@ -669,9 +706,9 @@ class Engine
 	{
 		const text = Util.getLogMessage.call(Util, arguments);
 
-		if (BX.desktop && BX.desktop.ready())
+		if (DesktopApi.isDesktop())
 		{
-			BX.desktop.log(BX.message('USER_ID') + '.video.log', text);
+			DesktopApi.writeToLogFile(BX.message('USER_ID') + '.video.log', text);
 		}
 		if (this.debugFlag)
 		{
@@ -716,6 +753,14 @@ class PlainCallFactory
 	}
 }
 
+class BitrixCallFactory
+{
+	static createCall(config): BitrixCall
+	{
+		return new BitrixCall(config);
+	}
+}
+
 class VoximplantCallFactory
 {
 	static createCall(config): VoximplantCall
@@ -723,5 +768,6 @@ class VoximplantCallFactory
 		return new VoximplantCall(config);
 	}
 }
+
 
 export const CallEngine = new Engine();

@@ -7,13 +7,15 @@ return [
 		'loc',
 		'notify',
 		'rest',
+		'type',
+		'analytics-label',
+		'assets/common',
+
 		'tasks:task',
 		'tasks:task/calendar',
 		'tasks:task/datesResolver',
 		'tasks:checklist',
 		'tasks:layout/task/create/bottomPanel',
 		'tasks:layout/task/fields/*',
-		'type',
-		'utils/object',
 	],
 ];

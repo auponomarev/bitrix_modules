@@ -1,5 +1,6 @@
-import {Type} from 'main.core'
-import {Utils as MessengerUtils} from 'im.lib.utils';
+import { Type } from 'main.core';
+import { Utils as MessengerUtils } from 'im.lib.utils';
+import { DesktopApi } from 'im.v2.lib.desktop-api';
 
 export class BackgroundDialog
 {
@@ -30,13 +31,13 @@ export class BackgroundDialog
 
 		const html =
 			`<div id="bx-desktop-loader" class="bx-desktop-loader-wrap">
-						<div class="bx-desktop-loader">
-							<svg class="bx-desktop-loader-circular" viewBox="25 25 50 50">
-								<circle class="bx-desktop-loader-path" cx="50" cy="50" r="20" fill="none" stroke-miterlimit="10"/>
-							</svg>
-						</div>
-					</div>
-					<div id="placeholder"></div>`
+				<div class="bx-desktop-loader">
+					<svg class="bx-desktop-loader-circular" viewBox="25 25 50 50">
+						<circle class="bx-desktop-loader-path" cx="50" cy="50" r="20" fill="none" stroke-miterlimit="10"/>
+					</svg>
+				</div>
+			</div>
+			<div id="placeholder"></div>`
 		;
 
 		const js = `BX.Runtime.loadExtension("im.v2.component.call-background").then(function(exports) {
@@ -46,7 +47,7 @@ export class BackgroundDialog
 				}).mount("#placeholder");
 			});`;
 
-		(opener || top).BX.desktop.createWindow("callBackground", (controller) =>
+		DesktopApi.createWindow("callBackground", (controller) =>
 		{
 			const title = this.isMaskAvailable() ? BX.message('BXD_CALL_BG_MASK_TITLE') : BX.message('BXD_CALL_BG_TITLE');
 			controller.SetProperty("title", title);
@@ -54,7 +55,7 @@ export class BackgroundDialog
 			controller.SetProperty("minClientSize", {Width: 943, Height: 670});
 			controller.SetProperty("backgroundColor", "#2B3038");
 			controller.ExecuteCommand("center");
-			controller.ExecuteCommand("html.load", (opener || top).BXIM.desktop.getHtmlPage(html, js, false));
+			controller.ExecuteCommand("html.load", DesktopApi.prepareHtml(html, js));
 		});
 
 		return true;

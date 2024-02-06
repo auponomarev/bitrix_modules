@@ -23,11 +23,6 @@ class seo extends CModule
 			$this->MODULE_VERSION = $arModuleVersion["VERSION"];
 			$this->MODULE_VERSION_DATE = $arModuleVersion["VERSION_DATE"];
 		}
-		else
-		{
-			$this->MODULE_VERSION = SEO_VERSION;
-			$this->MODULE_VERSION_DATE = SEO_VERSION_DATE;
-		}
 
 		$this->MODULE_NAME = GetMessage("SEO_MODULE_NAME");
 		$this->MODULE_DESCRIPTION = GetMessage("SEO_MODULE_DESCRIPTION");
@@ -43,10 +38,13 @@ class seo extends CModule
 	function InstallDB()
 	{
 		global $DB, $APPLICATION;
-
+		$connection = \Bitrix\Main\Application::getConnection();
 		$this->errors = false;
-		if(!$DB->Query("SELECT 'x' FROM b_seo_search_engine", true))
-			$this->errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT']."/bitrix/modules/seo/install/db/mysql/install.sql");
+
+		if (!$DB->TableExists('b_seo_search_engine'))
+		{
+			$this->errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/seo/install/db/' . $connection->getType() . '/install.sql');
+		}
 
 		if($this->errors !== false)
 		{
@@ -56,7 +54,7 @@ class seo extends CModule
 
 		RegisterModule("seo");
 
-		require_once($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/seo/install/tasks/install.php");
+		$this->InstallTasks();
 
 		$eventManager = \Bitrix\Main\EventManager::getInstance();
 
@@ -71,19 +69,14 @@ class seo extends CModule
 		$eventManager->registerEventHandler("iblock", "OnAfterIBlockSectionAdd", "seo", "\\Bitrix\\Seo\\SitemapIblock", "addSection");
 		$eventManager->registerEventHandler("iblock", "OnAfterIBlockElementAdd", "seo", "\\Bitrix\\Seo\\SitemapIblock", "addElement");
 
-		$eventManager->registerEventHandler("iblock", "OnBeforeIBlockSectionDelete", "seo", "\\Bitrix\\Seo\\SitemapIblock", "beforeDeleteSection");
-		$eventManager->registerEventHandler("iblock", "OnBeforeIBlockElementDelete", "seo", "\\Bitrix\\Seo\\SitemapIblock", "beforeDeleteElement");
-		$eventManager->registerEventHandler("iblock", "OnAfterIBlockSectionDelete", "seo", "\\Bitrix\\Seo\\SitemapIblock", "deleteSection");
-		$eventManager->registerEventHandler("iblock", "OnAfterIBlockElementDelete", "seo", "\\Bitrix\\Seo\\SitemapIblock", "deleteElement");
+		$eventManager->registerEventHandler("iblock", "OnAfterIBlockSectionDelete", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Iblock", "deleteSection");
+		$eventManager->registerEventHandler("iblock", "OnAfterIBlockElementDelete", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Iblock", "deleteElement");
+		$eventManager->registerEventHandler("iblock", "OnAfterIBlockSectionUpdate", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Iblock", "updateSection");
+		$eventManager->registerEventHandler("iblock", "OnAfterIBlockElementUpdate", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Iblock", "updateElement");
 
-		$eventManager->registerEventHandler("iblock", "OnBeforeIBlockSectionUpdate", "seo", "\\Bitrix\\Seo\\SitemapIblock", "beforeUpdateSection");
-		$eventManager->registerEventHandler("iblock", "OnBeforeIBlockElementUpdate", "seo", "\\Bitrix\\Seo\\SitemapIblock", "beforeUpdateElement");
-		$eventManager->registerEventHandler("iblock", "OnAfterIBlockSectionUpdate", "seo", "\\Bitrix\\Seo\\SitemapIblock", "updateSection");
-		$eventManager->registerEventHandler("iblock", "OnAfterIBlockElementUpdate", "seo", "\\Bitrix\\Seo\\SitemapIblock", "updateElement");
-
-		$eventManager->registerEventHandler("forum", "onAfterTopicAdd", "seo", "\\Bitrix\\Seo\\SitemapForum", "addTopic");
-		$eventManager->registerEventHandler("forum", "onAfterTopicUpdate", "seo", "\\Bitrix\\Seo\\SitemapForum", "updateTopic");
-		$eventManager->registerEventHandler("forum", "onAfterTopicDelete", "seo", "\\Bitrix\\Seo\\SitemapForum", "deleteTopic");
+		$eventManager->registerEventHandler("forum", "onAfterTopicAdd", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Forum", "addTopic");
+		$eventManager->registerEventHandler("forum", "onAfterTopicUpdate", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Forum", "updateTopic");
+		$eventManager->registerEventHandler("forum", "onAfterTopicDelete", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Forum", "deleteTopic");
 
 		$eventManager->registerEventHandler("main", "OnAdminIBlockElementEdit", "seo", "\\Bitrix\\Seo\\AdvTabEngine", "eventHandler");
 		$eventManager->registerEventHandler("main", "OnBeforeProlog", "seo", "\\Bitrix\\Seo\\AdvSession", "checkSession");
@@ -110,7 +103,7 @@ class seo extends CModule
 				$arFilter['NAME'] .= '|Yandex';
 
 			$strSearchers = '';
-			$dbRes = CSearcher::GetList($by = 's_id', $order = 'asc', $arFilter);
+			$dbRes = CSearcher::GetList('s_id', 'asc', $arFilter);
 			while ($arRes = $dbRes->Fetch())
 			{
 				$strSearchers .= ($strSearchers == '' ? '' : ',').$arRes['ID'];
@@ -119,9 +112,9 @@ class seo extends CModule
 			COption::SetOptionString('seo', 'searchers_list', $strSearchers);
 		}
 
-		\CAgent::AddAgent("Bitrix\\Seo\\Engine\\YandexDirect::updateAgent();","seo", "N", 3600);
-		\CAgent::AddAgent("Bitrix\\Seo\\Adv\\LogTable::clean();","seo", "N", 86400);
-		\CAgent::AddAgent("Bitrix\\Seo\\Adv\\Auto::checkQuantityAgent();","seo", "N", 3600);
+		CAgent::AddAgent("Bitrix\\Seo\\Engine\\YandexDirect::updateAgent();","seo", "N", 3600);
+		CAgent::AddAgent("Bitrix\\Seo\\Adv\\LogTable::clean();","seo", "N", 86400);
+		CAgent::AddAgent("Bitrix\\Seo\\Adv\\Auto::checkQuantityAgent();","seo", "N", 3600);
 
 		return true;
 	}
@@ -160,7 +153,7 @@ class seo extends CModule
 			));
 			$this->UnInstallFiles();
 
-			\CAgent::RemoveModuleAgents('seo');
+			CAgent::RemoveModuleAgents('seo');
 
 			$APPLICATION->IncludeAdminFile(GetMessage("SEO_UNINSTALL_TITLE"), $DOCUMENT_ROOT."/bitrix/modules/seo/install/unstep2.php");
 		}
@@ -169,12 +162,12 @@ class seo extends CModule
 	function UnInstallDB($arParams = Array())
 	{
 		global $APPLICATION, $DB, $errors;
-
+		$connection = \Bitrix\Main\Application::getConnection();
 		$this->errors = false;
 
 		if (!$arParams['savedata'])
 		{
-			$this->errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT']."/bitrix/modules/seo/install/db/mysql/uninstall.sql");
+			$this->errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT']."/bitrix/modules/seo/install/db/".$connection->getType()."/uninstall.sql");
 
 			if(empty($this->errors))
 			{
@@ -188,7 +181,7 @@ class seo extends CModule
 			return false;
 		}
 
-		require_once($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/seo/install/tasks/uninstall.php");
+		$this->UnInstallTasks();
 
 		$eventManager = \Bitrix\Main\EventManager::getInstance();
 		$eventManager->unRegisterEventHandler('main', 'OnPanelCreate', 'seo');
@@ -198,16 +191,24 @@ class seo extends CModule
 		$eventManager->unRegisterEventHandler("iblock", "OnAfterIBlockSectionAdd", "seo", "\\Bitrix\\Seo\\SitemapIblock", "addSection");
 		$eventManager->unRegisterEventHandler("iblock", "OnAfterIBlockElementAdd", "seo", "\\Bitrix\\Seo\\SitemapIblock", "addElement");
 
+		$eventManager->unRegisterEventHandler("iblock", "OnAfterIBlockSectionDelete", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Iblock", "deleteSection");
+		$eventManager->unRegisterEventHandler("iblock", "OnAfterIBlockElementDelete", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Iblock", "deleteElement");
+		$eventManager->unRegisterEventHandler("iblock", "OnAfterIBlockSectionUpdate", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Iblock", "updateSection");
+		$eventManager->unRegisterEventHandler("iblock", "OnAfterIBlockElementUpdate", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Iblock", "updateElement");
+		// compatibility
 		$eventManager->unRegisterEventHandler("iblock", "OnBeforeIBlockSectionDelete", "seo", "\\Bitrix\\Seo\\SitemapIblock", "beforeDeleteSection");
 		$eventManager->unRegisterEventHandler("iblock", "OnBeforeIBlockElementDelete", "seo", "\\Bitrix\\Seo\\SitemapIblock", "beforeDeleteElement");
 		$eventManager->unRegisterEventHandler("iblock", "OnAfterIBlockSectionDelete", "seo", "\\Bitrix\\Seo\\SitemapIblock", "deleteSection");
 		$eventManager->unRegisterEventHandler("iblock", "OnAfterIBlockElementDelete", "seo", "\\Bitrix\\Seo\\SitemapIblock", "deleteElement");
-
 		$eventManager->unRegisterEventHandler("iblock", "OnBeforeIBlockSectionUpdate", "seo", "\\Bitrix\\Seo\\SitemapIblock", "beforeUpdateSection");
 		$eventManager->unRegisterEventHandler("iblock", "OnBeforeIBlockElementUpdate", "seo", "\\Bitrix\\Seo\\SitemapIblock", "beforeUpdateElement");
 		$eventManager->unRegisterEventHandler("iblock", "OnAfterIBlockSectionUpdate", "seo", "\\Bitrix\\Seo\\SitemapIblock", "updateSection");
 		$eventManager->unRegisterEventHandler("iblock", "OnAfterIBlockElementUpdate", "seo", "\\Bitrix\\Seo\\SitemapIblock", "updateElement");
 
+		$eventManager->unRegisterEventHandler("forum", "onAfterTopicAdd", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Forum", "addTopic");
+		$eventManager->unRegisterEventHandler("forum", "onAfterTopicUpdate", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Forum", "updateTopic");
+		$eventManager->unRegisterEventHandler("forum", "onAfterTopicDelete", "seo", "\\Bitrix\\Seo\\Sitemap\\Source\\Forum", "deleteTopic");
+		// compatibility
 		$eventManager->unRegisterEventHandler("forum", "onAfterTopicAdd", "seo", "\\Bitrix\\Seo\\SitemapForum", "addTopic");
 		$eventManager->unRegisterEventHandler("forum", "onAfterTopicUpdate", "seo", "\\Bitrix\\Seo\\SitemapForum", "updateTopic");
 		$eventManager->unRegisterEventHandler("forum", "onAfterTopicDelete", "seo", "\\Bitrix\\Seo\\SitemapForum", "deleteTopic");
@@ -237,9 +238,6 @@ class seo extends CModule
 
 	function UnInstallFiles($arParams = array())
 	{
-		global $DB;
-
-		// Delete files
 		DeleteDirFiles($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/seo/install/admin/", $_SERVER["DOCUMENT_ROOT"]."/bitrix/admin");
 		DeleteDirFiles($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/seo/install/tools/", $_SERVER["DOCUMENT_ROOT"]."/bitrix/tools");
 		DeleteDirFiles($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/seo/install/images/seo", $_SERVER["DOCUMENT_ROOT"]."/bitrix/images/seo");
@@ -253,19 +251,6 @@ class seo extends CModule
 		return true;
 	}
 
-	function GetModuleRightList()
-	{
-		global $MESS;
-		$arr = array(
-			"reference_id" => array("D","R","W"),
-			"reference" => array(
-				"[D] ".GetMessage("SEO_DENIED"),
-				"[R] ".GetMessage("SEO_OPENED"),
-				"[W] ".GetMessage("SEO_FULL"))
-			);
-		return $arr;
-	}
-
 	/**
 	 * Method for migrate from cloud version.
 	 * @return void
@@ -277,5 +262,31 @@ class seo extends CModule
 		{
 			\Bitrix\Seo\Service::changeRegisteredDomain();
 		}
+	}
+
+	public function GetModuleTasks()
+	{
+		return [
+			'seo_denied' => [
+				'LETTER' => 'D',
+				'BINDING' => 'module',
+				'OPERATIONS' => [],
+			],
+			'seo_edit' => [
+				'LETTER' => 'F',
+				'BINDING' => 'module',
+				'OPERATIONS' => [
+					'seo_tools',
+				],
+			],
+			'seo_full_access' => [
+				'LETTER' => 'W',
+				'BINDING' => 'module',
+				'OPERATIONS' => [
+					'seo_tools',
+					'seo_settings',
+				],
+			],
+		];
 	}
 }

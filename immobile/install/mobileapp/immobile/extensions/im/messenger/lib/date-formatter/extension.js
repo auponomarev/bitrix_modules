@@ -1,12 +1,10 @@
-/* eslint-disable bitrix-rules/no-pseudo-private */
-
 /**
  * @module im/messenger/lib/date-formatter
  */
 jn.define('im/messenger/lib/date-formatter', (require, exports, module) => {
-
 	const { Type } = require('type');
 	const { Loc } = require('loc');
+	const { Moment } = require('utils/date');
 
 	const DateFormat = Object.freeze({
 		date: 'date',
@@ -21,8 +19,6 @@ jn.define('im/messenger/lib/date-formatter', (require, exports, module) => {
 		shortTime: 'shortTime',
 	});
 
-	const DAY_IN_MILLISECONDS = 86400000;
-
 	/**
 	 * @class DateFormatter
 	 */
@@ -34,7 +30,7 @@ jn.define('im/messenger/lib/date-formatter', (require, exports, module) => {
 			this.formatCollection = {};
 
 			this.setLocale(Application.getLang());
-			this.setFormatCollection(jnExtensionData.get('messenger/lib/date-formatter')['formatCollection']);
+			this.setFormatCollection(jnExtensionData.get('messenger/lib/date-formatter').formatCollection);
 		}
 
 		setLocale(locale)
@@ -76,7 +72,7 @@ jn.define('im/messenger/lib/date-formatter', (require, exports, module) => {
 				)
 			)
 			{
-				throw new Error('DateFormatter.format: Invalid date ' + date);
+				throw new TypeError(`DateFormatter.format: Invalid date ${date}`);
 			}
 
 			if (!this.isSupported(format))
@@ -84,9 +80,9 @@ jn.define('im/messenger/lib/date-formatter', (require, exports, module) => {
 				throw new Error('DateFormatter.format: Unsupported format');
 			}
 
-			const timestampInSeconds = Math.round(date.getTime() / 1000);
+			const convertedFormat = dateFormatter.convert(dateFormatter.formats[format]);
 
-			return dateFormatter.get(timestampInSeconds, dateFormatter.formats[format]);
+			return (new Moment(date)).format(convertedFormat, this.locale);
 		}
 
 		getTodayMessage()
@@ -149,26 +145,31 @@ jn.define('im/messenger/lib/date-formatter', (require, exports, module) => {
 			return this.format(date, DateFormat.mediumDate, this.locale);
 		}
 
+		getDayOfWeek(date)
+		{
+			return (new Moment(date)).format('E', this.locale);
+		}
+
 		getQuoteFormat(date)
 		{
-			const today = new Date();
-			if (this.isToday(date))
+			const moment = new Moment(date);
+
+			if (moment.isToday)
 			{
 				return `${this.getTodayMessage()}, ${this.getShortTime(date)}`;
 			}
 
-			if (this.isYesterday(date))
+			if (moment.isYesterday)
 			{
 				return `${this.getYesterdayMessage()}, ${this.getShortTime(date)}`;
 			}
 
-			const isThisYear = date.getFullYear() === today.getFullYear();
-			if (isThisYear)
+			if (moment.inThisYear)
 			{
 				return `${this.getDayMonth(date)}, ${this.getShortTime(date)}`;
 			}
 
-			if (!isThisYear)
+			if (!moment.inThisYear)
 			{
 				return `${this.getLongDate(date)}, ${this.getShortTime(date)}`;
 			}
@@ -178,24 +179,24 @@ jn.define('im/messenger/lib/date-formatter', (require, exports, module) => {
 
 		getDateGroupFormat(date)
 		{
-			const today = new Date();
-			if (this.isToday(date))
+			const moment = new Moment(date);
+
+			if (moment.isToday)
 			{
 				return this.getTodayMessage();
 			}
 
-			if (this.isYesterday(date))
+			if (moment.isYesterday)
 			{
 				return this.getYesterdayMessage();
 			}
 
-			const isThisYear = date.getFullYear() === today.getFullYear();
-			if (isThisYear)
+			if (moment.inThisYear)
 			{
 				return this.getDayOfWeekMonth(date);
 			}
 
-			if (!isThisYear)
+			if (!moment.inThisYear)
 			{
 				return this.getFullDate(date);
 			}
@@ -203,26 +204,71 @@ jn.define('im/messenger/lib/date-formatter', (require, exports, module) => {
 			return '';
 		}
 
+		getRecentFormat(date)
+		{
+			if (!date)
+			{
+				return '';
+			}
+			const moment = new Moment(date);
+
+			if (moment.isToday)
+			{
+				return this.getShortTime(date);
+			}
+
+			if (moment.inThisYear)
+			{
+				if (this.isCurrentWeek(moment))
+				{
+					return this.getDayOfWeek(date);
+				}
+
+				return this.getDayShortMonth(date).replace('.', '');
+			}
+
+			if (!moment.inThisYear)
+			{
+				return this.getMediumDate(date);
+			}
+
+			return '';
+		}
+
 		isToday(date)
 		{
-			const todayCode = this._getDateCode(new Date());
-			const dateCode = this._getDateCode(date);
+			const moment = new Moment(date);
 
-			return dateCode === todayCode;
+			return moment.isToday;
 		}
 
 		isYesterday(date)
 		{
-			const yesterday = new Date(Date.now() - DAY_IN_MILLISECONDS);
-			const yesterdayCode = this._getDateCode(yesterday);
-			const dateCode = this._getDateCode(date);
+			const moment = new Moment(date);
 
-			return dateCode === yesterdayCode;
+			return moment.isYesterday;
 		}
 
-		_getDateCode(date)
+		/**
+		 *
+		 * @param {Moment} moment
+		 */
+		isCurrentWeek(moment)
 		{
-			return date.getFullYear() + '-' + date.getMonth() + '-' + date.getDate();
+			const now = moment.getNow();
+
+			const nowWeek = Number(dateFormatter.get(Math.round(now.date.getTime() / 1000), 'w', this.locale));
+			const momentWeek = Number(dateFormatter.get(Math.round(moment.date.getTime() / 1000), 'w', this.locale));
+
+			return nowWeek === momentWeek;
+		}
+
+		/**
+		 * @private
+		 */
+		getDateCode(date)
+		{
+			return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 		}
 	}
 

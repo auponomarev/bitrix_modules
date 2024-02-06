@@ -1,18 +1,15 @@
-/* eslint-disable flowtype/require-return-type */
-/* eslint-disable bitrix-rules/no-bx */
-
 /**
  * @module im/messenger/provider/push
  */
 jn.define('im/messenger/provider/push', (require, exports, module) => {
-
 	const { Type } = require('type');
 	const { clone } = require('utils/object');
 	const { core } = require('im/messenger/core');
-	const { Logger } = require('im/messenger/lib/logger');
 	const { MessengerEmitter } = require('im/messenger/lib/emitter');
 	const { MessengerParams } = require('im/messenger/lib/params');
 	const { EventType } = require('im/messenger/const');
+	const { LoggerManager } = require('im/messenger/lib/logger');
+	const logger = LoggerManager.getInstance().getLogger('push-handler');
 
 	class PushHandler
 	{
@@ -28,7 +25,7 @@ jn.define('im/messenger/provider/push', (require, exports, module) => {
 
 		getStoredPullEvents()
 		{
-			const list = [].concat(this.storedPullEvents);
+			const list = [...this.storedPullEvents];
 
 			this.storedPullEvents = [];
 
@@ -47,12 +44,12 @@ jn.define('im/messenger/provider/push', (require, exports, module) => {
 			const list = this.manager.get();
 			if (!list || !list['IM_MESS'] || list['IM_MESS'].length <= 0)
 			{
-				Logger.info('PushHandler.updateList: list is empty');
+				logger.info('PushHandler.updateList: list is empty');
 
 				return true;
 			}
 
-			Logger.info('PushHandler.updateList: parse push messages', list['IM_MESS']);
+			logger.info('PushHandler.updateList: parse push messages', list['IM_MESS']);
 
 			const isDialogOpen = this.store.getters['applicationModel/isDialogOpen'];
 
@@ -85,16 +82,21 @@ jn.define('im/messenger/provider/push', (require, exports, module) => {
 				const event = {
 					module_id: 'im',
 					command: push.data.cmd,
-					params: ChatDataConverter.preparePushFormat(push.data)
+					params: ChatDataConverter.preparePushFormat(push.data),
 				};
 
 				event.params.userInChat[event.params.chatId] = [MessengerParams.getUserId()];
 
-				event.params.message.text  = senderMessage.toString().replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+				event.params.message.text = senderMessage.toString()
+					.replace(/&/g, '&amp;')
+					.replace(/"/g, '&quot;')
+					.replace(/</g, '&lt;')
+					.replace(/>/g, '&gt;')
+				;
 
 				if (push.senderCut)
 				{
-					event.params.message.text = event.params.message.text.substring(push.senderCut)
+					event.params.message.text = event.params.message.text.substring(push.senderCut);
 				}
 
 				if (!event.params.message.textOriginal)
@@ -111,11 +113,11 @@ jn.define('im/messenger/provider/push', (require, exports, module) => {
 
 				if (isDialogOpen)
 				{
-					BX.postWebEvent('chatrecent::push::get', storedEvent)
+					BX.postWebEvent('chatrecent::push::get', storedEvent);
 				}
 				else
 				{
-					this.storedPullEvents = this.storedPullEvents.filter(event => event.message.id !== storedEvent.message.id);
+					this.storedPullEvents = this.storedPullEvents.filter((event) => event.message.id !== storedEvent.message.id);
 					this.storedPullEvents.push(storedEvent);
 				}
 
@@ -152,22 +154,22 @@ jn.define('im/messenger/provider/push', (require, exports, module) => {
 				return false;
 			}
 
-			Logger.info('PushHandler.executeAction: execute push-notification', push);
+			logger.info('PushHandler.executeAction: execute push-notification', push);
 
 			const pushParams = ChatDataConverter.getPushFormat(push);
 
-			if (pushParams.ACTION && pushParams.ACTION.substring(0, 8) === 'IM_MESS_')
+			if (pushParams.ACTION && pushParams.ACTION.slice(0, 8) === 'IM_MESS_')
 			{
-				const userId = parseInt(pushParams.ACTION.substring(8));
+				const userId = parseInt(pushParams.ACTION.slice(8), 10);
 				if (userId > 0)
 				{
 					MessengerEmitter.emit(EventType.messenger.openDialog, { dialogId: userId });
 				}
 
-				return;
+				return true;
 			}
 
-			if (pushParams.ACTION && pushParams.ACTION.substring(0, 8) === 'IM_CHAT_')
+			if (pushParams.ACTION && pushParams.ACTION.slice(0, 8) === 'IM_CHAT_')
 			{
 				if (MessengerParams.isOpenlinesOperator() && pushParams.CHAT_TYPE === 'L')
 				{
@@ -181,13 +183,13 @@ jn.define('im/messenger/provider/push', (require, exports, module) => {
 					return false;
 				}
 
-				const chatId = parseInt(pushParams.ACTION.substring(8));
+				const chatId = parseInt(pushParams.ACTION.slice(8), 10);
 				if (chatId > 0)
 				{
-					MessengerEmitter.emit(EventType.messenger.openDialog, { dialogId: 'chat' + chatId });
+					MessengerEmitter.emit(EventType.messenger.openDialog, { dialogId: `chat${chatId}` });
 				}
 
-				return;
+				return true;
 			}
 
 			if (pushParams.ACTION && pushParams.ACTION === 'IM_NOTIFY')

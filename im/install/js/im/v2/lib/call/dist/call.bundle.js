@@ -1,8 +1,86 @@
+/* eslint-disable */
 this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
-(function (exports,main_core_events,ui_vue3_vuex,im_call,im_public,im_v2_application_core,im_v2_lib_slider,im_v2_const,im_v2_lib_logger,im_v2_lib_soundNotification) {
+(function (exports,main_core_events,ui_vue3_vuex,im_call,im_public,im_v2_lib_slider,im_v2_lib_logger,im_v2_lib_promo,im_v2_lib_soundNotification,im_v2_lib_rest,im_v2_const,main_core,ui_entitySelector,ui_buttons,im_v2_application_core) {
 	'use strict';
+
+	class BetaCallService {
+	  static createRoom(chatId) {
+	    im_v2_lib_rest.runAction(im_v2_const.RestMethod.imCallBetaCreateRoom, {
+	      data: {
+	        chatId
+	      }
+	    });
+	  }
+	}
+
+	let _ = t => t,
+	  _t;
+	const openCallUserSelector = params => {
+	  const handleAddCLick = () => {
+	    const selectedItems = dialog.getSelectedItems();
+	    const preparedItems = prepareUser(selectedItems);
+	    preparedItems.forEach(item => {
+	      params.onSelect({
+	        user: item
+	      });
+	    });
+	  };
+	  const handleCancelCLick = () => {
+	    dialog.hide();
+	  };
+	  const dialog = new ui_entitySelector.Dialog({
+	    targetNode: params.bindElement,
+	    width: 400,
+	    enableSearch: true,
+	    dropdownMode: true,
+	    context: 'IM_CHAT_SEARCH',
+	    entities: [{
+	      id: 'user',
+	      dynamicLoad: true,
+	      itemOptions: {
+	        default: {
+	          linkTitle: '',
+	          link: ''
+	        }
+	      },
+	      options: {
+	        inviteEmployeeLink: false,
+	        '!userId': im_v2_application_core.Core.getUserId()
+	      },
+	      filters: [{
+	        id: 'im.userDataFilter'
+	      }]
+	    }],
+	    footer: getFooter(handleAddCLick, handleCancelCLick)
+	  });
+	  dialog.show();
+	  return Promise.resolve({
+	    close: () => {
+	      dialog.hide();
+	    }
+	  });
+	};
+	const prepareUser = users => {
+	  return users.map(user => {
+	    return {
+	      id: user.id,
+	      name: user.title.text,
+	      avatar: user.avatar,
+	      avatar_hr: user.avatar,
+	      gender: user.customData.get('imUser').GENDER
+	    };
+	  });
+	};
+	const getFooter = (handleAddCLick, handleCancelCLick) => {
+	  const addButtonTitle = main_core.Loc.getMessage('IM_LIB_CALL_ADD_BUTTON');
+	  const cancelButtonTitle = main_core.Loc.getMessage('IM_LIB_CALL_CANCEL_BUTTON');
+	  return main_core.Tag.render(_t || (_t = _`
+		<button class="ui-btn ui-btn-xs ui-btn-primary" onclick="${0}">${0}</button>
+		<button class="ui-btn ui-btn-xs ui-btn-light-border" onclick="${0}">${0}</button>
+	`), handleAddCLick, addButtonTitle, handleCancelCLick, cancelButtonTitle);
+	};
 
 	var _controller = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("controller");
 	var _store = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("store");
@@ -77,6 +155,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller] = babelHelpers.classPrivateFieldLooseBase(this, _getController)[_getController]();
 	    babelHelpers.classPrivateFieldLooseBase(this, _subscribeToEvents)[_subscribeToEvents]();
 	  }
+	  createBetaCallRoom(chatId) {
+	    BetaCallService.createRoom(chatId);
+	  }
 	  startCall(dialogId, withVideo = true) {
 	    im_v2_lib_logger.Logger.warn('CallManager: startCall', dialogId, withVideo);
 	    babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].startCall(dialogId, withVideo);
@@ -90,7 +171,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].leaveCurrentCall();
 	  }
 	  foldCurrentCall() {
-	    if (!babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].hasActiveCall()) {
+	    if (!babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].hasActiveCall() || !babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].hasVisibleCall()) {
 	      return;
 	    }
 	    babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].fold();
@@ -106,6 +187,12 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      return '';
 	    }
 	    return babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].currentCall.associatedEntity.id;
+	  }
+	  getCurrentCall() {
+	    if (!babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].hasActiveCall()) {
+	      return false;
+	    }
+	    return babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].currentCall;
 	  }
 	  hasCurrentCall() {
 	    return babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].hasActiveCall();
@@ -126,20 +213,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].test();
 	  }
 	  chatCanBeCalled(dialogId) {
-	    const dialog = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['dialogues/get'](dialogId);
-	    if (!dialog) {
-	      return false;
-	    }
-	    const isChat = dialog.type !== im_v2_const.DialogType.user;
-	    const callAllowed = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['dialogues/getChatOption'](dialog.type, im_v2_const.ChatOption.call);
-	    if (isChat && !callAllowed) {
-	      return false;
-	    }
 	    const callSupported = babelHelpers.classPrivateFieldLooseBase(this, _checkCallSupport)[_checkCallSupport](dialogId);
-	    const isAnnouncement = dialog.type === im_v2_const.DialogType.announcement;
-	    const isExternalTelephonyCall = dialog.type === im_v2_const.DialogType.call;
-	    const hasCurrentCall = this.hasCurrentCall();
-	    return callSupported && !isAnnouncement && !isExternalTelephonyCall && !hasCurrentCall;
+	    const hasCurrentCall = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['recent/calls/hasActiveCall'](dialogId);
+	    return callSupported && !hasCurrentCall;
 	  }
 
 	  // endregion call events
@@ -156,23 +232,46 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      openMessenger: dialogId => {
 	        return im_public.Messenger.openChat(dialogId);
 	      },
-	      openHistory: () => {},
-	      openSettings: () => {},
-	      // TODO
+	      openHistory: dialogId => {
+	        return im_public.Messenger.openChat(dialogId);
+	      },
+	      openSettings: () => {
+	        return im_public.Messenger.openSettings();
+	      },
 	      openHelpArticle: () => {},
 	      // TODO
 	      getContainer: () => document.querySelector(`.${CallManager.viewContainerClass}`),
-	      getMessageCount: () => babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['recent/getTotalCounter'],
+	      getMessageCount: () => babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['counters/getTotalChatCounter'],
 	      getCurrentDialogId: () => babelHelpers.classPrivateFieldLooseBase(this, _getCurrentDialogId)[_getCurrentDialogId](),
-	      isPromoRequired: () => false,
+	      isPromoRequired: promoCode => {
+	        return im_v2_lib_promo.PromoManager.getInstance().needToShow(promoCode);
+	      },
 	      repeatSound: (soundType, timeout, force) => {
 	        im_v2_lib_soundNotification.SoundNotificationManager.getInstance().playLoop(soundType, timeout, force);
 	      },
 	      stopRepeatSound: soundType => {
 	        im_v2_lib_soundNotification.SoundNotificationManager.getInstance().stop(soundType);
-	      }
+	      },
+	      showUserSelector: openCallUserSelector
 	    },
-	    events: {}
+	    events: {
+	      [im_call.Controller.Events.onPromoViewed]: event => {
+	        const {
+	          code
+	        } = event.getData();
+	        im_v2_lib_promo.PromoManager.getInstance().markAsWatched(code);
+	      },
+	      [im_call.Controller.Events.onOpenVideoConference]: event => {
+	        var _dialog$public;
+	        const {
+	          dialogId: chatId
+	        } = event.getData();
+	        const dialog = im_v2_application_core.Core.getStore().getters['chats/get'](`chat${chatId}`, true);
+	        return im_public.Messenger.openConference({
+	          code: (_dialog$public = dialog.public) == null ? void 0 : _dialog$public.code
+	        });
+	      }
+	    }
 	  });
 	}
 	function _subscribeToEvents2() {
@@ -187,11 +286,12 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  call.addEventListener(BX.Call.Event.onJoin, babelHelpers.classPrivateFieldLooseBase(this, _onCallJoin)[_onCallJoin].bind(this));
 	  call.addEventListener(BX.Call.Event.onLeave, babelHelpers.classPrivateFieldLooseBase(this, _onCallLeave)[_onCallLeave].bind(this));
 	  call.addEventListener(BX.Call.Event.onDestroy, babelHelpers.classPrivateFieldLooseBase(this, _onCallDestroy)[_onCallDestroy].bind(this));
+	  const state = call.state === im_call.State.Connected || call.state === im_call.State.Proceeding ? im_v2_const.RecentCallStatus.joined : im_v2_const.RecentCallStatus.waiting;
 	  babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].dispatch('recent/calls/addActiveCall', {
 	    dialogId: call.associatedEntity.id,
 	    name: call.associatedEntity.name,
-	    call: call,
-	    state: im_v2_const.RecentCallStatus.waiting
+	    call,
+	    state
 	  });
 	}
 	function _onCallJoin2(event) {
@@ -235,7 +335,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  return user && user.status !== 'guest' && !user.bot && !user.network && user.id !== im_v2_application_core.Core.getUserId() && !!user.lastActivityDate;
 	}
 	function _checkChatCallSupport2(dialogId) {
-	  const dialog = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['dialogues/get'](dialogId);
+	  const dialog = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['chats/get'](dialogId);
 	  if (!dialog) {
 	    return false;
 	  }
@@ -258,5 +358,5 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 
 	exports.CallManager = CallManager;
 
-}((this.BX.Messenger.v2.Lib = this.BX.Messenger.v2.Lib || {}),BX.Event,BX.Vue3.Vuex,BX.Call,BX.Messenger.v2.Lib,BX.Messenger.v2.Application,BX.Messenger.v2.Lib,BX.Messenger.v2.Const,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib));
+}((this.BX.Messenger.v2.Lib = this.BX.Messenger.v2.Lib || {}),BX.Event,BX.Vue3.Vuex,BX.Call,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Const,BX,BX.UI.EntitySelector,BX.UI,BX.Messenger.v2.Application));
 //# sourceMappingURL=call.bundle.js.map

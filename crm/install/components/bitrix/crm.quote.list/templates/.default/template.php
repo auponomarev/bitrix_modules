@@ -15,8 +15,11 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
  * @var CBitrixComponent $component
  */
 
-use \Bitrix\Crm\Category\DealCategory;
-use \Bitrix\Crm\Conversion\EntityConverter;
+use Bitrix\Crm\Activity\TodoPingSettingsProvider;
+use Bitrix\Crm\Category\DealCategory;
+use Bitrix\Crm\Component\EntityList\ActionManager;
+use Bitrix\Crm\Conversion\EntityConverter;
+use Bitrix\Crm\Restriction\AvailabilityManager;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Tracking;
 use Bitrix\Crm\UI\NavigationBarPanel;
@@ -39,8 +42,6 @@ Bitrix\Main\Page\Asset::getInstance()->addJs('/bitrix/js/crm/progress_control.js
 Bitrix\Main\Page\Asset::getInstance()->addJs('/bitrix/js/crm/interface_grid.js');
 Bitrix\Main\Page\Asset::getInstance()->addJs('/bitrix/js/crm/autorun_proc.js');
 Bitrix\Main\Page\Asset::getInstance()->addCss('/bitrix/js/crm/css/autorun_proc.css');
-
-Extension::load(['crm.restriction.filter-fields']);
 
 ?><div id="rebuildMessageWrapper"><?
 
@@ -104,7 +105,7 @@ $prefixLC = mb_strtolower($arResult['GRID_ID']);
 		$arActions = [];
 
 		$arActions[] = array(
-			'TITLE' => GetMessage('CRM_QUOTE_SHOW_TITLE'),
+			'TITLE' => GetMessage('CRM_QUOTE_SHOW_TITLE_MSGVER_1'),
 			'TEXT' => GetMessage('CRM_QUOTE_SHOW'),
 			'ONCLICK' => "BX.Crm.Page.open('".CUtil::JSEscape($arQuote['PATH_TO_QUOTE_SHOW'])."')",
 			'DEFAULT' => true
@@ -113,7 +114,7 @@ $prefixLC = mb_strtolower($arResult['GRID_ID']);
 		if ($arQuote['EDIT'])
 		{
 			$arActions[] = array(
-				'TITLE' => GetMessage('CRM_QUOTE_EDIT_TITLE'),
+				'TITLE' => GetMessage('CRM_QUOTE_EDIT_TITLE_MSGVER_1'),
 				'TEXT' => GetMessage('CRM_QUOTE_EDIT'),
 				'ONCLICK' => "BX.Crm.Page.open('".CUtil::JSEscape($arQuote['PATH_TO_QUOTE_EDIT'])."')",
 			);
@@ -128,7 +129,7 @@ $prefixLC = mb_strtolower($arResult['GRID_ID']);
 		{
 			$pathToRemove = CUtil::JSEscape($arQuote['PATH_TO_QUOTE_DELETE']);
 			$arActions[] =  array(
-				'TITLE' => GetMessage('CRM_QUOTE_DELETE_TITLE'),
+				'TITLE' => GetMessage('CRM_QUOTE_DELETE_TITLE_MSGVER_1'),
 				'TEXT' => GetMessage('CRM_QUOTE_DELETE'),
 				'ONCLICK' => "BX.CrmUIGridExtension.processMenuCommand(
 					'{$gridManagerID}', 
@@ -149,19 +150,36 @@ $prefixLC = mb_strtolower($arResult['GRID_ID']);
 				{
 					unset($arSchemeDescriptions[\Bitrix\Crm\Conversion\QuoteConversionScheme::INVOICE_NAME]);
 				}
+
 				$arSchemeList = [];
+
+				$toolsManager = Container::getInstance()->getIntranetToolsManager();
+				$availabilityManager = AvailabilityManager::getInstance();
+				$curPage = CUtil::JSEscape($APPLICATION->GetCurPage());
+
 				foreach($arSchemeDescriptions as $name => $description)
 				{
-					$arSchemeList[] = array(
+					$entityTypeId = \CCrmOwnerType::ResolveID($name);
+					if ($toolsManager->checkEntityTypeAvailability($entityTypeId))
+					{
+						$onClick = "BX.CrmQuoteConverter.getCurrent().convert({$arQuote['ID']}, BX.CrmQuoteConversionScheme.createConfig('{$name}'), '" . $curPage . "');";
+					}
+					else
+					{
+						$onClick = $availabilityManager->getEntityTypeAvailabilityLock($entityTypeId);
+					}
+
+					$arSchemeList[] = [
 						'TITLE' => $description,
 						'TEXT' => $description,
-						'ONCLICK' => "BX.CrmQuoteConverter.getCurrent().convert({$arQuote['ID']}, BX.CrmQuoteConversionScheme.createConfig('{$name}'), '".CUtil::JSEscape($APPLICATION->GetCurPage())."');"
-					);
+						'ONCLICK' => $onClick,
+					];
 				}
+
 				if (!empty($arSchemeList))
 				{
 					$arActions[] = array(
-						'TITLE' => GetMessage('CRM_QUOTE_CREATE_ON_BASIS_TITLE'),
+						'TITLE' => GetMessage('CRM_QUOTE_CREATE_ON_BASIS_TITLE_MSGVER_1'),
 						'TEXT' => GetMessage('CRM_QUOTE_CREATE_ON_BASIS'),
 						'MENU' => $arSchemeList
 					);
@@ -170,7 +188,7 @@ $prefixLC = mb_strtolower($arResult['GRID_ID']);
 			else
 			{
 				$arActions[] = array(
-					'TITLE' => GetMessage('CRM_QUOTE_CREATE_ON_BASIS_TITLE'),
+					'TITLE' => GetMessage('CRM_QUOTE_CREATE_ON_BASIS_TITLE_MSGVER_1'),
 					'TEXT' => GetMessage('CRM_QUOTE_CREATE_ON_BASIS'),
 					'ONCLICK' => isset($arResult['CONVERSION_LOCK_SCRIPT']) ? $arResult['CONVERSION_LOCK_SCRIPT'] : ''
 				);
@@ -301,7 +319,7 @@ $prefixLC = mb_strtolower($arResult['GRID_ID']);
 			$resultItem['columns']
 		);
 
-		$resultItem['columns'] = \Bitrix\Crm\Entity\FieldContentType::enrichGridRow(
+		$resultItem['columns'] = \Bitrix\Crm\Entity\CommentsHelper::enrichGridRow(
 			\CCrmOwnerType::Quote,
 			$fieldContentTypeMap[$arQuote['ID']] ?? [],
 			$arQuote,
@@ -365,14 +383,14 @@ if (!$isInternal
 	if ($allowWrite)
 	{
 		//region Set Status
-		$statusList = array(array('NAME' => GetMessage('CRM_STATUS_INIT'), 'VALUE' => ''));
+		$statusList = array(array('NAME' => GetMessage('CRM_STATUS_INIT_MSGVER_2'), 'VALUE' => ''));
 		foreach($arResult['STATUS_LIST_WRITE'] as $statusID => $statusName)
 		{
 			$statusList[] = array('NAME' => $statusName, 'VALUE' => $statusID);
 		}
 
 		$actionList[] = array(
-			'NAME' => GetMessage('CRM_QUOTE_SET_STATUS'),
+			'NAME' => GetMessage('CRM_QUOTE_SET_STATUS_MSGVER_1'),
 			'VALUE' => 'set_status',
 			'ONCHANGE' => array(
 				array(
@@ -482,9 +500,11 @@ if (!$isInternal
 	if ($allowWrite)
 	{
 		//region Edit Button
-		$controlPanel['GROUPS'][0]['ITEMS'][] = $snippet->getEditButton();
-		$actionList[] = $snippet->getEditAction();
+		$actionManager = new ActionManager($gridManagerID);
+		$controlPanel['GROUPS'][0]['ITEMS'][] = $actionManager->getEditButton();
+		$actionList[] = $actionManager->getEditAction();
 		//endregion
+
 		//region Mark as Opened
 		$actionList[] = array(
 			'NAME' => GetMessage('CRM_QUOTE_MARK_AS_OPENED'),
@@ -560,8 +580,8 @@ if (!$isInternal
 if ($arResult['ENABLE_TOOLBAR'])
 {
 	$addButton =array(
-		'TEXT' => GetMessage('CRM_QUOTE_LIST_ADD_SHORT'),
-		'TITLE' => GetMessage('CRM_QUOTE_LIST_ADD'),
+		'TEXT' => GetMessage('CRM_QUOTE_LIST_ADD_SHORT_MSGVER_1'),
+		'TITLE' => GetMessage('CRM_QUOTE_LIST_ADD_MSGVER_1'),
 		'LINK' => $arResult['PATH_TO_QUOTE_ADD'],
 		'ICON' => 'btn-new'
 	);
@@ -659,7 +679,7 @@ $APPLICATION->IncludeComponent(
 				'loaderData' => $arParams['AJAX_LOADER'] ?? null
 			),
 			'MESSAGES' => array(
-				'deletionDialogTitle' => GetMessage('CRM_QUOTE_DELETE_TITLE'),
+				'deletionDialogTitle' => GetMessage('CRM_QUOTE_DELETE_TITLE_MSGVER_1'),
 				'deletionDialogMessage' => GetMessage('CRM_QUOTE_DELETE_CONFIRM'),
 				'deletionDialogButtonTitle' => GetMessage('CRM_QUOTE_DELETE')
 			)
@@ -693,25 +713,37 @@ $APPLICATION->IncludeComponent(
 <?php if (
 	!$isInternal
 	&& \Bitrix\Main\Application::getInstance()->getContext()->getRequest()->get('IFRAME') !== 'Y'
-	&& \Bitrix\Crm\Settings\Crm::isUniversalActivityScenarioEnabled()
-): ?>
+):
+	Extension::load(['crm.settings-button-extender', 'crm.toolbar-component']);
+	?>
 	<script type="text/javascript">
 		BX.ready(
 			function()
 			{
-				BX.Runtime.loadExtension(['crm.push-crm-settings', 'crm.toolbar-component']).then((exports) =>
-				{
-					/** @see BX.Crm.ToolbarComponent */
-					const settingsButton = exports.ToolbarComponent.Instance.getSettingsButton();
+				const settingsButton = BX.Crm.ToolbarComponent.Instance.getSettingsButton();
+				const settingsMenu = settingsButton ? settingsButton.getMenuWindow() : undefined;
 
-					/** @see BX.Crm.PushCrmSettings */
-					new exports.PushCrmSettings({
+				if (settingsMenu)
+				{
+					new BX.Crm.SettingsButtonExtender({
 						smartActivityNotificationSupported: <?= Container::getInstance()->getFactory(\CCrmOwnerType::Quote)->isSmartActivityNotificationSupported() ? 'true' : 'false' ?>,
 						entityTypeId: <?= \CCrmOwnerType::Quote ?>,
-						rootMenu: settingsButton ? settingsButton.getMenuWindow() : undefined,
+						categoryId: <?= isset($arResult['CATEGORY_ID']) ? (int)$arResult['CATEGORY_ID'] : 'null' ?>,
+						pingSettings: <?= \CUtil::PhpToJSObject((new TodoPingSettingsProvider(\CCrmOwnerType::Quote))->fetchAll()) ?>,
+						rootMenu: settingsMenu,
 						grid: BX.Reflection.getClass('BX.Main.gridManager') ? BX.Main.gridManager.getInstanceById('<?= \CUtil::JSEscape($arResult['GRID_ID']) ?>') : undefined,
+						<?php if (
+							\Bitrix\Crm\Integration\AI\AIManager::isAiCallAutomaticProcessingAllowed()
+							&& in_array(\CCrmOwnerType::Quote, \Bitrix\Crm\Integration\AI\AIManager::SUPPORTED_ENTITY_TYPE_IDS, true)
+							&& Container::getInstance()->getUserPermissions()->isAdmin()
+						): ?>
+						aiAutostartSettings: '<?= \Bitrix\Main\Web\Json::encode(\Bitrix\Crm\Integration\AI\Operation\AutostartSettings::get(
+							\CCrmOwnerType::Quote,
+							isset($arResult['CATEGORY_ID']) ? (int)$arResult['CATEGORY_ID'] : null,
+						)) ?>',
+						<?php endif; ?>
 					});
-				});
+				}
 			}
 		);
 	</script>
@@ -728,8 +760,8 @@ if ($arResult['CONVERSION_PERMITTED'] && $arResult['CAN_CONVERT'] && isset($arRe
 				{
 					accessDenied: "<?=GetMessageJS("CRM_QUOTE_CONV_ACCESS_DENIED")?>",
 					generalError: "<?=GetMessageJS("CRM_QUOTE_CONV_GENERAL_ERROR")?>",
-					dialogTitle: "<?=GetMessageJS("CRM_QUOTE_CONV_DIALOG_TITLE")?>",
-					syncEditorLegend: "<?=GetMessageJS("CRM_QUOTE_CONV_DIALOG_SYNC_LEGEND")?>",
+					dialogTitle: "<?=GetMessageJS("CRM_QUOTE_CONV_DIALOG_TITLE_MSGVER_1")?>",
+					syncEditorLegend: "<?=GetMessageJS("CRM_QUOTE_CONV_DIALOG_SYNC_LEGEND_MSGVER_1")?>",
 					syncEditorFieldListTitle: "<?=GetMessageJS("CRM_QUOTE_CONV_DIALOG_SYNC_FILED_LIST_TITLE")?>",
 					syncEditorEntityListTitle: "<?=GetMessageJS("CRM_QUOTE_CONV_DIALOG_SYNC_ENTITY_LIST_TITLE")?>",
 					continueButton: "<?=GetMessageJS("CRM_QUOTE_CONV_DIALOG_CONTINUE_BTN")?>",
@@ -882,4 +914,9 @@ if ($arResult['CONVERSION_PERMITTED'] && $arResult['CAN_CONVERT'] && isset($arRe
 	</script>
 <?endif;
 
-echo $arResult['ACTIVITY_FIELD_RESTRICTIONS'] ?? '';
+if (!empty($arResult['RESTRICTED_FIELDS_ENGINE']))
+{
+	Extension::load(['crm.restriction.filter-fields']);
+
+	echo $arResult['RESTRICTED_FIELDS_ENGINE'];
+}

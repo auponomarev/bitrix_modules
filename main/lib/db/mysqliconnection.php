@@ -11,22 +11,20 @@ use Bitrix\Main\Diag;
  */
 class MysqliConnection extends MysqlCommonConnection
 {
+	public function __construct(array $configuration)
+	{
+		parent::__construct($configuration);
+
+		$this->configureReportLevel();
+	}
+
 	/**********************************************************
 	 * SqlHelper
 	 **********************************************************/
 
-	/**
-	 * @inheritDoc
-	 */
 	protected function createSqlHelper()
 	{
 		return new MysqliSqlHelper($this);
-	}
-
-	protected function configureReportLevel(): void
-	{
-		// back to default before PHP 8.1
-		mysqli_report(MYSQLI_REPORT_OFF);
 	}
 
 	/***********************************************************
@@ -94,6 +92,11 @@ class MysqliConnection extends MysqlCommonConnection
 		$this->resource = $connection;
 		$this->isConnected = true;
 
+		if (isset($this->configuration['charset']))
+		{
+			$connection->set_charset($this->configuration['charset']);
+		}
+
 		// nosql memcached driver
 		if (isset($this->configuration['memcache']))
 		{
@@ -131,20 +134,13 @@ class MysqliConnection extends MysqlCommonConnection
 	 */
 	protected function queryInternal($sql, array $binds = null, Diag\SqlTrackerQuery $trackerQuery = null)
 	{
-		$this->configureReportLevel();
 		$this->connectInternal();
 
-		if ($trackerQuery != null)
-		{
-			$trackerQuery->startQuery($sql, $binds);
-		}
+		$trackerQuery?->startQuery($sql, $binds);
 
-		$result = $this->resource->query($sql, MYSQLI_STORE_RESULT);
+		$result = $this->resource->query($sql);
 
-		if ($trackerQuery != null)
-		{
-			$trackerQuery->finishQuery();
-		}
+		$trackerQuery?->finishQuery();
 
 		$this->lastQueryResult = $result;
 
@@ -203,7 +199,7 @@ class MysqliConnection extends MysqlCommonConnection
 	/**
 	 * @inheritDoc
 	 */
-	protected function getErrorMessage()
+	public function getErrorMessage()
 	{
 		return sprintf("(%s) %s", $this->resource->errno, $this->resource->error);
 	}
@@ -217,5 +213,11 @@ class MysqliConnection extends MysqlCommonConnection
 	public function selectDatabase($database)
 	{
 		return $this->resource->select_db($database);
+	}
+
+	protected function configureReportLevel(): void
+	{
+		// back to default before PHP 8.1
+		mysqli_report(MYSQLI_REPORT_OFF);
 	}
 }

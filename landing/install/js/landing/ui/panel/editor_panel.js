@@ -228,6 +228,42 @@
 			attrs: {title: BX.Landing.Loc.getMessage("LANDING_TITLE_OF_EDITOR_ACTION_PASTE_TABLE")},
 			onClick: proxy(editor.adjustButtonsState, editor)
 		}));
+
+		if (BX.Landing.Main.getInstance()["options"]["copilot_available"])
+		{
+			editor.addButton(new BX.Landing.UI.Button.AiCopilot.getInstance("ai_copilot", {
+				html: 'COPILOT',
+				editor,
+				onReplace(value) {
+					const fieldInput = editor.currentElement.querySelector('.landing-ui-field-input');
+					if (fieldInput)
+					{
+						fieldInput.innerHTML = `<div>${value}</div>`;
+					}
+					else if (editor.currentElement)
+					{
+						editor.currentElement.innerHTML = `<div>${value}</div>`;
+					}
+				},
+				onReplaceContext(value)
+				{
+					const range = window.getSelection().getRangeAt(0);
+					range.deleteContents();
+					range.insertNode(document.createTextNode(value));
+				},
+				onAddBelow(value) {
+					const fieldInput = editor.currentElement.querySelector('.landing-ui-field-input');
+					if (fieldInput)
+					{
+						fieldInput.innerHTML = `${fieldInput.innerHTML}<div>${value}</div>`;
+					}
+					else if (editor.currentElement)
+					{
+						editor.currentElement.innerHTML = `${editor.currentElement.innerHTML}<div>${value}</div>`;
+					}
+				},
+			}));
+		}
 	}
 
 
@@ -283,6 +319,15 @@
 					top = nodeRect.bottom + 4 + windowScope.pageYOffset;
 				}
 			}
+		}
+
+		if (
+			editor.outOfFrame
+			&& editor.contextDocument !== top.document
+			&& editor.contextDocument.defaultView.frameElement
+		)
+		{
+			left += editor.contextDocument.defaultView.frameElement.getBoundingClientRect().left;
 		}
 
 		if ((left + editor.rect.width) > (windowScope.innerWidth - 20))
@@ -456,6 +501,21 @@
 					else
 					{
 						this.addButton(button);
+					}
+
+					if (button.insertBefore)
+					{
+						const nextSibling = this.layout.querySelector(`[data-id="${button.insertBefore}"]`);
+
+						if (nextSibling)
+						{
+							BX.insertBefore(button.layout, nextSibling);
+							this.buttons.add(button);
+						}
+						else
+						{
+							this.addButton(button);
+						}
 					}
 				}, this);
 			}

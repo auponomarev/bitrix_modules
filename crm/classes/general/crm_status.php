@@ -113,7 +113,7 @@ class CCrmStatus
 		$arEntityType = [
 			'STATUS' => [
 				'ID' =>'STATUS',
-				'NAME' => GetMessage('CRM_STATUS_TYPE_STATUS'),
+				'NAME' => GetMessage('CRM_STATUS_TYPE_STATUS_MSGVER_1'),
 				'SEMANTIC_INFO' => self::GetLeadStatusSemanticInfo(),
 				'ENTITY_TYPE_ID' => \CCrmOwnerType::Lead,
 			],
@@ -130,13 +130,16 @@ class CCrmStatus
 		{
 			$arEntityType['INVOICE_STATUS'] = [
 				'ID' =>'INVOICE_STATUS',
-				'NAME' => GetMessage('CRM_STATUS_TYPE_INVOICE_STATUS'),
+				'NAME' => GetMessage('CRM_STATUS_TYPE_INVOICE_STATUS_MSGVER_1'),
 				'SEMANTIC_INFO' => self::GetInvoiceStatusSemanticInfo(),
 			];
 		}
 		if ($invoiceSettings->isSmartInvoiceEnabled())
 		{
-			$arEntityType['INVOICE_STATUS']['NAME'] = \Bitrix\Crm\Service\Container::getInstance()->getLocalization()->appendOldVersionSuffix(GetMessage('CRM_STATUS_TYPE_INVOICE_STATUS'));
+			if ($invoiceSettings->isOldInvoicesEnabled())
+			{
+				$arEntityType['INVOICE_STATUS']['NAME'] = \Bitrix\Crm\Service\Container::getInstance()->getLocalization()->appendOldVersionSuffix(GetMessage('CRM_STATUS_TYPE_INVOICE_STATUS_MSGVER_1'));
+			}
 			$factory = \Bitrix\Crm\Service\Container::getInstance()->getFactory(\CCrmOwnerType::SmartInvoice);
 			if ($factory)
 			{
@@ -148,7 +151,7 @@ class CCrmStatus
 						$stagesEntityId = $factory->getStagesEntityId($category->getId());
 						$arEntityType[$stagesEntityId] = [
 							'ID' => $stagesEntityId,
-							'NAME' => Loc::getMessage('CRM_STATUS_TYPE_INVOICE_STATUS'),
+							'NAME' => Loc::getMessage('CRM_STATUS_TYPE_INVOICE_STATUS_MSGVER_1'),
 							'SEMANTIC_INFO' => [],
 							'PREFIX' => static::getDynamicEntityStatusPrefix(\CCrmOwnerType::SmartInvoice, $category->getId()),
 							'FIELD_ATTRIBUTE_SCOPE' => FieldAttributeManager::getEntityScopeByCategory($category->getId()),
@@ -202,8 +205,9 @@ class CCrmStatus
 			[
 				'QUOTE_STATUS' => [
 					'ID' =>'QUOTE_STATUS',
-					'NAME' => GetMessage('CRM_STATUS_TYPE_QUOTE_STATUS'),
-					'SEMANTIC_INFO' => self::GetQuoteStatusSemanticInfo()
+					'NAME' => GetMessage('CRM_STATUS_TYPE_QUOTE_STATUS_MSGVER_2'),
+					'SEMANTIC_INFO' => self::GetQuoteStatusSemanticInfo(),
+					'ENTITY_TYPE_ID' => \CCrmOwnerType::Quote,
 				],
 				'HONORIFIC' => ['ID' =>'HONORIFIC', 'NAME' => GetMessage('CRM_STATUS_TYPE_HONORIFIC')],
 				'EVENT_TYPE' => ['ID' =>'EVENT_TYPE', 'NAME' => GetMessage('CRM_STATUS_TYPE_EVENT_TYPE')],
@@ -767,11 +771,13 @@ class CCrmStatus
 		if(!empty($prefix))
 		{
 			$offset = mb_strlen($prefix) + 2;
-			$sql = "SELECT SUBSTRING(STATUS_ID, {$offset}) AS MAX_STATUS_ID FROM b_crm_status WHERE ENTITY_ID = '{$DB->ForSql($this->entityId)}' AND CAST(SUBSTRING(STATUS_ID, {$offset}) AS UNSIGNED) > 0 ORDER BY CAST(SUBSTRING(STATUS_ID, {$offset}) AS UNSIGNED) DESC LIMIT 1";
+			$castedStatus = $DB->ToNumber("SUBSTRING(STATUS_ID, {$offset})");
+			$sql = "SELECT SUBSTRING(STATUS_ID, {$offset}) AS MAX_STATUS_ID FROM b_crm_status WHERE ENTITY_ID = '{$DB->ForSql($this->entityId)}' AND $castedStatus > 0 ORDER BY $castedStatus DESC LIMIT 1";
 		}
 		else
 		{
-			$sql = "SELECT STATUS_ID AS MAX_STATUS_ID FROM b_crm_status WHERE ENTITY_ID = '{$DB->ForSql($this->entityId)}' AND CAST(STATUS_ID AS UNSIGNED) > 0 ORDER BY CAST(STATUS_ID AS UNSIGNED) DESC LIMIT 1";
+			$castedStatus = $DB->ToNumber("STATUS_ID");
+			$sql = "SELECT STATUS_ID AS MAX_STATUS_ID FROM b_crm_status WHERE ENTITY_ID = '{$DB->ForSql($this->entityId)}' AND $castedStatus > 0 ORDER BY $castedStatus DESC LIMIT 1";
 		}
 
 		$res = $DB->Query($sql, false, 'FILE: '.__FILE__.'<br /> LINE: '.__LINE__);

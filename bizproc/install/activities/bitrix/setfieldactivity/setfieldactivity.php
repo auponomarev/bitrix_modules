@@ -102,7 +102,8 @@ class CBPSetFieldActivity extends CBPActivity implements IBPActivityExternalEven
 				$key = $documentFieldsAliasesMap[$key];
 			}
 
-			if (($property = $documentFields[$key]) && ($value || $mergeValues))
+			$property = $documentFields[$key] ?? null;
+			if ($property && ($value || $mergeValues))
 			{
 				$fieldTypeObject = $documentService->getFieldTypeObject($documentType, $property);
 				if ($fieldTypeObject)
@@ -118,7 +119,10 @@ class CBPSetFieldActivity extends CBPActivity implements IBPActivityExternalEven
 					if ($value)
 					{
 						$fieldTypeObject->setValue($value);
-						$value = $fieldTypeObject->externalizeValue('Document', $fieldTypeObject->getValue());
+						$value = $fieldTypeObject->externalizeValue(
+							FieldType::VALUE_CONTEXT_DOCUMENT,
+							$fieldTypeObject->getValue()
+						);
 					}
 				}
 			}

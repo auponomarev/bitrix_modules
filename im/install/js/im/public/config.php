@@ -4,7 +4,11 @@ if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true)
 	die();
 }
 
-\Bitrix\Main\Loader::includeModule('im');
+$isV2Enabled = false;
+if (\Bitrix\Main\Loader::includeModule('im'))
+{
+	$isV2Enabled = !\Bitrix\Im\Settings::isLegacyChatActivated();
+}
 
 return [
 	'js' => [
@@ -13,8 +17,6 @@ return [
 	'rel' => [
 		'main.core',
 	],
-	'settings' => [
-		'v2enabled' => \Bitrix\Im\Settings::isBetaActivated()
-	],
+	'settings' => ['v2enabled' => $isV2Enabled],
 	'skip_core' => false,
 ];

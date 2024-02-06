@@ -2,9 +2,10 @@
 
 namespace Bitrix\Crm\Controller\Mail;
 
+use Bitrix\Crm\Activity\Mail\SanitizedDescriptionCache;
 use Bitrix\Crm\Integration\Mail\Client;
 use Bitrix\Crm\ItemIdentifier;
-use Bitrix\Crm\Service;
+use Bitrix\Crm\Service\Container;
 use Bitrix\Disk\File;
 use Bitrix\Main\ArgumentException;
 use Bitrix\Main\Engine\Controller;
@@ -21,14 +22,60 @@ use Bitrix\Main\Config;
 use Bitrix\Main\Mail;
 use Bitrix\UI\FileUploader\Uploader;
 use Bitrix\Mobile\UI;
+use Bitrix\Main\Engine\Response\Redirect;
+use Bitrix\Main\HttpResponse;
+use Bitrix\Mail\Helper\DownloadResponse;
 
 class Message extends Controller
 {
 	protected const PERMISSION_READ = 1;
 	protected const SUPPORTED_ACTIVITY_TYPE = 'CRM_EMAIL';
 	protected const EMAIL_COMMUNICATION_TYPE = 'EMAIL';
+	protected const ENTITIES_THAT_HAVE_CONTACTS = [
+		\CCrmOwnerType::DealRecurringName,
+		\CCrmOwnerType::QuoteName,
+		\CCrmOwnerType::SmartInvoiceName,
+		\CCrmOwnerType::CompanyName,
+		\CCrmOwnerType::DealName,
+		\CCrmOwnerType::LeadName,
+	];
+	protected const NOT_RECIPIENT_OWNER_TYPES = [
+		\CCrmOwnerType::Lead,
+		\CCrmOwnerType::Order,
+		\CCrmOwnerType::Deal,
+		\CCrmOwnerType::DealRecurring,
+		\CCrmOwnerType::Quote,
+		\CCrmOwnerType::SmartInvoice
+	];
 
 	protected $errorCollection = [];
+
+	/**
+	 * Controller actions configuration
+	 *
+	 * @return array
+	 */
+	public function configureActions(): array
+	{
+		return [
+			'downloadHtmlBody' => [
+				'+prefilters' => [
+					new \Bitrix\Main\Engine\ActionFilter\CloseSession(),
+				],
+				'-prefilters' => [
+					\Bitrix\Main\Engine\ActionFilter\Csrf::class,
+				],
+			],
+			'getDescriptionAndQuote' => [
+				'+prefilters' => [
+					new \Bitrix\Main\Engine\ActionFilter\CloseSession(),
+				],
+				'-prefilters' => [
+					\Bitrix\Main\Engine\ActionFilter\Csrf::class,
+				],
+			],
+		];
+	}
 
 	/**
 	 * @throws LoaderException
@@ -203,7 +250,7 @@ class Message extends Controller
 		return false;
 	}
 
-	private function getMessageAsQuote($activityId)
+	private function getMessageAsQuote($activityId): string
 	{
 		if (!$this->checkModules())
 		{
@@ -216,9 +263,15 @@ class Message extends Controller
 			],
 			self::SUPPORTED_ACTIVITY_TYPE,
 			[
-				'DESCRIPTION',
+				'ID',
+				'SUBJECT',
+				'OWNER_ID',
+				'SETTINGS',
 				'START_TIME',
-			]
+				'DESCRIPTION',
+				'OWNER_TYPE_ID',
+			],
+			limit: 1,
 		);
 
 		if (!$this->checkActivityPermission(self::PERMISSION_READ, $activities))
@@ -228,21 +281,20 @@ class Message extends Controller
 
 		$activity = $activities[0];
 
-		Email::uncompressActivity($activity);
-
 		if (!$activity)
 		{
 			return '';
 		}
 
-		return sprintf(
-			'<br><br>%s<br><blockquote style="margin: 0 0 0 5px; padding: 5px 5px 5px 8px; border-left: 4px solid #e2e3e5; ">%s</blockquote>',
-			formatDate(
-				preg_replace('/[\/.,\s:][s]/', '', $GLOBALS['DB']->dateFormatToPhp(FORMAT_DATETIME)),
-				makeTimestamp($activity['START_TIME']),
-				time() + \CTimeZone::getOffset()
-			),
-			\Bitrix\Mail\Helper\Message::sanitizeHtml($activity['DESCRIPTION'])
+		return Email::getMessageQuote($activity, $activity['DESCRIPTION'] ?? '');
+	}
+
+	protected function checkNotRecipientOwnerTypes($typeId): bool
+	{
+		return (
+			in_array($typeId, self::NOT_RECIPIENT_OWNER_TYPES) ||
+			\CCrmOwnerType::isPossibleSuspendedDynamicTypeId($typeId) ||
+			\CCrmOwnerType::isPossibleDynamicTypeId($typeId)
 		);
 	}
 
@@ -274,6 +326,8 @@ class Message extends Controller
 		$isNew = $ID <= 0;
 
 		$userID = \CCrmSecurityHelper::GetCurrentUser()->GetID();
+		$responsibleId = (int) $userID;
+		$mailboxOwnerId = null;
 
 		if ($userID <= 0)
 		{
@@ -616,9 +670,8 @@ class Message extends Controller
 			if ($item['entityTypeId'] > 0 && $item['entityId'] > 0)
 			{
 				$key = sprintf('%u_%u', $item['entityType'], $item['entityId']);
-				if (\CCrmOwnerType::Deal == $item['entityTypeId'] && !isset($arBindings[$key]))
+				if ($this->checkNotRecipientOwnerTypes($item['entityTypeId']) && !isset($arBindings[$key]))
 				{
-					$ownerTypeName = \CCrmOwnerType::resolveName($item['entityTypeId']);
 					$ownerTypeID = $item['entityTypeId'];
 					$ownerID = (int) $item['entityId'];
 
@@ -627,29 +680,6 @@ class Message extends Controller
 						'OWNER_ID'      => $item['entityId']
 					);
 				}
-			}
-		}
-
-		$nonRcptOwnerTypes = array(
-			\CCrmOwnerType::Lead,
-			\CCrmOwnerType::Order,
-			\CCrmOwnerType::Deal,
-			\CCrmOwnerType::DealRecurring,
-			\CCrmOwnerType::Quote,
-		);
-		if (
-			'Y' !== ($data['ownerRcpt'] ?? null)
-			&& (in_array($ownerTypeID, $nonRcptOwnerTypes) || \CCrmOwnerType::isUseDynamicTypeBasedApproach($ownerTypeID))
-			&& $ownerID > 0
-		)
-		{
-			$key = sprintf('%s_%u', $ownerTypeName, $ownerID);
-			if (!isset($arBindings[$key]))
-			{
-				$arBindings[$key] = array(
-					'OWNER_TYPE_ID' => $ownerTypeID,
-					'OWNER_ID' => $ownerID,
-				);
 			}
 		}
 
@@ -789,16 +819,18 @@ class Message extends Controller
 
 			if (\CModule::includeModule('mail'))
 			{
-				foreach (\Bitrix\Mail\MailboxTable::getUserMailboxes() as $mailbox)
+				/**
+				 * @todo Explicitly enter the ID. This will increase the productivity of selection.
+				 */
+				$mailboxHelper = \Bitrix\Mail\Helper\Mailbox::findBy(null, $fromEmail);
+
+				if (!empty($mailboxHelper))
 				{
-					if ($fromEmail == $mailbox['EMAIL'])
-					{
-						$userImap = $mailbox;
-					}
+					$mailboxOwnerId = $mailboxHelper->getMailboxOwnerId();
 				}
 			}
 
-			if (empty($userImap))
+			if (empty($mailboxHelper))
 			{
 				if ($crmEmail != '' && $crmEmail != $fromEmail)
 				{
@@ -832,7 +864,7 @@ class Message extends Controller
 
 			if (\CCrmContentType::Html == $contentType)
 			{
-				$messageBody = \Bitrix\Mail\Helper\Message::sanitizeHtml($messageBody);
+				$messageBody = Helper\Message::sanitizeHtml($messageBody);
 			}
 			else
 			{
@@ -889,7 +921,7 @@ class Message extends Controller
 			$arBindings
 		);
 
-		$arFields = array(
+		$arFields = [
 			'OWNER_ID' => $ownerID,
 			'OWNER_TYPE_ID' => $ownerTypeID,
 			'TYPE_ID' =>  \CCrmActivityType::Email,
@@ -897,7 +929,9 @@ class Message extends Controller
 			'START_TIME' => $now,
 			'END_TIME' => $now,
 			'COMPLETED' => 'Y',
-			'RESPONSIBLE_ID' => $userID,
+			'AUTHOR_ID' => $mailboxOwnerId,
+			'RESPONSIBLE_ID' => $responsibleId,
+			'EDITOR_ID' => $responsibleId,
 			'PRIORITY' => !empty($data['important']) ? \CCrmActivityPriority::High : \CCrmActivityPriority::Medium,
 			'DESCRIPTION' => ($description = $messageHtml),
 			'DESCRIPTION_TYPE' => \CCrmContentType::Html,
@@ -907,7 +941,7 @@ class Message extends Controller
 			'BINDINGS' => array_values($arBindings),
 			'COMMUNICATIONS' => $arComms,
 			'PARENT_ID' => $parentId,
-		);
+		];
 
 		$arFileIDs = [];
 		$storageTypeID = \CCrmActivityStorageType::Disk;
@@ -1279,7 +1313,7 @@ class Message extends Controller
 
 		addEventToStatFile('crm', 'send_email_message', $_REQUEST['context'], trim(trim($messageId), '<>'));
 
-		$needUpload = !empty($userImap);
+		$needUpload = !empty($mailboxHelper);
 
 		if ($context->getSmtp() && in_array(mb_strtolower($context->getSmtp()->getHost()), array('smtp.gmail.com', 'smtp.office365.com')))
 		{
@@ -1303,7 +1337,6 @@ class Message extends Controller
 				)
 			));
 
-			$mailboxHelper = \Bitrix\Mail\Helper\Mailbox::createInstance($userImap['ID']);
 			$mailboxHelper->uploadMessage($outgoing);
 		}
 
@@ -1427,62 +1460,6 @@ class Message extends Controller
 		return true;
 	}
 
-	/**
-	 * @throws ArgumentException
-	 */
-	protected function getContactDealIds(int $ID): array
-	{
-		return \Bitrix\Crm\Binding\DealContactTable::getDealContactIds($ID);
-	}
-
-	/**
-	 * @throws ArgumentException
-	 */
-	protected function getContactCompanyIds(int $ID): array
-	{
-		return \Bitrix\Crm\Binding\ContactCompanyTable::getCompanyContactIDs($ID);
-	}
-
-	/**
-	 * @throws ArgumentException
-	 */
-	protected function getContactLeadIds(int $ID): array
-	{
-		return \Bitrix\Crm\Binding\LeadContactTable::getLeadContactIds($ID);
-	}
-
-	protected function buildContact(array $props): array
-	{
-		$whiteListKeys = [
-			'email' => '',
-			'name' => '',
-			'id' => 0,
-			'isUser' => false,
-			'typeName' => \Bitrix\Crm\Activity\Mail\Message::convertTypeToFormatForBinding(\CCrmOwnerType::ContactName),
-		];
-
-		$contact = [];
-
-		foreach ($whiteListKeys as $key => $value)
-		{
-			if (isset($props[$key]) && $props[$key])
-			{
-				if ($key === 'id')
-				{
-					$props[$key] = (int)$props[$key];
-				}
-
-				$contact[$key] = $props[$key];
-			}
-			else
-			{
-				$contact[$key] = $value;
-			}
-		}
-
-		return $contact;
-	}
-
 	protected function getOwnerTypeId(string $ownerType): int
 	{
 		return \CCrmOwnerType::ResolveID($ownerType);
@@ -1519,31 +1496,6 @@ class Message extends Controller
 		return $communications;
 	}
 
-	protected function getEmailByFiled(array $filed): string
-	{
-		if (isset($filed['VALUE']))
-		{
-			return $filed['VALUE'];
-		}
-		return '';
-	}
-
-	protected function getContactsFromFields(string $ownerTypeName, int $ownerId): array
-	{
-		$contacts = [];
-		$fields = $this->getFieldsByType($ownerTypeName, $ownerId, self::EMAIL_COMMUNICATION_TYPE);
-
-		foreach ($fields as $field)
-		{
-			$field['id'] = $ownerId;
-			$field['email'] = $this->getEmailByFiled($field);
-			$field['typeName'] = \Bitrix\Crm\Activity\Mail\Message::convertTypeToFormatForBinding($ownerTypeName);
-			$contacts[] = $this->buildContact($field);
-		}
-
-		return $contacts;
-	}
-
 	public function canUseMailAction(): bool
 	{
 		return Client::isReadyToUse();
@@ -1555,82 +1507,148 @@ class Message extends Controller
 	 */
 	public function getEntityContactsAction(int $ownerId, string $ownerTypeName, bool $uploadClients = true, bool $uploadSenders = true): array
 	{
-		$contacts = [];
+		$recipients = [];
 
 		if(!$this->checkModules())
 		{
-			return $contacts;
+			return $recipients;
 		}
 
 		if (!\CCrmPerms::IsAccessEnabled())
 		{
 			$this->addError(new Error(Loc::getMessage('CRM_MAIL_CONTROLLER_PERMISSION_DENIED')));
-			return $contacts;
+			return $recipients;
 		}
 
 		$ownerTypeId = $this->getOwnerTypeId($ownerTypeName);
 
 		if (!$this->checkOwnerReadPermission($ownerTypeId, $ownerId))
 		{
-			return $contacts;
+			return $recipients;
 		}
 
 		if($uploadClients)
 		{
-			if (\CCrmOwnerType::Deal == $ownerTypeId)
+			$companies = $this->getCompanies($ownerTypeName, $ownerId);
+			$companiesWithEmail = [];
+
+			$contacts = $this->getContacts($ownerTypeName, $ownerId);
+
+			if ($ownerTypeName !== \CCrmOwnerType::ContactName)
 			{
-				$contacts['clients'] = $this->getContactsDeal($ownerId);
+				foreach ($companies as $company)
+				{
+					$contacts = array_merge($contacts, $this->getContacts(\CCrmOwnerType::CompanyName, $company['id']));
+				}
 			}
-			elseif (\CCrmOwnerType::Lead == $ownerTypeId)
+
+			foreach ($companies as $company)
 			{
-				$contacts['clients'] = array_merge(
-					$this->getContactsLead($ownerId),
-					$this->getContactsFromFields($ownerTypeName, $ownerId),
-				);
+				if (count($company['email']))
+				{
+					$companiesWithEmail[] = $company;
+				}
 			}
-			elseif (\CCrmOwnerType::Contact == $ownerTypeId)
-			{
-				$contacts['clients'] = $this->buildContacts([$ownerId]);
-			}
-			elseif (\CCrmOwnerType::Company == $ownerTypeId)
-			{
-				$contacts['clients'] = array_merge(
-					$this->getContactsCompany($ownerId),
-					$this->getContactsFromFields($ownerTypeName, $ownerId),
-				);
-			}
+
+			$clientsByType = [
+				'company' => $companiesWithEmail,
+				'contacts' => $contacts,
+			];
+
+			$emailFields = $this->buildRecipients([$ownerId], $ownerTypeName);
+
+			$recipients['clients'] = array_merge(
+				$clientsByType['contacts'],
+				$clientsByType['company'],
+				$emailFields,
+			);
+
+			/*
+			 	Iterate through the arrays and leave only the ID.
+			 */
+			$recipients['clientIdsByType'] = array_map(
+				function($item)
+				{
+					if (!is_array($item))
+					{
+						return [];
+					}
+
+					return array_map(
+						function($item)
+						{
+							if (isset($item['id']))
+							{
+								return (int)$item['id'];
+							}
+							return [];
+						},
+						$item,
+					);
+				},
+				$clientsByType,
+			);
 		}
 
-		if($uploadSenders)
+		if ($uploadSenders)
 		{
-			$contacts['senders'] = $this->getSenderList();
+			$recipients['senders'] = \Bitrix\Crm\Activity\Mail\Message::getSenderList();
 		}
 
-		return $contacts;
+		return $recipients;
 	}
 
-	protected function buildContacts(array $contactIDs): array
+	protected function buildRecipients(array $contactIDs, string $entityTypeName, bool $onlyWithEmail = true): array
 	{
-		$clients = [];
+		$recipients = [];
 
 		foreach ($contactIDs as $id)
 		{
-			$contactName = \CCrmContact::GetByID($id, false)['FULL_NAME'];
-			$contactEmail = \CCrmFieldMulti::GetEntityFirstField(
-				\CCrmOwnerType::ContactName,
+			$contactName = '';
+
+			if ($entityTypeName === \CCrmOwnerType::CompanyName)
+			{
+				$contactName = \CCrmCompany::GetByID($id, false)['TITLE'];
+			}
+			else if($entityTypeName === \CCrmOwnerType::ContactName)
+			{
+				$contactName = \CCrmContact::GetByID($id, false)['FULL_NAME'];
+			}
+			else if($entityTypeName === \CCrmOwnerType::LeadName)
+			{
+				$contactName = \CCrmLead::GetByID($id, false)['TITLE'];
+			}
+
+			$contactEmailsField = \CCrmFieldMulti::GetEntityFields(
+				$entityTypeName,
 				$id,
 				\CCrmFieldMulti::EMAIL,
-			)['VALUE'];
+			);
 
-			$clients[] = $this->buildContact([
-				'email' => $contactEmail,
+			$contactEmails = array_map(function($item) {
+				return ['value' => $item['VALUE']];
+			}, $contactEmailsField);
+
+			$recipient = \Bitrix\Crm\Activity\Mail\Message::buildContact([
+				'email' => $contactEmails,
 				'name' => $contactName,
 				'id' => $id,
-				'typeName' => \Bitrix\Crm\Activity\Mail\Message::convertTypeToFormatForBinding(\CCrmOwnerType::ContactName),
+				'typeName' => \Bitrix\Crm\Activity\Mail\Message::convertTypeToFormatForBinding($entityTypeName),
 			]);
+
+			if ($recipient['email'] === '')
+			{
+				$recipient['email'] = [];
+			}
+
+			if ($onlyWithEmail === false || count($recipient['email']))
+			{
+				$recipients[] = $recipient;
+			}
+
 		}
 
-		return $clients;
+		return $recipients;
 	}
 
 	protected function getAllowedContactIds(array $contactIDs): array
@@ -1639,7 +1657,7 @@ class Message extends Controller
 
 		foreach ($contactIDs as $id)
 		{
-			if(Service\Container::getInstance()->getUserPermissions()->checkReadPermissions(\CCrmOwnerType::Contact, $id))
+			if(Container::getInstance()->getUserPermissions()->checkReadPermissions(\CCrmOwnerType::Contact, $id))
 			{
 				$contactIdsPermissions[] = $id;
 			};
@@ -1648,109 +1666,73 @@ class Message extends Controller
 		return $contactIdsPermissions;
 	}
 
-	/**
-	 * @throws ArgumentException
-	 */
-	protected function getContactsLead(int $leadID): array
+	protected function getEntity(string $entityTypeName, int $ownerId): ?\Bitrix\Crm\Item
 	{
-		$contactIDs = $this->getAllowedContactIds($this->getContactLeadIds($leadID));
-		return $this->buildContacts($contactIDs);
+		$entityTypeId = $this->getOwnerTypeId($entityTypeName);
+		$entityFactory = Container::getInstance()->getFactory($entityTypeId);
+		return $entityFactory->getItem($ownerId);
 	}
 
-	/**
-	 * @throws ArgumentException
-	 */
-	protected function getContactsCompany(int $companyID): array
+	protected function checkEntityCanHaveContacts($typeName): bool
 	{
-		$contactIDs = $this->getAllowedContactIds($this->getContactCompanyIds($companyID));
-		return $this->buildContacts($contactIDs);
+		$typeId = \CCrmOwnerType::ResolveID($typeName);
+		return (
+			in_array($typeName, self::ENTITIES_THAT_HAVE_CONTACTS) ||
+			\CCrmOwnerType::isPossibleSuspendedDynamicTypeId($typeId) ||
+			\CCrmOwnerType::isPossibleDynamicTypeId($typeId)
+		);
 	}
 
-	/**
-	 * @throws ArgumentException
-	 */
-	protected function getContactsDeal(int $dealID): array
+	protected function getContacts(string $entityTypeName, int $ownerId): array
 	{
-		$contactIDs = $this->getAllowedContactIds($this->getContactDealIds($dealID));
-		return $this->buildContacts($contactIDs);
-	}
-
-	/**
-	 * @param array|string $value
-	 * Example:
-	 * for array: ['email1@email.com','email2@email.com<LastName FirstName>']
-	 * for string: 'email1@email.com, email2@email.com<LastName FirstName>'
-	 *
-	 * @param array $contactList
-	 * @return array
-	 */
-	protected function parseContacts($value, array $contactList): array
-	{
-		$list = is_array($value) ? $value : explode(',', $value);
-
-		$contacts = [];
-
-		foreach ($list as $item)
+		if (!$this->checkEntityCanHaveContacts($entityTypeName))
 		{
-			$address = new \Bitrix\Main\Mail\Address($item);
-			if ($address->validate())
+			return [];
+		}
+
+		$ownerEntity = $this->getEntity($entityTypeName, $ownerId);
+
+		if (!is_null($ownerEntity))
+		{
+			$contacts = $ownerEntity->getContactBindings();
+			$contactIds = [];
+
+			foreach($contacts as $binding)
 			{
-				$email = $address->getEmail();
-				$isUser = false;
+				$contactIds[] = (int) $binding['CONTACT_ID'];
+			}
 
-				if (isset($contactList[$email]))
-				{
-					$contactData = $contactList[$email];
+			$contactIDs = $this->getAllowedContactIds($contactIds);
+			return $this->buildRecipients($contactIDs, \CCrmOwnerType::ContactName);
+		}
 
-					if (isset($contactData['isUser']))
-					{
-						$isUser = true;
-					}
+		return [];
+	}
 
-					if (isset($contactData['ENTITY_ID']))
-					{
-						$id = $contactData['ENTITY_ID'];
-					}
-					elseif (isset($contactData['id']))
-					{
-						$id = $contactData['id'];
-					}
-					else
-					{
-						$id = null;
-					}
+	protected function getCompanies(string $entityTypeName, int $ownerId): array
+	{
+		$companies = [];
 
-					if (isset($contactData['TITLE']))
-					{
-						$name = $contactData['TITLE'];
-					}
-					elseif (isset($contactData['name']))
-					{
-						$name = $contactData['name'];
-					}
-					else
-					{
-						$name = $contactData['TITLE'];
-					}
-				}
-				else
-				{
-					$id = null;
-					$name = $address->getName();
-				}
+		if (\CCrmOwnerType::CompanyName === $entityTypeName)
+		{
+			return $companies;
+		}
 
-				$contact = $this->buildContact([
-					'email' => $email,
-					'id' => $id,
-					'name' => $name,
-					'isUser' => $isUser,
-				]);
+		$ownerEntity = $this->getEntity($entityTypeName, $ownerId);
 
-				$contacts[] = $contact;
+		$company = $ownerEntity->getCompany();
+
+		if ($company)
+		{
+			$companyId = $company->getId();
+
+			if ($companyId)
+			{
+				$companies = $this->buildRecipients([$companyId], \CCrmOwnerType::CompanyName, false);
 			}
 		}
 
-		return $contacts;
+		return $companies;
 	}
 
 	protected function getHeader(array $activity): array
@@ -1793,7 +1775,7 @@ class Message extends Controller
 
 	protected function checkOwnerReadPermission(int $typeId, int $id): bool
 	{
-		if(!Service\Container::getInstance()->getUserPermissions()->checkReadPermissions($typeId, $id))
+		if(!Container::getInstance()->getUserPermissions()->checkReadPermissions($typeId, $id))
 		{
 			$this->addError(new Error(Loc::getMessage('CRM_MAIL_CONTROLLER_PERMISSION_DENIED', 'activity_not_specified')));
 			return false;
@@ -1891,23 +1873,6 @@ class Message extends Controller
 		return $activities;
 	}
 
-	protected function getSenderList(): array
-	{
-		$mailboxes = \Bitrix\Main\Mail\Sender::prepareUserMailboxes(null, true);
-		$senders = [];
-
-		foreach ($mailboxes as $sender)
-		{
-			$sender['isUser'] = true;
-			$senders[] = $this->buildContact($sender);
-		}
-
-		/*
-			todo: Choosing a preferred email based on the history of correspondence
-		*/
-		return $senders;
-	}
-
 	/**
 	 * @throws ObjectPropertyException
 	 * @throws LoaderException
@@ -1940,7 +1905,8 @@ class Message extends Controller
 			self::SUPPORTED_ACTIVITY_TYPE,
 			[
 				'THREAD_ID',
-			]
+			],
+			limit: 1
 		);
 
 		if (count($activities) === 0 || !$this->checkActivityPermission(self::PERMISSION_READ, $activities))
@@ -1963,6 +1929,11 @@ class Message extends Controller
 			'START_TIME' => 'DESC',
 		];
 
+		/*
+			We need to make two selections and sort the messages by date
+			in order to limit the number of messages in long chains(in the future)
+			while preserving the open email in the middle of the chain.
+		 */
 		$messageBeforeCurrent = $this->getActivities(
 			[
 				'=THREAD_ID' => $threadId,
@@ -1985,6 +1956,14 @@ class Message extends Controller
 
 		$chainActivities = array_merge($messageBeforeCurrent, $messageAfterCurrent);
 
+		/*
+			We need to sort the messages by time again.
+			For example, message number 5 may be a response to the first message, not the fourth.
+		*/
+		usort($chainActivities, function($a, $b) {
+			return $b['START_TIME']->getTimestamp() <=> $a['START_TIME']->getTimestamp();
+		});
+
 		$chain = [];
 
 		$lastIncomingId = null;
@@ -2002,6 +1981,7 @@ class Message extends Controller
 				'HEADER' => $this->getHeader(
 					$item
 				),
+				'OWNER_TYPE_ID' => $item['OWNER_TYPE_ID'],
 				'OWNER_TYPE' => \CCrmOwnerType::ResolveName($item['OWNER_TYPE_ID']),
 				'DIRECTION' => $item['DIRECTION'],
 			];
@@ -2014,7 +1994,7 @@ class Message extends Controller
 
 			if ($item['ID'] == $id)
 			{
-				$buildItem['DESCRIPTION'] = $this->getMessageBody($id)['HTML'];
+				$buildItem['DESCRIPTION'] = $this->getMessageBody($id);
 				$buildItem['FILES'] = $this->getMessageFilesLinkMessages($id)['FILES'];
 			}
 			$chain[] = $buildItem;
@@ -2025,7 +2005,7 @@ class Message extends Controller
 		 */
 		if (!is_null($lastIncomingKey))
 		{
-			$chain[$lastIncomingKey]['DESCRIPTION'] = $this->getMessageBody($lastIncomingId)['HTML'];
+			$chain[$lastIncomingKey]['DESCRIPTION'] = $this->getMessageBody($lastIncomingId);
 			$chain[$lastIncomingKey]['FILES'] = $this->getMessageFilesLinkMessages($lastIncomingId)['FILES'];
 		}
 
@@ -2057,6 +2037,11 @@ class Message extends Controller
 		}
 
 		return $this->getMessageFilesLinkMessages($id);
+	}
+
+	public function getNeighborsAction(int $ownerId, int $ownerTypeId, int $elementId, bool $requiredWebUrl = false): ?array
+	{
+		return \Bitrix\Crm\Activity\Mail\Message::getNeighbors($ownerId, $ownerTypeId, $elementId, $requiredWebUrl);
 	}
 
 	protected function checkMessageBFileIds(int $messageId, ItemIdentifier $itemIdentifier, array $fileIds): array
@@ -2274,25 +2259,43 @@ class Message extends Controller
 			return [];
 		}
 
-		return $this->getMessageBody($id);
+		return [
+			'HTML' => $this->getMessageBody($id),
+		];
 	}
 
 	/**
-	 * @throws LoaderException
-	 * @throws ArgumentException
-	 * @throws ObjectPropertyException
-	 * @throws SystemException
+	 * Get activity description html
+	 *
+	 * @param int $id Activity ID
+	 *
+	 * @return string
 	 */
-	protected function getMessageBody(int $id): array
+	protected function getMessageBody(int $id): string
+	{
+		$activity = $this->getActivityForDescription($id);
+
+		if ($activity)
+		{
+			return Email::getDescriptionHtmlByActivityFields($activity);
+		}
+
+		return '';
+	}
+
+	/**
+	 * Get activity by id with description fields
+	 *
+	 * @param int $id Activity ID
+	 *
+	 * @return array
+	 */
+	private function getActivityForDescription(int $id): array
 	{
 		if (!$this->checkModules())
 		{
 			return [];
 		}
-
-		$body = [
-			'HTML' => '',
-		];
 
 		$activities = $this->getActivities(
 			[
@@ -2301,24 +2304,78 @@ class Message extends Controller
 			self::SUPPORTED_ACTIVITY_TYPE,
 			[
 				'DESCRIPTION',
+				'DESCRIPTION_TYPE',
+				'SETTINGS',
 			]
 		);
 
-		if (!$this->checkActivityPermission(self::PERMISSION_READ, $activities))
+		if ($this->checkActivityPermission(self::PERMISSION_READ, $activities))
+		{
+			$activity = $activities[0] ?? [];
+			Email::uncompressActivity($activity);
+			return $activity;
+		}
+
+		return [];
+	}
+
+	/**
+	 * Get HTML description and quote for editor
+	 *
+	 * @param int $id Activity ID
+	 *
+	 * @return array
+	 */
+	public function getDescriptionAndQuoteAction(int $id): array
+	{
+		if (!$this->checkModules())
 		{
 			return [];
 		}
 
-		$activity = $activities[0];
-
-		Email::uncompressActivity($activity);
-
-		if ($activity)
+		if (!\CCrmPerms::IsAccessEnabled())
 		{
-			$body['HTML'] = $activity['DESCRIPTION'];
+			$this->addError(new Error(Loc::getMessage('CRM_MAIL_CONTROLLER_PERMISSION_DENIED')));
+			return [];
 		}
 
-		return $body;
+		$activity = $this->getActivityForDescription($id);
+		if (!$activity)
+		{
+			return [];
+		}
+
+		$descriptionHtml = Email::getDescriptionHtmlByActivityFields($activity);
+		(new SanitizedDescriptionCache())->set($id, $descriptionHtml);
+		$quote = Email::getMessageQuote($activity, $descriptionHtml, true, true);
+
+		return [
+			'descriptionHtml' => $descriptionHtml,
+			'quote' => $quote,
+		];
+	}
+
+	/**
+	 * Download html description as file
+	 *
+	 * @param int $id Activity ID
+	 *
+	 * @return HttpResponse
+	 */
+	public function downloadHtmlBodyAction(int $id): HttpResponse
+	{
+		$activity = $this->getActivityForDescription($id);
+
+		if (empty($activity))
+		{
+			return new Redirect('/404.php');
+		}
+
+		$content = $activity['DESCRIPTION'] ?? '';
+		$name = "crm_activity_description_$id.html";
+		$contentType = 'text/html';
+
+		return new DownloadResponse($content, $name, $contentType);
 	}
 
 }

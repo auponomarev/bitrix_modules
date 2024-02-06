@@ -37,6 +37,12 @@ if(Loader::includeModule('ui'))
 	UI\Extension::load('ui.buttons');
 	UI\Extension::load('main.loader');
 }
+
+// Tool availability (by intranet settings)
+if (!$component->isToolAvailable())
+{
+	echo $component->getToolUnavailableInfoScript();
+}
 ?>
 
 <div class="landing-settings" id="landing-settings">
@@ -137,6 +143,7 @@ if(Loader::includeModule('ui'))
 					'menuId' => 'landing-settings-sidemenu',
 					'containerId' => 'landing-settings-content',
 					'saveButtonId' => 'landing-settings-save-btn',
+					'type' => $arParams['TYPE'],
 				]) ?>,
 			);
 		});

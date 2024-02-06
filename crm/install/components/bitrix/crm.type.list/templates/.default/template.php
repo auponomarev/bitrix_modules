@@ -4,11 +4,15 @@ use Bitrix\Crm\Service\Container;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\UI\Extension;
 use Bitrix\Main\Web\Json;
+use Bitrix\Main;
+use Bitrix\UI;
+
+/** @var array $arResult */
 
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) die();
 
-$bodyClass = $APPLICATION->GetPageProperty("BodyClass");
-$APPLICATION->SetPageProperty("BodyClass", ($bodyClass ? $bodyClass." " : "") . "no-all-paddings no-hidden");
+$bodyClass = $APPLICATION->GetPageProperty('BodyClass');
+$APPLICATION->SetPageProperty('BodyClass', ($bodyClass ? $bodyClass.' ' : '') . 'no-all-paddings no-hidden');
 if($this->getComponent()->getErrors())
 {
 	foreach($this->getComponent()->getErrors() as $error)
@@ -21,8 +25,13 @@ if($this->getComponent()->getErrors())
 
 	return;
 }
-/** @see \Bitrix\Crm\Component\Base::addTopPanel() */
-$this->getComponent()->addTopPanel($this);
+if (!$arResult['isExternal'])
+{
+	print \Bitrix\Crm\Tour\ExternalDynamicTypes::getInstance()->build();
+
+	/** @see \Bitrix\Crm\Component\Base::addTopPanel() */
+	$this->getComponent()->addTopPanel($this);
+}
 
 /** @see \Bitrix\Crm\Component\Base::addToolbar() */
 $this->getComponent()->addToolbar($this);
@@ -35,6 +44,9 @@ Extension::load([
 	'ui.dialogs.messagebox',
 	'ui.fonts.opensans',
 ]);
+Main\Loader::includeModule('ui');
+
+UI\Toolbar\Facade\Toolbar::addFilter($arResult['filter']);
 
 ?>
 
@@ -57,21 +69,25 @@ Extension::load([
 		if($arResult['grid'])
 		{
 			$APPLICATION->IncludeComponent(
-				"bitrix:main.ui.grid",
-				"",
+				'bitrix:main.ui.grid',
+				'',
 				$arResult['grid']
 			);
 		}
 		?>
+		<?php $welcome = $arResult['welcome']; ?>
 		<div class="crm-type-list-welcome" data-role="crm-type-list-welcome">
 			<div class="crm-type-list-welcome-title">
-				<?= Loc::getMessage('CRM_TYPE_LIST_WELCOME_TITLE')?>
+				<?= htmlspecialcharsbx($welcome['title']) ?>
 			</div>
 			<div class="crm-type-list-welcome-text">
-				<?= Loc::getMessage('CRM_TYPE_LIST_WELCOME_TEXT')?>
+				<?= htmlspecialcharsbx($welcome['text']) ?>
 			</div>
-			<div class="crm-type-list-welcome-help" onclick="BX.Crm.Router.Instance.openTypeHelpPage();">
-				<?= Loc::getMessage('CRM_TYPE_LIST_WELCOME_LINK')?>
+			<div
+				class="crm-type-list-welcome-help"
+				onclick="BX.Crm.Router.openHelper(null, <?= (int)$welcome['helpdeskCode'] ?>);"
+			>
+				<?= htmlspecialcharsbx($welcome['link']) ?>
 			</div>
 		</div>
 	</div>

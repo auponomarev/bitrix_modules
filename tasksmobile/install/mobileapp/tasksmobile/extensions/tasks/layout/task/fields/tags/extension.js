@@ -2,8 +2,9 @@
  * @module tasks/layout/task/fields/tags
  */
 jn.define('tasks/layout/task/fields/tags', (require, exports, module) => {
-	const {Loc} = require('loc');
-	const {TagField} = require('layout/ui/fields/tag');
+	const { Loc } = require('loc');
+	const { TagField } = require('layout/ui/fields/tag');
+	const { EntitySelectorFactory } = require('selector/widget/factory');
 
 	class Tags extends LayoutComponent
 	{
@@ -16,6 +17,8 @@ jn.define('tasks/layout/task/fields/tags', (require, exports, module) => {
 				tags: (props.tags || []),
 				groupId: props.groupId,
 			};
+
+			this.handleOnChange = this.handleOnChange.bind(this);
 		}
 
 		componentWillReceiveProps(props)
@@ -36,6 +39,30 @@ jn.define('tasks/layout/task/fields/tags', (require, exports, module) => {
 			});
 		}
 
+		handleOnChange(tagsIds, tagsData)
+		{
+			const tags = tagsData.reduce((accumulator, tag) => {
+				const result = accumulator;
+				result[tag.id] = {
+					id: tag.id,
+					title: tag.title,
+				};
+
+				return result;
+			}, {});
+			const newTags = Object.keys(tags);
+			const oldTags = Object.keys(this.state.tags);
+			const difference = [
+				...newTags.filter((id) => !oldTags.includes(id)),
+				...oldTags.filter((id) => !newTags.includes(id)),
+			];
+			if (difference.length > 0)
+			{
+				this.setState({ tags });
+				this.props.onChange(tags);
+			}
+		}
+
 		render()
 		{
 			return View(
@@ -45,6 +72,7 @@ jn.define('tasks/layout/task/fields/tags', (require, exports, module) => {
 				TagField({
 					readOnly: this.state.readOnly,
 					showEditIcon: true,
+					hasHiddenEmptyView: true,
 					title: Loc.getMessage('TASKSMOBILE_LAYOUT_TASK_FIELDS_TAGS'),
 					value: Object.keys(this.state.tags),
 					multiple: true,
@@ -66,31 +94,11 @@ jn.define('tasks/layout/task/fields/tags', (require, exports, module) => {
 						reloadEntityListFromProps: true,
 					},
 					testId: 'tags',
-					onChange: (tagsIds, tagsData) => {
-						const tags = tagsData.reduce((result, tag) => {
-							result[tag.id] = {
-								id: tag.id,
-								title: tag.title,
-							};
-							return result;
-						}, {});
-						const newTags = Object.keys(tags);
-						const oldTags = Object.keys(this.state.tags);
-						const difference =
-							newTags
-								.filter(id => !oldTags.includes(id))
-								.concat(oldTags.filter(id => !newTags.includes(id)))
-						;
-						if (difference.length)
-						{
-							this.setState({tags});
-							this.props.onChange(tags);
-						}
-					},
+					onChange: this.handleOnChange,
 				}),
 			);
 		}
 	}
 
-	module.exports = {Tags};
+	module.exports = { Tags };
 });

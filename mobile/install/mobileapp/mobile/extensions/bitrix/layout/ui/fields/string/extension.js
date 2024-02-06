@@ -2,7 +2,8 @@
  * @module layout/ui/fields/string
  */
 jn.define('layout/ui/fields/string', (require, exports, module) => {
-
+	const AppTheme = require('apptheme');
+	const { inAppUrl } = require('in-app-url');
 	const { BaseField } = require('layout/ui/fields/base');
 	const { FocusManager } = require('layout/ui/fields/focus-manager');
 	const { debounce } = require('utils/function');
@@ -10,6 +11,12 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 	const { stringify } = require('utils/string');
 
 	const isIosPlatform = Application.getPlatform() === 'ios';
+
+	const ReadOnlyElementType = {
+		BB_CODE_TEXT: 'BBCodeText',
+		TEXT_INPUT: 'TextInput',
+		TEXT: 'Text',
+	};
 
 	/**
 	 * @class StringField
@@ -36,19 +43,19 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 			return {
 				...config,
 				keyboardType: 'default',
-				autoCapitalize: BX.prop.getString(config, 'autoCapitalize', undefined),
+				autoCapitalize: BX.prop.getString(config, 'autoCapitalize'),
 				enableKeyboardHide: BX.prop.getBoolean(config, 'enableKeyboardHide', false),
 				selectionOnFocus: BX.prop.getBoolean(config, 'selectionOnFocus', false),
 				ellipsize: BX.prop.getBoolean(config, 'ellipsize', false),
-				readOnlyElementType: BX.prop.getString(config, 'readOnlyElementType', 'Text'),
-				onLinkClick: BX.prop.getFunction(config, 'onLinkClick', undefined),
+				readOnlyElementType: BX.prop.getString(config, 'readOnlyElementType', ReadOnlyElementType.TEXT),
+				onLinkClick: BX.prop.getFunction(config, 'onLinkClick'),
 				onSubmitEditing: BX.prop.getFunction(config, 'onSubmitEditing', null),
 			};
 		}
 
 		shouldComponentUpdate(nextProps, nextState)
 		{
-			//hide text onScroll ListView
+			// hide text onScroll ListView
 			if (this.isReadOnly() && this.showHideButton && this.state.showAll && this.props.value === nextProps.value)
 			{
 				this.state.showAll = false;
@@ -124,7 +131,8 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 			{
 				return this.getLeftTitleChildStyles(styles);
 			}
-			else if (this.hasHiddenEmptyView())
+
+			if (this.hasHiddenEmptyView())
 			{
 				return this.getHiddenEmptyChildFieldStyles(styles);
 			}
@@ -138,13 +146,15 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 				...styles,
 				externalWrapper: {
 					...styles.externalWrapper,
-					borderBottomColor: this.showBorder() && this.state.focus ? '#0b66c3' : this.getExternalWrapperBorderColor(),
+					borderBottomColor: this.showBorder() && this.state.focus
+						? AppTheme.colors.accentMainLinks
+						: this.getExternalWrapperBorderColor(),
 				},
 				editableValue: {
 					...styles.base,
 				},
-				textPlaceholder: {
-					color: '#a8adb4',
+				textPlaceder: {
+					color: AppTheme.colors.base4,
 				},
 			};
 		}
@@ -162,7 +172,7 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 			return {
 				...styles,
 				textPlaceholder: {
-					color: '#a8adb4',
+					color: AppTheme.colors.base4,
 				},
 				wrapper: {
 					...styles.wrapper,
@@ -192,28 +202,41 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 			const params = this.getReadOnlyRenderParams();
 
 			const getContent = (readOnlyElementType) => {
-				switch (readOnlyElementType)
+				const value = this.getValue();
+
+				if (readOnlyElementType === ReadOnlyElementType.TEXT_INPUT)
 				{
-					case 'BBCodeText':
-						return BBCodeText({
-							...params,
-							value: this.getValue(),
-							onLinkClick: this.getConfig().onLinkClick,
-						});
-
-					case 'TextInput':
-						return TextInput({
-							...params,
-							value: this.getValue(),
-							enable: false,
-						});
-
-					default:
-						return Text({
-							...params,
-							text: this.getValue(),
-						});
+					return TextInput({
+						...params,
+						value,
+						enable: false,
+					});
 				}
+
+				if (readOnlyElementType === ReadOnlyElementType.BB_CODE_TEXT)
+				{
+					return BBCodeText({
+						...params,
+						value,
+						onLinkClick: this.getOnLinkClick(),
+					});
+				}
+
+				return View(
+					{
+						style: {
+							flex: 1,
+							flexDirection: 'row',
+						},
+						onClick: this.getContentClickHandler(),
+					},
+					Text(
+						{
+							...params,
+							text: value,
+						},
+					),
+				);
 			};
 
 			return View(
@@ -229,6 +252,7 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 							flexDirection: 'row',
 							flexGrow: 2,
 						},
+						onLongClick: this.getContentLongClickHandler(),
 					},
 					getContent(this.getConfig().readOnlyElementType),
 				),
@@ -271,7 +295,9 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 			const { focus } = this.state;
 
 			return {
-				ref: (ref) => this.inputRef = ref,
+				ref: (ref) => {
+					this.inputRef = ref;
+				},
 				style: this.styles.editableValue,
 				value: this.getValue(),
 				focus: focus || undefined,
@@ -279,18 +305,31 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 				enableKeyboardHide,
 				autoCapitalize,
 				placeholder: this.getPlaceholder(),
-				placeholderTextColor: this.styles.textPlaceholder.color,
+				placeholderTextColor: this.styles.textPlaceholder?.color || AppTheme.colors.base4,
 				onFocus: () => this.setFocus(),
 				onBlur: () => this.removeFocus(),
 				onChangeText: this.debouncedChangeText,
 				onSubmitEditing: () => FocusManager.blurFocusedFieldIfHas(),
-				onLinkClick: this.getConfig().onLinkClick,
+				onLinkClick: this.getOnLinkClick(),
+				isPassword: this.isPassword(),
 			};
 		}
 
 		getPlaceholder()
 		{
 			return this.props.placeholder || BX.message('FIELDS_INLINE_FIELD_EMPTY_STRING_PLACEHOLDER');
+		}
+
+		isPassword()
+		{
+			return this.props.isPassword || false;
+		}
+
+		getOnLinkClick()
+		{
+			const defaultOnLinkClick = ({ url }) => inAppUrl.open(url);
+
+			return BX.prop.getFunction(this.getConfig(), 'onLinkClick', defaultOnLinkClick);
 		}
 
 		changeText(currentText)
@@ -315,20 +354,30 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 			return Promise.reject();
 		}
 
+		setCursorPositionTo(start = 0, end = 0)
+		{
+			if (this.isPossibleToFocus())
+			{
+				this.inputRef.focus();
+				this.inputRef.setSelection(start, end);
+
+				return Promise.resolve();
+			}
+
+			return Promise.reject();
+		}
+
 		handleAdditionalFocusActions()
 		{
-			if (this.inputRef)
+			if (this.inputRef && this.getConfig().selectionOnFocus)
 			{
-				if (this.getConfig().selectionOnFocus)
+				if (Application.getApiVersion() >= 46)
 				{
-					if (Application.getApiVersion() >= 46)
-					{
-						this.inputRef.selectAll();
-					}
-					else
-					{
-						this.inputRef.setSelection(0, this.getValue().length);
-					}
+					this.inputRef.selectAll();
+				}
+				else
+				{
+					this.inputRef.setSelection(0, this.getValue().length);
 				}
 			}
 
@@ -344,11 +393,17 @@ jn.define('layout/ui/fields/string', (require, exports, module) => {
 		{
 			return false;
 		}
+
+		canCopyValue()
+		{
+			return this.isReadOnly();
+		}
 	}
 
 	module.exports = {
 		StringFieldClass: StringField,
 		StringType: 'string',
 		StringField: (props) => new StringField(props),
+		ReadOnlyElementType,
 	};
 });

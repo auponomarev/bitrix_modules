@@ -1,46 +1,50 @@
-import {Type} from 'main.core';
-import {BuilderModel} from 'ui.vue3.vuex';
+import { Type } from 'main.core';
+import { BuilderModel } from 'ui.vue3.vuex';
 
-import {Core} from 'im.v2.application.core';
-import {DialogType, MessageStatus, Settings} from 'im.v2.const';
-import {Utils} from 'im.v2.lib.utils';
+import { Core } from 'im.v2.application.core';
+import { DialogType, MessageStatus, Settings } from 'im.v2.const';
+import { Utils } from 'im.v2.lib.utils';
 
-import {CallsModel} from './recent/calls';
+import { CallsModel } from './recent/calls';
+import { RecentSearchModel } from './recent/search';
 
-import type {RecentItem as ImModelRecentItem} from './type/recent-item';
-import type {Dialog as ImModelDialog} from './type/dialog';
+import type { GetterTree, ActionTree, MutationTree } from 'ui.vue3.vuex';
+
+import type { RecentItem as ImModelRecentItem } from './type/recent-item';
 
 type RecentState = {
 	collection: {[dialogId: string]: ImModelRecentItem},
 	recentCollection: Set<string>,
 	unreadCollection: Set<string>,
-	markedCollection: Set<number>,
-	unloadedChatCounters: {[chatId: string]: number}
+	copilotCollection: Set<string>,
 };
 
 export class RecentModel extends BuilderModel
 {
-	getName()
+	getName(): string
 	{
 		return 'recent';
 	}
 
 	getNestedModules(): { [moduleName: string]: BuilderModel }
 	{
-		return {calls: CallsModel};
+		return {
+			calls: CallsModel,
+			search: RecentSearchModel,
+		};
 	}
 
-	getState()
+	getState(): RecentState
 	{
 		return {
 			collection: {},
 			recentCollection: new Set(),
 			unreadCollection: new Set(),
-			unloadedChatCounters: {}
+			copilotCollection: new Set(),
 		};
 	}
 
-	getElementState()
+	getElementState(): ImModelRecentItem
 	{
 		return {
 			dialogId: '0',
@@ -54,42 +58,54 @@ export class RecentModel extends BuilderModel
 				params: {
 					withFile: false,
 					withAttach: false,
-				}
+				},
 			},
 			draft: {
 				text: '',
-				date: null
+				date: null,
 			},
 			unread: false,
 			pinned: false,
 			liked: false,
+			dateUpdate: null,
 			invitation: {
 				isActive: false,
 				originator: 0,
-				canResend: false
+				canResend: false,
 			},
-			options: {}
+			options: {},
 		};
 	}
 
-	getGetters()
+	// eslint-disable-next-line max-lines-per-function
+	getGetters(): GetterTree
 	{
 		return {
-			getRecentCollection: (state: RecentState): ImModelRecentItem[] =>
-			{
-				return [...state.recentCollection].map(id => {
+			/** @function recent/getRecentCollection */
+			getRecentCollection: (state: RecentState): ImModelRecentItem[] => {
+				return [...state.recentCollection].filter((dialogId) => {
+					const dialog = this.store.getters['dialogues/get'](dialogId);
+
+					return Boolean(dialog);
+				}).map((id) => {
 					return state.collection[id];
 				});
 			},
-			getUnreadCollection: (state: RecentState): ImModelRecentItem[] =>
-			{
-				return [...state.unreadCollection].map(id => {
+			/** @function recent/getUnreadCollection */
+			getUnreadCollection: (state: RecentState): ImModelRecentItem[] => {
+				return [...state.unreadCollection].map((id) => {
 					return state.collection[id];
 				});
 			},
-			getSortedCollection: (state: RecentState): ImModelRecentItem[] =>
-			{
-				const collectionAsArray = Object.values(state.collection).filter(item => {
+			/** @function recent/getCopilotCollection */
+			getCopilotCollection: (state: RecentState): ImModelRecentItem[] => {
+				return [...state.copilotCollection].map((id) => {
+					return state.collection[id];
+				});
+			},
+			/** @function recent/getSortedCollection */
+			getSortedCollection: (state: RecentState): ImModelRecentItem[] => {
+				const collectionAsArray = Object.values(state.collection).filter((item) => {
 					const isBirthdayPlaceholder = item.options.birthdayPlaceholder;
 					const isInvitedUser = item.options.defaultUserRecord;
 
@@ -100,8 +116,9 @@ export class RecentModel extends BuilderModel
 					return b.message.date - a.message.date;
 				});
 			},
-			get: (state: RecentState) => (dialogId: string): ImModelRecentItem | null =>
-			{
+			/** @function recent/get */
+			get: (state: RecentState) => (rawDialogId: string): ImModelRecentItem | null => {
+				let dialogId = rawDialogId;
 				if (Type.isNumber(dialogId))
 				{
 					dialogId = dialogId.toString();
@@ -114,9 +131,8 @@ export class RecentModel extends BuilderModel
 
 				return null;
 			},
-
-			needsBirthdayPlaceholder: (state: RecentState) => (dialogId): boolean =>
-			{
+			/** @function recent/needsBirthdayPlaceholder */
+			needsBirthdayPlaceholder: (state: RecentState) => (dialogId): boolean => {
 				const currentItem = state.collection[dialogId];
 				if (!currentItem)
 				{
@@ -138,11 +154,11 @@ export class RecentModel extends BuilderModel
 				const hasTodayMessage = hasMessage && Utils.date.isToday(currentItem.message.date);
 
 				const showBirthday = this.store.getters['application/settings/get'](Settings.recent.showBirthday);
+
 				return showBirthday && !hasTodayMessage && dialog.counter === 0;
 			},
-
-			needsVacationPlaceholder: (state: RecentState) => (dialogId): boolean =>
-			{
+			/** @function recent/needsVacationPlaceholder */
+			needsVacationPlaceholder: (state: RecentState) => (dialogId): boolean => {
 				const currentItem = state.collection[dialogId];
 				if (!currentItem)
 				{
@@ -165,9 +181,8 @@ export class RecentModel extends BuilderModel
 
 				return !hasTodayMessage && dialog.counter === 0;
 			},
-
-			getMessageDate: (state: RecentState) => (dialogId): Date | null =>
-			{
+			/** @function recent/getMessageDate */
+			getMessageDate: (state: RecentState) => (dialogId): Date | null => {
 				const currentItem = state.collection[dialogId];
 				if (!currentItem)
 				{
@@ -187,65 +202,35 @@ export class RecentModel extends BuilderModel
 
 				return currentItem.message.date;
 			},
-
-			getTotalCounter: (state: RecentState): number =>
-			{
-				let loadedChatsCounter = 0;
-				[...state.recentCollection].forEach(dialogId => {
-					const dialog: ImModelDialog = this.store.getters['dialogues/get'](dialogId, true);
-					const recentItem: ImModelRecentItem = state.collection[dialogId];
-
-					const isMuted = dialog.muteList.includes(Core.getUserId());
-					if (isMuted)
-					{
-						return;
-					}
-					const isMarked = recentItem.unread;
-					if (dialog.counter === 0 && isMarked)
-					{
-						loadedChatsCounter++;
-						return;
-					}
-					loadedChatsCounter += dialog.counter;
-				});
-
-				let unloadedChatsCounter = 0;
-				Object.values(state.unloadedChatCounters).forEach(counter => {
-					unloadedChatsCounter += counter;
-				});
-
-				return loadedChatsCounter + unloadedChatsCounter;
-			}
 		};
 	}
 
-	getActions()
+	/* eslint-disable no-param-reassign */
+	/* eslint-disable-next-line max-lines-per-function */
+	getActions(): ActionTree
 	{
 		return {
-			setRecent: (store, payload: Array | Object) =>
-			{
-				this.store.dispatch('recent/set', payload).then(itemIds => {
-					store.commit('setRecentCollection', itemIds);
-				});
+			/** @function recent/setRecent */
+			setRecent: async (store, payload: Array | Object) => {
+				const itemIds = await Core.getStore().dispatch('recent/store', payload);
+				store.commit('setRecentCollection', itemIds);
 
-				if (!Array.isArray(payload) && Type.isPlainObject(payload))
-				{
-					payload = [payload];
-				}
-				const zeroedCountersForNewItems = {};
-				payload.forEach(item => {
-					zeroedCountersForNewItems[item.chat_id] = 0;
-				});
-				this.store.dispatch('recent/setUnloadedChatCounters', zeroedCountersForNewItems);
+				this.updateUnloadedRecentCounters(payload);
 			},
-			setUnread: (store, payload: Array | Object) =>
-			{
-				this.store.dispatch('recent/set', payload).then(itemIds => {
-					store.commit('setUnreadCollection', itemIds);
-				});
+			/** @function recent/setUnread */
+			setUnread: async (store, payload: Array | Object) => {
+				const itemIds = await this.store.dispatch('recent/store', payload);
+				store.commit('setUnreadCollection', itemIds);
 			},
-			set: (store, payload: Array | Object) =>
-			{
+			/** @function recent/setCopilot */
+			setCopilot: async (store, payload: Array | Object) => {
+				const itemIds = await this.store.dispatch('recent/store', payload);
+				store.commit('setCopilotCollection', itemIds);
+
+				this.updateUnloadedCopilotCounters(payload);
+			},
+			/** @function recent/store */
+			store: (store, payload: Array | Object) => {
 				if (!Array.isArray(payload) && Type.isPlainObject(payload))
 				{
 					payload = [payload];
@@ -253,17 +238,20 @@ export class RecentModel extends BuilderModel
 
 				const itemsToUpdate = [];
 				const itemsToAdd = [];
-				payload.map(element => {
+				payload.map((element) => {
 					return this.validate(element);
-				}).forEach(element => {
+				}).forEach((element) => {
+					const preparedElement = { ...element };
 					const existingItem = store.state.collection[element.dialogId];
 					if (existingItem)
 					{
-						itemsToUpdate.push({dialogId: existingItem.dialogId, fields: {...element}});
+						itemsToUpdate.push({ dialogId: existingItem.dialogId, fields: preparedElement });
 					}
 					else
 					{
-						itemsToAdd.push({...this.getElementState(), ...element});
+						const { message: defaultMessage } = this.getElementState();
+						preparedElement.message = { ...defaultMessage, ...preparedElement.message };
+						itemsToAdd.push({ ...this.getElementState(), ...preparedElement });
 					}
 				});
 
@@ -271,153 +259,163 @@ export class RecentModel extends BuilderModel
 				{
 					store.commit('add', itemsToAdd);
 				}
+
 				if (itemsToUpdate.length > 0)
 				{
 					store.commit('update', itemsToUpdate);
 				}
 
-				return [...itemsToAdd, ...itemsToUpdate].map(item => item.dialogId);
+				return [...itemsToAdd, ...itemsToUpdate].map((item) => item.dialogId);
 			},
-
-			update: (store, payload: {id: string | number, fields: Object}) =>
-			{
-				const {id, fields} = payload;
+			/** @function recent/update */
+			update: (store, payload: {id: string | number, fields: Object}) => {
+				const { id, fields } = payload;
 				const existingItem: ImModelRecentItem = store.state.collection[id];
 				if (!existingItem)
 				{
-					return false;
-				}
-
-				if (fields.message)
-				{
-					fields.message = {...existingItem.message, ...fields.message};
-				}
-				store.commit('update', {
-					dialogId: existingItem.dialogId,
-					fields: this.validate(fields)
-				});
-			},
-
-			unread: (store, payload: {id: string | number, action: boolean}) =>
-			{
-				const existingItem = store.state.collection[payload.id];
-				if (!existingItem)
-				{
-					return false;
+					return;
 				}
 
 				store.commit('update', {
 					dialogId: existingItem.dialogId,
-					fields: {unread: payload.action}
+					fields: this.validate(fields),
 				});
 			},
-
-			pin: (store, payload: {id: string | number, action: boolean}) =>
-			{
+			/** @function recent/unread */
+			unread: (store, payload: {id: string | number, action: boolean, dateUpdate: Date}) => {
 				const existingItem = store.state.collection[payload.id];
 				if (!existingItem)
 				{
-					return false;
+					return;
 				}
 
 				store.commit('update', {
 					dialogId: existingItem.dialogId,
-					fields: {pinned: payload.action}
+					fields: {
+						unread: payload.action,
+						dateUpdate: payload.dateUpdate,
+					},
 				});
 			},
-
-			like: (store, payload: {id: string | number, messageId: number, liked: boolean}) =>
-			{
+			/** @function recent/pin */
+			pin: (store, payload: {id: string | number, action: boolean, dateUpdate: Date}) => {
 				const existingItem = store.state.collection[payload.id];
 				if (!existingItem)
 				{
-					return false;
+					return;
+				}
+
+				store.commit('update', {
+					dialogId: existingItem.dialogId,
+					fields: {
+						pinned: payload.action,
+						dateUpdate: payload.dateUpdate,
+					},
+				});
+			},
+			/** @function recent/like */
+			like: (store, payload: {id: string | number, messageId: number, liked: boolean}) => {
+				const existingItem = store.state.collection[payload.id];
+				if (!existingItem)
+				{
+					return;
 				}
 
 				const isLastMessage = existingItem.message.id === Number.parseInt(payload.messageId, 10);
 				const isExactMessageLiked = !Type.isUndefined(payload.messageId) && payload.liked === true;
 				if (isExactMessageLiked && !isLastMessage)
 				{
-					return false;
+					return;
 				}
 
 				store.commit('update', {
 					dialogId: existingItem.dialogId,
-					fields: {liked: payload.liked === true}
+					fields: { liked: payload.liked === true },
 				});
 			},
-
-			draft: (store, payload: {id: string | number, text: string}) =>
-			{
-				const dialog = this.store.getters['dialogues/get'](payload.id);
-				if (!dialog)
-				{
-					return false;
-				}
-
+			/** @function recent/setRecentDraft */
+			setRecentDraft: (store, payload: {id: string | number, text: string}) => {
+				Core.getStore().dispatch('recent/setDraft', {
+					id: payload.id,
+					text: payload.text,
+					collectionName: 'recentCollection',
+					addMethodName: 'setRecentCollection',
+				});
+			},
+			/** @function recent/setCopilotDraft */
+			setCopilotDraft: (store, payload: {id: string | number, text: string}) => {
+				Core.getStore().dispatch('recent/setDraft', {
+					id: payload.id,
+					text: payload.text,
+					collectionName: 'copilotCollection',
+					addMethodName: 'setCopilotCollection',
+				});
+			},
+			/** @function recent/setDraft */
+			setDraft: (store, payload: {
+				id: string | number, text: string, collectionName: string, addMethodName: string
+			}) => {
 				let existingItem = store.state.collection[payload.id];
 				if (!existingItem)
 				{
 					if (payload.text === '')
 					{
-						return false;
+						return;
 					}
 					const newItem = {
 						dialogId: payload.id.toString(),
 					};
-					store.commit('add', {...this.getElementState(), ...newItem});
-					store.commit('setRecentCollection', [newItem.dialogId]);
+					store.commit('add', { ...this.getElementState(), ...newItem });
 					existingItem = store.state.collection[payload.id];
 				}
 
-				const fields = this.validate({draft: {text: payload.text.toString()}});
+				const existingCollectionItem = store.state[payload.collectionName].has(payload.id);
+				if (!existingCollectionItem)
+				{
+					if (payload.text === '')
+					{
+						return;
+					}
+					store.commit(payload.addMethodName, [payload.id.toString()]);
+				}
+
+				const fields = this.validate({ draft: { text: payload.text.toString() } });
 				if (fields.draft.text === existingItem.draft.text)
-				{
-					return false;
-				}
-
-				store.commit('update', {
-					dialogId: existingItem.dialogId,
-					fields
-				});
-			},
-
-			delete: (store, payload: {id: string | number}) =>
-			{
-				const existingItem = store.state.collection[payload.id];
-				if (!existingItem)
-				{
-					return false;
-				}
-
-				store.commit('delete', {
-					id: existingItem.dialogId
-				});
-				store.commit('deleteFromRecentCollection', existingItem.dialogId);
-			},
-
-			clearUnread: (store) =>
-			{
-				store.commit('clearUnread');
-			},
-
-			setUnloadedChatCounters: (store, payload: {[chatId: string]: number}) =>
-			{
-				if (!Type.isPlainObject(payload))
 				{
 					return;
 				}
 
-				store.commit('setUnloadedChatCounters', payload);
-			}
+				store.commit('update', {
+					dialogId: existingItem.dialogId,
+					fields,
+				});
+			},
+			/** @function recent/delete */
+			delete: (store, payload: {id: string | number}) => {
+				const existingItem = store.state.collection[payload.id];
+				if (!existingItem)
+				{
+					return;
+				}
+
+				store.commit('delete', {
+					id: existingItem.dialogId,
+				});
+				store.commit('deleteFromRecentCollection', existingItem.dialogId);
+				store.commit('deleteFromCopilotCollection', existingItem.dialogId);
+			},
+			/** @function recent/clearUnread */
+			clearUnread: (store) => {
+				store.commit('clearUnread');
+			},
 		};
 	}
 
-	getMutations()
+	getMutations(): MutationTree
 	{
 		return {
 			setRecentCollection: (state: RecentState, payload: string[]) => {
-				payload.forEach(dialogId => {
+				payload.forEach((dialogId) => {
 					state.recentCollection.add(dialogId);
 				});
 			},
@@ -425,16 +423,24 @@ export class RecentModel extends BuilderModel
 				state.recentCollection.delete(payload);
 			},
 			setUnreadCollection: (state: RecentState, payload: string[]) => {
-				payload.forEach(dialogId => {
+				payload.forEach((dialogId) => {
 					state.unreadCollection.add(dialogId);
 				});
+			},
+			setCopilotCollection: (state: RecentState, payload: string[]) => {
+				payload.forEach((dialogId) => {
+					state.copilotCollection.add(dialogId);
+				});
+			},
+			deleteFromCopilotCollection: (state: RecentState, payload: string) => {
+				state.copilotCollection.delete(payload);
 			},
 			add: (state: RecentState, payload: Object[] | Object) => {
 				if (!Array.isArray(payload) && Type.isPlainObject(payload))
 				{
 					payload = [payload];
 				}
-				payload.forEach(item => {
+				payload.forEach((item) => {
 					state.collection[item.dialogId] = item;
 				});
 			},
@@ -444,20 +450,22 @@ export class RecentModel extends BuilderModel
 				{
 					payload = [payload];
 				}
-				payload.forEach(({dialogId, fields}) => {
-					// if we already got chat - we should not update it with default user chat (unless it's an accepted invitation)
-					const defaultUserElement = fields.options && fields.options.defaultUserRecord && !fields.invitation;
-					if (defaultUserElement)
+				payload.forEach(({ dialogId, fields }) => {
+					// if we already got chat - we should not update it with default user chat
+					// (unless it's an accepted invitation)
+					const elementIsInRecent = state.recentCollection.has(dialogId);
+					const defaultUserElement = fields.options?.defaultUserRecord && !fields.invitation;
+					if (defaultUserElement && elementIsInRecent)
 					{
-						return false;
+						return;
 					}
 
 					const currentElement = state.collection[dialogId];
-					fields.message = {...currentElement.message, ...fields.message};
-					fields.options = {...currentElement.options, ...fields.options};
+					fields.message = { ...currentElement.message, ...fields.message };
+					fields.options = { ...currentElement.options, ...fields.options };
 					state.collection[dialogId] = {
 						...currentElement,
-						...fields
+						...fields,
 					};
 				});
 			},
@@ -467,34 +475,24 @@ export class RecentModel extends BuilderModel
 			},
 
 			clearUnread: (state: RecentState) => {
-				Object.keys(state.collection).forEach(key => {
+				Object.keys(state.collection).forEach((key) => {
 					state.collection[key].unread = false;
 				});
 			},
-
-			setUnloadedChatCounters: (state: RecentState, payload: {[chatId: string]: number}) => {
-				Object.entries(payload).forEach(([chatId, counter]) => {
-					if (counter === 0)
-					{
-						delete state.unloadedChatCounters[chatId];
-						return;
-					}
-					state.unloadedChatCounters[chatId] = counter;
-				});
-			}
 		};
 	}
 
 	validate(fields: Object)
 	{
 		const result = {
-			options: {}
+			options: {},
 		};
 
 		if (Type.isNumber(fields.id))
 		{
 			result.dialogId = fields.id.toString();
 		}
+
 		if (Type.isStringFilled(fields.id))
 		{
 			result.dialogId = fields.id;
@@ -504,6 +502,7 @@ export class RecentModel extends BuilderModel
 		{
 			result.dialogId = fields.dialogId.toString();
 		}
+
 		if (Type.isStringFilled(fields.dialogId))
 		{
 			result.dialogId = fields.dialogId;
@@ -534,12 +533,22 @@ export class RecentModel extends BuilderModel
 			result.liked = fields.liked;
 		}
 
+		if (Type.isStringFilled(fields.date_update) || Type.isStringFilled(fields.dateUpdate))
+		{
+			const date = fields.date_update || fields.dateUpdate;
+			result.dateUpdate = Utils.date.cast(date);
+		}
+		else if (Type.isDate(fields.dateUpdate))
+		{
+			result.dateUpdate = fields.dateUpdate;
+		}
+
 		if (Type.isPlainObject(fields.invited))
 		{
 			result.invitation = {
 				isActive: true,
 				originator: fields.invited.originator_id,
-				canResend: fields.invited.can_resend
+				canResend: fields.invited.can_resend,
 			};
 			result.options.defaultUserRecord = true;
 		}
@@ -548,7 +557,7 @@ export class RecentModel extends BuilderModel
 			result.invitation = {
 				isActive: false,
 				originator: 0,
-				canResend: false
+				canResend: false,
 			};
 			result.options.defaultUserRecord = true;
 		}
@@ -581,11 +590,18 @@ export class RecentModel extends BuilderModel
 
 	prepareMessage(fields: Object): Object
 	{
-		const {message} = this.getElementState();
-		if (Type.isNumber(fields.message.id) || Utils.text.isUuidV4(fields.message.id) || Type.isStringFilled(fields.message.id))
+		const message = {};
+		const params = {};
+
+		if (
+			Type.isNumber(fields.message.id)
+			|| Type.isStringFilled(fields.message.id)
+			|| Utils.text.isUuidV4(fields.message.id)
+		)
 		{
 			message.id = fields.message.id;
 		}
+
 		if (Type.isString(fields.message.text))
 		{
 			message.text = fields.message.text;
@@ -597,7 +613,7 @@ export class RecentModel extends BuilderModel
 			|| Type.isArray(fields.message.attach)
 		)
 		{
-			message.params.withAttach = fields.message.attach;
+			params.withAttach = fields.message.attach;
 		}
 		else if (
 			Type.isStringFilled(fields.message.params?.withAttach)
@@ -605,16 +621,16 @@ export class RecentModel extends BuilderModel
 			|| Type.isArray(fields.message.params?.withAttach)
 		)
 		{
-			message.params.withAttach = fields.message.params.withAttach;
+			params.withAttach = fields.message.params.withAttach;
 		}
 
 		if (Type.isBoolean(fields.message.file) || Type.isPlainObject(fields.message.file))
 		{
-			message.params.withFile = fields.message.file;
+			params.withFile = fields.message.file;
 		}
 		else if (Type.isBoolean(fields.message.params?.withFile) || Type.isPlainObject(fields.message.params?.withFile))
 		{
-			message.params.withFile = fields.message.params.withFile;
+			params.withFile = fields.message.params.withFile;
 		}
 
 		if (Type.isDate(fields.message.date) || Type.isString(fields.message.date))
@@ -639,9 +655,15 @@ export class RecentModel extends BuilderModel
 		{
 			message.status = fields.message.status;
 		}
+
 		if (Type.isBoolean(fields.message.sending))
 		{
 			message.sending = fields.message.sending;
+		}
+
+		if (Object.keys(params).length > 0)
+		{
+			message.params = params;
 		}
 
 		return message;
@@ -649,7 +671,7 @@ export class RecentModel extends BuilderModel
 
 	prepareDraft(fields: Object): Object
 	{
-		const {draft} = this.getElementState();
+		const { draft } = this.getElementState();
 
 		if (Type.isString(fields.draft.text))
 		{
@@ -666,5 +688,28 @@ export class RecentModel extends BuilderModel
 		}
 
 		return draft;
+	}
+
+	updateUnloadedRecentCounters(payload: Array | Object)
+	{
+		this.updateUnloadedCounters(payload, 'counters/setUnloadedChatCounters');
+	}
+
+	updateUnloadedCopilotCounters(payload: Array | Object)
+	{
+		this.updateUnloadedCounters(payload, 'counters/setUnloadedCopilotCounters');
+	}
+
+	updateUnloadedCounters(payload: Array | Object, updateMethod: string)
+	{
+		if (!Array.isArray(payload) && Type.isPlainObject(payload))
+		{
+			payload = [payload];
+		}
+		const zeroedCountersForNewItems = {};
+		payload.forEach((item) => {
+			zeroedCountersForNewItems[item.chat_id] = 0;
+		});
+		void Core.getStore().dispatch(updateMethod, zeroedCountersForNewItems);
 	}
 }

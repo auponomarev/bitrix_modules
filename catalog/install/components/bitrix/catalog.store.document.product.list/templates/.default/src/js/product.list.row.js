@@ -1,15 +1,15 @@
-import {Cache, Dom, Event, Loc, Reflection, Runtime, Tag, Text, Type} from 'main.core';
-import {Editor} from './product.list.editor';
-import {CurrencyCore} from 'currency.currency-core';
+import { ajax, Cache, Dom, Event, Loc, Reflection, Runtime, Tag, Text, Type } from 'main.core';
+import { Editor } from './product.list.editor';
+import { CurrencyCore } from 'currency.currency-core';
 import 'ui.hint';
 import HintPopup from './hint.popup';
-import {ProductModel} from "catalog.product-model";
-import {BaseEvent, EventEmitter} from "main.core.events";
-import {ProductSelector} from "catalog.product-selector";
-import {StoreSelector} from "catalog.store-selector";
-import {PopupMenu} from "main.popup";
-import {PriceCalculator} from "./price.calculator";
-import {AccessDeniedInput} from './access.denied.input';
+import { ProductModel } from 'catalog.product-model';
+import { BaseEvent, EventEmitter } from 'main.core.events';
+import { ProductSelector } from 'catalog.product-selector';
+import { StoreSelector } from 'catalog.store-selector';
+import { PopupMenu } from 'main.popup';
+import { PriceCalculator } from './price.calculator';
+import { AccessDeniedInput } from './access.denied.input';
 
 type Action = {
 	type: string,
@@ -26,8 +26,8 @@ export class Row
 {
 	id: ?string;
 	settings: Object;
-	editor: ?Editor
-	model: ?ProductModel
+	editor: ?Editor;
+	model: ?ProductModel;
 	fields: Object = {};
 	mainSelector: ?ProductSelector;
 	barcodeSelector: ?ProductSelector;
@@ -38,6 +38,7 @@ export class Row
 		EDIT: MODE_EDIT,
 		SET: MODE_SET,
 	};
+
 	validatingFields: Map<string, boolean> = new Map();
 	realValues: ?Array;
 
@@ -50,6 +51,7 @@ export class Row
 		this.initFields(fields);
 		this.#initSelector();
 		this.#initBarcode();
+		this.#initSimpleFields();
 		// this.#initPriceExtra();
 		this.#initStoreSelector(this.getSettingValue('storeHeaderMap', {}));
 		this.#initActions();
@@ -62,7 +64,7 @@ export class Row
 		return this.cache.remember('node', () => {
 			const rowId = this.getField('ID', 0);
 
-			return this.getEditorContainer().querySelector('[data-id="' + rowId + '"]');
+			return this.getEditorContainer().querySelector(`[data-id="${rowId}"]`);
 		});
 	}
 
@@ -98,6 +100,7 @@ export class Row
 
 	getSettingValue(name, defaultValue)
 	{
+		// eslint-disable-next-line no-prototype-builtins
 		return this.settings.hasOwnProperty(name) ? this.settings[name] : defaultValue;
 	}
 
@@ -135,7 +138,7 @@ export class Row
 			Event.bind(node, 'change', editor.changeProductFieldHandler);
 			// disable drag-n-drop events for text fields
 			Event.bind(node, 'mousedown', (event) => event.stopPropagation());
-			Event.bind(node, 'blur', editor.blurProductFieldHandler)
+			Event.bind(node, 'blur', editor.blurProductFieldHandler);
 		});
 		this.getNode().querySelectorAll('select').forEach((node) => {
 			Event.bind(node, 'change', editor.changeProductFieldHandler);
@@ -153,7 +156,7 @@ export class Row
 		selectorNames = [...selectorNames, ...Object.keys(storeFields)];
 
 		selectorNames.forEach((name) => {
-			this.getNode().querySelectorAll('[data-name="'+ name +'"] input[type="text"]').forEach(node => {
+			this.getNode().querySelectorAll(`[data-name="${name}"] input[type="text"]`).forEach((node) => {
 				Event.bind(node, 'input', editor.changeProductFieldHandler);
 				Event.bind(node, 'change', editor.changeProductFieldHandler);
 				// disable drag-n-drop events for select fields
@@ -168,6 +171,8 @@ export class Row
 		{
 			return;
 		}
+
+		this.debouncedPurchasingPriceCalculation = Runtime.debounce(this.calculateStoreCostPrice, 500, this);
 
 		const actionCellContentContainer = this.getNode().querySelector('.main-grid-cell-action .main-grid-cell-content');
 		if (Type.isDomNode(actionCellContentContainer))
@@ -188,13 +193,13 @@ export class Row
 					{
 						text: Loc.getMessage('CATALOG_DOCUMENT_PRODUCT_LIST_DELETE_ACTION'),
 						onclick: this.handleDeleteAction.bind(this),
-					}
+					},
 				];
 
 				PopupMenu.show({
-					id: this.getId() + '_actions_popup',
+					id: `${this.getId()}_actions_popup`,
 					bindElement: actionsButton,
-					items: menuItems
+					items: menuItems,
 				});
 
 				event.preventDefault();
@@ -227,31 +232,47 @@ export class Row
 			mode: ProductSelector.MODE_EDIT,
 		};
 
-		this.mainSelector = new ProductSelector('catalog_document_grid_' + this.getId(), selectorOptions);
+		this.mainSelector = new ProductSelector(`catalog_document_grid_${this.getId()}`, selectorOptions);
 		const mainInfoNode = this.getNode().querySelector('[data-name="MAIN_INFO"]');
 		if (mainInfoNode)
 		{
 			const numberSelector = mainInfoNode.querySelector('.main-grid-row-number');
 			if (!Type.isDomNode(numberSelector))
 			{
-				mainInfoNode.appendChild(Tag.render`<div class="main-grid-row-number"></div>`);
+				Dom.append(Tag.render`<div class="main-grid-row-number"></div>`, mainInfoNode);
 			}
 
-			let selectorWrapper =  mainInfoNode.querySelector('.main-grid-row-product-selector');
+			let selectorWrapper = mainInfoNode.querySelector('.main-grid-row-product-selector');
 			if (!Type.isDomNode(selectorWrapper))
 			{
-				selectorWrapper = Tag.render`<div class="main-grid-row-product-selector"></div>`
-				mainInfoNode.appendChild(selectorWrapper)
+				selectorWrapper = Tag.render`<div class="main-grid-row-product-selector"></div>`;
+				Dom.append(selectorWrapper, mainInfoNode);
 			}
 			this.mainSelector.renderTo(selectorWrapper);
 		}
 
-
 		EventEmitter.subscribe(
 			this.mainSelector,
 			'onBeforeCreate',
-			this.#handleBeforeCreateProduct.bind(this)
+			this.#handleBeforeCreateProduct.bind(this),
 		);
+	}
+
+	#initSimpleFields()
+	{
+		const fields = [
+			'COMMENT',
+		];
+
+		for (const name of fields)
+		{
+			const input = this.getNode().querySelector(`[name="${name}"]`);
+			if (input)
+			{
+				const value = this.getField(name);
+				input.value = Type.isNil(value) ? '' : value;
+			}
+		}
 	}
 
 	#initBarcode()
@@ -282,36 +303,36 @@ export class Row
 			scannerToken: this.getEditor().scannerToken,
 		};
 
-		this.barcodeSelector = new ProductSelector('catalog_document_grid_' + this.getId() + '_barcode', selectorOptions);
+		this.barcodeSelector = new ProductSelector(`catalog_document_grid_${this.getId()}_barcode`, selectorOptions);
 
 		EventEmitter.subscribe(
 			this.barcodeSelector,
 			'onBeforeCreate',
-			this.#handleBeforeCreateProduct.bind(this)
+			this.#handleBeforeCreateProduct.bind(this),
 		);
 
 		EventEmitter.subscribe(
 			this.barcodeSelector,
 			'onSpotlightClose',
-			this.#handleSpotlightClose.bind(this)
+			this.#handleSpotlightClose.bind(this),
 		);
 
 		EventEmitter.subscribe(
 			this.barcodeSelector,
 			'onBarcodeQrClose',
-			this.#handleBarcodeQrClose.bind(this)
+			this.#handleBarcodeQrClose.bind(this),
 		);
 
 		EventEmitter.subscribe(
 			this.barcodeSelector,
 			'onBarcodeScannerInstallChecked',
-			this.#handleBarcodeScannerInstallCheck.bind(this)
+			this.#handleBarcodeScannerInstallCheck.bind(this),
 		);
 
 		EventEmitter.subscribe(
 			this.barcodeSelector,
 			'onBarcodeChange',
-			this.#handleBarcodeChange.bind(this)
+			this.#handleBarcodeChange.bind(this),
 		);
 
 		this.layoutBarcode();
@@ -342,7 +363,7 @@ export class Row
 		const oldExtraNode = node.querySelector('.catalog-store-extra-price');
 		if (Type.isDomNode(oldExtraNode))
 		{
-			oldExtraNode.parentNode.removeChild(oldExtraNode);
+			Dom.remove(oldExtraNode);
 		}
 
 		const extraValue = this.getField('BASE_PRICE_EXTRA') ?? '';
@@ -357,10 +378,9 @@ export class Row
 			</div>
 		`;
 
-		const extraMeasureValue =
-			this.getField('BASE_PRICE_EXTRA_RATE') === PriceCalculator.EXTRA_TYPE_MONETARY
-				? this.getEditor().getCurrencyText()
-				: '%'
+		const extraMeasureValue = this.getField('BASE_PRICE_EXTRA_RATE') === PriceCalculator.EXTRA_TYPE_MONETARY
+			? this.getEditor().getCurrencyText()
+			: '%'
 		;
 
 		const measureValue = Tag.render`
@@ -380,13 +400,13 @@ export class Row
 					text: this.getEditor().getCurrencyText(),
 					onclick: this.handleSelectExtraPriceType.bind(this),
 					type: PriceCalculator.EXTRA_TYPE_MONETARY,
-				}
+				},
 			];
 
 			PopupMenu.show({
-				id: this.getId() + '_extra_type_popup',
+				id: `${this.getId()}_extra_type_popup`,
 				bindElement: measureValue,
-				items: menuItems
+				items: menuItems,
 			});
 		});
 
@@ -397,15 +417,15 @@ export class Row
 			</div>
 		`;
 
-		node.appendChild(extraNode);
+		Dom.append(extraNode, node);
 	}
 
 	#initStoreSelector(fieldNames: {})
 	{
-		Object.keys(fieldNames).forEach( rowName => {
+		Object.keys(fieldNames).forEach((rowName) => {
 			const selectorOptions = {
 				inputFieldId: fieldNames[rowName],
-				inputFieldTitle: fieldNames[rowName] + '_TITLE',
+				inputFieldTitle: `${fieldNames[rowName]}_TITLE`,
 				isDisabledEmpty: true,
 				config: {
 					ENABLE_SEARCH: true,
@@ -416,18 +436,18 @@ export class Row
 				model: this.model,
 			};
 
-			const storeSelector = new StoreSelector(this.getId() + '_' + rowName, selectorOptions);
+			const storeSelector = new StoreSelector(`${this.getId()}_${rowName}`, selectorOptions);
 
 			EventEmitter.subscribe(
 				storeSelector,
 				'onChange',
-				Runtime.debounce(this.#onStoreFieldChange.bind(this), 500, this)
+				Runtime.debounce(this.#onStoreFieldChange.bind(this), 500, this),
 			);
 
 			EventEmitter.subscribe(
 				storeSelector,
 				'onClear',
-				Runtime.debounce(this.#onStoreFieldChange.bind(this), 500, this)
+				Runtime.debounce(this.#onStoreFieldChange.bind(this), 500, this),
 			);
 
 			this.storeSelectors.push(storeSelector);
@@ -438,13 +458,13 @@ export class Row
 
 	layoutStoreSelector(fieldNames: {})
 	{
-		Object.keys(fieldNames).forEach(rowName => {
-			const selectorId = this.getId() + '_' + rowName;
+		Object.keys(fieldNames).forEach((rowName) => {
+			const selectorId = `${this.getId()}_${rowName}`;
 
 			this.storeSelectors.forEach((selector) => {
 				if (selector.getId() === selectorId)
 				{
-					const storeWrapper = this.getNode().querySelector('[data-name="' + rowName + '"]');
+					const storeWrapper = this.getNode().querySelector(`[data-name="${rowName}"]`);
 					if (storeWrapper)
 					{
 						storeWrapper.innerHTML = '';
@@ -469,8 +489,8 @@ export class Row
 
 	setRowNumber(number)
 	{
-		this.getNode().querySelectorAll('.main-grid-row-number').forEach(node => {
-			node.textContent = number + '.';
+		this.getNode().querySelectorAll('.main-grid-row-number').forEach((node) => {
+			node.textContent = `${number}.`;
 		});
 	}
 
@@ -478,18 +498,18 @@ export class Row
 	{
 		let result;
 
-		if (!Type.isArrayFilled(fields))
-		{
-			result = Runtime.clone(this.fields);
-		}
-		else
+		if (Type.isArrayFilled(fields))
 		{
 			result = {};
 
-			for (let fieldName of fields)
+			for (const fieldName of fields)
 			{
 				result[fieldName] = this.getField(fieldName);
 			}
+		}
+		else
+		{
+			result = Runtime.clone(this.fields);
 		}
 
 		// merge with real values
@@ -517,9 +537,9 @@ export class Row
 	 */
 	#getRealValues()
 	{
-		if (!!this.realValues)
+		if (this.realValues)
 		{
-			return this.realValues
+			return this.realValues;
 		}
 
 		try
@@ -536,7 +556,7 @@ export class Row
 		}
 		catch (e)
 		{
-			console.error('Cannot parse REAL_VALUE: ' + e.getMessage());
+			console.error(`Cannot parse REAL_VALUE: ${e.getMessage()}`);
 		}
 
 		return this.realValues;
@@ -550,7 +570,7 @@ export class Row
 
 	setFields(fields: Object): void
 	{
-		for (let name in fields)
+		for (const name in fields)
 		{
 			if (fields.hasOwnProperty(name))
 			{
@@ -585,7 +605,7 @@ export class Row
 
 	getUiFieldId(field): string
 	{
-		return this.getId() + '_' + field;
+		return `${this.getId()}_${field}`;
 	}
 
 	getBasePrice(): number
@@ -631,9 +651,9 @@ export class Row
 				this.changeBasePrice(value, mode);
 				break;
 
-			// case 'BASE_PRICE_EXTRA':
-			// 	this.changeExtra(value, mode);
-			// 	break;
+				// case 'BASE_PRICE_EXTRA':
+				// 	this.changeExtra(value, mode);
+				// 	break;
 
 			case 'PURCHASING_PRICE':
 				this.changePurchasingPrice(value, mode);
@@ -665,6 +685,10 @@ export class Row
 
 			case 'SORT':
 				this.changeSort(value, mode);
+				break;
+
+			case 'COMMENT':
+				this.changeComment(value, mode);
 				break;
 		}
 	}
@@ -726,10 +750,9 @@ export class Row
 
 	#getCalculator()
 	{
-		const extra =
-			Type.isNumber(this.getModel().getField('BASE_PRICE_EXTRA'))
-				? this.getModel().getField('BASE_PRICE_EXTRA')
-				: null
+		const extra =			Type.isNumber(this.getModel().getField('BASE_PRICE_EXTRA'))
+			? this.getModel().getField('BASE_PRICE_EXTRA')
+			: null
 		;
 
 		return new PriceCalculator({
@@ -759,9 +782,8 @@ export class Row
 
 		if (mode === MODE_EDIT)
 		{
-			const calculator =
-				this.#getCalculator()
-					.calculateExtraType(value)
+			const calculator =				this.#getCalculator()
+				.calculateExtraType(value)
 			;
 
 			this.changeExtra(calculator.getExtra());
@@ -789,9 +811,8 @@ export class Row
 
 		if (mode === MODE_EDIT)
 		{
-			const calculator =
-				this.#getCalculator()
-					.calculateExtra(preparedValue)
+			const calculator =				this.#getCalculator()
+				.calculateExtra(preparedValue)
 			;
 
 			this.changeBasePrice(calculator.getFinalPrice());
@@ -890,6 +911,10 @@ export class Row
 			this.setStoreAmount(value, code);
 			this.layoutStoreSelector(this.getSettingValue('storeHeaderMap', {}));
 			this.addActionProductChange();
+			if (this.getEditor().getSettingValue('isCalculableStorePurchasingPrice'))
+			{
+				this.debouncedPurchasingPriceCalculation();
+			}
 		}
 	}
 
@@ -929,9 +954,19 @@ export class Row
 		}
 	}
 
+	changeComment(value)
+	{
+		const preparedValue = Type.isNil(value) ? '' : value.toString().trim();
+		if (preparedValue !== this.getField('COMMENT'))
+		{
+			this.setField('COMMENT', preparedValue);
+			this.addActionProductChange();
+		}
+	}
+
 	refreshFieldsLayout(exceptFields: Array<string> = []): void
 	{
-		for (let field in this.fields)
+		for (const field in this.fields)
 		{
 			if (this.fields.hasOwnProperty(field) && !exceptFields.includes(field))
 			{
@@ -940,8 +975,8 @@ export class Row
 		}
 		this.updateUiMeasure(
 			this.getField('MEASURE_CODE'),
-			this.getField('MEASURE_NAME')
-		)
+			this.getField('MEASURE_NAME'),
+		);
 		this.getSelector()?.reloadFileInput();
 		this.getSelector()?.layout();
 		this.getBarcodeSelector()?.layout();
@@ -950,7 +985,7 @@ export class Row
 
 	setModel(fields: {} = {}, settings: Settings = {}): void
 	{
-		const selectorId = 'catalog_document_grid_' + this.getId();
+		const selectorId = `catalog_document_grid_${this.getId()}`;
 		if (selectorId)
 		{
 			const model = ProductModel.getById(selectorId);
@@ -965,36 +1000,36 @@ export class Row
 			this.model = new ProductModel({
 				id: selectorId,
 				currency: this.getEditor().getCurrencyId(),
-				iblockId: fields['IBLOCK_ID'],
-				basePriceId: fields['BASE_PRICE_ID'],
-				skuTree: Type.isStringFilled(fields['SKU_TREE']) ? JSON.parse(fields['SKU_TREE']) : null,
-				storeMap: fields['STORE_AMOUNT_MAP'],
+				iblockId: fields.IBLOCK_ID,
+				basePriceId: fields.BASE_PRICE_ID,
+				skuTree: Type.isStringFilled(fields.SKU_TREE) ? JSON.parse(fields.SKU_TREE) : null,
+				storeMap: fields.STORE_AMOUNT_MAP,
 				fields,
 			});
 
-			if (Type.isObject(fields['IMAGE_INFO']))
+			if (Type.isObject(fields.IMAGE_INFO))
 			{
-				this.model.getImageCollection().setPreview(fields['IMAGE_INFO']['preview']);
-				this.model.getImageCollection().setEditInput(fields['IMAGE_INFO']['input']);
-				this.model.getImageCollection().setMorePhotoValues(fields['IMAGE_INFO']['values']);
+				this.model.getImageCollection().setPreview(fields.IMAGE_INFO.preview);
+				this.model.getImageCollection().setEditInput(fields.IMAGE_INFO.input);
+				this.model.getImageCollection().setMorePhotoValues(fields.IMAGE_INFO.values);
 			}
 
-			if (!Type.isNil(fields['DETAIL_URL']))
+			if (!Type.isNil(fields.DETAIL_URL))
 			{
-				this.model.setDetailPath(fields['DETAIL_URL']);
+				this.model.setDetailPath(fields.DETAIL_URL);
 			}
 		}
 
 		EventEmitter.subscribe(
 			this.model,
 			'onErrorsChange',
-			Runtime.debounce(this.#handleProductErrorsChange, 500, this)
+			Runtime.debounce(this.#handleProductErrorsChange, 500, this),
 		);
 
 		EventEmitter.subscribe(
 			this.model,
 			'onChangeStoreData',
-			this.updateUiStoreValues.bind(this)
+			this.updateUiStoreValues.bind(this),
 		);
 	}
 
@@ -1008,7 +1043,10 @@ export class Row
 		const errors = this.getModel().getErrorCollection().getErrors();
 		for (const code in errors)
 		{
-			if (code === ProductSelector.ErrorCodes.NOT_SELECTED_PRODUCT || code === StoreSelector.ErrorCodes.NOT_SELECTED_STORE)
+			if (
+				code === ProductSelector.ErrorCodes.NOT_SELECTED_PRODUCT
+				|| code === StoreSelector.ErrorCodes.NOT_SELECTED_STORE
+			)
 			{
 				this.getSelector().layoutErrors();
 			}
@@ -1019,7 +1057,7 @@ export class Row
 
 	#handleBeforeCreateProduct(event: BaseEvent)
 	{
-		const {model} = event.getData();
+		const { model } = event.getData();
 		model.setField('BARCODE', this.barcodeSelector.getNameInputFilledValue());
 		model.setField('NAME', this.mainSelector.getNameInputFilledValue());
 	}
@@ -1041,7 +1079,7 @@ export class Row
 
 	#handleBarcodeChange(event: BaseEvent): void
 	{
-		const {value} = event.getData();
+		const { value } = event.getData();
 		this.changeBarcode(value, MODE_EDIT);
 	}
 
@@ -1106,7 +1144,7 @@ export class Row
 				if (currentAmount <= 0)
 				{
 					const maxStore = this.model.getStoreCollection().getMaxFilledStore();
-					const storeSelector = StoreSelector.getById(this.getId() + '_' + key);
+					const storeSelector = StoreSelector.getById(`${this.getId()}_${key}`);
 					if (maxStore.AMOUNT > currentAmount && storeSelector)
 					{
 						storeSelector.onStoreSelect(maxStore.STORE_ID, maxStore.STORE_TITLE);
@@ -1115,8 +1153,8 @@ export class Row
 				}
 			}
 
-			this.setStoreAmount(value, fieldName)
-		})
+			this.setStoreAmount(value, fieldName);
+		});
 
 		this.layoutStoreSelector(this.getSettingValue('storeHeaderMap', {}));
 	}
@@ -1134,12 +1172,14 @@ export class Row
 			let amount;
 
 			const amounts = {
-				'_AMOUNT': () => this.model.getStoreCollection().getStoreAmount(value),
-				'_RESERVED': () => this.model.getStoreCollection().getStoreReserved(value),
-				'_AVAILABLE_AMOUNT': () => this.model.getStoreCollection().getStoreAvailableAmount(value),
+				_AMOUNT: () => this.model.getStoreCollection().getStoreAmount(value),
+				_RESERVED: () => this.model.getStoreCollection().getStoreReserved(value),
+				_AVAILABLE_AMOUNT: () => this.model.getStoreCollection().getStoreAvailableAmount(value),
 			};
-			for (const postfix in amounts) {
-				if (Object.hasOwnProperty.call(amounts, postfix)) {
+			for (const postfix in amounts)
+			{
+				if (Object.hasOwnProperty.call(amounts, postfix))
+				{
 					const wrapper = this.#getNodeChildByDataName(fieldName + postfix);
 					if (wrapper)
 					{
@@ -1149,15 +1189,14 @@ export class Row
 						{
 							amount = amounts[postfix]() || 0;
 
-							const amountWithMeasure = amount + ' ' + Text.encode(this.getField('MEASURE_NAME'));
+							const amountWithMeasure = `${amount} ${Text.encode(this.getField('MEASURE_NAME'))}`;
 							let htmlAmount = amountWithMeasure;
 
 							if (postfix === '_AVAILABLE_AMOUNT')
 							{
-								htmlAmount =
-									amount > 0
-										? amountWithMeasure
-										: `<span class="text--danger">${amountWithMeasure}</span>`
+								htmlAmount = amount > 0
+									? amountWithMeasure
+									: `<span class="text--danger">${amountWithMeasure}</span>`
 								;
 							}
 
@@ -1205,7 +1244,40 @@ export class Row
 			this.addActionUpdateTotal();
 
 			this.updateRowTotalPrice();
+
+			if (this.getEditor().getSettingValue('isCalculableStorePurchasingPrice'))
+			{
+				this.debouncedPurchasingPriceCalculation();
+			}
 		}
+	}
+
+	calculateStoreCostPrice()
+	{
+		if (this.isEmptyRow())
+		{
+			return;
+		}
+
+		ajax.runComponentAction(
+			this.editor.getComponentName(),
+			'calculateStoreCostPrice',
+			{
+				mode: 'class',
+				signedParameters: this.editor.getSignedParameters(),
+				data: {
+					productId: this.getField('SKU_ID'),
+					quantity: this.getField('AMOUNT'),
+					storeId: this.getField('STORE_FROM'),
+					currency: this.editor.getCurrencyId(),
+				},
+			},
+		)
+			.then(
+				(result) => {
+					this.setPurchasingPrice(result.data);
+				},
+			);
 	}
 
 	setMeasure(measure, mode = MODE_SET)
@@ -1222,7 +1294,7 @@ export class Row
 		if (mode === MODE_EDIT)
 		{
 			this.getModel().showSaveNotifier(
-				'measureChanger_' + this.getId(),
+				`measureChanger_${this.getId()}`,
 				{
 					title: Loc.getMessage('CATALOG_PRODUCT_MODEL_SAVING_NOTIFICATION_MEASURE_CHANGED_QUERY'),
 					declineCancelTitle: Loc.getMessage('CATALOG_PRODUCT_MODEL_SAVING_NOTIFICATION_DECLINE_SAVE'),
@@ -1232,18 +1304,18 @@ export class Row
 							this.setField('MEASURE_NAME', measure.SYMBOL);
 							this.updateUiMeasure(
 								this.getField('MEASURE_CODE'),
-								this.getField('MEASURE_NAME')
-							)
+								this.getField('MEASURE_NAME'),
+							);
 							this.getModel().save(['MEASURE_CODE', 'MEASURE_NAME']);
 						},
 						onCancel: () => {
 							this.updateUiMeasure(
 								this.getField('MEASURE_CODE'),
-								this.getField('MEASURE_NAME')
-							)
-						}
+								this.getField('MEASURE_NAME'),
+							);
+						},
 					},
-				}
+				},
 			);
 		}
 		else
@@ -1262,7 +1334,7 @@ export class Row
 
 		if (!Type.isElementNode(item))
 		{
-			item = this.getNode().querySelector('[name="' + fieldId + '"]');
+			item = this.getNode().querySelector(`[name="${fieldId}"]`);
 		}
 
 		return item;
@@ -1307,7 +1379,7 @@ export class Row
 			return null;
 		}
 
-		return BX.Main.dropdownManager.getById(this.getId() + '_' + name + '_control');
+		return BX.Main.dropdownManager.getById(`${this.getId()}_${name}_control`);
 	}
 
 	updateMoneyFieldUiWithDropdownApi(dropdown: BX.Main.dropdown, value: number | string)
@@ -1322,7 +1394,7 @@ export class Row
 			dropdown.menu.destroy();
 		}
 
-		const item = dropdown.menu.itemsContainer.querySelector('[data-value="' + value + '"]');
+		const item = dropdown.menu.itemsContainer.querySelector(`[data-value="${value}"]`);
 		const menuItem = item && dropdown.getMenuItem(item);
 		if (menuItem)
 		{
@@ -1355,7 +1427,7 @@ export class Row
 		this.updateUiMoneyField(
 			'MEASURE_CODE',
 			code,
-			Text.encode(name)
+			Text.encode(name),
 		);
 
 		this.updateUiStoreValues();
@@ -1363,7 +1435,7 @@ export class Row
 
 	updateUiHtmlField(name, html)
 	{
-		const item = this.getNode().querySelector('[data-name="' + name + '"]');;
+		const item = this.getNode().querySelector(`[data-name="${name}"]`);
 		if (Type.isElementNode(item))
 		{
 			item.innerHTML = html;
@@ -1373,7 +1445,7 @@ export class Row
 	updateUiCurrencyFields()
 	{
 		const currencyText = this.getEditor().getCurrencyText();
-		const currencyId = '' + this.getEditor().getCurrencyId();
+		const currencyId = `${this.getEditor().getCurrencyId()}`;
 
 		const currencyFieldNames = ['BASE_PRICE_CURRENCY', 'PURCHASING_PRICE_CURRENCY'];
 		currencyFieldNames.forEach((name) => {
@@ -1409,7 +1481,7 @@ export class Row
 				break;
 
 			case 'money':
-				value = BX.util.number_format(value, this.getPricePrecision(), ".", "");
+				value = BX.util.number_format(value, this.getPricePrecision(), '.', '');
 				this.updateUiInputField(uiName, value);
 				break;
 
@@ -1446,14 +1518,15 @@ export class Row
 			const column = this.getEditor()?.getColumnInfo(field);
 			if (column?.editable?.TYPE === 'MONEY')
 			{
-				return  'money';
+				return 'money';
 			}
 
-			return  'money_html';
+			return 'money_html';
 		}
-		else if (field === 'AMOUNT')
+
+		if (field === 'AMOUNT')
 		{
-			return  'input';
+			return 'input';
 		}
 
 		return null;
@@ -1499,14 +1572,14 @@ export class Row
 	{
 		this.addExternalAction({
 			type: this.getEditor().actions.productChange,
-			id: this.getId()
+			id: this.getId(),
 		});
 	}
 
 	addActionUpdateTotal()
 	{
 		this.addExternalAction({
-			type: this.getEditor().actions.updateTotal
+			type: this.getEditor().actions.updateTotal,
 		});
 	}
 
@@ -1527,7 +1600,7 @@ export class Row
 			!Type.isStringFilled(this.getField('NAME', '').trim())
 			&& this.model.isEmpty()
 			&& this.getBasePrice() <= 0
-		)
+		);
 	}
 
 	validate(): Array
@@ -1558,7 +1631,7 @@ export class Row
 		fieldWrapper.classList.add('main-grid-editor-cell-danger');
 
 		const validator = (eventObject) => {
-			if (Boolean(validatorCallback(eventObject.target.valueAsNumber)))
+			if (validatorCallback(eventObject.target.valueAsNumber))
 			{
 				this.validatingFields.set(fieldName, false);
 				Event.unbind(fieldInput, 'blur', validator);
@@ -1599,6 +1672,7 @@ export class Row
 		if (!this.#isRowAccessDenied())
 		{
 			this.#hidePurchasingPrice();
+
 			return;
 		}
 
@@ -1612,17 +1686,17 @@ export class Row
 				return;
 			}
 
-			const item = this.getNode().querySelector(`.main-grid-cell:nth-child(${columnIndex+1}) .main-grid-cell-content`);
+			const item = this.getNode().querySelector(`.main-grid-cell:nth-child(${columnIndex + 1}) .main-grid-cell-content`);
 			if (Type.isElementNode(item))
 			{
 				item.innerHTML = '';
 			}
 		});
 
-		const fieldWithHintIndex = columnIndexes['AMOUNT'];
+		const fieldWithHintIndex = columnIndexes.AMOUNT;
 		if (fieldWithHintIndex)
 		{
-			const fieldWithHintNode = this.getNode().querySelector(`.main-grid-cell:nth-child(${fieldWithHintIndex+1}) .main-grid-cell-content`);
+			const fieldWithHintNode = this.getNode().querySelector(`.main-grid-cell:nth-child(${fieldWithHintIndex + 1}) .main-grid-cell-content`);
 			if (fieldWithHintNode)
 			{
 				const input = new AccessDeniedInput({
@@ -1647,10 +1721,10 @@ export class Row
 		}
 
 		const columnIndexes = this.getEditor().getGridColumnIndexes();
-		const fieldWithHintIndex = columnIndexes['PURCHASING_PRICE'];
+		const fieldWithHintIndex = columnIndexes.PURCHASING_PRICE;
 		if (fieldWithHintIndex)
 		{
-			const fieldWithHintNode = this.getNode().querySelector(`.main-grid-cell:nth-child(${fieldWithHintIndex+1})`);
+			const fieldWithHintNode = this.getNode().querySelector(`.main-grid-cell:nth-child(${fieldWithHintIndex + 1})`);
 			if (fieldWithHintNode)
 			{
 				const priceNode = fieldWithHintNode.querySelector('.main-grid-editor-container');

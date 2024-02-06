@@ -2,15 +2,14 @@
  * @module im/messenger/lib/ui/selector/single-selector
  */
 jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, module) => {
-
 	const { ButtonSection } = require('im/messenger/lib/ui/selector/button-section');
 	const { FullScreenShadow } = require('im/messenger/lib/ui/base/full-screen-shadow');
 	const { SearchInput } = require('im/messenger/lib/ui/search/input');
 	const { List } = require('im/messenger/lib/ui/base/list');
+	const AppTheme = require('apptheme');
 
 	class SingleSelector extends LayoutComponent
 	{
-
 		/**
 		 *
 		 * @param {Object} props
@@ -38,15 +37,14 @@ jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, mod
 			}
 		}
 
-
 		render()
 		{
-
 			if (this.state.isSearchActive && this.props.searchMode === 'overlay')
 			{
 				return View(
 					{
-						clickable: false
+						resizableByKeyboard: true,
+						clickable: false,
 					},
 					this.createSearchWrapper(),
 				);
@@ -56,7 +54,9 @@ jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, mod
 				{
 					style: {
 						flexDirection: 'column',
+						flex: 1,
 					},
+					resizableByKeyboard: true,
 					clickable: false,
 				},
 				this.createSearchInput(),
@@ -76,9 +76,10 @@ jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, mod
 		createList()
 		{
 			return new List({
+				recentText: this.props.recentText,
 				itemList: this.props.itemList,
-				onItemSelected: itemData => this.props.onItemSelected(itemData),
-				ref: ref => {
+				onItemSelected: (itemData) => this.props.onItemSelected(itemData),
+				ref: (ref) => {
 					this.listRef = ref;
 					if (this.props.searchMode === 'inline')
 					{
@@ -97,7 +98,7 @@ jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, mod
 		{
 			if (Array.isArray(this.props.buttons) && this.props.buttons.length > 0)
 			{
-				return new ButtonSection({buttons: this.props.buttons});
+				return new ButtonSection({ buttons: this.props.buttons });
 			}
 
 			return null;
@@ -106,7 +107,7 @@ jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, mod
 		createShadow()
 		{
 			return new FullScreenShadow({
-				ref: ref => this.shadowRef = ref,
+				ref: (ref) => this.shadowRef = ref,
 			});
 		}
 
@@ -125,6 +126,7 @@ jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, mod
 			return View(
 				{
 					style: {
+						backgroundColor: AppTheme.colors.bgContentTertiary,
 						padding: 10,
 					},
 				},
@@ -132,12 +134,16 @@ jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, mod
 					{
 						onChangeText: (text) => this.props.onChangeText(text),
 						onSearchShow: () => this.props.onSearchShow(),
-						ref: ref => this.searchInputRef = ref,
-					}
-				)
+						ref: (ref) => this.searchInputRef = ref,
+					},
+				),
 			);
 		}
 
+		/**
+		 *
+		 * @return {SearchInput}
+		 */
 		getSearchInput()
 		{
 			return this.searchInputRef;
@@ -149,8 +155,8 @@ jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, mod
 			{
 				return new List({
 					itemList: [],
-					onItemSelected: itemData => this.props.onSearchItemSelected(itemData),
-					ref: ref => this.searchWrapperRef = ref,
+					onItemSelected: (itemData) => this.props.onSearchItemSelected(itemData),
+					ref: (ref) => this.searchWrapperRef = ref,
 				});
 			}
 		}
@@ -175,12 +181,13 @@ jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, mod
 			if (this.props.searchMode === 'inline')
 			{
 				this.getList().setItems(this.itemList, false);
+
 				return;
 			}
 
 			if (this.state.isSearchActive === true)
 			{
-				this.setState({isSearchActive: false},() => {
+				this.setState({ isSearchActive: false }, () => {
 					if (withShadow)
 					{
 						this.enableShadow();
@@ -207,7 +214,6 @@ jn.define('im/messenger/lib/ui/selector/single-selector', (require, exports, mod
 
 			this.getSearchWrapper().setItems(items, withLoader);
 		}
-
 	}
 
 	module.exports = { SingleSelector };

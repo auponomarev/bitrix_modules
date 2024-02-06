@@ -1,4 +1,4 @@
-<?if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true)die();
+<?php if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true)die();
 
 use Bitrix\Main\Localization\CultureTable;
 use Bitrix\Main\Localization\Loc;
@@ -9,6 +9,7 @@ use Bitrix\Location\Repository\SourceRepository;
 use Bitrix\Location;
 use Bitrix\Main\Config\Option;
 use Bitrix\Intranet\Integration\Main\Culture;
+use Bitrix\Intranet;
 
 final class IntranetConfigsComponent extends CBitrixComponent
 {
@@ -294,14 +295,7 @@ final class IntranetConfigsComponent extends CBitrixComponent
 
 		if (isset($_REQUEST["site_title"]))
 		{
-			if ($this->arResult["IS_BITRIX24"])
-			{
-				COption::SetOptionString("bitrix24", "site_title", $_REQUEST["site_title"]);
-			}
-			else
-			{
-				COption::SetOptionString("bitrix24", "site_title", $_REQUEST["site_title"], false, SITE_ID);
-			}
+			Intranet\Portal::getInstance()->getSettings()->setTitle($_REQUEST["site_title"]);
 		}
 
 		if ($this->arResult["IS_BITRIX24"])
@@ -310,7 +304,7 @@ final class IntranetConfigsComponent extends CBitrixComponent
 
 			if (isset($_REQUEST["logo_name"]) && $_REQUEST["logo_name"] <> '')
 			{
-				COption::SetOptionString("main", "site_name", $_REQUEST["logo_name"]);
+				Intranet\Portal::getInstance()->getSettings()->setName($_REQUEST["logo_name"]);
 				$iblockID = COption::GetOptionInt("intranet", "iblock_structure");
 				$db_up_department = CIBlockSection::GetList(Array(), Array("SECTION_ID"=>0, "IBLOCK_ID"=>$iblockID));
 				if ($ar_up_department = $db_up_department->Fetch())
@@ -613,29 +607,55 @@ final class IntranetConfigsComponent extends CBitrixComponent
 		//im chat
 		if (CModule::IncludeModule('im'))
 		{
-			if (isset($_POST["allow_general_chat_toall"]))
+			if (COption::GetOptionString("im", "im_general_chat_new_rights") !== 'Y')
 			{
-				$valuesToSave = [];
-				if (is_array($_POST["imchat_toall_rights"]))
+				if (isset($_POST["allow_general_chat_toall"]))
 				{
-					foreach($_POST["imchat_toall_rights"] as $key => $value)
+					$valuesToSave = [];
+					if (is_array($_POST["imchat_toall_rights"]))
 					{
-						$valuesToSave[] = ($value == 'UA' ? 'AU' : $value);
+						foreach($_POST["imchat_toall_rights"] as $key => $value)
+						{
+							$valuesToSave[] = ($value == 'UA' ? 'AU' : $value);
+						}
 					}
-				}
 
-				if (in_array('AU', $valuesToSave) || empty($valuesToSave))
-				{
-					CIMChat::SetAccessToGeneralChat(true);
+					if (in_array('AU', $valuesToSave) || empty($valuesToSave))
+					{
+						CIMChat::SetAccessToGeneralChat(true);
+					}
+					else
+					{
+						CIMChat::SetAccessToGeneralChat(false, $valuesToSave);
+					}
 				}
 				else
 				{
-					CIMChat::SetAccessToGeneralChat(false, $valuesToSave);
+					CIMChat::SetAccessToGeneralChat(false);
 				}
 			}
 			else
 			{
-				CIMChat::SetAccessToGeneralChat(false);
+				if (isset($_POST["general_chat_can_post"]))
+				{
+					$generalChat = \Bitrix\Im\V2\Chat\ChatFactory::getInstance()->getGeneralChat();
+					$generalChat->setCanPost($_POST["general_chat_can_post"]);
+					if ($_POST["general_chat_can_post"] === \Bitrix\Im\V2\Chat::MANAGE_RIGHTS_MANAGERS)
+					{
+						if (isset($_POST["imchat_toall_rights"]))
+						{
+							$managerIds = array_map(function ($userCode) {
+								$matches = [];
+								if (preg_match('/^U(\d+)$/', $userCode, $matches))
+								{
+									return $matches[1];
+								}
+							}, $_POST["imchat_toall_rights"]);
+							$generalChat->setManagers($managerIds);
+						}
+					}
+					$generalChat->save();
+				}
 			}
 		}
 
@@ -1207,15 +1227,13 @@ final class IntranetConfigsComponent extends CBitrixComponent
 			$this->arResult['SHOW_YEAR_FOR_FEMALE'] = COption::GetOptionString("intranet", "show_year_for_female", "N");
 
 			$this->arResult["NETWORK_AVAILABLE"] = 'N';
-			if ($this->arResult['CREATOR_CONFIRMED'] && CModule::IncludeModule('socialservices'))
-			{
-				$socnetObj = new \Bitrix\Socialservices\Network();
-				$this->arResult["NETWORK_AVAILABLE"] = $socnetObj->isOptionEnabled() ? "Y" : "N";
-			}
 
 			$billingCurrency = CBitrix24::BillingCurrency();
-			$arProductPrices = CBitrix24::getPrices($billingCurrency);
-			$this->arResult["PROJECT_PRICE"] = CBitrix24::ConvertCurrency($arProductPrices["TF1"]["PRICE"], $billingCurrency);
+			$this->arResult["PROJECT_PRICE"] = '';
+			if (($arProductPrices = CBitrix24::getPrices($billingCurrency)) && !empty($arProductPrices["TF1"]["PRICE"]))
+			{
+				$this->arResult["PROJECT_PRICE"] = CBitrix24::ConvertCurrency($arProductPrices["TF1"]["PRICE"], $billingCurrency);
+			}
 		}
 
 		$this->arResult['STRESSLEVEL_AVAILABLE'] = COption::GetOptionString("intranet", "stresslevel_available", "Y");
@@ -1264,14 +1282,27 @@ final class IntranetConfigsComponent extends CBitrixComponent
 		}
 		$this->arResult['arToAllRights'] = \IntranetConfigsComponent::processOldAccessCodes($arToAllRights);
 
-		$arChatToAllRights = [];
-		$imAllowRights = COption::GetOptionString("im", "allow_send_to_general_chat_rights");
-		if (!empty($imAllowRights))
+		// im
+		if (!method_exists('\Bitrix\Im\V2\Chat\GeneralChat', 'getRightsForIntranetConfig'))
 		{
-			$arChatToAllRights = explode(",", $imAllowRights);
+			$arChatToAllRights = [];
+			$imAllowRights = COption::GetOptionString("im", "allow_send_to_general_chat_rights");
+			if (!empty($imAllowRights))
+			{
+				$arChatToAllRights = explode(",", $imAllowRights);
+			}
+			$this->arResult['arChatToAllRights'] = \IntranetConfigsComponent::processOldAccessCodes($arChatToAllRights);
 		}
-		$this->arResult['arChatToAllRights'] = \IntranetConfigsComponent::processOldAccessCodes($arChatToAllRights);
-
+		else
+		{
+			$generalChat = \Bitrix\Im\V2\Chat\ChatFactory::getInstance()->getGeneralChat();
+			if ($generalChat)
+			{
+				$generalChatRights = $generalChat->getRightsForIntranetConfig();
+				$this->arResult = array_merge($this->arResult, $generalChatRights);
+			}
+		}
+		//end im
 
 		if(Loader::includeModule('rest'))
 		{

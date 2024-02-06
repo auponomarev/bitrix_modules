@@ -249,14 +249,8 @@ class User
 
 		\CIMContactList::SetRecent(Array('ENTITY_ID' => $userId));
 
-		$userCount = \Bitrix\Main\UserTable::getActiveUsersCount();
-		if ($userCount > self::INVITE_MAX_USER_NOTIFY)
+		if (self::isCountOfUsersExceededForPersonalNotify())
 		{
-			self::sendInviteEvent([
-				'ID' => $userId,
-				'INVITED' => false
-			]);
-
 			if (!\CIMChat::GetGeneralChatAutoMessageStatus(\CIMChat::GENERAL_MESSAGE_TYPE_JOIN))
 			{
 				return false;
@@ -270,10 +264,10 @@ class User
 			]);
 		}
 
-		self::sendInviteEvent([
+		self::sendInviteEvent([[
 			'ID' => $userId,
 			'INVITED' => false
-		]);
+		]]);
 
 		$orm = \Bitrix\Main\UserTable::getList([
 			'select' => ['ID'],
@@ -334,7 +328,8 @@ class User
 				'params' => [
 					'userId' => $user['ID'],
 					'invited' => $user['INVITED'],
-					'user' => \Bitrix\Im\User::getInstance($user['ID'])->getFields()
+					'user' => \Bitrix\Im\User::getInstance($user['ID'])->getFields(),
+					'date' => new DateTime(),
 				],
 				'extra' => \Bitrix\Im\Common::getPullExtra()
 			]);
@@ -353,6 +348,7 @@ class User
 			"TO_CHAT_ID" =>  $chatId,
 			"FROM_USER_ID" => $fromUserId,
 			"MESSAGE_OUT" => IM_MAIL_SKIP,
+			"SKIP_USER_CHECK" => 'Y',
 		]);
 
 		$result = \CIMChat::AddMessage($params);
@@ -437,12 +433,15 @@ class User
 			$filter['!=UF_DEPARTMENT'] = false;
 		}
 
+		$connection = \Bitrix\Main\Application::getConnection();
+		$helper = $connection->getSqlHelper();
+
 		$result = [];
 		$users = UserTable::getList([
 			'filter' => $filter,
 			'select' => ['ID'],
 			'runtime' => [
-				new ExpressionField('BIRTHDAY_DATE', "DATE_FORMAT(%s, '%%m-%%d')", 'PERSONAL_BIRTHDAY')
+				new ExpressionField('BIRTHDAY_DATE', str_replace('PERSONAL_BIRTHDAY', '%s', str_replace('%', '%%', $helper->formatDate('MM-DD', 'PERSONAL_BIRTHDAY'))), 'PERSONAL_BIRTHDAY')
 			],
 			'limit' => 100,
 		])->fetchAll();
@@ -457,6 +456,21 @@ class User
 		$cache->endDataCache($result);
 
 		return $result;
+	}
+
+	private static function isCountOfUsersExceededForPersonalNotify(): bool
+	{
+		$count = UserTable::query()
+			->setSelect(['ID'])
+			->where('ACTIVE', true)
+			->where('IS_REAL_USER', true)
+			->whereNotNull('LAST_LOGIN')
+			->setLimit(self::INVITE_MAX_USER_NOTIFY + 1)
+			->fetchCollection()
+			->count()
+		;
+
+		return $count > self::INVITE_MAX_USER_NOTIFY;
 	}
 
 	public static function registerEventHandler()

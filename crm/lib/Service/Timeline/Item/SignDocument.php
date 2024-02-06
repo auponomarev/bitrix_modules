@@ -12,6 +12,8 @@ use Bitrix\Crm\Timeline\SignDocument\MessageData;
 use Bitrix\Crm\Timeline\SignDocument\Signer;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Sign\Document;
+use Bitrix\Sign\Operation;
+use Bitrix\Sign\Service\Container;
 
 class SignDocument extends Configurable
 {
@@ -51,7 +53,7 @@ class SignDocument extends Configurable
 			Timeline\SignDocument\Entry::TYPE_CATEGORY_SENT => Loc::getMessage('CRM_SERVICE_TIMELINE_LAYOUT_SIGNDOCUMENT_SEND_TITLE'),
 			Timeline\SignDocument\Entry::TYPE_CATEGORY_SIGNED => Loc::getMessage('CRM_SERVICE_TIMELINE_LAYOUT_SIGNDOCUMENT_SIGNED_TITLE'),
 			Timeline\SignDocument\Entry::TYPE_CATEGORY_SIGN_COMPLETED => Loc::getMessage('CRM_SERVICE_TIMELINE_LAYOUT_SIGNDOCUMENT_SIGNED_TITLE'),
-			Timeline\SignDocument\Entry::TYPE_CATEGORY_SENT_FINAL => Loc::getMessage('CRM_SERVICE_TIMELINE_LAYOUT_SIGNDOCUMENT_SENT_FINAL_TITLE'),
+			Timeline\SignDocument\Entry::TYPE_CATEGORY_SENT_FINAL => Loc::getMessage('CRM_SERVICE_TIMELINE_LAYOUT_SIGNDOCUMENT_SENT_FINAL_TITLE_MSGVER_1'),
 			Timeline\SignDocument\Entry::TYPE_CATEGORY_COMPLETED => Loc::getMessage('CRM_SERVICE_TIMELINE_LAYOUT_SIGNDOCUMENT_COMPLETED_TITLE'),
 			Timeline\SignDocument\Entry::TYPE_CATEGORY_REQUESTED => Loc::getMessage('CRM_SERVICE_TIMELINE_LAYOUT_SIGNDOCUMENT_REQUESTED_TITLE'),
 			Timeline\SignDocument\Entry::TYPE_CATEGORY_SENT_REPEATEDLY => Loc::getMessage('CRM_SERVICE_TIMELINE_LAYOUT_SIGNDOCUMENT_SENT_REPEATEDLY_TITLE'),
@@ -349,7 +351,7 @@ class SignDocument extends Configurable
 					->addActionParamString('buttonId', 'resend')
 					->addActionParamInt('documentId', $this->getDocumentData()->getDocumentId())
 					->addActionParamString('recipientHash', $recipientHash)
-					->setAnimation(Layout\Action\Animation::showLoaderForBlock())
+					->setAnimation(Layout\Action\Animation::disableBlock())
 			);
 		}
 		elseif (
@@ -369,14 +371,27 @@ class SignDocument extends Configurable
 				$buttons['open'] = $openButton;
 			}
 
+			$documentHash = $this->getDocumentData()->getDocumentHash();
+			$operation = new Operation\GetSignedFilePdfUrl($documentHash, $recipientHash);
+			$result = $operation->launch();
+
+			$downloadLink = '';
+			if ($result->isSuccess() && $operation->ready)
+			{
+				$downloadLink = $operation->url;
+			}
+			$filename = Container::instance()->getDocumentFileNameService()->getNameByHash($documentHash);
+
 			$buttons['download'] = (new Layout\Footer\Button(
 				Loc::getMessage('CRM_SERVICE_TIMELINE_LAYOUT_SIGNDOCUMENT_BUTTON_DOWNLOAD') ?? '',
 				Layout\Footer\Button::TYPE_SECONDARY,
 			))->setAction(
 				(new Layout\Action\JsEvent('SignDocument:Download'))
-					->addActionParamString('documentHash', $this->getDocumentData()->getDocumentHash())
+					->addActionParamString('documentHash', $documentHash)
 					->addActionParamString('memberHash', $recipientHash)
-					->setAnimation(Layout\Action\Animation::showLoaderForBlock())
+					->addActionParamString('downloadLink', $downloadLink)
+					->addActionParamString('filename', $filename)
+					->setAnimation(Layout\Action\Animation::disableBlock())
 			);
 		}
 

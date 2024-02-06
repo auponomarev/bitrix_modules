@@ -1,16 +1,16 @@
-<?
+<?php
 
-use Bitrix\Main\Localization\Loc;
-use Bitrix\Main\ErrorCollection;
-use Bitrix\Main\Loader;
-use Bitrix\Main\Error;
-
-use Bitrix\Crm\Tracking;
-
-if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true)
+if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 {
 	die();
 }
+
+use Bitrix\Crm\Restriction\AvailabilityManager;
+use Bitrix\Crm\Tracking;
+use Bitrix\Main\Error;
+use Bitrix\Main\ErrorCollection;
+use Bitrix\Main\Loader;
+use Bitrix\Main\Localization\Loc;
 
 Loc::loadMessages(__FILE__);
 
@@ -83,7 +83,7 @@ class CrmTrackingComponent extends CBitrixComponent
 			$arDefaultVariableAliases404 = array();
 			$arComponentVariables = array('id');
 			$arVariables = array();
-			$arUrlTemplates = CComponentEngine::makeComponentUrlTemplates($arDefaultUrlTemplates404, $this->arParams['SEF_URL_TEMPLATES']);
+			$arUrlTemplates = CComponentEngine::makeComponentUrlTemplates($arDefaultUrlTemplates404, $this->arParams['SEF_URL_TEMPLATES'] ?? []);
 			$arVariableAliases = CComponentEngine::makeComponentVariableAliases($arDefaultVariableAliases404, $this->arParams['VARIABLE_ALIASES']);
 			$componentPage = CComponentEngine::parseComponentPath($this->arParams['SEF_FOLDER'], $arUrlTemplates, $arVariables);
 
@@ -118,7 +118,7 @@ class CrmTrackingComponent extends CBitrixComponent
 				$componentPage = 'edit';
 			}
 
-			/**	@var \CAllMain $APPLICATION */
+			/**	@var CMain $APPLICATION */
 			global $APPLICATION;
 			foreach ($arDefaultUrlTemplates404 as $url => $value)
 			{
@@ -143,7 +143,7 @@ class CrmTrackingComponent extends CBitrixComponent
 				'VARIABLES' => $arVariables,
 				'ALIASES' => $this->arParams['SEF_MODE'] == 'Y' ? array(): $arVariableAliases,
 				'ID' => isset($arVariables['id']) ? strval($arVariables['id']) : '',
-				'PATH_TO_USER_PROFILE' => $this->arParams['PATH_TO_USER_PROFILE']
+				'PATH_TO_USER_PROFILE' => $this->arParams['PATH_TO_USER_PROFILE'] ?? null
 			),
 			$this->arResult
 		);
@@ -170,6 +170,15 @@ class CrmTrackingComponent extends CBitrixComponent
 		{
 			$this->printErrors();
 			return;
+		}
+
+		$toolsManager = \Bitrix\Crm\Service\Container::getInstance()->getIntranetToolsManager();
+		$isAvailable = $toolsManager->checkCrmAvailability();
+		if (!$isAvailable)
+		{
+			print AvailabilityManager::getInstance()->getCrmInaccessibilityContent();
+
+			return false;
 		}
 
 		if (!$this->prepareResult())

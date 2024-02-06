@@ -1,20 +1,21 @@
-import {Notifier, NotificationOptions} from 'ui.notification-manager';
-import {Store} from 'ui.vue3.vuex';
-import {Loc} from 'main.core';
-import {BaseEvent} from 'main.core.events';
+import { Notifier, NotificationOptions } from 'ui.notification-manager';
+import { Store } from 'ui.vue3.vuex';
+import { Loc } from 'main.core';
+import { BaseEvent } from 'main.core.events';
 
-import {Core} from 'im.v2.application.core';
-import {Parser} from 'im.v2.lib.parser';
-import {Messenger} from 'im.public';
-import {NotificationTypesCodes} from 'im.v2.const';
-import {NotificationService} from 'im.v2.provider.service';
+import { Core } from 'im.v2.application.core';
+import { Parser } from 'im.v2.lib.parser';
+import { DesktopManager } from 'im.v2.lib.desktop';
+import { Messenger } from 'im.public';
+import { NotificationTypesCodes, ChatType } from 'im.v2.const';
+import { NotificationService } from 'im.v2.provider.service';
 
 import type {
 	ImModelUser,
-	ImModelDialog,
+	ImModelChat,
 	ImModelMessage,
 	ImModelNotification,
-	ImModelNotificationButton
+	ImModelNotificationButton,
 } from 'im.v2.model';
 
 type NotifierClickParams = {
@@ -28,11 +29,13 @@ type NotifierActionParams = {
 };
 
 const CHAT_MESSAGE_PREFIX = 'im-chat';
+const COPILOT_MESSAGE_PREFIX = 'im-copilot';
+const LINES_MESSAGE_PREFIX = 'im-lines';
 const NOTIFICATION_PREFIX = 'im-notify';
 const ACTION_BUTTON_PREFIX = 'button_';
 const ButtonNumber = {
 	first: '1',
-	second: '2'
+	second: '2',
 };
 
 export class NotifierManager
@@ -65,29 +68,47 @@ export class NotifierManager
 		this.#subscribeToNotifierEvents();
 	}
 
-	showMessage(message: ImModelMessage, dialog: ImModelDialog, user?: ImModelUser)
+	showMessage(params: {message: ImModelMessage, dialog: ImModelChat, user?: ImModelUser, lines: boolean})
 	{
+		const { message, dialog, user, lines } = params;
 		let text = '';
-		if (user)
+		if (user && dialog.type !== ChatType.user)
 		{
 			text += `${user.name}: `;
 		}
 
 		text += Parser.purifyMessage(message);
 
+		let id = `${CHAT_MESSAGE_PREFIX}-${dialog.dialogId}-${message.id}`;
+		if (dialog.type === ChatType.copilot)
+		{
+			id = `${COPILOT_MESSAGE_PREFIX}-${dialog.dialogId}-${message.id}`;
+		}
+		else if (lines)
+		{
+			id = `${LINES_MESSAGE_PREFIX}-${dialog.dialogId}-${message.id}`;
+		}
 		const notificationOptions = {
-			id: `im-chat-${dialog.dialogId}-${message.id}`,
+			id,
 			title: dialog.name,
 			icon: dialog.avatar || user?.avatar,
-			text
+			text,
 		};
 
-		Notifier.notify(notificationOptions);
+		const isDesktopFocused: boolean = DesktopManager.isChatWindow() && document.hasFocus();
+		if (isDesktopFocused)
+		{
+			Notifier.notifyViaBrowserProvider(notificationOptions);
+		}
+		else
+		{
+			Notifier.notify(notificationOptions);
+		}
 	}
 
 	showNotification(notification: ImModelNotification, user?: ImModelUser)
 	{
-		let title;
+		let title = Loc.getMessage('IM_LIB_NOTIFIER_NOTIFY_SYSTEM_TITLE');
 		if (notification.title)
 		{
 			title = notification.title;
@@ -96,26 +117,30 @@ export class NotifierManager
 		{
 			title = user.name;
 		}
-		else
-		{
-			title = Loc.getMessage('IM_LIB_NOTIFIER_NOTIFY_SYSTEM_TITLE');
-		}
 
 		const notificationOptions = this.#prepareNotificationOptions(title, notification, user);
 
-		Notifier.notify(notificationOptions);
+		const isDesktopFocused: boolean = DesktopManager.isChatWindow() && document.hasFocus();
+		if (isDesktopFocused)
+		{
+			Notifier.notifyViaBrowserProvider(notificationOptions);
+		}
+		else
+		{
+			Notifier.notify(notificationOptions);
+		}
 	}
 
 	#prepareNotificationOptions(
 		title: string,
 		notification: ImModelNotification,
-		user?: ImModelUser
+		user?: ImModelUser,
 	): NotificationOptions
 	{
 		const notificationOptions = {
-			id: `im-notify-${notification.id}`,
+			id: `${NOTIFICATION_PREFIX}-${notification.id}`,
 			title,
-			icon: user? user.avatar: '',
+			icon: user ? user.avatar : '',
 			text: Parser.purifyNotification(notification),
 		};
 
@@ -125,7 +150,7 @@ export class NotifierManager
 			notificationOptions.button1Text = firstButton.TEXT;
 			notificationOptions.button2Text = secondButton.TEXT;
 		}
-		else if (notification.params?.CAN_ANSWER === 'Y')
+		else if (notification.params?.canAnswer === 'Y')
 		{
 			notificationOptions.inputPlaceholderText = Loc.getMessage('IM_LIB_NOTIFIER_NOTIFY_REPLY_PLACEHOLDER');
 		}
@@ -146,11 +171,21 @@ export class NotifierManager
 
 	#onNotifierClick(params: NotifierClickParams)
 	{
-		const {id} = params;
+		const { id } = params;
 		if (this.#isChatMessage(id))
 		{
 			const dialogId = this.#extractDialogId(id);
 			Messenger.openChat(dialogId);
+		}
+		else if (this.#isCopilotMessage(id))
+		{
+			const dialogId = this.#extractDialogId(id);
+			Messenger.openCopilot(dialogId);
+		}
+		else if (this.#isLinesMessage(id))
+		{
+			const dialogId = this.#extractDialogId(id);
+			Messenger.openLines(dialogId);
 		}
 		else if (this.#isNotification(id))
 		{
@@ -160,7 +195,7 @@ export class NotifierManager
 
 	#onNotifierAction(params: NotifierActionParams)
 	{
-		const {id, action, userInput} = params;
+		const { id, action, userInput } = params;
 		if (!this.#isNotification(id))
 		{
 			return;
@@ -182,7 +217,7 @@ export class NotifierManager
 	{
 		this.#notificationService.sendQuickAnswer({
 			id: notification.id,
-			text: text,
+			text,
 		});
 	}
 
@@ -210,6 +245,16 @@ export class NotifierManager
 	#isChatMessage(id: string): boolean
 	{
 		return id.startsWith(CHAT_MESSAGE_PREFIX);
+	}
+
+	#isCopilotMessage(id: string): boolean
+	{
+		return id.startsWith(COPILOT_MESSAGE_PREFIX);
+	}
+
+	#isLinesMessage(id: string): boolean
+	{
+		return id.startsWith(LINES_MESSAGE_PREFIX);
 	}
 
 	#isNotification(id: string): boolean

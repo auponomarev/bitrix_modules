@@ -1,6 +1,9 @@
 import {Dom, Text, Type} from 'main.core';
 import {EventEmitter} from 'main.core.events';
 import {Popup} from 'main.popup';
+
+import {DesktopApi} from 'im.v2.lib.desktop-api';
+
 import Util from '../util';
 
 const Events = {
@@ -56,10 +59,12 @@ export class IncomingNotification extends EventEmitter
 		this.postponedEvents = [];
 
 		this.#subscribeEvents(config);
-		if (BX.desktop)
+		if (DesktopApi.isDesktop())
 		{
-			BX.desktop.addCustomEvent(InternalEvents.onButtonClick, (e) => this.emit(Events.onButtonClick, e));
-			BX.desktop.addCustomEvent(InternalEvents.contentReady, this.#onContentReady);
+			this.onButtonClickHandler = this.#onButtonClick.bind(this);
+			this.onContentReadyHandler = this.#onContentReady.bind(this);
+			DesktopApi.subscribe(InternalEvents.onButtonClick, this.onButtonClickHandler);
+			DesktopApi.subscribe(InternalEvents.contentReady, this.onContentReadyHandler);
 		}
 	};
 
@@ -77,8 +82,10 @@ export class IncomingNotification extends EventEmitter
 
 	show()
 	{
-		if (BX.desktop)
+		console.log('incoming notification : SHOW');
+		if (DesktopApi.isDesktop())
 		{
+			console.log('incoming notification : ISDESKTOP');
 			const params = {
 				video: this.video,
 				hasCamera: this.hasCamera,
@@ -94,14 +101,17 @@ export class IncomingNotification extends EventEmitter
 			}
 			else
 			{
-				this.window = BXDesktopSystem.ExecuteCommand(
-					'topmost.show.html',
-					BX.desktop.getHtmlPage("", "window.callNotification = new BX.Call.IncomingNotificationContent(" + JSON.stringify(params) + "); window.callNotification.showInDesktop();")
-				);
+				const js = `
+					window.callNotification = new BX.Call.IncomingNotificationContent(${JSON.stringify(params)});
+					window.callNotification.showInDesktop();
+				`;
+				const htmlContent = DesktopApi.prepareHtml("", js);
+				this.window = DesktopApi.createTopmostWindow(htmlContent);
 			}
 		}
 		else
 		{
+			console.log('incoming notification : ISNOTDESKTOP');
 			this.content = new IncomingNotificationContent({
 				video: this.video,
 				hasCamera: this.hasCamera,
@@ -147,7 +157,7 @@ export class IncomingNotification extends EventEmitter
 			// desktop; send event to the window
 			if (this.contentReady)
 			{
-				BX.desktop.onCustomEvent(InternalEvents.setHasCamera, [hasCamera]);
+				DesktopApi.emit(InternalEvents.setHasCamera, [hasCamera]);
 			}
 			else
 			{
@@ -167,7 +177,7 @@ export class IncomingNotification extends EventEmitter
 	{
 		this.postponedEvents.forEach((event) =>
 		{
-			BX.desktop.onCustomEvent(event.name, event.params);
+			DesktopApi.emit(event.name, event.params);
 		})
 		this.postponedEvents = [];
 	}
@@ -203,10 +213,10 @@ export class IncomingNotification extends EventEmitter
 			this.content = null;
 		}
 
-		if (BX.desktop)
+		if (DesktopApi.isDesktop())
 		{
-			BX.desktop.removeCustomEvents(InternalEvents.onButtonClick);
-			BX.desktop.removeCustomEvents(InternalEvents.contentReady);
+			DesktopApi.unsubscribe(InternalEvents.onButtonClick, this.onButtonClickHandler);
+			DesktopApi.unsubscribe(InternalEvents.contentReady, this.onContentReadyHandler);
 		}
 		this.emit(Events.onDestroy);
 
@@ -215,7 +225,12 @@ export class IncomingNotification extends EventEmitter
 		this.unsubscribeAll(Events.onDestroy);
 	};
 
-	#onContentReady = () =>
+	#onButtonClick(event)
+	{
+		this.emit(Events.onButtonClick, event);
+	}
+
+	#onContentReady()
 	{
 		this.contentReady = true;
 		this.sendPostponedEvents();
@@ -245,10 +260,11 @@ export class IncomingNotificationContent extends EventEmitter
 		};
 
 		this.#subscribeEvents(config)
-		if (BX.desktop)
+		if (DesktopApi.isDesktop())
 		{
-			BX.desktop.addCustomEvent(InternalEvents.setHasCamera, hasCamera => this.setHasCamera(hasCamera));
-			BX.desktop.onCustomEvent("main", InternalEvents.contentReady, []);
+			this.onHasCameraHandler = this.#onHasCamera.bind(this);
+			DesktopApi.subscribe(InternalEvents.setHasCamera, this.onHasCameraHandler);
+			DesktopApi.emitToMainWindow(InternalEvents.contentReady, []);
 		}
 	};
 
@@ -449,7 +465,7 @@ export class IncomingNotificationContent extends EventEmitter
 		// Workaround to prevent incoming call window from hanging.
 		// Without it, there is a possible scenario, when BXDesktopWindow.ExecuteCommand("close") is executed too early
 		// (if invite window is closed before appearing), which leads to hanging of the window
-		if (!window.opener.BXIM.callController.callNotification)
+		if (window.opener.BXIM?.callController && !window.opener.BXIM.callController.callNotification)
 		{
 			BXDesktopWindow.ExecuteCommand("close");
 			return;
@@ -457,7 +473,12 @@ export class IncomingNotificationContent extends EventEmitter
 
 		this.render();
 		document.body.appendChild(this.elements.root);
-		BX.desktop.setWindowPosition({X: STP_CENTER, Y: STP_VCENTER, Width: 351, Height: 510});
+		DesktopApi.setWindowPosition({
+			x: STP_CENTER,
+			y: STP_VCENTER,
+			width: 351,
+			height: 510
+		});
 	};
 
 	setHasCamera(hasCamera)
@@ -469,12 +490,17 @@ export class IncomingNotificationContent extends EventEmitter
 		}
 	};
 
+	#onHasCamera()
+	{
+
+	}
+
 	#onAnswerButtonClick()
 	{
-		if (BX.desktop)
+		if (DesktopApi.isDesktop())
 		{
-			BXDesktopWindow.ExecuteCommand("close");
-			BX.desktop.onCustomEvent("main", InternalEvents.onButtonClick, [{
+			DesktopApi.closeWindow();
+			DesktopApi.emitToMainWindow(InternalEvents.onButtonClick, [{
 				button: 'answer',
 				video: false
 			}]);
@@ -494,10 +520,10 @@ export class IncomingNotificationContent extends EventEmitter
 		{
 			return;
 		}
-		if (BX.desktop)
+		if (DesktopApi.isDesktop())
 		{
-			BXDesktopWindow.ExecuteCommand("close");
-			BX.desktop.onCustomEvent("main", InternalEvents.onButtonClick, [{
+			DesktopApi.closeWindow();
+			DesktopApi.emitToMainWindow(InternalEvents.onButtonClick, [{
 				button: 'answer',
 				video: true
 			}]);
@@ -513,11 +539,11 @@ export class IncomingNotificationContent extends EventEmitter
 
 	#onDeclineButtonClick()
 	{
-		if (BX.desktop)
+		if (DesktopApi.isDesktop())
 		{
-			BXDesktopWindow.ExecuteCommand("close");
-			BX.desktop.onCustomEvent("main", InternalEvents.onButtonClick, [{
-				button: 'decline',
+			DesktopApi.closeWindow();
+			DesktopApi.emitToMainWindow(InternalEvents.onButtonClick, [{
+				button: 'decline'
 			}]);
 		}
 		else
@@ -530,12 +556,12 @@ export class IncomingNotificationContent extends EventEmitter
 
 	destroy()
 	{
-		if (BX.desktop)
+		if (DesktopApi.isDesktop())
 		{
-			BX.desktop.removeCustomEvents(InternalEvents.setHasCamera)
+			DesktopApi.unsubscribe(InternalEvents.setHasCamera, this.onHasCameraHandler);
 		}
-		this.unsubscribeAll(Events.onButtonClick)
-		this.unsubscribeAll(Events.onClick)
-		this.unsubscribeAll(Events.onDestroy)
+		this.unsubscribeAll(Events.onButtonClick);
+		this.unsubscribeAll(Events.onClick);
+		this.unsubscribeAll(Events.onDestroy);
 	}
 }

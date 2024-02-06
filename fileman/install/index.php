@@ -24,11 +24,6 @@ Class fileman extends CModule
 			$this->MODULE_VERSION = $arModuleVersion["VERSION"];
 			$this->MODULE_VERSION_DATE = $arModuleVersion["VERSION_DATE"];
 		}
-		else
-		{
-			$this->MODULE_VERSION = FILEMAN_VERSION;
-			$this->MODULE_VERSION_DATE = FILEMAN_VERSION_DATE;
-		}
 
 		$this->MODULE_NAME = Loc::getMessage("FILEMAN_MODULE_NAME");
 		$this->MODULE_DESCRIPTION = Loc::getMessage("FILEMAN_MODULE_DESCRIPTION");
@@ -37,9 +32,13 @@ Class fileman extends CModule
 	function InstallDB()
 	{
 		global $DB, $APPLICATION;
+		$connection = \Bitrix\Main\Application::getConnection();
+		$errors = null;
 
-		if (!$DB->Query("SELECT 'x' FROM b_medialib_collection", true))
-			$errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/fileman/install/db/mysql/install.sql");
+		if (!$DB->TableExists('b_medialib_collection'))
+		{
+			$errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/fileman/install/db/' . $connection->getType() . '/install.sql');
+		}
 
 		if (!empty($errors))
 		{
@@ -80,16 +79,14 @@ Class fileman extends CModule
 	function UnInstallDB()
 	{
 		global $DB, $APPLICATION;
+		$connection = \Bitrix\Main\Application::getConnection();
 
-		//if(array_key_exists("savedata", $arParams) && $arParams["savedata"] != "Y")
-		//{
-		$errors = $DB->RunSQLBatch($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/fileman/install/db/'mysql'/uninstall.sql");
+		$errors = $DB->RunSQLBatch($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/fileman/install/db/' . $connection->getType() . '/uninstall.sql');
 		if (!empty($errors))
 		{
 			$APPLICATION->ThrowException(implode("", $errors));
 			return false;
 		}
-		//}
 
 
 		UnRegisterModuleDependences("main", "OnGroupDelete", "fileman", "CFileman", "OnGroupDelete");

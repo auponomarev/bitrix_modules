@@ -109,7 +109,7 @@ class Client extends Connector\BaseFilter implements Connector\IncrementallyConn
 		{
 			if($excludeType !== \CCrmOwnerType::ContactName)
 			{
-				$this->prepareQueryForType($this->prepareQueryCollection($this->getContactQuery())[0], $offset, $limit,
+				$this->prepareQueryForType($this->getContactQuery(), $offset, $limit,
 					$queries);
 			}
 		}
@@ -117,7 +117,7 @@ class Client extends Connector\BaseFilter implements Connector\IncrementallyConn
 		{
 			if($excludeType !== \CCrmOwnerType::CompanyName)
 			{
-				$this->prepareQueryForType($this->prepareQueryCollection($this->getCompanyQuery())[0], $offset, $limit, $queries);
+				$this->prepareQueryForType($this->getCompanyQuery(), $offset, $limit, $queries);
 			}
 		}
 
@@ -166,6 +166,7 @@ class Client extends Connector\BaseFilter implements Connector\IncrementallyConn
 		$excludedClass = $offset > $entityInfo['lastCompanyId'] ? \CCrmOwnerType::CompanyName : $excludedClass;
 
 		$query = QueryData::getUnionizedQuery($this->getLimitedQueries($offset, $limit, $excludedClass));
+
 		return !$query ? null : QueryData::getUnionizedData($query);
 	}
 
@@ -814,7 +815,7 @@ class Client extends Connector\BaseFilter implements Connector\IncrementallyConn
 	 *
 	 * @return array
 	 */
-	public static function getUiFilterFields()
+	public static function getUiFilterFields(bool $checkAccessRights = true)
 	{
 		$list = [
 			[
@@ -1097,7 +1098,7 @@ class Client extends Connector\BaseFilter implements Connector\IncrementallyConn
 		//we need to filter able deals
 		$list[] = array(
 			'id' => self::DEAL_CATEGORY_ID,
-			'name' => Loc::getMessage('SENDER_INTEGRATION_CRM_CONNECTOR_CLIENT_FIELD_DEAL_CATEGORY_ID'),
+			'name' => Loc::getMessage('SENDER_INTEGRATION_CRM_CONNECTOR_CLIENT_FIELD_DEAL_CATEGORY_ID_MSG_1'),
 			'params' => array('multiple' => self::YES),
 			'default' => true,
 			'type' => 'list',
@@ -1186,7 +1187,7 @@ class Client extends Connector\BaseFilter implements Connector\IncrementallyConn
 		{
 			$entityTypeId = \CCrmOwnerType::resolveId($entityTypeName);
 			$entityTypeCaption = \CCrmOwnerType::getDescription($entityTypeId);
-			$ufList = Helper::getFilterUserFields($entityTypeId);
+			$ufList = Helper::getFilterUserFields($entityTypeId, $checkAccessRights);
 			foreach ($ufList as $item)
 			{
 				if (isset($item['name']))

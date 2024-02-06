@@ -1,5 +1,5 @@
-import {Text, Loc} from 'main.core';
-import {FileType} from 'im.v2.const';
+import { Text, Loc, Dom, Event } from 'main.core';
+import { FileType } from 'im.v2.const';
 
 export const FileUtil = {
 	getFileExtension(fileName: string): string
@@ -18,7 +18,7 @@ export const FileUtil = {
 	{
 		let icon = 'empty';
 
-		switch(extension.toString())
+		switch (extension.toString())
 		{
 			case 'png':
 			case 'jpe':
@@ -94,6 +94,8 @@ export const FileUtil = {
 			case 'plist':
 				icon = 'set';
 				break;
+			default:
+				icon = 'empty';
 		}
 
 		return icon;
@@ -102,8 +104,9 @@ export const FileUtil = {
 	getFileTypeByExtension(extension: string): string
 	{
 		let type = FileType.file;
+		const normalizedExtension = extension.toLowerCase();
 
-		switch (extension)
+		switch (normalizedExtension)
 		{
 			case 'png':
 			case 'jpe':
@@ -134,6 +137,8 @@ export const FileUtil = {
 			case 'mp3':
 				type = FileType.audio;
 				break;
+			default:
+				type = FileType.file;
 		}
 
 		return type;
@@ -141,23 +146,25 @@ export const FileUtil = {
 
 	formatFileSize(fileSize: number): string
 	{
-		if (!fileSize || fileSize <= 0)
+		let resultFileSize = fileSize;
+
+		if (!resultFileSize || resultFileSize <= 0)
 		{
-			fileSize = 0;
+			resultFileSize = 0;
 		}
 
 		const sizes = ['BYTE', 'KB', 'MB', 'GB', 'TB'];
 		const KILOBYTE_SIZE = 1024;
 
 		let position = 0;
-		while (fileSize >= KILOBYTE_SIZE && position < sizes.length - 1)
+		while (resultFileSize >= KILOBYTE_SIZE && position < sizes.length - 1)
 		{
-			fileSize /= KILOBYTE_SIZE;
+			resultFileSize /= KILOBYTE_SIZE;
 			position++;
 		}
 
 		const phrase = Loc.getMessage(`IM_UTILS_FILE_SIZE_${sizes[position]}`);
-		const roundedSize = Math.round(fileSize);
+		const roundedSize = Math.round(resultFileSize);
 
 		return `${roundedSize} ${phrase}`;
 	},
@@ -169,15 +176,29 @@ export const FileUtil = {
 			return fileName;
 		}
 
+		const DELIMITER = '...';
 		const DOT_LENGTH = 1;
-		const SYMBOLS_TO_TAKE_BEFORE_EXTENSION = 10;
+		const SYMBOLS_TO_TAKE_BEFORE_EXTENSION = 2;
 
 		const extension = this.getFileExtension(fileName);
-		const symbolsToTakeFromEnd = extension.length + DOT_LENGTH + SYMBOLS_TO_TAKE_BEFORE_EXTENSION;
-		const secondPart = fileName.slice(-symbolsToTakeFromEnd);
-		const firstPart = fileName.slice(0, maxLength - secondPart.length - DOT_LENGTH * 3);
+		const extensionLength = extension.length + DOT_LENGTH;
+		const fileNameWithoutExtension = fileName.slice(0, -extensionLength);
 
-		return `${firstPart.trim()}...${secondPart.trim()}`;
+		if (fileNameWithoutExtension.length <= maxLength)
+		{
+			return fileName;
+		}
+
+		const availableLength = maxLength - SYMBOLS_TO_TAKE_BEFORE_EXTENSION - DELIMITER.length;
+		if (availableLength <= 0)
+		{
+			return fileName;
+		}
+
+		const firstPart = fileNameWithoutExtension.slice(0, availableLength).trim();
+		const secondPart = fileNameWithoutExtension.slice(-SYMBOLS_TO_TAKE_BEFORE_EXTENSION).trim();
+
+		return `${firstPart}${DELIMITER}${secondPart}.${extension}`;
 	},
 
 	getViewerDataAttributes(viewerAttributes): Object
@@ -198,11 +219,62 @@ export const FileUtil = {
 		return dataAttributes;
 	},
 
+	createDownloadLink(text: string, urlDownload: string, fileName: string): HTMLAnchorElement
+	{
+		const anchorTag = Dom.create('a', { text });
+
+		Dom.style(anchorTag, 'display', 'block');
+		Dom.style(anchorTag, 'color', 'inherit');
+		Dom.style(anchorTag, 'text-decoration', 'inherit');
+
+		anchorTag.setAttribute('href', urlDownload);
+		anchorTag.setAttribute('download', fileName);
+
+		return anchorTag;
+	},
+
 	isImage(fileName: string): boolean
 	{
 		const extension = FileUtil.getFileExtension(fileName);
 		const fileType = FileUtil.getFileTypeByExtension(extension);
 
 		return fileType === FileType.image;
-	}
+	},
+
+	getBase64(file: File): Promise<string>
+	{
+		const reader = new FileReader();
+
+		return new Promise((resolve) => {
+			Event.bind(reader, 'load', () => {
+				const fullBase64 = reader.result;
+				const commaPosition = fullBase64.indexOf(',');
+				const cutBase64 = fullBase64.slice(commaPosition + 1);
+				resolve(cutBase64);
+			});
+
+			reader.readAsDataURL(file);
+		});
+	},
+
+	resizeToFitMaxSize(width: number, height: number, maxSize: number): {width: number, height: number}
+	{
+		const aspectRatio = width / height;
+		let newWidth = width;
+		let newHeight = height;
+
+		if (newHeight > maxSize)
+		{
+			newHeight = maxSize;
+			newWidth = newHeight * aspectRatio;
+		}
+
+		if (newWidth > maxSize)
+		{
+			newWidth = maxSize;
+			newHeight = newWidth / aspectRatio;
+		}
+
+		return { height: newHeight, width: newWidth };
+	},
 };

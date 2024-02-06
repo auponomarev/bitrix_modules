@@ -2,16 +2,21 @@
 
 namespace Bitrix\Crm\Controller\Item;
 
+use Bitrix\Crm\Binding\OrderEntityTable;
 use Bitrix\Crm\Controller\Base;
 use Bitrix\Crm\Controller\ErrorCode;
 use Bitrix\Crm\Item;
+use Bitrix\Crm\Order;
+use Bitrix\Crm\Order\OrderDealSynchronizer\Products;
 use Bitrix\Crm\ProductRowTable;
 use Bitrix\Crm\Service\Container;
 use Bitrix\Crm\Service\Factory;
+use Bitrix\Main\DI\ServiceLocator;
 use Bitrix\Main\Engine\AutoWire\ExactParameter;
 use Bitrix\Main\Engine\Response\Converter;
 use Bitrix\Main\Engine\Response\DataType\Page;
 use Bitrix\Main\Error;
+use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\UI\PageNavigation;
 use Bitrix\Main\Loader;
 use Bitrix\Catalog;
@@ -518,6 +523,26 @@ class ProductRow extends Base
 			{
 				$result[$index] = $internalizedFields;
 			}
+
+			if (isset($productRow['TAX_RATE']))
+			{
+				if (
+					(float)$productRow['TAX_RATE'] > 0
+					|| $productRow['TAX_RATE'] === 0
+					|| (
+						is_string($productRow['TAX_RATE'])
+						&& isset($productRow['TAX_RATE'][0])
+						&& $productRow['TAX_RATE'][0] === '0'
+					)
+				)
+				{
+					$result[$index]['TAX_RATE'] = (float)$productRow['TAX_RATE'];
+				}
+				else
+				{
+					$result[$index]['TAX_RATE'] = null;
+				}
+			}
 		}
 
 		$productIds = array_filter(array_column($result, 'PRODUCT_ID'));
@@ -593,5 +618,76 @@ class ProductRow extends Base
 		}
 
 		return $result;
+	}
+
+	/**
+	 * @param int $ownerId
+	 * @param string $ownerType
+	 * @return array[]|null
+	 */
+	public function getAvailableForPaymentAction(int $ownerId, string $ownerType): ?array
+	{
+		$repository = ServiceLocator::getInstance()->get('crm.entity.paymentDocumentsRepository');
+
+		$ownerTypeId = \CCrmOwnerTypeAbbr::ResolveTypeID($ownerType);
+
+		if (!$repository->checkPermission($ownerTypeId, $ownerId))
+		{
+			return ['productRows' => []];
+		}
+
+		$orderIds = OrderEntityTable::getOrderIdsByOwner($ownerId, $ownerTypeId);
+		if (count($orderIds) > 1)
+		{
+			$this->addError(
+				new Error(
+					Loc::getMessage('CONTROLLER_ITEM_PRODUCT_ROW_ERROR_MULTI_ORDERS_NOT_SUPPORTED')
+				)
+			);
+
+			return null;
+		}
+
+		$manager = new Order\ProductManager($ownerTypeId, $ownerId);
+
+		$orderId = current($orderIds);
+		if ($orderId)
+		{
+			$order = Order\Order::load($orderId);
+
+			$manager->setOrder($order);
+		}
+
+		$idToQuantityMap = [];
+
+		foreach ($manager->getPayableItems() as $item)
+		{
+			$rowId = Products\BasketXmlId::getRowIdFromXmlId($item['XML_ID']);
+
+			$idToQuantityMap[$rowId] = $item['QUANTITY'];
+		}
+
+		if (!$idToQuantityMap)
+		{
+			return ['productRows' => []];
+		}
+
+		$parameters = [
+			'filter' => [
+				'=ID' => array_keys($idToQuantityMap)
+			]
+		];
+
+		$result = [];
+
+		$dbRes = $this->dataManager::getList($parameters);
+		while ($product = $dbRes->fetch())
+		{
+			$product['QUANTITY'] = $idToQuantityMap[$product['ID']];
+
+			$result[] = $this->convertKeysToCamelCase($product);
+		}
+
+		return ['productRows' => $result];
 	}
 }

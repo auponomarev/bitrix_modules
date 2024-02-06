@@ -54,9 +54,8 @@ jn.define('crm/conversion/wizard/layout', (require, exports, module) => {
 		getStepIndex(stepId)
 		{
 			const { stepsIds } = this.props;
-			const stepIndex = stepsIds.indexOf(stepId);
 
-			return stepIndex;
+			return stepsIds.indexOf(stepId);
 		}
 
 		getStepNumber(stepId)

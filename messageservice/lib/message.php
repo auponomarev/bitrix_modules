@@ -9,6 +9,7 @@ use Bitrix\Main;
 use Bitrix\Main\Type\DateTime;
 use Bitrix\MessageService\Integration\Pull;
 use Bitrix\MessageService\Internal\Entity\MessageTable;
+use Bitrix\MessageService\Restriction\RestrictionManager;
 use Bitrix\MessageService\Sender\Result;
 
 Loc::loadMessages(__FILE__);
@@ -39,6 +40,8 @@ class Message
 	protected $externalStatus;
 
 	protected ?Error $error = null;
+
+	protected bool $checkRestrictions = false;
 
 	/**
 	 * Message constructor.
@@ -121,7 +124,7 @@ class Message
 		return $this->type;
 	}
 
-	public function checkFields()
+	public function checkFields(): Main\Result
 	{
 		$result = new Main\Result();
 
@@ -151,7 +154,7 @@ class Message
 	/**
 	 * @return AddResult Created Message result.
 	 */
-	public function send(): AddResult
+	public function send(): Main\Result
 	{
 		global $USER;
 
@@ -162,6 +165,17 @@ class Message
 			$result = new AddResult();
 			$result->addErrors($checkResult->getErrors());
 			return $result;
+		}
+
+		if ($this->checkRestrictions)
+		{
+			$restrictionManager = new RestrictionManager($this);
+			if (!$restrictionManager->isCanSendMessage())
+			{
+				return (new Main\Result())->addError(
+					new Error(Loc::getMessage('MESSAGESERVICE_MESSAGE_ERROR_RESTRICTION'))
+				);
+			}
 		}
 
 		$sender = $this->getSender();
@@ -182,7 +196,7 @@ class Message
 			$this->id = $result->getId();
 			if (Main\Config\Option::get('messageservice', 'event_log_message_send', 'N') === 'Y')
 			{
-				$userId = is_object($USER) ? $USER->getId() : 0;
+				$userId = $USER instanceof \CUser ? $USER->getId() : 0;
 				\CEventLog::Log('INFO', 'MESSAGE_SEND', 'messageservice', $userId, $this->getTo());
 			}
 		}
@@ -200,6 +214,17 @@ class Message
 		{
 			$result = new Result\SendMessage();
 			return $result->addErrors($checkResult->getErrors());
+		}
+
+		if ($this->checkRestrictions)
+		{
+			$restrictionManager = new RestrictionManager($this);
+			if (!$restrictionManager->isCanSendMessage())
+			{
+				return (new Result\SendMessage)->addError(
+					new Error(Loc::getMessage('MESSAGESERVICE_MESSAGE_ERROR_RESTRICTION'))
+				);
+			}
 		}
 
 		$sender = $this->getSender();
@@ -256,7 +281,7 @@ class Message
 
 		if (Main\Config\Option::get('messageservice', 'event_log_message_send', 'N') === 'Y')
 		{
-			$userId = is_object($USER) ? $USER->getId() : 0;
+			$userId = $USER instanceof \CUser ? $USER->getId() : 0;
 			\CEventLog::Log('INFO', 'MESSAGE_SEND', 'messageservice', $userId, $this->getTo());
 		}
 
@@ -565,5 +590,13 @@ class Message
 		{
 			$this->externalStatus = $fields['EXTERNAL_STATUS'];
 		}
+	}
+
+	/**
+	 * @param bool $checkRestrictions
+	 */
+	public function setCheckRestrictions(bool $checkRestrictions): void
+	{
+		$this->checkRestrictions = $checkRestrictions;
 	}
 }

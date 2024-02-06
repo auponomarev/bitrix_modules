@@ -34,6 +34,10 @@ class Tracker
 
 	protected const EXPECTATION_LIVE_TIME = '30 days';
 
+	/** The prefix for trckerId. */
+	public const PREFIX = 'btrx';
+
+
 	/* @var Session $session */
 	protected $session;
 
@@ -100,7 +104,7 @@ class Tracker
 
 				if (!empty($phones) || !empty($emails))
 				{
-					$crmManager = new Crm($session);
+					$crmManager = $session->getCrmManager();
 					if ($crmManager->isLoaded())
 					{
 						$crmFieldsManager = $crmManager->getFields();
@@ -162,7 +166,7 @@ class Tracker
 		}
 
 		$filter = [
-			'=ACTION' => Tracker::ACTION_EXPECT,
+			'=ACTION' => self::ACTION_EXPECT,
 			'>DATE_CREATE' => (new DateTime())->add('-'.self::EXPECTATION_LIVE_TIME),
 		];
 
@@ -219,9 +223,9 @@ class Tracker
 			return $row['TRACK_ID'];
 		}
 
-		$trackId = Random::getString(10);
+		$trackId = self::PREFIX . Random::getString(10);
 
-		$add['ACTION'] = Tracker::ACTION_EXPECT;
+		$add['ACTION'] = self::ACTION_EXPECT;
 		$add['TRACK_ID'] = $trackId;
 
 		$addResult = TrackerTable::add($add);
@@ -237,11 +241,11 @@ class Tracker
 	 * @param string $trackId
 	 * @return array|null
 	 */
-	private function findExpectationByTrackId(string $trackId): ?array
+	public function findExpectationByTrackId(string $trackId): ?array
 	{
 		$filter = [
 			'=TRACK_ID' => $trackId,
-			'=ACTION' => Tracker::ACTION_EXPECT,
+			'=ACTION' => self::ACTION_EXPECT,
 			'>DATE_CREATE' => (new DateTime())->add('-'.self::EXPECTATION_LIVE_TIME),
 		];
 		$select = [];
@@ -269,10 +273,9 @@ class Tracker
 	/**
 	 * @param string $trackId
 	 * @param Chat $chat
-	 * @param Session $session
 	 * @return void
 	 */
-	public function bindExpectationToChat(string $trackId, Chat $chat, Session $session): void
+	public function bindExpectationToChat(string $trackId, Chat $chat): void
 	{
 		if (!Loader::includeModule('crm'))
 		{
@@ -282,9 +285,9 @@ class Tracker
 		$expectation = $this->findExpectationByTrackId($trackId);
 		if ($expectation)
 		{
-			$crmManager = new Crm($session);
+			$crmManager = $this->getSession()->getCrmManager();
 			$crmManager
-				->setSkipSearch()
+				//->setSkipSearch()
 				->setSkipCreate()
 				->setSkipAutomationTriggerFirstMessage();
 
@@ -348,7 +351,7 @@ class Tracker
 					$crmManager->sendCrmImMessages();
 
 					$updateSession['CRM_ACTIVITY_ID'] = $registerActivityResult->getResult();
-					$session->updateCrmFlags($updateSession);
+					$this->getSession()->updateCrmFlags($updateSession);
 
 					$crmFields['CRM'] = 'Y';
 					$chat->setCrmFlag($crmFields);

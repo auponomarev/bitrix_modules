@@ -1,13 +1,16 @@
-import {Loc} from 'main.core';
-import {RecentMenu} from 'im.v2.lib.menu';
-import {Utils} from 'im.v2.lib.utils';
-import {ChatOption, DialogType} from 'im.v2.const';
+import { Loc } from 'main.core';
+import { RecentMenu } from 'im.v2.lib.menu';
+import { Utils } from 'im.v2.lib.utils';
+import { ChatType, ChatActionType } from 'im.v2.const';
+import { PermissionManager } from 'im.v2.lib.permission';
 
-import type {MenuItem} from 'im.v2.lib.menu';
-import type {ImModelRecentItem} from 'im.v2.model';
+import type { MenuItem } from 'im.v2.lib.menu';
+import type { ImModelRecentItem, ImModelUser } from 'im.v2.model';
 
 export class MainMenu extends RecentMenu
 {
+	permissionManager: PermissionManager;
+
 	static events = {
 		onAddToChatShow: 'onAddToChatShow',
 	};
@@ -16,6 +19,7 @@ export class MainMenu extends RecentMenu
 	{
 		super();
 		this.id = 'im-sidebar-context-menu';
+		this.permissionManager = PermissionManager.getInstance();
 	}
 
 	getMenuOptions(): Object
@@ -35,6 +39,7 @@ export class MainMenu extends RecentMenu
 			this.getCallItem(),
 			this.getOpenProfileItem(),
 			this.getOpenUserCalendarItem(),
+			this.getChatsWithUserItem(),
 			this.getAddMembersToChatItem(),
 			this.getHideItem(),
 			this.getLeaveItem(),
@@ -43,7 +48,7 @@ export class MainMenu extends RecentMenu
 
 	getOpenUserCalendarItem(): ?MenuItem
 	{
-		const isUser = this.store.getters['dialogues/isUser'](this.context.dialogId);
+		const isUser = this.store.getters['chats/isUser'](this.context.dialogId);
 		if (!isUser)
 		{
 			return null;
@@ -61,15 +66,19 @@ export class MainMenu extends RecentMenu
 			onclick: () => {
 				BX.SidePanel.Instance.open(profileUri);
 				this.menuInstance.close();
-			}
+			},
 		};
 	}
 
 	getAddMembersToChatItem(): MenuItem
 	{
-		const dialog = this.store.getters['dialogues/get'](this.context.dialogId, true);
-		const canInviteMembers = this.store.getters['dialogues/getChatOption'](dialog.type, ChatOption.extend);
-		if (!canInviteMembers)
+		const user: ImModelUser = this.store.getters['users/get'](this.context.dialogId);
+		if (user?.bot === true)
+		{
+			return null;
+		}
+		const canExtend = this.permissionManager.canPerformAction(ChatActionType.extend, this.context.dialogId);
+		if (!canExtend)
 		{
 			return null;
 		}
@@ -79,27 +88,27 @@ export class MainMenu extends RecentMenu
 			onclick: () => {
 				this.emit(MainMenu.events.onAddToChatShow);
 				this.menuInstance.close();
-			}
+			},
 		};
 	}
 
 	getJoinChatItem(): ?MenuItem
 	{
-		const dialog = this.store.getters['dialogues/get'](this.context.dialogId);
-		const isUser = dialog.type === DialogType.user;
+		const dialog = this.store.getters['chats/get'](this.context.dialogId);
+		const isUser = dialog.type === ChatType.user;
 		if (isUser)
 		{
 			return null;
 		}
 
-		//todo: check if user is in chat already
+		// todo: check if user is in chat already
 
 		return {
 			text: Loc.getMessage('IM_SIDEBAR_MENU_JOIN_CHAT'),
 			onclick: () => {
 				console.warn('sidebar menu: join chat is not implemented');
 				this.menuInstance.close();
-			}
+			},
 		};
 	}
 

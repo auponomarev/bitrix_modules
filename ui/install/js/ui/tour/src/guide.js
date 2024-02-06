@@ -1,11 +1,10 @@
-import { Type, Dom, Reflection, Event, Tag, Text, userOptions, Loc } from 'main.core';
-import { Popup, PopupWindowButton } from 'main.popup';
+import { Dom, Event, Loc, Reflection, Tag, Text, Type, userOptions } from 'main.core';
 import { EventEmitter } from 'main.core.events';
-import { Step } from './step.js';
-import GuideConditionColor from './guide-condition-color';
+import { Popup, PopupWindowButton } from 'main.popup';
 
 import 'ui.design-tokens';
-import './style.css';
+import GuideConditionColor from './guide-condition-color';
+import { Step } from './step.js';
 
 export class Guide extends Event.EventEmitter
 {
@@ -42,6 +41,7 @@ export class Guide extends Event.EventEmitter
 			title: null,
 			text: null,
 			link: null,
+			closeIcon: { right : '0', top : '0' },
 			btnContainer: null,
 			nextBtn: null,
 			backBtn: null,
@@ -57,6 +57,8 @@ export class Guide extends Event.EventEmitter
 		this.targetPos = null;
 		this.clickOnBackBtn = false;
 		this.helper = top.BX.Helper;
+		this.targetContainer = Type.isDomNode(options.targetContainer) ? options.targetContainer : null;
+		this.overlay = Type.isBoolean(options.overlay) ? options.overlay : true;
 
 		this.finalStep = options.finalStep || false;
 		this.finalText = options.finalText || "";
@@ -134,7 +136,10 @@ export class Guide extends Event.EventEmitter
 			this.save();
 		}
 
-		this.setOverlay();
+		if (this.overlay)
+		{
+			this.setOverlay();
+		}
 
 		const popup = this.getPopup();
 		popup.show();
@@ -229,7 +234,10 @@ export class Guide extends Event.EventEmitter
 			}, 10);
 		}
 
-		this.setOverlayElementForm();
+		if (this.overlay)
+		{
+			this.setOverlayElementForm();
+		}
 
 		if(this.getCurrentStep())
 		{
@@ -464,7 +472,14 @@ export class Guide extends Event.EventEmitter
 		`;
 
 		Dom.addClass(document.body, 'ui-tour-body-overflow');
-		Dom.append(this.layout.overlay, document.body);
+		if (this.targetContainer)
+		{
+			Dom.append(this.layout.overlay, this.targetContainer);
+		}
+		else
+		{
+			Dom.append(this.layout.overlay, document.body);
+		}
 
 		this.setOverlayElementForm();
 	}
@@ -632,6 +647,7 @@ export class Guide extends Event.EventEmitter
 			const popupWidth = this.onEvents ? 280 : 420;
 
 			this.popup = new Popup({
+				targetContainer: this.targetContainer,
 				content: this.getContent(),
 				bindElement: bindElement,
 				className: className,
@@ -839,9 +855,10 @@ export class Guide extends Event.EventEmitter
 	{
 		if (!this.layout.link)
 		{
+			const title = this.steps[this.currentStepIndex].getLinkTitle() ?? Loc.getMessage('JS_UI_TOUR_LINK');
 			this.layout.link = Tag.render`
 				<a target="_blank" href="" class="ui-tour-popup-link">
-					${Loc.getMessage("JS_UI_TOUR_LINK")}
+					${title}
 				</a>
 			`;
 		}

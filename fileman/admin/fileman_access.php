@@ -13,11 +13,12 @@ ClearVars("g_");
 $site = CFileMan::__CheckSite($site);
 $DOC_ROOT = CSite::GetSiteDocRoot($site);
 
+$logical = $logical ?? null;
 $addUrl = 'lang='.LANGUAGE_ID.($logical == "Y"?'&logical=Y':'');
 
 $io = CBXVirtualIo::GetInstance();
 
-$path = urldecode($path);
+$path = urldecode($path ?? '');
 $path = $io->CombinePath("/", $path);
 $arPath = Array($site, $path);
 $strNotice = "";
@@ -48,6 +49,7 @@ $arPermTypes['NOT_REF'] = Array(
 
 $strWarning = "";
 $arFiles = Array();
+$files ??= [];
 if (count($files) > 0)
 {
 	CUtil::decodeURIComponent($files);
@@ -84,20 +86,22 @@ function GetAccessArrTmp($path)
 	$io = CBXVirtualIo::GetInstance();
 	if($io->DirectoryExists($DOC_ROOT.$path))
 	{
-		@include($io->GetPhysicalName($DOC_ROOT.$path."/.access.php"));
-		return $PERM;
+		if ($io->FileExists($io->GetPhysicalName($DOC_ROOT.$path."/.access.php")))
+		{
+			@include($io->GetPhysicalName($DOC_ROOT.$path."/.access.php"));
+		}
+		return $PERM ?? null;
 	}
 	return Array();
 }
 
 // If user can manage only subordinate groups
+$arSubordGroups = [];
+$subordinate = false;
 if ($USER->CanDoOperation('edit_subordinate_users') && !$USER->CanDoOperation('edit_all_users'))
 {
-	$arSubordGroups = Array();
-	$arGroups = explode(',', $USER->GetGroups());
-	for ($i = 0,$l = count($arGroups);$i < $l;$i++)
-		$arSubordGroups = array_merge($arSubordGroups,CGroup::GetSubordinateGroups($arGroups[$i]));
-	$arSubordGroups = array_values(array_unique($arSubordGroups));
+	$arSubordGroups = CGroup::GetSubordinateGroups($USER->GetUserGroupArray());
+	$subordinate = true;
 }
 
 if($REQUEST_METHOD=="POST" && is_array($files) && count($files)>0 && $saveperm <> '' && check_bitrix_sessid() && $USER->CanDoOperation('fileman_admin_folders'))
@@ -109,10 +113,9 @@ if($REQUEST_METHOD=="POST" && is_array($files) && count($files)>0 && $saveperm <
 	$db_groups = CGroup::GetList("sort", "asc", array("ACTIVE" => "Y", "ADMIN" => "N"));
 	while($arGroup = $db_groups->Fetch())
 	{
-		if(isset($arSubordGroups) && !in_array($arGroup['ID'],$arSubordGroups))
+		if ($subordinate && !in_array($arGroup['ID'], $arSubordGroups))
 		{
 			$arNotSetPerm[] = $arGroup["ID"];
-			continue;
 		}
 		else
 		{
@@ -162,14 +165,14 @@ if($REQUEST_METHOD=="POST" && is_array($files) && count($files)>0 && $saveperm <
 	{
 		$arPermissionsTmp = $arPermissions;
 		for($j=0; $j<count($arNotSetPerm); $j++)
-			$arPermissionsTmp[$arNotSetPerm[$j]] = $CUR_PERM[$arFiles[$i]][$arNotSetPerm[$j]];
+			$arPermissionsTmp[$arNotSetPerm[$j]] = $CUR_PERM[$arFiles[$i]][$arNotSetPerm[$j]] ?? null;
 
 		$APPLICATION->SetFileAccessPermission(Array($site, $path."/".$arFiles[$i]), $arPermissionsTmp);
 	}
 
 	if ($e = $APPLICATION->GetException())
 		$strNotice = $e->msg;
-	elseif($strWarning == '' && $apply == '')
+	elseif($strWarning == '' && ($apply ?? null) == '')
 		LocalRedirect("/bitrix/admin/fileman_admin.php?".$addUrl."&site=".$site."&path=".UrlEncode($path));
 }
 
@@ -265,6 +268,7 @@ $tabControl->Begin();
 	</td>
 </tr>
 	<?
+	$bDiff = $bDiff ?? null;
 	//возьмем массив прав доступа для всей папки
 	$CUR_PERM = GetAccessArrTmp($path);
 
@@ -274,11 +278,11 @@ $tabControl->Begin();
 		if($path=='' && $arFiles[$i]=='')
 			$perm = $CUR_PERM['/']['*'];
 		else
-			$perm = $CUR_PERM[$arFiles[$i]]['*'];
+			$perm = $CUR_PERM[$arFiles[$i]]['*'] ?? null;
 
-		if (mb_substr($perm, 0, 2) == 'T_')
+		if (mb_substr($perm ?? '', 0, 2) == 'T_')
 			$taskIdGroupInh = intval(mb_substr($perm, 2));
-		elseif(mb_strlen($perm) == 1)
+		elseif(mb_strlen($perm ?? '') == 1)
 			$taskIdGroupInh = CTask::GetIdByLetter($perm,'main','file');
 		else
 			$taskIdGroupInh = 'NOT_REF';
@@ -298,8 +302,10 @@ $tabControl->Begin();
 		if($g_ANONYMOUS=="Y")
 			$anonym = $g_NAME;
 
-		if(isset($arSubordGroups) && !in_array($g_ID,$arSubordGroups))
+		if ($subordinate && !in_array($g_ID, $arSubordGroups))
+		{
 			continue;
+		}
 
 		//**** Inherit access level *******
 		if (!$bDiff)
@@ -340,9 +346,9 @@ $tabControl->Begin();
 
 			//echo "!".$perm."!";
 
-			if (mb_substr($perm, 0, 2) == 'T_')
+			if (mb_substr($perm ?? '', 0, 2) == 'T_')
 				$taskId = intval(mb_substr($perm, 2));
-			elseif(mb_strlen($perm) == 1)
+			elseif(mb_strlen($perm ?? '') == 1)
 				$taskId = CTask::GetIdByLetter($perm, 'main','file');
 			else
 				$taskId = 'NOT_REF';

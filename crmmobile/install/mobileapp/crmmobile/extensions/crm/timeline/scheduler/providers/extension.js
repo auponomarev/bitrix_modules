@@ -10,6 +10,8 @@ jn.define('crm/timeline/scheduler/providers', (require, exports, module) => {
 	const { TimelineSchedulerGoToChatProvider } = require('crm/timeline/scheduler/providers/go-to-chat');
 	const { TimelineSchedulerReceivePaymentProvider } = require('crm/timeline/scheduler/providers/receive-payment');
 	const { TimelineSchedulerDocumentProvider } = require('crm/timeline/scheduler/providers/document');
+	const { TimelineSchedulerCommentProvider } = require('crm/timeline/scheduler/providers/comment');
+	const { TimelineSchedulerSharingProvider } = require('crm/timeline/scheduler/providers/sharing');
 
 	module.exports = {
 		TimelineSchedulerActivityProvider,
@@ -20,5 +22,7 @@ jn.define('crm/timeline/scheduler/providers', (require, exports, module) => {
 		TimelineSchedulerGoToChatProvider,
 		TimelineSchedulerReceivePaymentProvider,
 		TimelineSchedulerDocumentProvider,
+		TimelineSchedulerCommentProvider,
+		TimelineSchedulerSharingProvider,
 	};
 });

@@ -24,7 +24,8 @@ class PaySystem
 		array $paySystemList,
 		bool $isMainMode,
 		?int $titleLengthLimit = null,
-		?array $paySystemColor = null
+		?array $paySystemColor = null,
+		array $options = [],
 	): Result
 	{
 		$result = new Result();
@@ -33,6 +34,7 @@ class PaySystem
 			return $result->addError(new Main\Error("Module sale don't included"));
 		}
 
+		/** @var \Bitrix\Sale\PaySystem\Manager $paySystemManager */
 		$paySystemManager = Main\DI\ServiceLocator::getInstance()->get('sale.paysystem.manager');
 
 		$systemHandlerList = $this->getSystemPaySystemHandlersList();
@@ -78,8 +80,13 @@ class PaySystem
 				'ACTION_FILE' => $paySystem['ACTION_FILE'],
 			];
 
-			if ($psMode !== null)
+			if ($psMode !== null && isset($systemHandlerList[$paySystemHandler]['psMode']))
 			{
+				if (!isset($systemHandlerList[$paySystemHandler]['psMode'][$psMode]))
+				{
+					continue;
+				}
+
 				$queryParams['PS_MODE'] = $psMode;
 
 				if (
@@ -171,6 +178,11 @@ class PaySystem
 		$paySystemItems = [];
 		foreach ($paySystemActions as $handler => $paySystem)
 		{
+			if ($handler === 'cash' && isset($options['hideCash']) && $options['hideCash'] === 'Y')
+			{
+				continue;
+			}
+
 			$queryParams = [
 				'lang' => LANGUAGE_ID,
 				'publicSidePanel' => 'Y',
@@ -178,12 +190,10 @@ class PaySystem
 			];
 
 			$isActive = false;
-			$title = Loc::getMessage('SPP_PAYSYSTEM_' . mb_strtoupper($handler) . '_TITLE');
+			$title = $paySystemManager::getHandlerName($handler);
 			if (!$title)
 			{
-				$title = Loc::getMessage('SPP_PAYSYSTEM_DEFAULT_TITLE', [
-					'#PAYSYSTEM_NAME#' => $paySystem['HANDLER_NAME'] ?? '',
-				]);
+				$title = $paySystem['HANDLER_NAME'];
 			}
 
 			$handlerTitle = $title;
@@ -205,7 +215,8 @@ class PaySystem
 				{
 					foreach ($paySystem['ITEMS'] as $psMode => $paySystemItem)
 					{
-						$title = $handlerTitle;
+						$psModeImage = '';
+						$psModeSelectedImage = '';
 						$type = $psMode;
 						$isActive = $paySystemActions[$handler]['ACTIVE'][$psMode];
 						if (
@@ -230,21 +241,11 @@ class PaySystem
 							continue;
 						}
 
-						if (
-							Loc::getMessage('SPP_PAYSYSTEM_'
-								. mb_strtoupper($handler)
-								. '_'
-								. mb_strtoupper($psMode)
-								. '_TITLE'
-							)
-						)
+						$title = $paySystemManager::getHandlerName($handler, $psMode);
+
+						if (!$title)
 						{
-							$title = Loc::getMessage('SPP_PAYSYSTEM_'
-								. mb_strtoupper($handler)
-								. '_'
-								. mb_strtoupper($psMode)
-								. '_TITLE'
-							);
+							$title = $handlerTitle;
 						}
 
 						$queryParams['ACTION_FILE'] = $handler;
@@ -256,8 +257,8 @@ class PaySystem
 						$itemSelectedImagePath = $this->getImagePath() . $handler . '_' . $psMode . '_s.svg';
 						if (Main\IO\File::isFileExists(Main\Application::getDocumentRoot() . $imagePath))
 						{
-							$image = $imagePath;
-							$itemSelectedImage = $itemSelectedImagePath;
+							$psModeImage = $imagePath;
+							$psModeSelectedImage = $itemSelectedImagePath;
 						}
 
 						if (is_null($paySystemColor))
@@ -277,10 +278,10 @@ class PaySystem
 							'title' => is_null($titleLengthLimit)
 								? $title
 								: $this->getFormattedTitle($title, $titleLengthLimit),
-							'image' => $image,
+							'image' => !empty($psModeImage) ? $psModeImage : $image,
 							'itemSelectedColor' => $itemSelectedColor,
 							'itemSelected' => $isActive,
-							'itemSelectedImage' => $itemSelectedImage,
+							'itemSelectedImage' => !empty($psModeSelectedImage) ? $psModeSelectedImage : $itemSelectedImage,
 							'data' => [
 								'type' => 'paysystem',
 								'connectPath' => $paySystemPath->getLocator(),
@@ -305,14 +306,6 @@ class PaySystem
 					$queryParams['ACTION_FILE'] = $handler;
 					$paySystemPath = $this->getPaySystemComponentPath();
 					$paySystemPath->addParams($queryParams);
-
-					$imagePath = $this->getImagePath() . $handler . '.svg';
-					$itemSelectedImagePath = $this->getImagePath() . $handler . '_s.svg';
-					if (Main\IO\File::isFileExists(Main\Application::getDocumentRoot() . $imagePath))
-					{
-						$image = $imagePath;
-						$itemSelectedImage = $itemSelectedImagePath;
-					}
 
 					if (is_null($paySystemColor))
 					{

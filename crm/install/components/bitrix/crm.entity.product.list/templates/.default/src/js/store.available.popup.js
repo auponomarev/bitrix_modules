@@ -1,4 +1,4 @@
-import { Event, Loc, Tag, Uri } from 'main.core';
+import { Event, Loc, Tag, Uri, Dom } from 'main.core';
 import { Popup, PopupManager } from 'main.popup';
 import { ProductModel } from "catalog.product-model";
 
@@ -19,7 +19,7 @@ export default class StoreAvailablePopup
 	setNode(node: HTMLElement)
 	{
 		this.#node = node;
-		this.#node.classList.add('store-available-popup-link');
+		Dom.addClass(this.#node, 'store-available-popup-link');
 
 		Event.bind(this.#node, 'click', this.togglePopup.bind(this));
 	}
@@ -57,12 +57,7 @@ export default class StoreAvailablePopup
 		}
 	}
 
-	refreshStoreInfo()
-	{
-		this.#model.getStoreCollection().refresh();
-	}
-
-	getPopupContent()
+	getPopupContent(): HTMLElement
 	{
 		const storeId = this.#model.getField('STORE_ID');
 		const storeCollection = this.#model.getStoreCollection();
@@ -103,7 +98,7 @@ export default class StoreAvailablePopup
 				<table class="main-grid-table">
 					<thead class="main-grid-header">
 						<tr class="main-grid-row-head">
-							${renderHead(Loc.getMessage('CRM_ENTITY_PL_STORE_AVAILABLE_POPUP_QUANTITY_COMMON'))}
+							${renderHead(Loc.getMessage('CRM_ENTITY_PL_STORE_AVAILABLE_POPUP_QUANTITY_COMMON_MSGVER_1'))}
 							${renderHead(Loc.getMessage('CRM_ENTITY_PL_STORE_AVAILABLE_POPUP_QUANTITY_RESERVED'))}
 							${renderHead(Loc.getMessage('CRM_ENTITY_PL_STORE_AVAILABLE_POPUP_QUANTITY_AVAILABLE'))}
 						</tr>

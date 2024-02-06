@@ -298,7 +298,7 @@ class IBlockElementProperty
 	 */
 	public static function prepareSettings($property)
 	{
-		if(!is_array($property['USER_TYPE_SETTINGS']))
+		if(!is_array($property['USER_TYPE_SETTINGS'] ?? ''))
 			$property['USER_TYPE_SETTINGS'] = array();
 
 		foreach(static::$listDefaultEntity as $entity => $entityMark)
@@ -322,7 +322,7 @@ class IBlockElementProperty
 	{
 		$html = '';
 
-		if (!is_array($property['USER_TYPE_SETTINGS']))
+		if (!is_array($property['USER_TYPE_SETTINGS'] ?? ''))
 		{
 			$property['USER_TYPE_SETTINGS'] = array_merge(
 				\Bitrix\Crm\Integration\BizProc\FieldType\Crm::getDefaultFieldSettings(),
@@ -465,7 +465,7 @@ class IBlockElementProperty
 
 		foreach($valueView as $entityType => $listEntity)
 		{
-			$result .= '[b]'.Loc::getMessage('CRM_IBLOCK_PROPERTY_ENTITY_'.$entityType).': [/b]';
+			$result .= '[b]' . \CCrmOwnerType::GetCategoryCaption(\CCrmOwnerType::ResolveID($entityType)) . ': [/b]';
 			$result .= implode($formatSeparator, $listEntity).' ';
 		}
 
@@ -575,9 +575,8 @@ class IBlockElementProperty
 			$entityName = \CCrmOwnerType::getCaption(
 				\CCrmOwnerType::resolveID(\CCrmOwnerTypeAbbr::resolveName($parts[0])), $parts[1], false);
 
-			$defaultType = mb_strtolower(static::$listDefaultEntityKey[$parts[0]]);
-			$entityUrl = \CComponentEngine::makePathFromTemplate(
-				Option::get('crm', 'path_to_'.$defaultType.'_show'), array(''.$defaultType.'_id' => $parts[1]));
+			$defaultType = mb_strtolower(static::$listDefaultEntityKey[$parts[0]] ?? $parts[0]);
+			$entityUrl =  \CCrmOwnerType::GetDetailsUrl(\CCrmOwnerType::resolveID(\CCrmOwnerTypeAbbr::resolveName($parts[0])), $parts[1]);
 
 			$valueView[mb_strtoupper($defaultType)][] = '[url='.$entityUrl.']'.$entityName.'[/url]';
 		}
@@ -590,8 +589,7 @@ class IBlockElementProperty
 			);
 
 			$defaultType = mb_strtolower($defaultType);
-			$entityUrl = \CComponentEngine::makePathFromTemplate(
-				Option::get('crm', 'path_to_'.$defaultType.'_show'), array(''.$defaultType.'_id' => $value));
+			$entityUrl = \CCrmOwnerType::GetDetailsUrl(\CCrmOwnerType::resolveID($defaultType), $value);
 
 			$valueView[mb_strtoupper($defaultType)][] = '[url='.$entityUrl.']'.$entityName.'[/url]';
 		}

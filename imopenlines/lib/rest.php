@@ -12,9 +12,12 @@ use Bitrix\Main\UserConsent\Consent;
 
 use Bitrix\ImOpenLines\Model\SessionTable;
 use Bitrix\ImOpenLines\Widget\FormHandler;
+use Bitrix\ImOpenlines\Security\Permissions;
 
 use Bitrix\Im;
 
+use Bitrix\Rest\AccessException;
+use Bitrix\Rest\Exceptions\ArgumentNullException;
 use Bitrix\Rest\SessionAuth;
 use Bitrix\Rest\RestException;
 
@@ -48,20 +51,41 @@ class Rest extends \IRestService
 				'imopenlines.dialog.get' => [__CLASS__, 'dialogGet'],
 				'imopenlines.dialog.user.depersonalization' => ['callback' => [__CLASS__, 'dialogUserDepersonalization'], 'options' => ['private' => true]],
 				'imopenlines.dialog.form.send' => [__CLASS__, 'dialogFormSend'],
+				'imopenlines.dialog.multi.get' => [__CLASS__, 'getMultiDialogs'],
 
 				'imopenlines.operator.answer' => [__CLASS__, 'operatorAnswer'],
 				'imopenlines.operator.skip' => [__CLASS__, 'operatorSkip'],
 				'imopenlines.operator.spam' => [__CLASS__, 'operatorSpam'],
 				'imopenlines.operator.transfer' => [__CLASS__, 'operatorTransfer'],
 				'imopenlines.operator.finish' => [__CLASS__, 'operatorFinish'],
+				'imopenlines.operator.another.finish' => [__CLASS__, 'operatorFinishAnother'],
+				'imopenlines.operator.pause.start' => [__CLASS__, 'startSoftPause'],
+				'imopenlines.operator.pause.stop' => [__CLASS__, 'stopSoftPause'],
+				'imopenlines.operator.pause.get' => [__CLASS__, 'getSoftPauseStatus'],
+				'imopenlines.operator.pause.getAll' => [__CLASS__, 'getAllSoftPause'],
+				'imopenlines.operator.pause.getHistory' => [__CLASS__, 'getSoftPauseHistory'],
 
 				'imopenlines.session.intercept' => [__CLASS__, 'sessionIntercept'],
+				'imopenlines.session.open' => [__CLASS__, 'sessionOpen'],
+				'imopenlines.session.mode.silent' => [__CLASS__, 'sessionSilent'],
+				'imopenlines.session.mode.pin' => [__CLASS__, 'sessionPin'],
+				'imopenlines.session.mode.unpin' => [__CLASS__, 'sessionUnpin'],
+				'imopenlines.session.mode.pinAll' => [__CLASS__, 'sessionPinAll'],
+				'imopenlines.session.mode.unpinAll' => [__CLASS__, 'sessionUnpinAll'],
+				'imopenlines.session.head.vote' => [__CLASS__, 'sessionVoteAsHead'],
+				'imopenlines.session.join' => [__CLASS__, 'sessionJoin'],
+				'imopenlines.session.start' => [__CLASS__, 'sessionStart'],
+				'imopenlines.session.history.get' => [__CLASS__, 'sessionGetHistory'],
+
+				'imopenlines.message.session.start' => [__CLASS__, 'sessionStartByMessage'],
+				'imopenlines.message.quick.save' => [__CLASS__, 'messageSaveToQuickAnswer'],
 
 				'imopenlines.bot.session.operator' => [__CLASS__, 'botSessionOperator'],
 				'imopenlines.bot.session.send.message' => ['callback' => [__CLASS__, 'botSessionSendAutoMessage'], 'options' => ['private' => true]], // legacy
 				'imopenlines.bot.session.message.send' => [__CLASS__, 'botSessionSendAutoMessage'],
 				'imopenlines.bot.session.transfer' => [__CLASS__, 'botSessionTransfer'],
 				'imopenlines.bot.session.finish' => [__CLASS__, 'botSessionFinish'],
+				'imopenlines.bot.session.dialog.new' => [__CLASS__, 'botSessionNew'],
 
 				'imopenlines.network.join' => [__CLASS__, 'networkJoin'],
 				'imopenlines.network.message.add' => [__CLASS__, 'networkMessageAdd'],
@@ -86,7 +110,11 @@ class Rest extends \IRestService
 				'imopenlines.config.delete' => [__CLASS__, 'configDelete'],
 
 				'imopenlines.crm.chat.user.add' => [__CLASS__, 'crmChatUserAdd'],
-				'imopenlines.crm.chat.getLastId' => [__CLASS__, 'crmLastChatIdGet']
+				'imopenlines.crm.chat.user.delete' => [__CLASS__, 'crmChatUserDelete'],
+				'imopenlines.crm.chat.getLastId' => [__CLASS__, 'crmLastChatIdGet'],
+				'imopenlines.crm.chat.get' => [__CLASS__, 'getCrmChats'],
+				'imopenlines.crm.message.add' => [__CLASS__, 'crmChatMessageAdd'],
+				'imopenlines.crm.lead.create' => [__CLASS__, 'crmCreateLead'],
 			],
 		];
 	}
@@ -218,6 +246,30 @@ class Rest extends \IRestService
 		]);
 	}
 
+	public static function getMultiDialogs($params, $n, \CRestServer $server)
+	{
+		$params = array_change_key_case($params, CASE_UPPER);
+
+		if (!Loader::includeModule('im'))
+		{
+			throw new RestException('Messenger is not installed.', 'IM_NOT_INSTALLED', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		$chatId = self::getChatId($params);
+		if (!$chatId)
+		{
+			throw new RestException('You do not have access to the specified dialog', 'ACCESS_ERROR', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		if (!\Bitrix\ImOpenLines\Chat::hasAccess($chatId))
+		{
+			throw new RestException('You do not have access to the specified dialog', 'ACCESS_ERROR', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		$control = new Operator($chatId);
+		return $control->getMultiDialogs();
+	}
+
 	public static function dialogUserDepersonalization($params, $n, \CRestServer $server)
 	{
 		$params = array_change_key_case($params, CASE_UPPER);
@@ -285,7 +337,6 @@ class Rest extends \IRestService
 			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
 		}
 
-
 		return true;
 	}
 
@@ -316,6 +367,20 @@ class Rest extends \IRestService
 
 		$control = new Operator($arParams['CHAT_ID']);
 		$result = $control->closeDialog();
+		if (!$result->isSuccess())
+		{
+			$errors = $result->getErrors();
+			$error = current($errors);
+			throw new RestException($error->getMessage(), $error->getCode(), \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return true;
+	}
+
+	public static function operatorFinishAnother($arParams, $n, \CRestServer $server)
+	{
+		$control = new Operator($arParams['CHAT_ID']);
+		$result = $control->closeDialogOtherOperator();
 		if (!$result->isSuccess())
 		{
 			$errors = $result->getErrors();
@@ -405,6 +470,210 @@ class Rest extends \IRestService
 		return true;
 	}
 
+	public static function sessionOpen($arParams, $n, \CRestServer $server)
+	{
+		$control = new \Bitrix\ImOpenLines\Operator(0);
+		$userCode = $arParams['USER_CODE'];
+		$result = $control->openChat($userCode);
+
+		if (!$result)
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return self::objectEncode([
+			'CHAT_ID' => $result['ID']
+		]);
+	}
+
+	/**
+	 * @deprecated
+	 */
+	public static function sessionSilent($arParams, $n, \CRestServer $server)
+	{
+		$control = new \Bitrix\ImOpenLines\Operator($arParams['CHAT_ID']);
+		$result = $control->setSilentMode($arParams['ACTIVATE'] === 'Y');
+
+		if (!$result)
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return true;
+	}
+
+	public static function sessionPin($arParams, $n, \CRestServer $server)
+	{
+		if (!$arParams['CHAT_ID'])
+		{
+			throw new RestException('Chat ID can\'t be empty', 'CHAT_ID_EMPTY', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		$control = new \Bitrix\ImOpenLines\Operator($arParams['CHAT_ID']);
+		isset($arParams['ACTIVATE']) ?: $arParams['ACTIVATE'] = null;
+		$result = $control->setPinMode($arParams['ACTIVATE'] !== 'N');
+
+		if (!$result->isSuccess())
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return true;
+	}
+
+	public static function sessionUnpin($arParams, $n, \CRestServer $server)
+	{
+		if (!$arParams['CHAT_ID'])
+		{
+			throw new RestException('Chat ID can\'t be empty', 'CHAT_ID_EMPTY', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		$control = new \Bitrix\ImOpenLines\Operator($arParams['CHAT_ID']);
+		$result = $control->setPinMode(false);
+
+		if (!$result->isSuccess())
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return true;
+	}
+
+	public static function sessionPinAll($arParams, $n, \CRestServer $server)
+	{
+		$control = new \Bitrix\ImOpenLines\Operator(0);
+		$result = $control->pinOperatorDialogs(true);
+
+		if (!$result->isSuccess())
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return $result->getResult();
+	}
+
+	public static function sessionUnpinAll($arParams, $n, \CRestServer $server)
+	{
+		$control = new \Bitrix\ImOpenLines\Operator(0);
+		$result = $control->pinOperatorDialogs(false);
+
+		if (!$result->isSuccess())
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return $result->getResult();
+	}
+
+	public static function sessionVoteAsHead($arParams, $n, \CRestServer $server)
+	{
+		if (!$arParams['SESSION_ID'])
+		{
+			throw new RestException('Session ID can\'t be empty', 'EMPTY_SESSION_ID', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		if (!trim($arParams['RATING']) && !trim($arParams['COMMENT']))
+		{
+			throw new RestException('At least one of the parameters RATING or COMMENT must be specified', 'EMPTY_VOTE_PARAMS', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		$control = new \Bitrix\ImOpenLines\Operator(0);
+		$result = $control->voteAsHead(
+			$arParams['SESSION_ID'],
+			$arParams['RATING'],
+			$arParams['COMMENT'] ?: ''
+		);
+
+		if (!$result)
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return true;
+	}
+
+	public static function sessionJoin($arParams, $n, \CRestServer $server)
+	{
+		$control = new \Bitrix\ImOpenLines\Operator($arParams['CHAT_ID']);
+		$result = $control->joinSession();
+
+		if (!$result)
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return true;
+	}
+
+	public static function sessionStart($arParams, $n, \CRestServer $server)
+	{
+		$control = new \Bitrix\ImOpenLines\Operator($arParams['CHAT_ID']);
+		$result = $control->startSession();
+
+		if (!$result)
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return true;
+	}
+
+	public static function sessionStartByMessage($arParams, $n, \CRestServer $server)
+	{
+		$control = new \Bitrix\ImOpenLines\Operator($arParams['CHAT_ID']);
+		$result = $control->startSessionByMessage((int)$arParams['MESSAGE_ID']);
+
+		if (!$result)
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return true;
+	}
+
+	public static function sessionGetHistory($arParams, $n, \CRestServer $server)
+	{
+		$control = new \Bitrix\ImOpenLines\Operator(0);
+		$result = $control->getSessionHistory($arParams['SESSION_ID']);
+
+		if (!$result)
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return self::objectEncode([
+			'CHAT_ID' => $result['chatId'],
+			'CAN_JOIN' => $result['canJoin'],
+			'CAN_VOTE_HEAD' => $result['canVoteAsHead'],
+			'SESSION_ID' => $result['sessionId'],
+			'SESSION_VOTE_HEAD' => $result['sessionVoteHead'],
+			'SESSION_COMMENT_HEAD' => $result['sessionCommentHead'],
+			'USER_ID' => 'chat'.$result['chatId'],
+			'MESSAGE' => isset($result['message']) ? $result['message'] : [],
+			'USERS_MESSAGE' => isset($result['message']) ? $result['usersMessage'] : [],
+			'USERS' => isset($result['users']) ? $result['users'] : [],
+			'OPENLINES' => isset($result['openlines']) ? $result['openlines'] : [],
+			'USER_IN_GROUP' => isset($result['userInGroup']) ? $result['userInGroup'] : [],
+			'WO_USER_IN_GROUP' => isset($result['woUserInGroup']) ? $result['woUserInGroup'] : [],
+			'CHAT' => isset($result['chat']) ? $result['chat'] : [],
+			'USER_BLOCK_CHAT' => isset($result['userChatBlockStatus']) ? $result['userChatBlockStatus'] : [],
+			'USER_IN_CHAT' => isset($result['userInChat']) ? $result['userInChat'] : [],
+			'FILES' => isset($result['files']) ? $result['files'] : [],
+		]);
+	}
+
+	public static function messageSaveToQuickAnswer($arParams, $n, \CRestServer $server)
+	{
+		$control = new \Bitrix\ImOpenLines\Operator($arParams['CHAT_ID']);
+		$result = $control->saveToQuickAnswers((int)$arParams['MESSAGE_ID']);
+
+		if (!$result)
+		{
+			throw new RestException($control->getError()->msg, $control->getError()->code, \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return true;
+	}
 
 	public static function botSessionOperator($arParams, $n, \CRestServer $server)
 	{
@@ -574,6 +843,27 @@ class Rest extends \IRestService
 		$chat->finish();
 
 		return true;
+	}
+
+	public static function botSessionNew($arParams, $n, \CRestServer $server)
+	{
+		if (!isset($arParams['CHAT_ID']))
+		{
+			throw new RestException('Param CHAT_ID is empty', 'EMPTY_CHAT_ID', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		if (!isset($arParams['OPERATOR_ID']))
+		{
+			throw new RestException('Param OPERATOR_ID is empty', 'EMPTY_OPERATOR_ID', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		if (!isset($arParams['MESSAGE_ID']))
+		{
+			throw new RestException('Param MESSAGE_ID is empty', 'EMPTY_MESSAGE_ID', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		$control = new \Bitrix\ImOpenLines\Operator($arParams['CHAT_ID'], $arParams['OPERATOR_ID']);
+		return $control->openNewDialogByMessage($arParams['MESSAGE_ID']);
 	}
 
 	/**
@@ -1471,9 +1761,108 @@ class Rest extends \IRestService
 
 	/**
 	 * Add user to chat by connected crm entity data
+	 *
+	 * @param $arParams
+	 * @param $n
+	 * @param \CRestServer $server
+	 * @return int
+	 * @throws AccessException
+	 * @throws ArgumentNullException
+	 * @throws RestException
 	 */
 	public static function crmChatUserAdd($arParams, $n, \CRestServer $server)
 	{
+		if (empty($arParams['CRM_ENTITY_TYPE']))
+		{
+			throw new ArgumentNullException('CRM_ENTITY_TYPE');
+		}
+
+		if (empty($arParams['CRM_ENTITY']))
+		{
+			throw new ArgumentNullException('CRM_ENTITY');
+		}
+
+		if (!Loader::includeModule('im'))
+		{
+			throw new RestException('Messenger is not installed.', 'IM_NOT_INSTALLED', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		if (!Crm\Common::hasAccessToEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']))
+		{
+			throw new AccessException('You don\'t have access to join user to chat');
+		}
+
+		if (empty($arParams['CHAT_ID']))
+		{
+			$chatId = Crm\Common::getLastChatIdByCrmEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']);
+		}
+		else
+		{
+			$chatId = (int)$arParams['CHAT_ID'];
+		}
+
+		if ($chatId > 0)
+		{
+			if (!Crm\Common::checkChatOfCrmEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY'], $chatId))
+			{
+				throw new RestException('Chat does not belong to the CRM entity being checked', 'CHAT_NOT_IN_CRM', \CRestServer::STATUS_WRONG_REQUEST);
+			}
+
+			$chat = Im\Model\ChatTable::getByPrimary($chatId, ['select' => ['ENTITY_ID']])->fetch();
+			$parsedUserCode = Session\Common::parseUserCode($chat['ENTITY_ID']);
+			$lineId = $parsedUserCode['CONFIG_ID'];
+
+			if (!$lineId || !Config::canJoin($lineId, $arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']))
+			{
+				throw new AccessException('You don\'t have access to join user to chat');
+			}
+
+			$arParams['USER_ID'] = (int)$arParams['USER_ID'];
+			if ($arParams['USER_ID'] <= 0)
+			{
+				throw new ArgumentNullException('Empty USER_ID');
+			}
+
+			$user = Im\User::getInstance($arParams['USER_ID']);
+
+			if (!$user->isExists() || !$user->isActive())
+			{
+				throw new RestException('User not active', 'CRM_CHAT_USER_NOT_ACTIVE', \CRestServer::STATUS_WRONG_REQUEST);
+			}
+
+			if (!Crm\Common::hasAccessToEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY'], $arParams['USER_ID']))
+			{
+				throw new AccessException('This user does not have access to the chat because he does not have access to this CRM entity');
+			}
+
+			if (!Config::canViewHistory($lineId, $arParams['USER_ID']))
+			{
+				throw new AccessException('This user does not have access to the chat because he does not have access to this view chat history');
+			}
+
+			$CIMChat = new \CIMChat(0);
+			$result = $CIMChat->AddUser($chatId, $arParams['USER_ID']);
+
+			if (!$result)
+			{
+				throw new RestException('You don\'t have access or user already member in chat', 'WRONG_REQUEST', \CRestServer::STATUS_WRONG_REQUEST);
+			}
+		}
+
+		return $chatId;
+	}
+
+	/**
+	 * Remove user from chat by connected crm entity data
+	 */
+	public static function crmChatUserDelete($arParams, $n, \CRestServer $server)
+	{
+		$arParams['USER_ID'] = (int)$arParams['USER_ID'];
+		if ($arParams['USER_ID'] <= 0)
+		{
+			throw new RestException('Empty User ID', 'CRM_CHAT_EMPTY_USER', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
 		if (empty($arParams['CRM_ENTITY_TYPE']) || empty($arParams['CRM_ENTITY']))
 		{
 			throw new RestException('Empty CRM data', 'CRM_CHAT_EMPTY_CRM_DATA', \CRestServer::STATUS_WRONG_REQUEST);
@@ -1484,19 +1873,34 @@ class Rest extends \IRestService
 			throw new RestException('Messenger is not installed.', 'IM_NOT_INSTALLED', \CRestServer::STATUS_WRONG_REQUEST);
 		}
 
-		$chatId = Crm\Common::getLastChatIdByCrmEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']);
+		if (!Crm\Common::hasAccessToEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']))
+		{
+			throw new AccessException('You don\'t have access to join user to chat');
+		}
+
+		if (empty($arParams['CHAT_ID']))
+		{
+			$chatId = Crm\Common::getLastChatIdByCrmEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']);
+		}
+		else
+		{
+			$chatId = (int)$arParams['CHAT_ID'];
+		}
 
 		if ($chatId > 0)
 		{
-			if (!Config::canJoin($chatId, $arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']))
+			if (!Crm\Common::checkChatOfCrmEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY'], $chatId))
 			{
-				throw new RestException('You don\'t have access to join user to chat', 'CHAT_JOIN_PERMISSION_DENIED', \CRestServer::STATUS_FORBIDDEN);
+				throw new RestException('Chat does not belong to the CRM entity being checked', 'CHAT_NOT_IN_CRM', \CRestServer::STATUS_WRONG_REQUEST);
 			}
 
-			$arParams['USER_ID'] = (int)$arParams['USER_ID'];
-			if ($arParams['USER_ID'] <= 0)
+			$chat = Im\Model\ChatTable::getByPrimary($chatId, ['select' => ['ENTITY_ID']])->fetch();
+			$parsedUserCode = Session\Common::parseUserCode($chat['ENTITY_ID']);
+			$lineId = $parsedUserCode['CONFIG_ID'];
+
+			if (!Config::canJoin($lineId, $arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']))
 			{
-				throw new RestException('Empty User ID', 'CRM_CHAT_EMPTY_USER', \CRestServer::STATUS_WRONG_REQUEST);
+				throw new RestException('You don\'t have access to delete a user from this chat', 'CHAT_DELETE_USER_PERMISSION_DENIED', \CRestServer::STATUS_FORBIDDEN);
 			}
 
 			$user = Im\User::getInstance($arParams['USER_ID']);
@@ -1507,11 +1911,11 @@ class Rest extends \IRestService
 			}
 
 			$CIMChat = new \CIMChat(0);
-			$result = $CIMChat->AddUser($chatId, $arParams['USER_ID']);
+			$result = $CIMChat->DeleteUser($chatId, $arParams['USER_ID'], false);
 
 			if (!$result)
 			{
-				throw new RestException('You don\'t have access or user already member in chat', 'WRONG_REQUEST', \CRestServer::STATUS_WRONG_REQUEST);
+				throw new RestException('You don\'t have access or user already not in chat', 'WRONG_REQUEST', \CRestServer::STATUS_WRONG_REQUEST);
 			}
 		}
 
@@ -1536,6 +1940,201 @@ class Rest extends \IRestService
 		}
 
 		return $chatId;
+	}
+
+	/**
+	 * Get active chats for CRM entity
+	 *
+	 * @param $arParams
+	 * @param $n
+	 * @param \CRestServer $server
+	 * @return array
+	 * @throws AccessException
+	 * @throws ArgumentNullException
+	 */
+	public static function getCrmChats($arParams, $n, \CRestServer $server)
+	{
+		if (empty($arParams['CRM_ENTITY_TYPE']))
+		{
+			throw new ArgumentNullException('CRM_ENTITY_TYPE');
+		}
+
+		if (empty($arParams['CRM_ENTITY']))
+		{
+			throw new ArgumentNullException('CRM_ENTITY');
+		}
+
+		if (!Crm\Common::hasAccessToEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']))
+		{
+			throw new AccessException('You dont have access to this action');
+		}
+
+		return Crm\Common::getChatsByCrmEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']);
+	}
+
+	/**
+	 * Send a message to the CRM chat from a user who has access to this chat
+	 *
+	 * @param $arParams
+	 * @param $n
+	 * @param \CRestServer $server
+	 * @return int
+	 * @throws ArgumentNullException
+	 * @throws AccessException
+	 * @throws RestException
+	 */
+	public static function crmChatMessageAdd($arParams, $n, \CRestServer $server)
+	{
+		if (empty($arParams['CRM_ENTITY_TYPE']))
+		{
+			throw new ArgumentNullException('CRM_ENTITY_TYPE');
+		}
+
+		if (empty($arParams['CRM_ENTITY']))
+		{
+			throw new ArgumentNullException('CRM_ENTITY');
+		}
+
+		if (empty($arParams['USER_ID']))
+		{
+			throw new ArgumentNullException('USER_ID');
+		}
+
+		if (empty($arParams['CHAT_ID']))
+		{
+			throw new ArgumentNullException('CHAT_ID');
+		}
+
+		if (empty($arParams['MESSAGE']))
+		{
+			throw new ArgumentNullException('MESSAGE');
+		}
+
+		if (!Crm\Common::hasAccessToEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY']))
+		{
+			throw new AccessException('You dont have access to this action');
+		}
+
+		if (!Crm\Common::hasAccessToEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY'], (int)$arParams['USER_ID']))
+		{
+			throw new AccessException('User dont have access to this entity');
+		}
+
+		if (!Crm\Common::checkChatOfCrmEntity($arParams['CRM_ENTITY_TYPE'], $arParams['CRM_ENTITY'], (int)$arParams['CHAT_ID']))
+		{
+			throw new RestException('Chat does not belong to the CRM entity being checked', 'CHAT_NOT_IN_CRM', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		$messageId = Chat::sendMessageFromUser($arParams['MESSAGE'], (int)$arParams['CHAT_ID'], (int)$arParams['USER_ID']);
+		if (!$messageId)
+		{
+			throw new RestException('Message isn\'t added', 'MESSAGE_ADD_ERROR', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return $messageId;
+	}
+
+	public static function crmCreateLead($arParams, $n, \CRestServer $server): bool
+	{
+		$control = new \Bitrix\ImOpenLines\Operator($arParams['CHAT_ID']);
+		$result = $control->createLead();
+
+		if (!$result->isSuccess())
+		{
+			$errors = $result->getErrors();
+			$error = current($errors);
+			throw new RestException($error->getMessage(), $error->getCode(), \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return true;
+	}
+
+	public static function startSoftPause($arParams, $n, \CRestServer $server): bool
+	{
+		$userPause = new \Bitrix\ImOpenLines\UserPause();
+		return $userPause->start();
+	}
+
+	public static function stopSoftPause($arParams, $n, \CRestServer $server): bool
+	{
+		$userPause = new \Bitrix\ImOpenLines\UserPause();
+		return $userPause->stop();
+	}
+
+	public static function getSoftPauseStatus($arParams, $n, \CRestServer $server): bool
+	{
+		$userPause = new \Bitrix\ImOpenLines\UserPause();
+		return $userPause->getStatus();
+	}
+
+	public static function getAllSoftPause($arParams, $n, \CRestServer $server): array
+	{
+		$permission = Permissions::createWithCurrentUser();
+		if(!$permission->canPerform(Permissions::ENTITY_SOFT_PAUSE_LIST, Permissions::ACTION_VIEW))
+		{
+			throw new RestException('You dont have access to this action', 'ACCESS_DENIED', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		return UserPause::getAllStatuses((int)$arParams['CONFIG_ID'] ?? 0);
+	}
+
+	public static function getSoftPauseHistory($arParams, $n, \CRestServer $server): array
+	{
+		$permission = Permissions::createWithCurrentUser();
+		if(!$permission->canPerform(Permissions::ENTITY_SOFT_PAUSE_LIST, Permissions::ACTION_VIEW))
+		{
+			throw new RestException('You dont have access to this action', 'ACCESS_DENIED', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		if (!isset($arParams['DATE_START']))
+		{
+			throw new RestException('Empty DATE_START parameter', 'DATE_START_EMPTY', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		$matches = [];
+		if (
+			preg_match("/^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[1-2]\d|3[0-1])$/", $arParams['DATE_START'], $matches)
+			&& checkdate($matches[2], $matches[3], $matches[1])
+		)
+		{
+			$arParams['DATE_START'] .= 'T00:00:00' . date('P');
+		}
+
+		if (
+			!preg_match("/^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[1-2]\d|3[0-1])T[0-2]\d:[0-5]\d:[0-5]\d[+-][0-2]\d:[0-5]\d$/", $arParams['DATE_START'], $matches)
+			|| !checkdate($matches[2], $matches[3], $matches[1])
+			|| !$dateStart = DateTime::createFromPhp(\DateTime::createFromFormat(DATE_ATOM, $arParams['DATE_START']))
+		)
+		{
+			throw new RestException("DATE_START parameter not in 'Y-m-dTH:i:sP' or 'Y-m-d' format", 'DATE_START_WRONG_FORMAT', \CRestServer::STATUS_WRONG_REQUEST);
+		}
+
+		if (isset($arParams['DATE_END']))
+		{
+			if (
+				preg_match("/^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[1-2]\d|3[0-1])$/", $arParams['DATE_END'], $matches)
+				&& checkdate($matches[2], $matches[3], $matches[1])
+			)
+			{
+				$arParams['DATE_END'] .= 'T23:59:59' . date('P');
+			}
+
+			if (
+				!preg_match("/^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[1-2]\d|3[0-1])T[0-2]\d:[0-5]\d:[0-5]\d[+-][0-2]\d:[0-5]\d$/", $arParams['DATE_END'], $matches)
+				|| !checkdate($matches[2], $matches[3], $matches[1])
+				|| !$dateEnd = DateTime::createFromPhp(\DateTime::createFromFormat(DATE_ATOM, $arParams['DATE_END']))
+			)
+			{
+				throw new RestException("DATE_END parameter not in 'Y-m-dTH:i:sP' or 'Y-m-d' format", 'DATE_END_WRONG_FORMAT', \CRestServer::STATUS_WRONG_REQUEST);
+			}
+		}
+
+		return UserPause::getHistory(
+			$dateStart,
+			$dateEnd ?? null,
+			(int)$arParams['CONFIG_ID'] ?? 0,
+			(int)$arParams['USER_ID'] ?? 0
+		);
 	}
 
 	private static function getChatId(array $params)

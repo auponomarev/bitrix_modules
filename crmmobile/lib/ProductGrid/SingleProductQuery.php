@@ -8,16 +8,17 @@ use Bitrix\Crm\Item;
 use Bitrix\Crm\ProductRow;
 use Bitrix\Crm\Service\Accounting;
 use Bitrix\Crm\Service\Container;
-use Bitrix\Crm\Settings\LayoutSettings;
 use Bitrix\CrmMobile\ProductGrid\Enricher\CompleteExtraFields;
 use Bitrix\CrmMobile\ProductGrid\Enricher\CompletePrices;
+use Bitrix\CrmMobile\ProductGrid\Enricher\CompleteStores;
 use Bitrix\CrmMobile\ProductGrid\Enricher\ConvertCurrency;
 use Bitrix\CrmMobile\ProductGrid\Enricher\EnricherContract;
 use Bitrix\Main\Loader;
-use Bitrix\Mobile\Integration\Catalog\PermissionsProvider;
+use Bitrix\CatalogMobile\PermissionsProvider;
 use Bitrix\Mobile\Query;
 
 Loader::requireModule('crm');
+Loader::requireModule('catalogmobile');
 
 class SingleProductQuery extends Query
 {
@@ -72,6 +73,7 @@ class SingleProductQuery extends Query
 			new CompletePrices($this->taxCalculator, $this->entity),
 			new ConvertCurrency($this->currencyId),
 			new CompleteExtraFields($this->accounting, $this->permissionsProvider, $this->entity),
+			new CompleteStores($this->entity),
 		];
 	}
 

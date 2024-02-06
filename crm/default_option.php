@@ -102,6 +102,8 @@ $crm_default_option = [
 	'path_to_store_document_details' => '/shop/documents/details/#store_document_id#/',
 	'path_to_shipment_document_details' => '/shop/documents/details/sales_order/#shipment_document_id#/',
 
+	'path_to_agent_contract_details' => '/agent_contract/details/#agent_contract_id#/',
+
 	'email_from' => '',
 	'email_template' => '',
 
@@ -119,4 +121,9 @@ $crm_default_option = [
 	'enable_catalog_price_save' => 'Y',
 	'enable_full_catalog' => 'Y',
 	'enable_entity_commodity_item_creation' => 'N',
+	'terminal_is_link_payment_enabled' => 'Y',
+	'terminal_is_sbp_enabled' => 'Y',
+	'terminal_is_sber_qr_enabled' => 'Y',
+	'terminal_disabled_paysystems' => '',
+	'terminal_is_ru_zone' => null,
 ];

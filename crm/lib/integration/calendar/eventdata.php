@@ -2,6 +2,7 @@
 
 namespace Bitrix\Crm\Integration\Calendar;
 
+use Bitrix\Calendar\Sharing;
 use Bitrix\Calendar\Sharing\Link\CrmDealLink;
 
 class EventData
@@ -18,6 +19,8 @@ class EventData
 	private ?int $associatedEntityTypeId = null;
 	private ?int $linkId = null;
 	private ?string $contactCommunication = null;
+	private ?string $channelName = null;
+	private ?array $sharingRuleArray = null;
 
 	public const SHARING_ON_NOT_VIEWED = 'SHARING_ON_NOT_VIEWED';
 	public const SHARING_ON_VIEWED = 'SHARING_ON_VIEWED';
@@ -26,6 +29,7 @@ class EventData
 	public const SHARING_ON_INVITATION_SENT = 'SHARING_ON_INVITATION_SENT';
 	public const SHARING_ON_EVENT_CONFIRMED = 'SHARING_ON_EVENT_CONFIRMED';
 	public const SHARING_ON_LINK_COPIED = 'SHARING_ON_LINK_COPIED';
+	public const SHARING_ON_RULE_UPDATED = 'SHARING_ON_RULE_UPDATED';
 
 	public function getEventType()
 	{
@@ -85,6 +89,11 @@ class EventData
 	public function getContactCommunication(): ?string
 	{
 		return $this->contactCommunication;
+	}
+
+	public function getChannelName(): ?string
+	{
+		return $this->channelName;
 	}
 
 	public function setEventType(?string $eventType)
@@ -171,6 +180,25 @@ class EventData
 		return $this;
 	}
 
+	public function setChannelName(?string $channelName): self
+	{
+		$this->channelName = $channelName;
+
+		return $this;
+	}
+
+	public function getSharingRuleArray(): ?array
+	{
+		return $this->sharingRuleArray;
+	}
+
+	public function setSharingRuleArray(?array $sharingRule): self
+	{
+		$this->sharingRuleArray = $sharingRule;
+
+		return $this;
+	}
+
 	public function toArray(): array
 	{
 		return [
@@ -190,6 +218,7 @@ class EventData
 	public static function createFromCrmDealLink(CrmDealLink $crmDealLink, string $eventType): self
 	{
 		$eventData = new self();
+		$sharingRuleArray = (new Sharing\Link\Rule\Mapper())->convertToArray($crmDealLink->getSharingRule());
 		$eventData
 			->setEventType($eventType)
 			->setOwnerId($crmDealLink->getOwnerId())
@@ -200,6 +229,7 @@ class EventData
 			->setTimestamp(time())
 			->setLinkHash($crmDealLink->getHash())
 			->setLinkId($crmDealLink->getId())
+			->setSharingRuleArray($sharingRuleArray)
 		;
 
 		return $eventData;

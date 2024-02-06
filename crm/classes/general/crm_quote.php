@@ -7,7 +7,10 @@ use Bitrix\Crm\CompanyAddress;
 use Bitrix\Crm\ContactAddress;
 use Bitrix\Crm\Entity\Traits\EntityFieldsNormalizer;
 use Bitrix\Crm\EntityAddressType;
+use Bitrix\Crm\FieldContext\EntityFactory;
+use Bitrix\Crm\FieldContext\ValueFiller;
 use Bitrix\Crm\Format\AddressFormatter;
+use Bitrix\Crm\Format\TextHelper;
 use Bitrix\Crm\Integration\StorageManager;
 use Bitrix\Crm\Integration\StorageType;
 use Bitrix\Crm\Tracking;
@@ -39,7 +42,7 @@ class CAllCrmQuote
 	protected $lastErrors;
 
 	private static ?Crm\Entity\Compatibility\Adapter $lastActivityAdapter = null;
-	private static ?Crm\Entity\Compatibility\Adapter $contentTypeIdAdapter = null;
+	private static ?Crm\Entity\Compatibility\Adapter $commentsAdapter = null;
 
 	/** @var \Bitrix\Crm\Entity\Compatibility\Adapter */
 	private $compatibiltyAdapter;
@@ -130,14 +133,14 @@ class CAllCrmQuote
 		return self::$lastActivityAdapter;
 	}
 
-	private static function getContentTypeIdAdapter(): Crm\Entity\Compatibility\Adapter\ContentTypeId
+	private static function getCommentsAdapter(): Crm\Entity\Compatibility\Adapter\Comments
 	{
-		if (!self::$contentTypeIdAdapter)
+		if (!self::$commentsAdapter)
 		{
-			self::$contentTypeIdAdapter = new Crm\Entity\Compatibility\Adapter\ContentTypeId(\CCrmOwnerType::Quote);
+			self::$commentsAdapter = new Crm\Entity\Compatibility\Adapter\Comments(\CCrmOwnerType::Quote);
 		}
 
-		return self::$contentTypeIdAdapter;
+		return self::$commentsAdapter;
 	}
 
 	public function __construct($bCheckPermission = true)
@@ -328,6 +331,7 @@ class CAllCrmQuote
 			//endregion
 
 			self::getLastActivityAdapter()->performAdd($arFields, $options);
+			self::getCommentsAdapter()->normalizeFields(null, $arFields);
 
 			//region Rise BeforeAdd event
 			foreach (GetModuleEvents('crm', 'OnBeforeCrmQuoteAdd', true) as $arEvent)
@@ -340,7 +344,7 @@ class CAllCrmQuote
 					}
 					else
 					{
-						$this->LAST_ERROR = GetMessage('CRM_QUOTE_CREATION_CANCELED', array('#NAME#' => $arEvent['TO_NAME']));
+						$this->LAST_ERROR = GetMessage('CRM_QUOTE_CREATION_CANCELED_MSGVER_1', ['#NAME#' => $arEvent['TO_NAME']]);
 						$arFields['RESULT_MESSAGE'] = &$this->LAST_ERROR;
 					}
 					return false;
@@ -366,7 +370,7 @@ class CAllCrmQuote
 
 			if (!self::SetQuoteNumber($ID))
 			{
-				$this->LAST_ERROR = GetMessage('CRM_ERROR_QUOTE_NUMBER_IS_NOT_SET');
+				$this->LAST_ERROR = GetMessage('CRM_ERROR_QUOTE_NUMBER_IS_NOT_SET_MSGVER_1');
 				$arFields['RESULT_MESSAGE'] = &$this->LAST_ERROR;
 				return false;
 			}
@@ -424,7 +428,7 @@ class CAllCrmQuote
 			Bitrix\Crm\Search\SearchContentBuilderFactory::create(CCrmOwnerType::Quote)->build($ID);
 			//endregion
 
-			self::getContentTypeIdAdapter()->performAdd($arFields, $options);
+			self::getCommentsAdapter()->performAdd($arFields, $options);
 
 			//region Rise AfterAdd event
 			foreach (GetModuleEvents('crm', 'OnAfterCrmQuoteAdd', true) as $arEvent)
@@ -451,11 +455,11 @@ class CAllCrmQuote
 		{
 			/*if (strlen($arFields['QUOTE_NUMBER']) <= 0)
 			{
-				$this->LAST_ERROR .= GetMessage('CRM_ERROR_FIELD_IS_MISSING', array('%FIELD_NAME%' => GetMessage('CRM_QUOTE_FIELD_QUOTE_NUMBER')))."<br />\n";
+				$this->LAST_ERROR .= GetMessage('CRM_ERROR_FIELD_IS_MISSING', array('%FIELD_NAME%' => GetMessage('CRM_QUOTE_FIELD_QUOTE_NUMBER_MSGVER_1')))."<br />\n";
 			}
 			else*/ if (mb_strlen($arFields['QUOTE_NUMBER']) > 100)
 			{
-				$this->LAST_ERROR .= GetMessage('CRM_ERROR_FIELD_INCORRECT', array('%FIELD_NAME%' => GetMessage('CRM_QUOTE_FIELD_QUOTE_NUMBER')))."<br />\n";
+				$this->LAST_ERROR .= GetMessage('CRM_ERROR_FIELD_INCORRECT', array('%FIELD_NAME%' => GetMessage('CRM_QUOTE_FIELD_QUOTE_NUMBER_MSGVER_1')))."<br />\n";
 			}
 			else
 			{
@@ -464,7 +468,7 @@ class CAllCrmQuote
 				{
 					if (is_array($arRes) && $arRes["ID"] != $ID)
 					{
-						$this->LAST_ERROR .= GetMessage('CRM_ERROR_QUOTE_NUMBER_EXISTS')."<br />\n";
+						$this->LAST_ERROR .= GetMessage('CRM_ERROR_QUOTE_NUMBER_EXISTS_MSGVER_1')."<br />\n";
 					}
 				}
 				unset($arRes, $dbres);
@@ -503,7 +507,7 @@ class CAllCrmQuote
 		foreach (self::$clientFields as $fieldName)
 		{
 			if (isset($arFields[$fieldName]) && mb_strlen($arFields[$fieldName]) > 255)
-				$this->LAST_ERROR .= GetMessage('CRM_ERROR_FIELD_INCORRECT', array('%FIELD_NAME%' => GetMessage('CRM_QUOTE_FIELD_'.$fieldName.($fieldName === 'MYCOMPANY_ID' ? '1' : ''))))."<br />\n";
+				$this->LAST_ERROR .= GetMessage('CRM_ERROR_FIELD_INCORRECT', ['%FIELD_NAME%' => self::GetFieldCaption($fieldName)])."<br />\n";
 		}
 		unset($fieldName);
 
@@ -658,9 +662,11 @@ class CAllCrmQuote
 		if (!$this->bCheckPermission)
 			$arFilterTmp['CHECK_PERMISSIONS'] = 'N';
 
-		$obRes = self::GetList(array(), $arFilterTmp);
+		$obRes = self::GetList([], $arFilterTmp, false, false, ['*', 'UF_*']);
 		if (!($arRow = $obRes->Fetch()))
 			return false;
+
+		$currentFields = $arRow;
 
 		$iUserId = CCrmSecurityHelper::GetCurrentUserID();
 
@@ -892,6 +898,10 @@ class CAllCrmQuote
 			}
 
 			self::getLastActivityAdapter()->performUpdate((int)$ID, $arFields, $options);
+			self::getCommentsAdapter()
+				->setPreviousFields((int)$ID, $arRow)
+				->normalizeFields((int)$ID, $arFields)
+			;
 
 			foreach (GetModuleEvents('crm', 'OnBeforeCrmQuoteUpdate', true) as $arEvent)
 			{
@@ -903,7 +913,7 @@ class CAllCrmQuote
 					}
 					else
 					{
-						$this->LAST_ERROR = GetMessage('CRM_QUOTE_UPDATE_CANCELED', array('#NAME#' => $arEvent['TO_NAME']));
+						$this->LAST_ERROR = GetMessage('CRM_QUOTE_UPDATE_CANCELED_MSGVER_1', ['#NAME#' => $arEvent['TO_NAME']]);
 						$arFields['RESULT_MESSAGE'] = &$this->LAST_ERROR;
 					}
 					return false;
@@ -1010,7 +1020,7 @@ class CAllCrmQuote
 			// Responsible user sync
 			//CCrmActivity::Synchronize(CCrmOwnerType::Quote, $ID);
 
-			self::getContentTypeIdAdapter()
+			self::getCommentsAdapter()
 				->setPreviousFields((int)$ID, $arRow)
 				->performUpdate((int)$ID, $arFields, $options)
 			;
@@ -1019,6 +1029,10 @@ class CAllCrmQuote
 			{
 				foreach (GetModuleEvents('crm', 'OnAfterCrmQuoteUpdate', true) as $arEvent)
 					ExecuteModuleEventEx($arEvent, array(&$arFields));
+
+				$scope = \Bitrix\Crm\Service\Container::getInstance()->getContext()->getScope();
+				$filler = new ValueFiller(CCrmOwnerType::Quote, $ID, $scope);
+				$filler->fill($currentFields, $arFields);
 			}
 		}
 		return $bResult;
@@ -1100,7 +1114,7 @@ class CAllCrmQuote
 				'DELETE FROM '.CCrmQuote::ELEMENT_TABLE_NAME.' WHERE QUOTE_ID = '.$ID,
 				false, 'File: '.__FILE__.'<br/>Line: '.__LINE__))
 			{
-				$APPLICATION->throwException(GetMessage('CRM_QUOTE_ERR_DELETE_STORAGE_ELEMENTS_QUERY'));
+				$APPLICATION->throwException(GetMessage('CRM_QUOTE_ERR_DELETE_STORAGE_ELEMENTS_QUERY_MSGVER_1'));
 				return false;
 			}
 		}
@@ -1130,7 +1144,7 @@ class CAllCrmQuote
 			/*CCrmActivity::DeleteByOwner(CCrmOwnerType::Quote, $ID);*/
 			\Bitrix\Crm\Requisite\EntityLink::unregister(CCrmOwnerType::Quote, $ID);
 
-			self::getContentTypeIdAdapter()->performDelete((int)$ID, $options);
+			self::getCommentsAdapter()->performDelete((int)$ID, $options);
 
 			// delete utm fields
 			UtmTable::deleteEntityUtm(CCrmOwnerType::Quote, $ID);
@@ -1151,6 +1165,12 @@ class CAllCrmQuote
 			while ($arEvent = $afterEvents->Fetch())
 			{
 				ExecuteModuleEventEx($arEvent, array($ID));
+			}
+
+			$fieldsContextEntity = EntityFactory::getInstance()->getEntity(CCrmOwnerType::Quote);
+			if ($fieldsContextEntity)
+			{
+				$fieldsContextEntity::deleteByItemId($ID);
 			}
 		}
 		return true;
@@ -1177,18 +1197,7 @@ class CAllCrmQuote
 				$maxLastID = 0;
 				$strSql = '';
 
-				switch($DB->type)
-				{
-					case "MYSQL":
-						$strSql = "SELECT ID, QUOTE_NUMBER FROM b_crm_quote WHERE QUOTE_NUMBER IS NOT NULL ORDER BY ID DESC LIMIT 1";
-						break;
-					case "ORACLE":
-						$strSql = "SELECT ID, QUOTE_NUMBER FROM b_crm_quote WHERE QUOTE_NUMBER IS NOT NULL AND ROWNUM <= 1 ORDER BY ID DESC";
-						break;
-					case "MSSQL":
-						$strSql = "SELECT TOP 1 ID, QUOTE_NUMBER FROM b_crm_quote WHERE QUOTE_NUMBER IS NOT NULL ORDER BY ID DESC";
-						break;
-				}
+				$strSql = "SELECT ID, QUOTE_NUMBER FROM b_crm_quote WHERE QUOTE_NUMBER IS NOT NULL ORDER BY ID DESC LIMIT 1";
 
 				$dbres = $DB->Query($strSql, true);
 				if ($arRes = $dbres->GetNext())
@@ -1219,20 +1228,8 @@ class CAllCrmQuote
 				if ($arRes = $dbres->GetNext())
 				{
 					$userID = intval($arRes["ASSIGNED_BY_ID"]);
-					$strSql = '';
 
-					switch($DB->type)
-					{
-						case "MYSQL":
-							$strSql = "SELECT MAX(CAST(SUBSTRING(QUOTE_NUMBER, LENGTH('".$userID."_') + 1) as UNSIGNED)) as NUM_ID FROM b_crm_quote WHERE QUOTE_NUMBER LIKE '".$userID."\_%'";
-							break;
-						case "ORACLE":
-							$strSql = "SELECT MAX(CAST(SUBSTR(QUOTE_NUMBER, LENGTH('".$userID."_') + 1) as NUMBER)) as NUM_ID FROM b_crm_quote WHERE QUOTE_NUMBER LIKE '".$userID."_%'";
-							break;
-						case "MSSQL":
-							$strSql = "SELECT MAX(CAST(SUBSTRING(QUOTE_NUMBER, LEN('".$userID."_') + 1, LEN(QUOTE_NUMBER)) as INT)) as NUM_ID FROM b_crm_quote WHERE QUOTE_NUMBER LIKE '".$userID."_%'";
-							break;
-					}
+					$strSql = "SELECT MAX(" . $DB->toNumber("SUBSTRING(QUOTE_NUMBER, LENGTH('".$userID."_') + 1)") . ") as NUM_ID FROM b_crm_quote WHERE QUOTE_NUMBER LIKE '".$userID."\_%'";
 
 					$dbres = $DB->Query($strSql, true);
 					if ($arRes = $dbres->GetNext())
@@ -1266,19 +1263,7 @@ class CAllCrmQuote
 						break;
 				}
 
-				$strSql = '';
-				switch($DB->type)
-				{
-					case "MYSQL":
-						$strSql = "SELECT MAX(CAST(SUBSTRING(QUOTE_NUMBER, LENGTH('".$date." / ') + 1) as UNSIGNED)) as NUM_ID FROM b_crm_quote WHERE QUOTE_NUMBER LIKE '".$date." / %'";
-						break;
-					case "ORACLE":
-						$strSql = "SELECT MAX(CAST(SUBSTR(QUOTE_NUMBER, LENGTH('".$date." / ') + 1) as NUMBER)) as NUM_ID FROM b_crm_quote WHERE QUOTE_NUMBER LIKE '".$date." / %'";
-						break;
-					case "MSSQL":
-						$strSql = "SELECT MAX(CAST(SUBSTRING(QUOTE_NUMBER, LEN('".$date." / ') + 1, LEN(QUOTE_NUMBER)) as INT)) as NUM_ID FROM b_crm_quote WHERE QUOTE_NUMBER LIKE '".$date." / %'";
-						break;
-				}
+				$strSql = "SELECT MAX(" . $DB->ToNumber("SUBSTRING(QUOTE_NUMBER, LENGTH('".$date." / ') + 1)") . ") as NUM_ID FROM b_crm_quote WHERE QUOTE_NUMBER LIKE '".$date." / %'";
 
 				$dbres = $DB->Query($strSql, true);
 				if ($arRes = $dbres->GetNext())
@@ -1382,7 +1367,7 @@ class CAllCrmQuote
 				$maxLastIdIsSet = false;
 				for ($i = 0; $i < 10; $i++)
 				{
-					$sql = 'SELECT MAX(CAST(QUOTE_NUMBER AS UNSIGNED)) AS LAST_NUMBER FROM b_crm_quote';
+					$sql = 'SELECT MAX(' . $DB->ToNumber('QUOTE_NUMBER') . ') AS LAST_NUMBER FROM b_crm_quote';
 					$resLastId = $DB->Query($sql, true);
 					if ($row = $resLastId->fetch())
 					{
@@ -1695,7 +1680,7 @@ class CAllCrmQuote
 				$arStatus = CCrmStatus::GetStatusList('QUOTE_STATUS');
 				$arMsg[] = Array(
 					'ENTITY_FIELD' => 'STATUS_ID',
-					'EVENT_NAME' => GetMessage('CRM_QUOTE_FIELD_COMPARE_STATUS_ID'),
+					'EVENT_NAME' => GetMessage('CRM_QUOTE_FIELD_COMPARE_STATUS_ID_MSGVER_1'),
 					'EVENT_TEXT_1' => htmlspecialcharsbx(CrmCompareFieldsList($arStatus, $origStatusId)),
 					'EVENT_TEXT_2' => htmlspecialcharsbx(CrmCompareFieldsList($arStatus, $modifStatusId))
 				);
@@ -1711,8 +1696,8 @@ class CAllCrmQuote
 				$arMsg[] = Array(
 					'ENTITY_FIELD' => 'COMMENTS',
 					'EVENT_NAME' => GetMessage('CRM_QUOTE_FIELD_COMPARE_COMMENTS'),
-					'EVENT_TEXT_1' => !empty($origComments) ? $origComments : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY'),
-					'EVENT_TEXT_2' => !empty($modifComments) ? $modifComments : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY')
+					'EVENT_TEXT_1' => !empty($origComments) ? TextHelper::convertBbCodeToHtml($origComments) : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY'),
+					'EVENT_TEXT_2' => !empty($modifComments) ? TextHelper::convertBbCodeToHtml($modifComments) : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY')
 				);
 			unset($origComments, $modifComments);
 		}
@@ -1725,8 +1710,8 @@ class CAllCrmQuote
 				$arMsg[] = Array(
 					'ENTITY_FIELD' => 'CONTENT',
 					'EVENT_NAME' => GetMessage('CRM_QUOTE_FIELD_COMPARE_CONTENT'),
-					'EVENT_TEXT_1' => !empty($origContent)? $origContent : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY'),
-					'EVENT_TEXT_2' => !empty($modifContent)? $modifContent : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY')
+					'EVENT_TEXT_1' => !empty($origContent)? TextHelper::convertBbCodeToHtml($origContent) : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY'),
+					'EVENT_TEXT_2' => !empty($modifContent)? TextHelper::convertBbCodeToHtml($modifContent) : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY')
 				);
 			unset($origContent, $modifContent);
 		}
@@ -1739,8 +1724,8 @@ class CAllCrmQuote
 				$arMsg[] = Array(
 					'ENTITY_FIELD' => 'TERMS',
 					'EVENT_NAME' => GetMessage('CRM_QUOTE_FIELD_COMPARE_TERMS'),
-					'EVENT_TEXT_1' => !empty($origTerms)? $origTerms : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY'),
-					'EVENT_TEXT_2' => !empty($modifTerms)? $modifTerms : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY'),
+					'EVENT_TEXT_1' => !empty($origTerms)? TextHelper::convertBbCodeToHtml($origTerms) : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY'),
+					'EVENT_TEXT_2' => !empty($modifTerms)? TextHelper::convertBbCodeToHtml($modifTerms) : GetMessage('CRM_QUOTE_FIELD_COMPARE_EMPTY'),
 				);
 			unset($origTerms, $modifTerms);
 		}
@@ -1952,6 +1937,19 @@ class CAllCrmQuote
 	public static function GetFieldCaption($fieldName)
 	{
 		$result = GetMessage("CRM_QUOTE_FIELD_{$fieldName}");
+
+		if ($fieldName === 'MYCOMPANY_ID')
+		{
+			$result = GetMessage("CRM_QUOTE_FIELD_{$fieldName}1");
+		}
+		if (!(is_string($result) && $result !== ''))
+		{
+			$result = GetMessage("CRM_QUOTE_FIELD_{$fieldName}_MSGVER_1");
+		}
+		if (!(is_string($result) && $result !== ''))
+		{
+			$result = GetMessage("CRM_QUOTE_FIELD_{$fieldName}_MSGVER_2");
+		}
 
 		if (
 			!(is_string($result) && $result !== '')
@@ -2529,7 +2527,7 @@ class CAllCrmQuote
 			{
 				$arPerms = $CCrmRole->GetRolePerms($arRole['ID']);
 
-				if(!isset($arPerms['QUOTE']) && is_array($arPerms['DEAL']))
+				if(!isset($arPerms['QUOTE']) && is_array($arPerms['DEAL'] ?? null))
 				{
 					foreach ($arPerms['DEAL'] as $key => $value)
 					{
@@ -3137,7 +3135,7 @@ class CAllCrmQuote
 		$sNumber = 'QUOTE_NUMBER';
 		$arSearchableFields = array(
 			'DATE_CREATE' => GetMessage('CRM_QUOTE_SEARCH_FIELD_DATE_CREATE'),
-			'STATUS_ID' => GetMessage('CRM_QUOTE_SEARCH_FIELD_STATUS_ID'),
+			'STATUS_ID' => GetMessage('CRM_QUOTE_SEARCH_FIELD_STATUS_ID_MSGVER_1'),
 			'BEGINDATE' => GetMessage('CRM_QUOTE_SEARCH_FIELD_BEGINDATE'),
 			'CLOSEDATE' => GetMessage('CRM_QUOTE_SEARCH_FIELD_CLOSEDATE'),
 			'OPPORTUNITY' => GetMessage('CRM_QUOTE_SEARCH_FIELD_OPPORTUNITY'),
@@ -3514,7 +3512,7 @@ class CAllCrmQuote
 		$ID = intval($ID);
 		if($ID <= 0)
 		{
-			$APPLICATION->throwException(GetMessage('CRM_QUOTE_ERR_INCORRECT_QUOTE_ID'));
+			$APPLICATION->throwException(GetMessage('CRM_QUOTE_ERR_INCORRECT_QUOTE_ID_MSGVER_1'));
 			return false;
 		}
 
@@ -3523,7 +3521,7 @@ class CAllCrmQuote
 		$arRes = $dbRes->Fetch();
 		if(!is_array($arRes))
 		{
-			$APPLICATION->throwException(GetMessage('CRM_QUOTE_ERR_QUOTE_NOT_FOUND', array('#QUOTE_ID#' => $ID)));
+			$APPLICATION->throwException(GetMessage('CRM_QUOTE_ERR_QUOTE_NOT_FOUND_MSGVER_1', ['#QUOTE_ID#' => $ID]));
 			return false;
 		}
 
@@ -3592,6 +3590,15 @@ class CAllCrmQuote
 		}
 
 		CCrmQuote::RewriteClientFields($arQuote, false);
+
+		if (isset($arQuote['TERMS']) && !empty($arQuote['TERMS']))
+		{
+			$arQuote['TERMS'] = TextHelper::convertBbCodeToHtml($arQuote['TERMS']);
+		}
+		if (isset($arQuote['CONTENT']) && !empty($arQuote['CONTENT']))
+		{
+			$arQuote['CONTENT'] = TextHelper::convertBbCodeToHtml($arQuote['CONTENT']);
+		}
 
 		$fieldMap = self::GetSaleOrderMap();
 		$order = array();
@@ -3677,7 +3684,7 @@ class CAllCrmQuote
 
 		if (CModule::IncludeModule('iblock'))
 		{
-			if ($calculatedOrder['BASKET_ITEMS'])
+			if (isset($calculatedOrder['BASKET_ITEMS']) && $calculatedOrder['BASKET_ITEMS'])
 			{
 				$productProps = array();
 				$productIds = array();
@@ -3816,7 +3823,7 @@ class CAllCrmQuote
 										$requisite->getRqListFieldValueTitle(
 											$fieldName,
 											$presetCountryId,
-											$fieldValue
+											(string)$fieldValue
 										)
 									;
 								}
@@ -4121,7 +4128,7 @@ class CAllCrmQuote
 										$requisite->getRqListFieldValueTitle(
 											$fieldName,
 											$mcPresetCountryId,
-											$fieldValue
+											(string)$fieldValue
 										)
 									;
 								}
@@ -4272,7 +4279,7 @@ class CAllCrmQuote
 		return array(
 			'ORDER' => $order,
 			'PROPERTIES' => $properties,
-			'CART_ITEMS' => $calculatedOrder['BASKET_ITEMS'],
+			'CART_ITEMS' => $calculatedOrder['BASKET_ITEMS'] ?? null,
 			'TAX_LIST' => $taxList,
 			'REQUISITE' => $requisiteValues,
 			'BANK_DETAIL' => $bankDetailValues,
@@ -4587,8 +4594,8 @@ class CAllCrmQuote
 
 		$pdfContent = include($actionFilePath);
 
-		$_REQUEST['pdf'] = $origRequest['pdf'];
-		$_REQUEST['GET_CONTENT'] = $origRequest['GET_CONTENT'];
+		$_REQUEST['pdf'] = $origRequest['pdf'] ?? false;
+		$_REQUEST['GET_CONTENT'] = $origRequest['GET_CONTENT'] ?? 'N';
 
 		$fileName = "quote_{$quote_id}.pdf";
 		$fileData = array(

@@ -8,6 +8,8 @@ use Bitrix\Main;
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Main\Type\DateTime;
 use Bitrix\Main\UI\PageNavigation;
+use Bitrix\Tasks\Integration\Intranet\Settings;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Util\Error\Collection;
 use Bitrix\Tasks\Util\Restriction\Bitrix24Restriction\Limit\TaskLimit;
 use Bitrix\Tasks\Util\User;
@@ -78,6 +80,18 @@ class TasksReportEffectiveInprogressComponent extends TasksReportEffectiveDetail
 		return $errors->checkNoFatals();
 	}
 
+	protected static function checkIfToolAvailable(array &$arParams, array &$arResult, Collection $errors, array $auxParams): void
+	{
+		parent::checkIfToolAvailable($arParams, $arResult, $errors, $auxParams);
+
+		if (!$arResult['IS_TOOL_AVAILABLE'])
+		{
+			return;
+		}
+
+		$arResult['IS_TOOL_AVAILABLE'] = (new Settings())->isToolAvailable(Settings::TOOLS['effective']);
+	}
+
 	/**
 	 * @throws Main\Db\SqlQueryException
 	 * @throws Main\ObjectException
@@ -122,7 +136,7 @@ class TasksReportEffectiveInprogressComponent extends TasksReportEffectiveDetail
 		$userId = (int)$this->arParams['USER_ID'];
 		$groupId = (int)(array_key_exists('GROUP_ID', $filterData) ? $filterData['GROUP_ID'] : 0);
 		$groupCondition = ($groupId > 0 ? "AND T.GROUP_ID = {$groupId}" : '');
-		$deferredStatus = CTasks::STATE_DEFERRED;
+		$deferredStatus = Status::DEFERRED;
 
 		$dateTo = (new Datetime($filterData['DATETIME_to']))->format('Y-m-d H:i:s');
 		$dateFrom = (new Datetime($filterData['DATETIME_from']))->format('Y-m-d H:i:s');

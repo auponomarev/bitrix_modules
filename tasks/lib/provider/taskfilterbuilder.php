@@ -8,6 +8,7 @@
 
 namespace Bitrix\Tasks\Provider;
 
+use Bitrix\Main\ArgumentException;
 use Bitrix\Main\DB\SqlExpression;
 use Bitrix\Main\Entity\DateField;
 use Bitrix\Main\ObjectException;
@@ -27,9 +28,11 @@ use Bitrix\Tasks\Internals\Counter\CounterTable;
 use Bitrix\Tasks\Internals\Counter\Deadline;
 use Bitrix\Tasks\Internals\Task\LabelTable;
 use Bitrix\Tasks\Internals\Task\MemberTable;
+use Bitrix\Tasks\Internals\Task\MetaStatus;
 use Bitrix\Tasks\Internals\Task\RelatedTable;
 use Bitrix\Tasks\Internals\Task\ScenarioTable;
 use Bitrix\Tasks\Internals\Task\SearchIndexTable;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Internals\Task\TaskTagTable;
 use Bitrix\Tasks\Internals\Task\UserOptionTable;
 use Bitrix\Tasks\Internals\TaskTable;
@@ -69,29 +72,15 @@ class TaskFilterBuilder
 	private const CAST_FULLTEXT = 'fulltext';
 	private const CAST_STRING_EQ = 'string_equal';
 	private const CAST_DATE = 'date';
+	private const CAST_DATE_STRING = 'date_string';
 	private const CAST_LEFT_EXIST = 'left_existence';
 
-	/**
-	 * @var TaskQuery $query
-	 */
-	private $query;
-
-	/**
-	 * @var int $userId
-	 */
-	private $userId;
-
-	/**
-	 * @var int $behalfUserId
-	 */
-	private $behalfUserId;
-
-	/**
-	 * @var array
-	 */
-	private $runtimeFields = [];
-
+	private TaskQuery $query;
 	private TasksUFManager $ufManager;
+
+	private int $userId;
+	private int $behalfUserId;
+	private array $runtimeFields = [];
 
 	public function __construct(TaskQuery $query)
 	{
@@ -109,8 +98,7 @@ class TaskFilterBuilder
 	 */
 	public function build(): ?ConditionTree
 	{
-		$where = $this->query->getWhere();
-		$filter = $this->prepareFilter($where);
+		$filter = $this->query->getWhere();
 		$conditionTree = $this
 			->optimizeFilter($filter)
 			->translateFilter($filter);
@@ -135,13 +123,18 @@ class TaskFilterBuilder
 	 */
 	private function translateFilter(array $filter): ?ConditionTree
 	{
+		$connection = \Bitrix\Main\Application::getConnection();
+		$helper = $connection->getSqlHelper();
+
+		$filterFields = $this->getFilteredFields($filter);
+
 		if (
 			array_key_exists('ONLY_ROOT_TASKS', $filter)
 			&& $filter['ONLY_ROOT_TASKS'] === 'Y'
 			&&
 			(
-				array_key_exists('FULL_SEARCH_INDEX', $filter)
-				|| array_key_exists('COMMENT_SEARCH_INDEX', $filter)
+				in_array('FULL_SEARCH_INDEX', $filterFields)
+				|| in_array('COMMENT_SEARCH_INDEX', $filterFields)
 			)
 		)
 		{
@@ -160,6 +153,7 @@ class TaskFilterBuilder
 
 		$filterCount = count($filter);
 		$logicOr = false;
+		$dateFiltersToWrap = [];
 
 		if (isset($filter['::LOGIC']))
 		{
@@ -195,6 +189,10 @@ class TaskFilterBuilder
 
 			if ($this->isSubFilter($key))
 			{
+				if (!is_array($val))
+				{
+					throw new ArgumentException('Invalid filter value: ' . var_export($val, true));
+				}
 				$subFilter = $this->translateFilter($val);
 				$subFilter && $conditionTree->where($subFilter);
 				continue;
@@ -224,7 +222,10 @@ class TaskFilterBuilder
 			switch ($field)
 			{
 				case "META::ID_OR_NAME":
-					if (empty($val))
+					if (
+						empty($val)
+						|| !is_scalar($val)
+					)
 					{
 						break;
 					}
@@ -312,6 +313,10 @@ class TaskFilterBuilder
 
 				case 'GUID':
 				case 'TITLE':
+					if (!is_scalar($val))
+					{
+						break;
+					}
 					if ($this->query->needTitleEscape())
 					{
 						$val = $this->escapeStencilCharacters($val);
@@ -440,7 +445,7 @@ class TaskFilterBuilder
 						$scrumFilter = Query::filter()
 							->logic('and')
 							->whereNotNull(TaskQueryBuilder::ALIAS_SCRUM_ITEM.'.ID')
-							->where('STATUS', \CTasks::STATE_COMPLETED);
+							->where('STATUS', Status::COMPLETED);
 
 						if ($subFilter)
 						{
@@ -453,11 +458,11 @@ class TaskFilterBuilder
 						{
 							$subFilter = $scrumFilter;
 						}
+						$this->registerRuntimeField(TaskQueryBuilder::ALIAS_SCRUM_ITEM);
 					}
 					if ($subFilter)
 					{
 						$conditionTree->where($subFilter);
-						$this->registerRuntimeField(TaskQueryBuilder::ALIAS_SCRUM_ITEM);
 					}
 					break;
 
@@ -469,7 +474,7 @@ class TaskFilterBuilder
 								WHEN
 									%1$s IS NULL
 									AND
-									(%2$s = '.\CTasks::STATE_NEW.' OR %2$s = '.\CTasks::STATE_PENDING.')
+									(%2$s = '.Status::NEW.' OR %2$s = '.Status::PENDING.')
 								THEN
 									0
 								ELSE
@@ -490,12 +495,12 @@ class TaskFilterBuilder
 					$subFilter = Query::filter()
 						->logic('and')
 						->where('DEADLINE', '<', new SqlExpression('NOW()'))
-						->whereNot('STATUS', \CTasks::STATE_SUPPOSEDLY_COMPLETED)
-						->whereNot('STATUS', \CTasks::STATE_COMPLETED)
+						->whereNot('STATUS', Status::SUPPOSEDLY_COMPLETED)
+						->whereNot('STATUS', Status::COMPLETED)
 						->where(
 							Query::filter()
 								->logic('or')
-								->whereNot('STATUS', \CTasks::STATE_DECLINED)
+								->whereNot('STATUS', Status::DECLINED)
 								->whereNot('RESPONSIBLE_ID', $this->behalfUserId)
 						);
 
@@ -519,8 +524,8 @@ class TaskFilterBuilder
 						->where(
 							Query::filter()
 								->logic('or')
-								->where('STATUS', \CTasks::STATE_NEW)
-								->where('STATUS', \CTasks::STATE_PENDING)
+								->where('STATUS', Status::NEW)
+								->where('STATUS', Status::PENDING)
 						);
 
 					if ($operation === self::OPERATION_NOT)
@@ -538,35 +543,35 @@ class TaskFilterBuilder
 						"STATUS_".mt_rand(1000, 9999),
 						'
 							CASE WHEN 
-								%1$s < DATE_ADD(NOW(), INTERVAL '.Deadline::getDeadlineTimeLimit().' SECOND)
+								%1$s < ' . $helper->addSecondsToDateTime(Deadline::getDeadlineTimeLimit()) . '
 								AND %1$s >= NOW()
-								AND %2$s != '.\CTasks::STATE_SUPPOSEDLY_COMPLETED.'
-								AND %2$s != '.\CTasks::STATE_COMPLETED.'
+								AND %2$s != '.Status::SUPPOSEDLY_COMPLETED.'
+								AND %2$s != '.Status::COMPLETED.'
 								AND (
-									%2$s != '.\CTasks::STATE_DECLINED.'
+									%2$s != '.Status::DECLINED.'
 									OR %3$s != '.$this->behalfUserId.'
 								)
 							THEN
-								'.\CTasks::METASTATE_EXPIRED_SOON.'
+								'.MetaStatus::EXPIRED_SOON.'
 							WHEN
 								%1$s < NOW() 
-								AND %2$s != '.\CTasks::STATE_SUPPOSEDLY_COMPLETED.'
-								AND %2$s != '.\CTasks::STATE_COMPLETED.'
+								AND %2$s != '.Status::SUPPOSEDLY_COMPLETED.'
+								AND %2$s != '.Status::COMPLETED.'
 								AND (
-									%2$s != '.\CTasks::STATE_DECLINED.'
+									%2$s != '.Status::DECLINED.'
 									OR %3$s != '.$this->behalfUserId.'
 								)
 							THEN
-								'.\CTasks::METASTATE_EXPIRED.'
+								'.MetaStatus::EXPIRED.'
 							WHEN
 								%5$s IS NULL
 								AND %4$s != '.$this->behalfUserId.'
 								AND (
-									%2$s = '.\CTasks::STATE_NEW.'
-									OR %2$s = '.\CTasks::STATE_PENDING.'
+									%2$s = '.Status::NEW.'
+									OR %2$s = '.Status::PENDING.'
 								)
 							THEN
-								'.\CTasks::METASTATE_VIRGIN_NEW.'
+								'.MetaStatus::UNSEEN.'
 							ELSE
 								%2$s
 							END
@@ -589,6 +594,7 @@ class TaskFilterBuilder
 				case 'ALLOW_TIME_TRACKING':
 				case 'ALLOW_CHANGE_DEADLINE':
 				case 'MATCH_WORK_TIME':
+				case 'IS_REGULAR':
 					$subFilter = $this->createSubfilter($field, $val, $operation, self::CAST_STRING_EQ);
 					if ($subFilter)
 					{
@@ -611,22 +617,8 @@ class TaskFilterBuilder
 
 				case "CHANGED_DATE":
 				case "ACTIVITY_DATE":
-					$field = new ExpressionField(
-						$field."_".mt_rand(1000, 9999),
-						'
-							CASE 
-							WHEN %1$s IS NULL
-							THEN %2$s
-							ELSE %1$s 
-							END
-						',
-						[$field, "CREATED_DATE"]
-					);
-					$subFilter = $this->createSubfilter($field, $val, $operation, self::CAST_DATE);
-					if ($subFilter)
-					{
-						$conditionTree->where($subFilter);
-					}
+					$dateFiltersToWrap[$field][] = $this->createSubfilter($field, $val, $operation, self::CAST_DATE);
+					$dateFiltersToWrap['CREATED_DATE'][] = $this->createSubfilter('CREATED_DATE', $val, $operation, self::CAST_DATE);
 					break;
 
 				case "ACCOMPLICE":
@@ -1027,10 +1019,7 @@ class TaskFilterBuilder
 					break;
 
 				case 'WITH_COMMENT_COUNTERS':
-					$types = array_merge(
-						array_values(CounterDictionary::MAP_COMMENTS),
-						array_values(CounterDictionary::MAP_MUTED_COMMENTS)
-					);
+					$types = array_values(CounterDictionary::MAP_COMMENTS);
 					$conditionTree->where(
 						Query::filter()
 							->whereNotNull(TaskQueryBuilder::ALIAS_TASK_COUNTERS.'.ID')
@@ -1204,6 +1193,10 @@ class TaskFilterBuilder
 					if (preg_match('/^UF_/', $field))
 					{
 						$conditions = $this->translateUfFilter($field, $operation, $val, $this->query->needUfEscape());
+						if (empty($conditions))
+						{
+							break;
+						}
 						$subFilter = Query::filter();
 						if (count($conditions) > 1)
 						{
@@ -1216,6 +1209,11 @@ class TaskFilterBuilder
 						$conditionTree->where($subFilter);
 					}
 			}
+		}
+
+		if (!empty($dateFiltersToWrap))
+		{
+			$conditionTree->where($this->wrapDateFilters($dateFiltersToWrap));
 		}
 
 		if (!$conditionTree->hasConditions())
@@ -1464,9 +1462,16 @@ class TaskFilterBuilder
 								->whereNotLike($field, '%'. $value .'%')
 						);
 					}
+					elseif (
+						$condition === self::OPERATION_EQUAL
+						&& $operation === self::OPERATION_EQUAL
+					)
+					{
+						$filter->where($field, $value);
+					}
 					elseif ($condition === self::OPERATION_EQUAL)
 					{
-						$filter->whereLike($field, '%'. $value .'%');
+						$filter->whereLike($field, '%' . $value . '%');
 					}
 					elseif ($operation === self::OPERATION_NOT)
 					{
@@ -1581,6 +1586,7 @@ class TaskFilterBuilder
 					break;
 
 				case self::CAST_DATE:
+				case self::CAST_DATE_STRING:
 					if (empty($value))
 					{
 						($operation === self::OPERATION_NOT)
@@ -1593,9 +1599,12 @@ class TaskFilterBuilder
 					if (
 						is_string($field)
 						&& array_key_exists($field, $entityFields)
-						&& (is_a($entityFields[$field], DateTimeField::class)
+						&&
+						(
+							is_a($entityFields[$field], DateTimeField::class)
 							|| is_a($entityFields[$field], \Bitrix\Main\ORM\Fields\DatetimeField::class)
-						) && is_string($value)
+						)
+						&& is_string($value)
 					)
 					{
 						$value = DateTime::createFromUserTime($value);
@@ -1612,6 +1621,14 @@ class TaskFilterBuilder
 					elseif (is_string($value))
 					{
 						$value = DateTime::createFromUserTime($value)->format('Y-m-d H:i:s');
+					}
+
+					if (
+						$cast === self::CAST_DATE_STRING
+						&& $value instanceof \Bitrix\Tasks\Util\Type\DateTime
+					)
+					{
+						$value = $value->format('Y-m-d H:i:s');
 					}
 
 					$subFilter = Query::filter()
@@ -1725,6 +1742,11 @@ class TaskFilterBuilder
 			{
 				$field = mb_substr($key, mb_strlen($operation));
 			}
+			else
+			{
+				$field = $key;
+			}
+
 			if (!empty($field))
 			{
 				$filteredFields[] = $field;
@@ -2255,46 +2277,65 @@ class TaskFilterBuilder
 	}
 
 	/**
-	 * @param string $field
-	 * @param string $operation
-	 * @param array $uf
-	 * @param bool $needEscape
-	 * @return Condition
 	 * @throws ObjectException
 	 */
-	private function translateUfFilter(string $field, string $operation, array $uf, bool $needEscape = true): array
+	private function translateUfFilter(string $field, string $operation, $fieldValues, bool $needEscape = true): array
 	{
-		$value = $uf['value'];
-		if ($uf['type'] === 'datetime')
+		$conditions = [];
+		$userField = TasksUFManager::getInstance()->get($field);
+		if (is_null($userField))
 		{
-			$value = new Date($value);
+			return $conditions;
 		}
 
-		if (is_null($value))
+		if (!is_array($fieldValues))
 		{
-			return [new Condition($field, '=', 0), new Condition($field, '=', null)];
+			$fieldValues = [$fieldValues];
 		}
 
-		if (in_array($operation, [self::OPERATION_LESS, self::OPERATION_LESS_EQ, self::OPERATION_GREAT, self::OPERATION_GREAT_EQ]))
+		foreach ($fieldValues as $value)
 		{
-			return [new Condition($field, $operation, $value)];
-		}
-
-		if ($operation === self::OPERATION_LIKE)
-		{
-			if ($needEscape)
+			if ($userField['USER_TYPE_ID'] === 'datetime')
 			{
-				$value = $this->escapeStencilCharacters($value);
+				$value = new Date($value);
 			}
-			return [new Condition($field, 'like', '%' . $value . '%')];
+
+			if (is_null($value))
+			{
+				$conditions[] = new Condition($field, '=', 0);
+				$conditions[] = new Condition($field, '=', null);
+				break;
+			}
+
+			if (in_array($operation, [self::OPERATION_LESS, self::OPERATION_LESS_EQ, self::OPERATION_GREAT, self::OPERATION_GREAT_EQ], true))
+			{
+				$conditions[] = new Condition($field, $operation, $value);
+				break;
+			}
+
+			if ($operation === self::OPERATION_LIKE)
+			{
+				if (
+					$needEscape
+					&& is_scalar($value)
+				)
+				{
+					$value = $this->escapeStencilCharacters($value);
+				}
+				$conditions[] = new Condition($field, 'like', '%' . $value . '%');
+				break;
+			}
+
+			if ($operation === self::OPERATION_NOT)
+			{
+				$conditions[] = new Condition($field, '!=', $value);
+				break;
+			}
+
+			$conditions[] = new Condition($field, '=', $value);
 		}
 
-		if ($operation === self::OPERATION_NOT)
-		{
-			return [new Condition($field, '!=', $value)];
-		}
-
-		return [new Condition($field, '=', $value)];
+		return $conditions;
 	}
 
 	/**
@@ -2322,7 +2363,7 @@ class TaskFilterBuilder
 			switch ($filterKey)
 			{
 				case 'META::ID_OR_NAME':
-					$filter[$filterKey] = '%' . $this->prepareForSprintf($field) . '%';
+					$filter[$filterKey] = '%' . $this->prepareForSprintf((string)$field) . '%';
 					break;
 
 				case '::SUBFILTER-TITLE':
@@ -2331,11 +2372,11 @@ class TaskFilterBuilder
 						$operation = $this->parseOperation($fieldKey);
 						if ($operation === self::OPERATION_LIKE)
 						{
-							$filter[$filterKey][$fieldKey] = '%' . $this->prepareForSprintf($fieldValue) . '%';
+							$filter[$filterKey][$fieldKey] = '%' . $this->prepareForSprintf((string)$fieldValue) . '%';
 						}
 						else
 						{
-							$filter[$filterKey][$fieldKey] = $this->prepareForSprintf($fieldValue);
+							$filter[$filterKey][$fieldKey] = $this->prepareForSprintf((string)$fieldValue);
 						}
 					}
 					break;
@@ -2344,13 +2385,9 @@ class TaskFilterBuilder
 					$tags = [];
 					foreach ($field as $fieldKey => $fieldValue)
 					{
-						if (!is_array($filterKey))
-						{
-							continue;
-						}
 						foreach ($fieldValue as $tag)
 						{
-							$tags[] = $this->prepareForSprintf($tag);
+							$tags[] = $this->prepareForSprintf((string)$tag);
 						}
 						$filter[$filterKey][$fieldKey] = $tags;
 					}
@@ -2359,14 +2396,27 @@ class TaskFilterBuilder
 				default:
 					if (strpos($filterKey, 'UF_') === 0)
 					{
-						if ($operation === self::OPERATION_LIKE)
+						$ufFieldValue = null;
+						if (is_string($field))
 						{
-							$filter[$operation . $filterKey] = '%' . $this->prepareForSprintf($field['value']) . '%';
-
+							$ufFieldValue = $field;
 						}
-						else
+						elseif (is_array($field))
 						{
-							$filter[$operation . $filterKey] = $this->prepareForSprintf($field['value']);
+							$ufFieldValue = (string)$field['value'];
+						}
+
+						if (is_string($ufFieldValue))
+						{
+							if ($operation === self::OPERATION_LIKE)
+							{
+								$filter[$operation . $filterKey] =
+									'%' . $this->prepareForSprintf($ufFieldValue) . '%';
+							}
+							else
+							{
+								$filter[$operation . $filterKey] = $this->prepareForSprintf($ufFieldValue);
+							}
 						}
 					}
 			}
@@ -2379,33 +2429,37 @@ class TaskFilterBuilder
 	 * @param string $value
 	 * @return string
 	 */
-	public function escapeStencilCharacters(string $value): string
+	private function escapeStencilCharacters(string $value): string
 	{
 		return str_replace(['!', '_', '%'], ['\!', '\_', '\%'], $value);
 	}
 
-	private function prepareFilter(array $filter): array
+	private function wrapDateFilters(array $dateFilters): ConditionTree
 	{
-		$userFieldsType = $this->ufManager->getFields(true);
+		$field = isset($dateFilters['CHANGED_DATE']) ? 'CHANGED_DATE' : 'ACTIVITY_DATE';
+		$fieldDateFilters = $dateFilters[$field];
+		$createdDateFilters = $dateFilters['CREATED_DATE'];
 
-		foreach ($filter as $key => $val)
+		$fieldDateFilter = Query::filter();
+		foreach ($fieldDateFilters as $filter)
 		{
-			$field = ltrim($key);
-			$operation = $this->parseOperation($field);
-			if ($operation !== self::OPERATION_DEFAULT)
-			{
-				$field = mb_substr($key, mb_strlen($operation));
-			}
-			if (strpos($field, 'UF_') === 0)
-			{
-				$filter[$key] = [
-					'value' => $val,
-					'type' => $userFieldsType[$field],
-				];
-			}
-
+			/** @var ConditionTree $filter */
+			$fieldDateFilter->where($filter);
 		}
 
-		return $filter;
+		$createdDateFilter = Query::filter()->whereNull($field);
+		foreach ($createdDateFilters as $filter)
+		{
+			/** @var ConditionTree $filter */
+			$createdDateFilter->where($filter);
+		}
+
+		$subFilter = Query::filter();
+		$subFilter
+			->logic(ConditionTree::LOGIC_OR)
+			->where($fieldDateFilter)
+			->where($createdDateFilter);
+
+		return $subFilter;
 	}
 }

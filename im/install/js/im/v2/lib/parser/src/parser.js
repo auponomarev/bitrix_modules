@@ -1,27 +1,32 @@
-import {Type, Text, Loc} from 'main.core';
+import { Type, Text, Loc } from 'main.core';
 
-import {ParserSlashCommand} from './functions/slash-command';
-import {ParserQuote} from './functions/quote';
-import {ParserImage} from './functions/image';
-import {ParserSmile} from './functions/smile';
-import {ParserUrl} from './functions/url';
-import {ParserFont} from './functions/font';
-import {ParserLines} from './functions/lines';
-import {ParserAction} from './functions/action';
-import {ParserCall} from './functions/call';
-import {ParserMention} from './functions/mention';
-import {ParserCommon} from './functions/common';
-import {ParserIcon} from './functions/icon';
-import {ParserRecursionPrevention} from './utils/recursion-prevention';
-import {ParserReplace} from './functions/replace';
-import {ParserDisk} from './functions/disk';
+import { ParserSlashCommand } from './functions/slash-command';
+import { ParserQuote } from './functions/quote';
+import { ParserImage } from './functions/image';
+import { ParserSmile } from './functions/smile';
+import { ParserUrl } from './functions/url';
+import { ParserFont } from './functions/font';
+import { ParserLines } from './functions/lines';
+import { ParserAction } from './functions/action';
+import { ParserCall } from './functions/call';
+import { ParserMention } from './functions/mention';
+import { ParserCommon } from './functions/common';
+import { ParserIcon } from './functions/icon';
+import { ParserDisk } from './functions/disk';
+import { ParserRecursionPrevention } from './utils/recursion-prevention';
+import { ParserUtils } from './utils/utils';
 
-import {getCore, getLogger} from './utils/core-proxy';
+import { getCore, getLogger } from './utils/core-proxy';
 
 import './parser.css';
 
-import type {ImModelMessage, ImModelNotification, ImModelRecentItem} from 'im.v2.model';
-import type {ParserConfig} from './types/parser-config';
+import type { ImModelMessage, ImModelNotification, ImModelRecentItem } from 'im.v2.model';
+import type { ParserConfig } from './types/parser-config';
+
+type ResultRecentConfig = {
+	files: boolean | Object[],
+	attach: boolean | string | Object[]
+};
 
 export const Parser = {
 	decodeMessage(message: ImModelMessage): string
@@ -33,7 +38,7 @@ export const Parser = {
 			attach: message.attach,
 			files: messageFiles,
 			replaces: message.replaces,
-			showIconIfEmptyText: false
+			showIconIfEmptyText: false,
 		});
 	},
 
@@ -41,7 +46,7 @@ export const Parser = {
 	{
 		return this.decode({
 			text: notification.text,
-			attach: notification.params.ATTACH ?? false,
+			attach: notification.params.attach ?? false,
 			replaces: notification.replaces,
 			showIconIfEmptyText: false,
 			showImageFromLink: false,
@@ -51,21 +56,28 @@ export const Parser = {
 
 	decodeText(text: string): string
 	{
-		return this.decode({text});
+		return this.decode({ text });
 	},
 
 	decodeHtml(text: string): string
 	{
-		return this.decode({text});
+		return this.decode({ text });
 	},
 
-	decodeSmileForLegacyCore(text: string, options: {})
+	decodeSmile(text: string, options: {}): string
 	{
-		options.ratioConfig = Object.freeze({
+		return ParserSmile.decodeSmile(text, options);
+	},
+
+	decodeSmileForLegacyCore(text: string, options: {}): string
+	{
+		const legacyConfig = { ...options };
+		legacyConfig.ratioConfig = Object.freeze({
 			Default: 1,
 			Big: 1.6,
 		});
-		return ParserSmile.decodeSmile(text, options);
+
+		return ParserSmile.decodeSmile(text, legacyConfig);
 	},
 
 	decode(config: ParserConfig): string
@@ -73,14 +85,14 @@ export const Parser = {
 		if (!Type.isPlainObject(config))
 		{
 			getLogger().error('Parser.decode: the first parameter must be object', config);
+
 			return '<b style="color:red">Parser.decode: the first parameter must be a parameter object</b';
 		}
 
-		let {text} = config;
+		let { text } = config;
 		const {
 			attach = false,
 			files = false,
-			replaces = [],
 			removeLinks = false,
 			showIconIfEmptyText = true,
 			showImageFromLink = true,
@@ -96,16 +108,17 @@ export const Parser = {
 
 			return '';
 		}
+
 		if (!text)
 		{
 			if (showIconIfEmptyText)
 			{
-				text = ParserIcon.addIconToShortText({text, attach, files});
+				text = ParserIcon.addIconToShortText({ text, attach, files });
 			}
+
 			return text.trim();
 		}
 
-		text = ParserReplace.decode(text, replaces);
 		text = Text.encode(text.trim());
 
 		text = ParserCommon.decodeNewLine(text);
@@ -117,9 +130,7 @@ export const Parser = {
 
 		text = ParserSmile.decodeSmile(text);
 		text = ParserSlashCommand.decode(text);
-		text = ParserQuote.decodeArrowQuote(text);
-		text = ParserQuote.decodeQuote(text);
-		text = ParserUrl.decode(text, {urlTarget, removeLinks});
+		text = ParserUrl.decode(text, { urlTarget, removeLinks });
 		text = ParserFont.decode(text);
 		text = ParserLines.decode(text);
 		text = ParserMention.decode(text);
@@ -131,9 +142,10 @@ export const Parser = {
 		}
 		text = ParserDisk.decode(text);
 		text = ParserAction.decodeDate(text);
-		text = ParserRecursionPrevention.cutStartTag(text);
 
-		text = ParserRecursionPrevention.recoverStartTag(text);
+		text = ParserQuote.decodeArrowQuote(text);
+		text = ParserQuote.decodeQuote(text);
+
 		text = ParserRecursionPrevention.recoverSendTag(text);
 		text = ParserAction.decodeSend(text);
 
@@ -159,7 +171,7 @@ export const Parser = {
 		return this.purify({
 			text: message.text,
 			attach: message.attach,
-			files: messageFiles
+			files: messageFiles,
 		});
 	},
 
@@ -169,26 +181,26 @@ export const Parser = {
 
 		return this.purify({
 			text: notification.text,
-			attach: notification.params.ATTACH ?? false,
-			files: messageFiles
+			attach: notification.params.attach ?? false,
+			files: messageFiles,
 		});
 	},
 
 	purifyRecent(recentMessage: ImModelRecentItem): string
 	{
-		const {files, attach} = this.prepareConfigForRecent(recentMessage);
+		const { files, attach } = this.prepareConfigForRecent(recentMessage);
 
 		return this.purify({
 			text: recentMessage.message.text,
 			attach,
 			files,
-			showPhraseMessageWasDeleted: recentMessage.message.id !== 0
+			showPhraseMessageWasDeleted: recentMessage.message.id !== 0,
 		});
 	},
 
 	purifyText(text: string): string
 	{
-		return this.purify({text});
+		return this.purify({ text });
 	},
 
 	purify(config: ParserConfig): string
@@ -196,15 +208,14 @@ export const Parser = {
 		if (!Type.isPlainObject(config))
 		{
 			getLogger().error('Parser.purify: the first parameter must be a object', config);
+
 			return 'Parser.purify: the first parameter must be a parameter object';
 		}
 
-		let {text} = config;
+		let { text } = config;
 		const {
 			attach = false,
 			files = false,
-			replaces = [],
-			showIconIfEmptyText = true,
 			showPhraseMessageWasDeleted = true,
 		} = config;
 
@@ -215,7 +226,8 @@ export const Parser = {
 
 		if (!text)
 		{
-			text = ParserIcon.addIconToShortText({text, attach, files});
+			text = ParserIcon.addIconToShortText({ text, attach, files });
+
 			return text.trim();
 		}
 
@@ -232,12 +244,12 @@ export const Parser = {
 		text = ParserFont.purify(text);
 		text = ParserLines.purify(text);
 		text = ParserCall.purify(text);
+		text = ParserUrl.purify(text);
 		text = ParserImage.purifyLink(text);
 		text = ParserImage.purifyIcon(text);
-		text = ParserUrl.purify(text);
 		text = ParserDisk.purify(text);
 		text = ParserCommon.purifyNewLine(text);
-		text = ParserIcon.addIconToShortText({text, attach, files});
+		text = ParserIcon.addIconToShortText({ text, attach, files });
 
 		if (text.length > 0)
 		{
@@ -251,10 +263,11 @@ export const Parser = {
 		return text.trim();
 	},
 
-	prepareQuote(message: ImModelMessage): string
+	prepareQuote(message: ImModelMessage, quoteText: string = ''): string
 	{
-		const {id, attach} = message;
-		let {text} = message;
+		const { id, attach } = message;
+
+		let text = quoteText === '' ? message.text : quoteText;
 
 		const files = getCore().store.getters['messages/getMessageFiles'](id);
 
@@ -269,23 +282,19 @@ export const Parser = {
 		text = ParserQuote.purifyCode(text, ' ');
 		text = ParserQuote.purifyQuote(text, ' ');
 		text = ParserQuote.purifyArrowQuote(text, ' ');
-		text = ParserIcon.addIconToShortText({text, attach, files});
+		if (quoteText === '')
+		{
+			text = ParserIcon.addIconToShortText({ text, attach, files });
+		}
 
-		if (text.length > 0)
-		{
-			text = Text.decode(text);
-		}
-		else
-		{
-			text = Loc.getMessage('IM_PARSER_MESSAGE_DELETED');
-		}
+		text = text.length > 0 ? Text.decode(text) : Loc.getMessage('IM_PARSER_MESSAGE_DELETED');
 
 		return text.trim();
 	},
 
 	prepareEdit(message: ImModelMessage): string
 	{
-		let {text} = message;
+		let { text } = message;
 
 		text = ParserUrl.removeSimpleUrlTag(text);
 
@@ -294,19 +303,25 @@ export const Parser = {
 
 	prepareCopy(message: ImModelMessage): string
 	{
-		const {id} = message;
-		let {text} = message;
+		let { text } = message;
 
-		const files = getCore().store.getters['messages/getMessageFiles'](id).map(file => {
-			return `[DISK=${file.id}]\n`;
-		});
-
-		text = files.join('\n') + text;
+		text = ParserUrl.removeSimpleUrlTag(text);
 
 		return text.trim();
 	},
 
-	prepareConfigForRecent(recentMessage: ImModelRecentItem): {files: boolean | Object[], attach: boolean | string | Object[]}
+	prepareCopyFile(message: ImModelMessage): string
+	{
+		const { id } = message;
+
+		const files = getCore().store.getters['messages/getMessageFiles'](id).map((file) => {
+			return `[DISK=${file.id}]\n`;
+		});
+
+		return files.join('\n').trim();
+	},
+
+	prepareConfigForRecent(recentMessage: ImModelRecentItem): ResultRecentConfig
 	{
 		let files = false;
 		const fileField = recentMessage.message.params.withFile;
@@ -334,12 +349,18 @@ export const Parser = {
 			attach = [attachField];
 		}
 
-		return {files, attach};
+		return { files, attach };
 	},
 
 	executeClickEvent(event: PointerEvent)
 	{
 		ParserMention.executeClickEvent(event);
 		ParserQuote.executeClickEvent(event);
+		ParserAction.executeClickEvent(event);
+	},
+
+	getContextCodeFromForwardId(forwardId: string): string
+	{
+		return ParserUtils.getFinalContextTag(forwardId);
 	},
 };

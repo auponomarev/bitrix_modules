@@ -1,4 +1,4 @@
-<?
+<?php
 
 use Bitrix\Main\Context;
 use Bitrix\Main\ErrorCollection;
@@ -17,6 +17,7 @@ use Bitrix\Sender\Internals\PrettyDate;
 use Bitrix\Sender\Message;
 use Bitrix\Sender\Stat\Statistics;
 use Bitrix\Sender\UI\PageNavigation;
+use Bitrix\Sender\Security;
 
 if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true)
 {
@@ -124,6 +125,10 @@ class SenderLetterListComponent extends Bitrix\Sender\Internals\CommonSenderComp
 		switch ($action)
 		{
 			case 'delete':
+				if (!Security\Access::getInstance()->canModifyLetters())
+				{
+					return;
+				}
 				if (!is_array($ids))
 				{
 					$ids = array($ids);
@@ -142,7 +147,6 @@ class SenderLetterListComponent extends Bitrix\Sender\Internals\CommonSenderComp
 		/* Set title */
 		if ($this->arParams['SET_TITLE'])
 		{
-			/**@var CAllMain*/
 			$GLOBALS['APPLICATION']->SetTitle(Loc::getMessage('SENDER_LETTER_LIST_COMP_TITLE'));
 		}
 
@@ -414,8 +418,12 @@ class SenderLetterListComponent extends Bitrix\Sender\Internals\CommonSenderComp
 		{
 			Entity\Letter::getSearchBuilder()->applyFilter($filter, $searchString);
 		}
-		if (isset($requestFilter['CREATED_BY']) && $requestFilter['CREATED_BY'])
+		if (
+			((int) $requestFilter['CREATED_BY'] > 0)
+			&& isset($requestFilter['CREATED_BY'])
+			&& $requestFilter['CREATED_BY'])
 		{
+			$requestFilter['CREATED_BY'] = (int) $requestFilter['CREATED_BY'];
 			$filter['=CREATED_BY'] = $requestFilter['CREATED_BY'];
 		}
 		if (isset($requestFilter['STATE']) && $requestFilter['STATE'])
@@ -809,6 +817,11 @@ class SenderLetterListComponent extends Bitrix\Sender\Internals\CommonSenderComp
 			}
 		}
 		return $result;
+	}
+
+	protected function canEdit()
+	{
+		$this->arParams['CAN_EDIT'] = $this->arParams['CAN_EDIT'] ?? Security\Access::getInstance()->canModifyLetters();
 	}
 
 	public function getEditAction()

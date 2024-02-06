@@ -4,7 +4,10 @@ if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true)
 	die();
 }
 
-\Bitrix\Main\Loader::includeModule('im');
+if (!\Bitrix\Main\Loader::includeModule('im'))
+{
+	return [];
+}
 
 return [
 	'js' => [
@@ -25,7 +28,5 @@ return [
 		'im.old-chat-embedding.lib.smile-manager',
 	],
 	'skip_core' => false,
-	'settings' => [
-		'v2' => \Bitrix\Im\Settings::isBetaActivated()
-	]
+	'settings' => ['v2' => !\Bitrix\Im\Settings::isLegacyChatActivated()]
 ];

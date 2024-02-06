@@ -499,7 +499,7 @@ $filterFields = array(
 	),
 	array(
 		"id" => "EXTERNAL_ID",
-		"name" => GetMessage("IBLIST_A_EXTCODE"),
+		"name" => GetMessage("IBLIST_A_EXTCODE_MSGVER_1"),
 		"filterable" => ""
 	)
 );
@@ -867,7 +867,7 @@ $arHeader[] = array(
 );
 $arHeader[] = array(
 	"id" => "EXTERNAL_ID",
-	"content" => GetMessage("IBLIST_A_EXTCODE"),
+	"content" => GetMessage("IBLIST_A_EXTCODE_MSGVER_1"),
 	"sort" => "external_id",
 );
 $arHeader[] = array(
@@ -1476,14 +1476,14 @@ if($lAdmin->EditAction())
 				{
 					$arFields["PICTURE"] = CIBlock::makeFileArray(
 						$arFields["PREVIEW_PICTURE"],
-						$_REQUEST["FIELDS_del"][$TYPE.$ID]["PREVIEW_PICTURE"] === "Y"
+						$arFields["PREVIEW_PICTURE"] === "null"
 					);
 				}
 				elseif (array_key_exists("PICTURE", $arFields))
 				{
 					$arFields["PICTURE"] = CIBlock::makeFileArray(
 						$arFields["PICTURE"],
-						$_REQUEST["FIELDS_del"][$TYPE.$ID]["PICTURE"] === "Y"
+						$arFields["PICTURE"] === "null"
 					);
 				}
 
@@ -1491,8 +1491,8 @@ if($lAdmin->EditAction())
 				{
 					$arFields["DETAIL_PICTURE"] = CIBlock::makeFileArray(
 						$arFields["DETAIL_PICTURE"],
-						$_REQUEST["FIELDS_del"][$TYPE.$ID]["DETAIL_PICTURE"] === "Y",
-						$_REQUEST["FIELDS_descr"][$TYPE.$ID]["DETAIL_PICTURE"]
+						$arFields["DETAIL_PICTURE"] === "null",
+						$_REQUEST["FIELDS_descr"][$TYPE.$ID]["DETAIL_PICTURE"] ?? null
 					);
 				}
 
@@ -1603,7 +1603,7 @@ if($lAdmin->EditAction())
 				$arFields["PREVIEW_PICTURE"] = CIBlock::makeFileArray(
 					$arFields["PREVIEW_PICTURE"],
 					$arFields["PREVIEW_PICTURE"] === "null",
-					$_REQUEST["FIELDS_descr"][$TYPE.$ID]["PREVIEW_PICTURE"]
+					$_REQUEST["FIELDS_descr"][$TYPE.$ID]["PREVIEW_PICTURE"] ?? null
 				);
 			}
 
@@ -1612,7 +1612,7 @@ if($lAdmin->EditAction())
 				$arFields["DETAIL_PICTURE"] = CIBlock::makeFileArray(
 					$arFields["DETAIL_PICTURE"],
 					$arFields["DETAIL_PICTURE"] === "null",
-					$_REQUEST["FIELDS_descr"][$TYPE.$ID]["DETAIL_PICTURE"]
+					$_REQUEST["FIELDS_descr"][$TYPE.$ID]["DETAIL_PICTURE"] ?? null
 				);
 			}
 
@@ -4466,7 +4466,7 @@ foreach (array_keys($rawRows) as $rowId)
 	);
 	$elementCodeTranslitAction = array(
 		"ID" => "code_translit",
-		"TEXT" => GetMessage('IBLIST_A_CODE_TRANSLIT'),
+		"TEXT" => GetMessage('IBLIST_A_CODE_TRANSLIT_MSGVER_1'),
 		"TITLE" => GetMessage('IBLIST_A_CODE_TRANSLIT_ELEMENT_TITLE'),
 		"ACTION" => "if(confirm('".GetMessageJS("IBLIST_A_CODE_TRANSLIT_ELEMENT_CONFIRM")."')) ".$lAdmin->ActionDoGroup($itemType.$itemId, ActionType::CODE_TRANSLIT, $sThisSectionUrl),
 		"ONCLICK" => ""
@@ -4487,7 +4487,7 @@ foreach (array_keys($rawRows) as $rowId)
 			{
 				$arActions[] = array(
 					"ID" => "code_translit",
-					"TEXT" => GetMessage('IBLIST_A_CODE_TRANSLIT'),
+					"TEXT" => GetMessage('IBLIST_A_CODE_TRANSLIT_MSGVER_1'),
 					"TITLE" => GetMessage('IBLIST_A_CODE_TRANSLIT_SECTION_TITLE'),
 					"ACTION" => "if(confirm('".GetMessageJS("IBLIST_A_CODE_TRANSLIT_SECTION_CONFIRM")."')) ".$lAdmin->ActionDoGroup($itemType.$itemId, ActionType::CODE_TRANSLIT, $sThisSectionUrl),
 					"ONCLICK" => ""
@@ -4960,7 +4960,7 @@ if ($bCatalog)
 		if (isset($productTypeList[$arRows['E'.$intOneElemID]->arRes['CATALOG_TYPE']]))
 			$strProductType = $productTypeList[$arRows['E'.$intOneElemID]->arRes['CATALOG_TYPE']];
 		if ($arRows['E'.$intOneElemID]->arRes['CATALOG_BUNDLE'] == 'Y' && $boolCatalogSet)
-			$strProductType .= ('' != $strProductType ? ', ' : '').GetMessage('IBLIST_A_CATALOG_TYPE_MESS_GROUP');
+			$strProductType .= ('' != $strProductType ? ', ' : '').GetMessage('IBLIST_A_CATALOG_TYPE_MESS_GROUP_MSGVER_1');
 		$arRows['E'.$intOneElemID]->AddViewField('CATALOG_TYPE', $strProductType);
 	}
 	if (isset($intOneElemID))
@@ -5616,12 +5616,12 @@ if ($enableInstagram)
 
 $lAdmin->DisplayFilter($filterFields);
 $lAdmin->DisplayList();
-if($bWorkFlow || $bBizproc):
+if ($bWorkFlow || $bBizproc):
 	echo BeginNote();?>
-	<span class="adm-lamp adm-lamp-green"></span> - <?echo GetMessage("IBLIST_A_GREEN_ALT")?><br>
-	<span class="adm-lamp adm-lamp-yellow"></span> - <?echo GetMessage("IBLIST_A_YELLOW_ALT")?><br>
-	<span class="adm-lamp adm-lamp-red"></span> - <?echo GetMessage("IBLIST_A_RED_ALT")?><br>
-	<?echo EndNote();
+	<span class="adm-lamp adm-lamp-green"></span> - <?= GetMessage("IBLIST_A_GREEN_ALT"); ?><br>
+	<span class="adm-lamp adm-lamp-yellow"></span> - <?= GetMessage("IBLIST_A_YELLOW_ALT"); ?><br>
+	<span class="adm-lamp adm-lamp-red"></span> - <?= GetMessage("IBLIST_A_RED_ALT"); ?><br>
+	<?= EndNote();
 endif;
 
 $urlBuilder->showDetailPageSlider();

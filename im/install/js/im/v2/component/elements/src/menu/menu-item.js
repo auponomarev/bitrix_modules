@@ -6,10 +6,13 @@ export const MenuItemIcon = {
 	conference: 'conference',
 	disk: 'disk',
 	upload: 'upload',
+	file: 'file',
 	task: 'task',
 	meeting: 'meeting',
 	summary: 'summary',
-	vote: 'vote'
+	vote: 'vote',
+	aiText: 'ai-text',
+	aiImage: 'ai-image',
 };
 
 // @vue/component

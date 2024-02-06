@@ -140,9 +140,19 @@ BX.Tasks.Kanban.Grid.prototype = {
 			task_remove: this.onPullTaskRemove,
 		};
 
+		const isCompletedSprint = (
+			this.isScrumGrid()
+				? this.getData().params.IS_COMPLETED_SPRINT === 'Y'
+				: false
+		);
+		if (isCompletedSprint)
+		{
+			return;
+		}
+
 		const tasksEventQueue = {
 			pull: new BX.Tasks.Runtime.DebouncedQueue({
-				timeout: 1000,
+				timeout: 3000,
 				events: {
 					onCommitAsync: (event) => {
 						this.getTaskDataFromQueueCollection(
@@ -155,7 +165,7 @@ BX.Tasks.Kanban.Grid.prototype = {
 				}
 			}),
 			event: new BX.Tasks.Runtime.DebouncedQueue({
-				timeout: 10,
+				timeout: 100,
 				events: {
 					onCommitAsync: (event) => {
 						this.emitHandlersFromQueueCollection(

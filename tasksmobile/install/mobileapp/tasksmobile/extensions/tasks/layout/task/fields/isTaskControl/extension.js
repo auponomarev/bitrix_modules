@@ -2,8 +2,8 @@
  * @module tasks/layout/task/fields/isTaskControl
  */
 jn.define('tasks/layout/task/fields/isTaskControl', (require, exports, module) => {
-	const {Loc} = require('loc');
-	const {BooleanField, BooleanMode} = require('layout/ui/fields/boolean');
+	const { Loc } = require('loc');
+	const { BooleanField, BooleanMode } = require('layout/ui/fields/boolean');
 
 	class IsTaskControl extends LayoutComponent
 	{
@@ -15,6 +15,8 @@ jn.define('tasks/layout/task/fields/isTaskControl', (require, exports, module) =
 				readOnly: props.readOnly,
 				isTaskControl: props.isTaskControl,
 			};
+
+			this.handleOnChange = this.handleOnChange.bind(this);
 		}
 
 		componentWillReceiveProps(props)
@@ -31,6 +33,12 @@ jn.define('tasks/layout/task/fields/isTaskControl', (require, exports, module) =
 				readOnly: newState.readOnly,
 				isTaskControl: newState.isTaskControl,
 			});
+		}
+
+		handleOnChange(value)
+		{
+			this.setState({ isTaskControl: value });
+			this.props.onChange(value);
 		}
 
 		render()
@@ -51,14 +59,11 @@ jn.define('tasks/layout/task/fields/isTaskControl', (require, exports, module) =
 						showSwitcher: true,
 					},
 					testId: 'isTaskControl',
-					onChange: (value) => {
-						this.setState({isTaskControl: value});
-						this.props.onChange(value);
-					},
+					onChange: this.handleOnChange,
 				}),
 			);
 		}
 	}
 
-	module.exports = {IsTaskControl};
+	module.exports = { IsTaskControl };
 });

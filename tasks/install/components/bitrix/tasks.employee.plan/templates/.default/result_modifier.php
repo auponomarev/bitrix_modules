@@ -2,6 +2,7 @@
 if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true) die();
 
 use Bitrix\Main\Localization\Loc;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Util\Type;
 use Bitrix\Tasks\UI;
 use Bitrix\Tasks\Util\User;
@@ -22,20 +23,21 @@ if($arResult['HELPER']->getErrors()->checkNoFatals())
 // everything that lies in JS_DATA can be accessible through this.option('keyname') inside the js controller
 	$arResult['JS_DATA']['gridData'] = $arResult['DATA']['REGION'];
 	$arResult['JS_DATA']['filter'] = $arResult['FILTER'];
-	$arResult['JS_DATA']['zoomLevel'] = isset($options['zoom_level']) ? $options['zoom_level'] : "";
-	$arResult['JS_DATA']['gutterOffset'] = isset($options['gutter_offset']) ? $options['gutter_offset'] : "";
+	$arResult['JS_DATA']['zoomLevel'] = $options['zoom_level'] ?? "";
+	$arResult['JS_DATA']['gutterOffset'] = $options['gutter_offset'] ?? "";
 	$arResult['JS_DATA']['calendarSettings'] = UI::translateCalendarSettings($arResult['AUX_DATA']['COMPANY_WORKTIME']);
 	$arResult['JS_DATA']['currentDayTime'] = UI::formatDateTime(User::getTime());
 	$arResult['JS_DATA']['userProfileUrl'] = $arResult['HELPER']->findParameterValue('PATH_TO_USER_PROFILE');
 	$arResult['JS_DATA']['pageSize'] = $arResult['COMPONENT_DATA']['PAGE_SIZE'];
+	$arResult['JS_DATA']['pathToUserTasks'] = $this->__component->arParams["PATH_TO_TASKS_TASK"];
 
 	$statuses = array();
 	if(Type::isIterable($arResult['AUX_DATA']['TASK']['STATUS']))
 	{
 		foreach($arResult['AUX_DATA']['TASK']['STATUS'] as $id => $code)
 		{
-			$id = intval($id);
-			if($id <= 0 || $id == CTasks::STATE_DECLINED || $id == CTasks::STATE_NEW)
+			$id = (int)$id;
+			if($id <= 0 || $id === Status::DECLINED|| $id === Status::NEW)
 			{
 				unset($arResult['AUX_DATA']['TASK']['STATUS'][$id]);
 				continue;
@@ -70,7 +72,7 @@ if($arResult['HELPER']->getErrors()->checkNoFatals())
 			$users[] = array(
 				'VALUE' => $user['ID'],
 				'DISPLAY' => User::formatName($user),
-				'DEP' => intval($user['DEPARTMENT_ID']),
+				'DEP' => (int)$user['DEPARTMENT_ID'],
 			);
 		}
 	}

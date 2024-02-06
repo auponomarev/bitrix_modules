@@ -135,7 +135,18 @@ class CTimeMan
 			}
 		}
 
-		$info['PLANNER'] = CIntranetPlanner::getData(SITE_ID, $bFull);
+		$planner = CIntranetPlanner::getData(SITE_ID, $bFull);
+		$plannerData = $planner['DATA'];
+
+		$eventsLimit = 50;
+		if (is_array($plannerData['EVENTS']) && count($plannerData['EVENTS']) > $eventsLimit)
+		{
+			$plannerData['EVENTS'] = self::limitEvents($eventsLimit, $plannerData['EVENTS']);
+
+			$planner['DATA'] = $plannerData;
+		}
+
+		$info['PLANNER'] = $planner;
 
 		$info["FULL"] = $bFull;
 
@@ -616,20 +627,24 @@ class CTimeMan
 				$arSectionSettings = [];
 				foreach ($arSettings as $key)
 				{
-					$arSectionSettings[$key] = ($arRes[$key] && $arRes[$key] != '00:00'
+					$arSectionSettings[$key] = (
+						$arRes[$key] && $arRes[$key] != '00:00'
 						? (
-						isset($arUFValues[$arRes[$key]]) && !in_array($key, $arReportSettings)
-							? $arUFValues[$arRes[$key]]
-							: (
-						in_array($key, $arReportSettings)
-							? $arRes[$key]
-							: (
-						is_array($arRes[$key])
-							? $arRes[$key]
-							: self::MakeShortTS($arRes[$key])
-						)
-
-						)
+							(
+								!is_array($arRes[$key])
+								&& isset($arUFValues[$arRes[$key]])
+								&& !in_array($key, $arReportSettings)
+							)
+								? $arUFValues[$arRes[$key]]
+								: (
+									in_array($key, $arReportSettings)
+										? $arRes[$key]
+										: (
+											is_array($arRes[$key])
+												? $arRes[$key]
+												: self::MakeShortTS($arRes[$key])
+										)
+								)
 						)
 						: (
 						$arRes['IBLOCK_SECTION_ID'] > 0
@@ -794,6 +809,11 @@ class CTimeMan
 		}
 
 		return array_unique($arHeads);
+	}
+
+	private static function limitEvents(int $limit, array $listEvents): array
+	{
+		return array_slice($listEvents, 0, $limit);
 	}
 }
 

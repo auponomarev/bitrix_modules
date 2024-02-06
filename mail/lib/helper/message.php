@@ -2,9 +2,12 @@
 
 namespace Bitrix\Mail\Helper;
 
+use Bitrix\Mail\Integration\Calendar\ICal\ICalMailManager;
+use Bitrix\Mail\Internals\MailMessageAttachmentTable;
 use Bitrix\Mail\Internals\MessageAccessTable;
 use Bitrix\Mail\Internals\MessageClosureTable;
 use Bitrix\Mail\MailboxTable;
+use Bitrix\Mail\MailMessageTable;
 use Bitrix\Main;
 use Bitrix\Main\Security;
 use Bitrix\Mail\Internals;
@@ -107,7 +110,7 @@ class Message
 				];
 			}
 		}
-		
+
 		return false;
 	}
 
@@ -413,7 +416,7 @@ class Message
 				$fields['FIELD_CC'],
 				$fields['FIELD_BCC'],
 				$fields['SUBJECT'],
-				$fields['BODY'],
+				self::isolateBase64Files((string)$fields['BODY']),
 			)
 		));
 	}
@@ -527,6 +530,7 @@ class Message
 			return false;
 		}
 
+		$originalBody = $message['BODY_HTML'] ?? null;
 		foreach ($attachments as $i => $item)
 		{
 			$attachFields = array(
@@ -543,20 +547,27 @@ class Message
 			{
 				$message['ATTACHMENTS']++;
 
-				$message['BODY_HTML'] = preg_replace(
-					sprintf(
-						'/<img([^>]+)src\s*=\s*(\'|\")?\s*(http:\/\/cid:%s)\s*\2([^>]*)>/is',
-						preg_quote($item['CONTENT-ID'], '/')
-					),
-					sprintf('<img\1src="aid:%u"\4>', $attachmentId),
-					$message['BODY_HTML']
-				);
+				if (isset($message['BODY_HTML']) && mb_strlen($message['BODY_HTML']) > 0)
+				{
+					$bodyWithReplaced = self::replaceBodyInlineImgContentId(
+						(string)$message['BODY_HTML'],
+						(string)$item['CONTENT-ID'],
+						$attachmentId
+					);
+					if ($bodyWithReplaced)
+					{
+						$message['BODY_HTML'] = $bodyWithReplaced;
+					}
+				}
 			}
 		}
 
 		if ($message['ATTACHMENTS'] > 0)
 		{
-			\CMailMessage::update($message['ID'], array('BODY_HTML' => $message['BODY_HTML']), $message['MAILBOX_ID']);
+			if ($originalBody !== $message['BODY_HTML'])
+			{
+				\CMailMessage::update($message['ID'], ['BODY_HTML' => $message['BODY_HTML']], $message['MAILBOX_ID']);
+			}
 
 			return $message['ID'];
 		}
@@ -656,7 +667,7 @@ class Message
 
 	public static function reSyncBody($mailboxId, $messageIds)
 	{
-		if(empty($messageIds))
+		if (empty($messageIds) || !is_array($messageIds))
 		{
 			return false;
 		}
@@ -671,6 +682,8 @@ class Message
 			],
 		]);
 
+		$notProcessed = array_combine($messageIds, $messageIds);
+
 		$mailboxHelper = Mailbox::createInstance($mailboxId, false);
 
 		if(!empty($mailboxHelper))
@@ -680,26 +693,36 @@ class Message
 			while ($message = $messages->fetch())
 			{
 				$technicalTitle = $mailboxHelper->downloadMessage($message);
-				$charset = $mailbox['CHARSET'] ?: $mailbox['LANG_CHARSET'];
-				[$header, $html, $text, $attachments] = \CMailMessage::parseMessage($technicalTitle, $charset);
-
-				if (mb_strlen($text) > \CMailMessage::MAX_LENGTH_MESSAGE_BODY)
+				if ($technicalTitle)
 				{
-					[$text, $html] = \CMailMessage::prepareLongMessage($text, $html);
+					$charset = $mailbox['CHARSET'] ?: $mailbox['LANG_CHARSET'];
+					[$header, $html, $text, $attachments] = \CMailMessage::parseMessage($technicalTitle, $charset);
+
+					if (\CMailMessage::isLongMessageBody($text))
+					{
+						[$text, $html] = \CMailMessage::prepareLongMessage($text, $html);
+					}
+
+					if (rtrim($text) || $html)
+					{
+						\CMailMessage::update(
+							$message['MESSAGE_ID'],
+							[
+								'BODY' => rtrim($text),
+								'BODY_HTML' => $html,
+								MailMessageTable::FIELD_SANITIZE_ON_VIEW => 1,
+							]
+						);
+					}
 				}
-
-				$html = empty(trim(strip_tags($html))) ? '' : static::sanitizeHtml($html, true);
-
-				\CMailMessage::update(
-					$message['MESSAGE_ID'],
-					[
-						'BODY' => rtrim($text),
-						'BODY_HTML' => $html,
-					]
-				);
-
 				self::updateMailEntityOptionsRow($mailboxId, (int)$message['MESSAGE_ID']);
+				unset($notProcessed[$message['MESSAGE_ID']]);
 			}
+		}
+
+		foreach ($notProcessed as $messageId)
+		{
+			self::updateMailEntityOptionsRow($mailboxId, (int)$messageId);
 		}
 
 		return true;
@@ -754,5 +777,62 @@ class Message
 				'VALUE' => 'N',
 			]
 		);
+	}
+
+	/**
+	 * Is message body contains link to attachment
+	 *
+	 * @param string $body HTML body of message
+	 *
+	 * @return bool
+	 */
+	public static function isBodyNeedUpdateAfterLoadAttachments(string $body): bool
+	{
+		return preg_match('/<img([^>]+)src\s*=\s*([\'"])?\s*((?:http:\/\/)?cid:.+)\s*\2([^>]*)>/is', $body);
+	}
+
+	/**
+	 * Replace html body inline image content id with attachment id
+	 *
+	 * @param string $body HTML string
+	 * @param string $contentId Content Id in img tag (with or without http://)
+	 * @param int $attachmentId Attachment ID in DB
+	 *
+	 * @return string
+	 */
+	public static function replaceBodyInlineImgContentId(string $body, string $contentId, int $attachmentId): string
+	{
+		return (string)preg_replace(
+			sprintf('/<img([^>]+)src\s*=\s*(\'|\")?\s*((?:http:\/\/)?cid:%s)\s*\2([^>]*)>/is', preg_quote($contentId, '/')),
+			sprintf('<img\1src="aid:%u"\4>', $attachmentId),
+			$body
+		);
+	}
+
+	public static function isolateBase64Files(string $text): string
+	{
+		$pattern = '/\[\s*data:(?!text\b)[^;]+;base64,\S+ \]/';
+
+		return (string)preg_replace($pattern, '', $text);
+	}
+
+	public static function isIcalMessage(\Bitrix\Mail\Item\Message $message)
+	{
+		$attachments = MailMessageAttachmentTable::getList([
+			'select' => [
+				'ID',
+				'FILE_ID',
+				'FILE_NAME',
+				'FILE_SIZE',
+				'CONTENT-TYPE' => 'CONTENT_TYPE',
+			],
+			'filter' => [
+				'=MESSAGE_ID'   => $message->getId(),
+				'@CONTENT_TYPE' => ICalMailManager::CONTENT_TYPES
+			],
+		])->fetchAll();
+
+		return ICalMailManager::hasICalAttachments($attachments);
+
 	}
 }

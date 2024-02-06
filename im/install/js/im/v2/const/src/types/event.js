@@ -1,4 +1,4 @@
-import {DialogScrollThreshold} from '../dialog';
+import { DialogScrollThreshold } from '../chat';
 
 export type OnLayoutChangeEvent = {
 	from: {
@@ -19,7 +19,8 @@ export type OnDialogInitedEvent = {
 
 export type InsertTextEvent = {
 	text: string,
-	withNewLine?: boolean
+	withNewLine?: boolean,
+	replace?: boolean
 };
 
 export type InsertMentionEvent = {
@@ -33,5 +34,6 @@ export type EditMessageEvent = {
 
 export type ScrollToBottomEvent = {
 	chatId: number,
-	threshold?: $Values<typeof DialogScrollThreshold>
+	threshold?: $Values<typeof DialogScrollThreshold>,
+	animation?: boolean,
 };

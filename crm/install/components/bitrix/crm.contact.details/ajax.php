@@ -177,11 +177,11 @@ elseif($action === 'SAVE')
 	Crm\Service\EditorAdapter::fillParentFieldFromContextEnrichedData($_POST);
 	foreach($fieldsInfo as $name => $info)
 	{
-		if(\CCrmFieldMulti::IsSupportedType($name) && is_array($_POST[$name]))
+		if (\CCrmFieldMulti::IsSupportedType($name) && isset($_POST[$name]) && is_array($_POST[$name]))
 		{
 			if(!isset($fields['FM']))
 			{
-				$fields['FM'] = array();
+				$fields['FM'] = [];
 			}
 
 			$fields['FM'][$name] = $_POST[$name];
@@ -241,6 +241,11 @@ elseif($action === 'SAVE')
 		'FORM' => $fields,
 		'FILES' => [],
 	]);
+
+	if (isset($_POST['OBSERVER_IDS']))
+	{
+		$fields['OBSERVER_IDS'] = is_array($_POST['OBSERVER_IDS']) ? $_POST['OBSERVER_IDS'] : array();
+	}
 
 	if($isNew)
 	{
@@ -415,15 +420,14 @@ elseif($action === 'SAVE')
 				);
 			}
 
-			$fields = Crm\Entity\FieldContentType::prepareFieldsFromDetailsToSave(\CCrmOwnerType::Contact, $ID, $fields);
-
 			Tracking\UI\Details::appendEntityFieldValue($fields, $_POST);
 
 			$entity = new \CCrmContact(false);
-			$saveOptions = array_merge(
-				Crm\Entity\FieldContentType::prepareSaveOptionsForDetails(\CCrmOwnerType::Contact, $ID),
-				['REGISTER_SONET_EVENT' => true],
-			);
+			$saveOptions = [
+				'REGISTER_SONET_EVENT' => true,
+				'eventId' => $_POST['EVENT_ID'] ?? null,
+			];
+
 			if($isNew)
 			{
 				if(!isset($fields['TYPE_ID']))
@@ -549,7 +553,11 @@ elseif($action === 'SAVE')
 			$url = $conversionWizard->getRedirectUrl();
 			if($url !== '')
 			{
-				$responseData = array('ENTITY_ID' => $ID, 'REDIRECT_URL' => $url);
+				$responseData = [
+					'ENTITY_ID' => $ID,
+					'REDIRECT_URL' => $url,
+					'OPEN_IN_NEW_SLIDE' => !$conversionWizard->isFinished(),
+				];
 				$eventParams = $conversionWizard->getClientEventParams();
 				if(is_array($eventParams))
 				{

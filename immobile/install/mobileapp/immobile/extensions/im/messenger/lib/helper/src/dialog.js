@@ -1,10 +1,7 @@
-/* eslint-disable flowtype/require-return-type */
-
 /**
  * @module im/messenger/lib/helper/dialog
  */
 jn.define('im/messenger/lib/helper/dialog', (require, exports, module) => {
-
 	const { Type } = require('type');
 
 	/**
@@ -12,11 +9,19 @@ jn.define('im/messenger/lib/helper/dialog', (require, exports, module) => {
 	 */
 	class DialogHelper
 	{
+		/**
+		 * @param chatId
+		 * @return {boolean}
+		 */
 		isChatId(chatId)
 		{
 			return Type.isNumber(Number(chatId));
 		}
 
+		/**
+		 * @param dialogId
+		 * @return {boolean}
+		 */
 		isDialogId(dialogId)
 		{
 			return (

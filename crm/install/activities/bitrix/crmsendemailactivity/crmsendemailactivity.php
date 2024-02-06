@@ -5,10 +5,10 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 	die();
 }
 
+use Bitrix\Crm;
 use Bitrix\Main;
 use Bitrix\Main\Config;
 use Bitrix\Main\Mail;
-use Bitrix\Crm;
 
 class CBPCrmSendEmailActivity extends CBPActivity
 {
@@ -982,13 +982,18 @@ class CBPCrmSendEmailActivity extends CBPActivity
 					$result = implode(', ', CBPHelper::makeArrayFlat($result));
 				}
 
-				if (
-					$messageType === 'html'
-					&& $property['ValueContentType'] !== 'html'
-					&& $property['Type'] !== 'S:HTML'
-				)
+				if ($messageType === 'html' && isset($property['ValueContentType']))
 				{
-					$result = htmlspecialcharsbx($result);
+					if ($property['ValueContentType'] === 'bb')
+					{
+						$result = Crm\Format\TextHelper::sanitizeHtml(
+							Crm\Format\TextHelper::convertBbCodeToHtml($result)
+						);
+					}
+					elseif ($property['ValueContentType'] !== 'html' && isset($property['Type']) && $property['Type'] !== 'S:HTML')
+					{
+						$result = htmlspecialcharsbx($result);
+					}
 				}
 
 				return $result;

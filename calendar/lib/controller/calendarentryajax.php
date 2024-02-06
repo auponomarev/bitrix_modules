@@ -1,11 +1,10 @@
-<?
+<?php
 namespace Bitrix\Calendar\Controller;
 
 use Bitrix\Calendar\Access\ActionDictionary;
 use Bitrix\Calendar\Access\EventAccessController;
 use Bitrix\Calendar\Access\Model\EventModel;
-use Bitrix\Calendar\Access\Model\SectionModel;
-use Bitrix\Calendar\Core\Event\Tools\Dictionary;
+use Bitrix\Calendar\Core\Managers\Accessibility;
 use Bitrix\Calendar\Rooms;
 use Bitrix\Calendar\Internals;
 use Bitrix\Calendar\Ui\CalendarFilter;
@@ -83,21 +82,9 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 			: [];
 
 		$sections = [];
-		$limits = $this->getLimitDates($yearFrom, $monthFrom, $yearTo, $monthTo);
+		$limits = \CCalendarEvent::getLimitDates($yearFrom, $monthFrom, $yearTo, $monthTo);
 
 		$connections = false;
-
-		if ($request->getPost('cal_dav_data_sync') === 'Y' && \CCalendar::IsCalDAVEnabled())
-		{
-			$config = [];
-			\CCalendar::InitExternalCalendarsSyncParams($config);
-
-			if ($config['connections'])
-			{
-				$connections = $config['connections'];
-			}
-		}
-
 		$fetchTasks = false;
 		$sectionIdList = [];
 
@@ -113,11 +100,11 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 			}
 		}
 
-		if (count($sectionIdList) > 0)
+		if (!empty($sectionIdList))
 		{
 			$sect = \CCalendarSect::GetList([
 				'arFilter' => [
-					'ID'=> $sectionIdList,
+					'ID' => $sectionIdList,
 					'ACTIVE' => 'Y'
 				],
 				'checkPermissions' => true
@@ -131,7 +118,7 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 		$isBoundaryOfPastReached = false;
 		$isBoundaryOfFutureReached = false;
 		$entries = [];
-		if (count($sections) > 0)
+		if (!empty($sections))
 		{
 			$entries = $this->getEntries($sections, $limits);
 
@@ -177,13 +164,13 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 			{
 				//Load one month further
 				[$yearFrom, $monthFrom] = $this->getValidYearAndMonth($yearFrom, $monthFrom - 1);
-				$entries = $this->getEntries($sections, $this->getLimitDates($yearFrom, $monthFrom, $yearTo, $monthTo));
+				$entries = $this->getEntries($sections, \CCalendarEvent::getLimitDates($yearFrom, $monthFrom, $yearTo, $monthTo));
 
 				if (!$this->hasArrayEntriesInMonth($entries, $yearFrom, $monthFrom))
 				{
 					//Load half year further
 					[$yearFrom, $monthFrom] = $this->getValidYearAndMonth($yearFrom, $monthFrom - 5);
-					$limits = $this->getLimitDates($yearFrom, $monthFrom, $yearTo, $monthTo);
+					$limits = \CCalendarEvent::getLimitDates($yearFrom, $monthFrom, $yearTo, $monthTo);
 					$entries = $this->getEntries($sections, $limits);
 
 					if (!$this->hasArrayEntriesInRange($entries, $yearFrom, $monthFrom, (int)$request->getPost('year_from'), (int)$request->getPost('month_from')))
@@ -211,13 +198,13 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 			{
 				//Load one month further
 				[$yearTo, $monthTo] = $this->getValidYearAndMonth($yearTo, $monthTo + 1);
-				$entries = $this->getEntries($sections, $this->getLimitDates($yearFrom, $monthFrom, $yearTo, $monthTo));
+				$entries = $this->getEntries($sections, \CCalendarEvent::getLimitDates($yearFrom, $monthFrom, $yearTo, $monthTo));
 
 				if (!$this->hasArrayEntriesInMonth($entries, $yearTo, $monthTo - 1))
 				{
 					//Load half year further
 					[$yearTo, $monthTo] = $this->getValidYearAndMonth($yearTo, $monthTo + 5);
-					$limits = $this->getLimitDates($yearFrom, $monthFrom, $yearTo, $monthTo);
+					$limits = \CCalendarEvent::getLimitDates($yearFrom, $monthFrom, $yearTo, $monthTo);
 					$entries = $this->getEntries($sections, $limits);
 
 					if (!$this->hasArrayEntriesInRange($entries, (int)$request->getPost('year_to'), (int)$request->getPost('month_to') - 1, $yearTo, $monthTo - 1))
@@ -240,6 +227,20 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 			}
 		}
 
+		$userId = \CCalendar::GetUserId();
+		$accessController = new EventAccessController($userId);
+		foreach ($entries as $key => $entry)
+		{
+			$eventModel = EventModel::createFromArray($entry);
+			$canEditEventInParentSection = $accessController->check(ActionDictionary::ACTION_EVENT_EDIT, $eventModel);
+			$canEditEventInCurrentSection = $accessController->check(ActionDictionary::ACTION_EVENT_EDIT, $eventModel, [
+				'checkCurrentEvent' => 'Y',
+			]);
+			$entries[$key]['permissions'] = [
+				'edit' => $canEditEventInParentSection && $canEditEventInCurrentSection,
+			];
+		}
+
 		//  **** GET TASKS ****
 		if ($fetchTasks)
 		{
@@ -250,7 +251,7 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 				]
 			);
 
-			if (count($tasksEntries) > 0)
+			if (!empty($tasksEntries))
 			{
 				$entries = array_merge($entries, $tasksEntries);
 			}
@@ -323,14 +324,6 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 		}
 
 		return [$year, $month];
-	}
-
-	protected function getLimitDates(int $yearFrom, int $monthFrom, int $yearTo, int $monthTo): array
-	{
-		return [
-			'from' => \CCalendar::Date(mktime(0, 0, 0, $monthFrom, 1, $yearFrom), false),
-			'to' => \CCalendar::Date(mktime(0, 0, 0, $monthTo, 1, $yearTo), false),
-		];
 	}
 
 	protected function hasArrayEntriesInMonth(array $entries, int $yearFrom, int $monthFrom): bool
@@ -524,11 +517,11 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 				&& $request->getPost('is_meeting') === 'Y'
 			)
 			{
-				$fromTs = \CCalendar::Timestamp($arFields["DATE_FROM"]);
-				$toTs = \CCalendar::Timestamp($arFields["DATE_TO"]);
-				$fromTs -= \CCalendar::GetTimezoneOffset($timezone, $fromTs);
-				$toTs -= \CCalendar::GetTimezoneOffset($timezone, $toTs);
-				if (!empty($this->getBusyUsersIds($attendees, $id, $fromTs, $toTs)))
+				$timezoneName = \CCalendar::GetUserTimezoneName(\CCalendar::GetUserId());
+				$timezoneOffset = Util::getTimezoneOffsetUTC($timezoneName);
+				$timestampFrom = \CCalendar::TimestampUTC($arFields["DATE_FROM"]) - $timezoneOffset;
+				$timestampTo = \CCalendar::TimestampUTC($arFields["DATE_TO"]) - $timezoneOffset;
+				if (!empty($this->getBusyUsersIds($attendees, $id, $timestampFrom, $timestampTo)))
 				{
 					$busyWarning = true;
 					$reload = true;
@@ -670,6 +663,15 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 		$dateFrom = trim($dateFrom);
 		$dateTo = trim($dateTo);
 
+		if (
+			(int)(new \DateTime())->setTimestamp(\CCalendar::Timestamp($dateFrom))->format('Y') > 9999
+			|| (int)(new \DateTime())->setTimestamp(\CCalendar::Timestamp($dateTo))->format('Y') > 9999
+		)
+		{
+			$this->addError(new Error(Loc::getMessage('EC_JS_EV_FROM_ERR')));
+			return false;
+		}
+
 		// Timezone
 		$tzFrom = $request['tz_from'];
 		$tzTo = $request['tz_to'];
@@ -682,7 +684,7 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 			$tzTo = $request['default_tz'];
 		}
 
-		if (isset($request['default_tz']) && $request['default_tz'] != '')
+		if (isset($request['default_tz']) && (string)$request['default_tz'] !== '')
 		{
 			\CCalendar::SaveUserTimezoneName(\CCalendar::GetUserId(), $request['default_tz']);
 		}
@@ -716,18 +718,20 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 
 		$accessCodes = \CCalendarEvent::handleAccessCodes($codes, ['userId' => $userId]);
 
-		$entryFields['IS_MEETING'] = $accessCodes != ['U'.$userId];
+		$entryFields['IS_MEETING'] =
+			$accessCodes !== ['U'.$userId] || in_array($entryFields['SECTION_CAL_TYPE'], ['group', 'company_calendar'], true)
+		;
 
 		$entryFields['ATTENDEES_CODES'] = $accessCodes;
 		$entryFields['ATTENDEES'] = \CCalendar::GetDestinationUsers($accessCodes);
 		$response['reload'] = true;
 
-		if ($request['exclude_users'] && count($entryFields['ATTENDEES']) > 0)
+		if ($request['exclude_users'] && !empty($entryFields['ATTENDEES']))
 		{
 			$excludeUsers = explode(',', $request['exclude_users']);
 			$entryFields['ATTENDEES_CODES'] = [];
 
-			if (count($excludeUsers) > 0)
+			if (!empty($excludeUsers))
 			{
 				$entryFields['ATTENDEES'] = array_diff($entryFields['ATTENDEES'], $excludeUsers);
 				foreach($entryFields['ATTENDEES'] as $attendee)
@@ -761,6 +765,13 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 			'MEETING_CREATOR' => $entryFields['MEETING_HOST'],
 			'HIDE_GUESTS' => $request['hide_guests'] === 'Y'
 		];
+		
+		$recurrenceEventMode = !empty($request['rec_edit_mode']) ? $request['rec_edit_mode'] : null;
+		$currentEventDate = !empty($request['current_date_from'])
+			? \CCalendar::Date(\CCalendar::Timestamp($request['current_date_from']), false)
+			: null
+		;
+		
 
 		if ($chatId)
 		{
@@ -784,15 +795,20 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 				$attendees = array_diff($request['newAttendeesList'], $excludeUsers);
 			}
 
-			$fromTs = \CCalendar::Timestamp($dateFrom);
-			$toTs = \CCalendar::Timestamp($dateTo);
-			$fromTs -= \CCalendar::GetTimezoneOffset($tzFrom, $fromTs);
-			$toTs -= \CCalendar::GetTimezoneOffset($tzTo, $toTs);
-			$busyUsers = $this->getBusyUsersIds($attendees, $id, $fromTs, $toTs);
-			if (count($busyUsers) > 0)
+			$timezoneName = \CCalendar::GetUserTimezoneName(\CCalendar::GetUserId());
+			$timezoneOffset = Util::getTimezoneOffsetUTC($timezoneName);
+			$timestampFrom = \CCalendar::TimestampUTC($dateFrom) - $timezoneOffset;
+			$timestampTo = \CCalendar::TimestampUTC($dateTo) - $timezoneOffset;
+			if ($skipTime)
+			{
+				$timestampTo += \CCalendar::GetDayLen();
+			}
+			$busyUsers = $this->getBusyUsersIds($attendees, $id, $timestampFrom, $timestampTo);
+			if (!empty($busyUsers))
 			{
 				$response['busyUsersList'] = \CCalendarEvent::getUsersDetails($busyUsers);
-				$this->addError(new Error(Loc::getMessage('EC_USER_BUSY', ['#USER#' => \CCalendar::GetUserName($busyUsers[0])]), 'edit_entry_user_busy'));
+				$busyUserName = current($response['busyUsersList'])['DISPLAY_NAME'];
+				$this->addError(new Error(Loc::getMessage('EC_USER_BUSY', ['#USER#' => $busyUserName]), 'edit_entry_user_busy'));
 			}
 		}
 
@@ -811,21 +827,31 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 			return $response;
 		}
 
-		$newId = \CCalendar::SaveEvent([
-			'arFields' => $entryFields,
-			'UF' => $arUFFields,
-			'silentErrorMode' => false,
-			'recursionEditMode' => $request['rec_edit_mode'],
-			'currentEventDateFrom' => \CCalendar::Date(\CCalendar::Timestamp($request['current_date_from']), false),
-			'sendInvitesToDeclined' => $request['sendInvitesAgain'] === 'Y',
-			'requestUid' => $requestUid
-        ]);
+		$newId = false;
+		try
+		{
+			$newId = \CCalendar::SaveEvent([
+				'arFields' => $entryFields,
+				'UF' => $arUFFields,
+				'silentErrorMode' => false,
+				'recursionEditMode' => $recurrenceEventMode,
+				'currentEventDateFrom' => $currentEventDate,
+				'sendInvitesToDeclined' => $request['sendInvitesAgain'] === 'Y',
+				'requestUid' => $requestUid,
+				'checkLocationOccupancy' => ($request['doCheckOccupancy'] ?? 'N') === 'Y',
+			]);
+		}
+		catch (Rooms\OccupancyCheckerException $e)
+		{
+			$this->addError(new Error(Loc::getMessage('EC_LOCATION_BUSY_RECURRENCE'), 'edit_entry_location_busy_recurrence'));
+			$this->addError(new Error($e->getMessage(), 'edit_entry_location_repeat_busy'));
+		}
 
 		$errors = \CCalendar::GetErrors();
 		$eventList = [];
 		$eventIdList = [$newId];
 
-		if ($newId && !count($errors))
+		if ($newId && empty($errors))
 		{
 			$response['entryId'] = $newId;
 
@@ -960,39 +986,10 @@ class CalendarEntryAjax extends \Bitrix\Main\Engine\Controller
 			return [];
 		}
 
-		$accessibility = \CCalendar::GetAccessibilityForUsers([
-			'users' => $usersToCheck,
-			'from' => \CCalendar::Date($fromTs, false), // date or datetime in UTC
-			'to' => \CCalendar::Date($toTs, false), // date or datetime in UTC
-			'curEventId' => $curEventId,
-			'getFromHR' => true,
-			'checkPermissions' => false
-		]);
-
-		$busyUsersList = [];
-		foreach ($accessibility as $accUserId => $entries)
-		{
-			foreach ($entries as $entry)
-			{
-				$entFromTs = \CCalendar::Timestamp($entry['DATE_FROM']);
-				$entToTs = \CCalendar::Timestamp($entry['DATE_TO']);
-
-				if ($entry['DT_SKIP_TIME'] === 'Y')
-				{
-					$entToTs += \CCalendar::GetDayLen();
-				}
-
-				$entFromTs -= \CCalendar::GetTimezoneOffset($entry['TZ_FROM'], $entFromTs);
-				$entToTs -= \CCalendar::GetTimezoneOffset($entry['TZ_TO'], $entToTs);
-
-				if ($entFromTs < $toTs && $entToTs > $fromTs)
-				{
-					$busyUsersList[] = $accUserId;
-				}
-			}
-		}
-
-		return $busyUsersList;
+		return (new Accessibility())
+			->setCheckPermissions(false)
+			->setSkipEventId($curEventId)
+			->getBusyUsersIds($usersToCheck, $fromTs, $toTs);
 	}
 
 	private function getUsersToCheck(array $attendees): array

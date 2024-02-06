@@ -1,4 +1,4 @@
-<?
+<?php
 $arUrlRewrite = array(
 	array(
 		"CONDITION" => "#^/pub/site/#",
@@ -684,6 +684,12 @@ $arUrlRewrite = array(
 		"PATH" => "/terminal/index.php",
 	),
 	array(
+		'CONDITION' => '#^/bi/dashboard/#',
+		'RULE' => '',
+		'ID' => 'bitrix:biconnector.apachesuperset.dashboard.controller',
+		'PATH' => '/bi/dashboard/index.php',
+	),
+	array(
 		"CONDITION" => "#^/marketing/rc/#",
 		"RULE" => "",
 		"ID" => "",
@@ -868,5 +874,16 @@ $arUrlRewrite = array(
 		"ID" => "bitrix:intranet.user.login.history",
 		"PATH" => "/timeman/login-history/index.php"
 	),
+	array(
+		"CONDITION" => "#^/agent_contract/#",
+		"RULE" => "",
+		"ID" => "bitrix:catalog.agent.contract.controller",
+		"PATH" => "/agent_contract/index.php",
+	),
+	[
+		'CONDITION' => '#^/spaces/#',
+		'RULE' => '',
+		'ID' => 'bitrix:socialnetwork.spaces',
+		'PATH' => '/spaces/index.php',
+	],
 );
-?>

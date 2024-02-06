@@ -3,9 +3,9 @@ if(!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED!==true)die();
 
 /** @var array $arParams */
 /** @var array $arResult */
-/** @global CAllMain $APPLICATION */
-/** @global CAllUser $USER */
-/** @global CAllDatabase $DB */
+/** @global CMain $APPLICATION */
+/** @global CUser $USER */
+/** @global CDatabase $DB */
 /** @var CBitrixComponentTemplate $this */
 /** @var string $templateName */
 /** @var string $templateFile */
@@ -114,6 +114,10 @@ if (isset($arResult['MANIFEST']['MESSAGE_HOLD_CLOSE_POPUP_BTN_CONTINUE']) && $ar
 if (isset($arResult['MANIFEST']['MESSAGE_HOLD_CLOSE_POPUP_BTN_CLOSE']) && $arResult['MANIFEST']['MESSAGE_HOLD_CLOSE_POPUP_BTN_CLOSE'])
 {
 	$messageList['REST_CONFIGURATION_IMPORT_HOLD_CLOSE_POPUP_BTN_CLOSE'] = htmlspecialcharsbx($arResult['MANIFEST']['MESSAGE_HOLD_CLOSE_POPUP_BTN_CLOSE']);
+}
+if (isset($arResult['MANIFEST']['INSTALL_STEP']) && $arResult['MANIFEST']['INSTALL_STEP'])
+{
+	$messageList['REST_CONFIGURATION_IMPORT_INSTALL_STEP_MSGVER_1'] = htmlspecialcharsbx($arResult['MANIFEST']['INSTALL_STEP']);
 }
 ?>
 <? if(isset($arResult['NOTIFY']) && is_array($arResult['NOTIFY'])):?>

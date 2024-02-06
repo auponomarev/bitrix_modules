@@ -33,6 +33,7 @@ use Bitrix\Tasks\Integration\Forum\Task\Topic;
 use Bitrix\Tasks\Integration\SocialNetwork;
 use Bitrix\Tasks\Integration\SocialNetwork\Group;
 use Bitrix\Tasks\Internals\Registry\TaskRegistry;
+use Bitrix\Tasks\Internals\Task\Status;
 use Bitrix\Tasks\Internals\Task\ViewedTable;
 use Bitrix\Tasks\Internals\UserOption;
 use Bitrix\Tasks\Kanban\StagesTable;
@@ -2743,22 +2744,6 @@ class TasksTaskComponent extends TasksBaseComponent implements Errorable, Contro
 			return;
 		}
 
-		$replicator = null;
-		// clone subtasks or create them by template
-		if($source['TYPE'] == static::DATA_SOURCE_TEMPLATE)
-		{
-			$replicator = new Util\Replicator\Task\FromTemplate();
-		}
-		elseif($source['TYPE'] == static::DATA_SOURCE_TASK)
-		{
-			$replicator = new Util\Replicator\Task\FromTask();
-		}
-
-		if(!$replicator)
-		{
-			return;
-		}
-
 		$parameters = ['MULTITASKING' => false];
 
 		if ($source['TYPE'] == static::DATA_SOURCE_TEMPLATE)
@@ -2777,7 +2762,19 @@ class TasksTaskComponent extends TasksBaseComponent implements Errorable, Contro
 			}
 		}
 
-		$result = $replicator->produceSub($source['ID'], $taskId, $parameters, $this->userId);
+		$result = new Main\Result();
+		// clone subtasks or create them by template
+		if($source['TYPE'] == static::DATA_SOURCE_TEMPLATE)
+		{
+			$replicator = new Tasks\Replicator\Template\Replicators\TemplateTaskReplicator($this->userId);
+			$result = $replicator->setParentTaskId((int)$taskId)->replicate((int)$source['ID']);
+		}
+		elseif ($source['TYPE'] == static::DATA_SOURCE_TASK)
+		{
+			$replicator = new Util\Replicator\Task\FromTask();
+			$result = $replicator->produceSub($source['ID'], $taskId, $parameters, $this->userId);
+		}
+
 
 		foreach ($result->getErrors() as $error)
 		{
@@ -2799,13 +2796,14 @@ class TasksTaskComponent extends TasksBaseComponent implements Errorable, Contro
 		$stateFlags = $this->arResult['COMPONENT_DATA']['STATE']['FLAGS'];
 
 		$rights = Task::getFullRights($this->userId);
-		$data = array(
-			'CREATED_BY' => 		$this->userId,
-			Task\Originator::getCode(true) => array('ID' => $this->userId),
-			Task\Responsible::getCode(true) => array(array('ID' => $this->arParams['USER_ID'])),
-			'PRIORITY' => 			CTasks::PRIORITY_AVERAGE,
-			'FORUM_ID' => 			CTasksTools::getForumIdForIntranet(), // obsolete
-			'REPLICATE' => 			'N',
+		$data = [
+			'CREATED_BY' => $this->userId,
+			Task\Originator::getCode(true) => ['ID' => $this->userId],
+			Task\Responsible::getCode(true) => [['ID' => $this->arParams['USER_ID']]],
+			'PRIORITY' => Tasks\Internals\Task\Priority::AVERAGE,
+			'FORUM_ID' => CTasksTools::getForumIdForIntranet(), // obsolete
+			'REPLICATE' => 'N',
+			'IS_REGULAR' => 'N',
 
 			'REQUIRE_RESULT' => $stateFlags['REQUIRE_RESULT'] ? 'Y' : 'N',
 			'TASK_PARAM_3' => $stateFlags['TASK_PARAM_3'] ? 'Y' : 'N',
@@ -2815,15 +2813,15 @@ class TasksTaskComponent extends TasksBaseComponent implements Errorable, Contro
 			'MATCH_WORK_TIME' => $stateFlags['MATCH_WORK_TIME'] ? 'Y' : 'N',
 
 			'DESCRIPTION_IN_BBCODE' => 'Y', // new tasks should be always in bbcode
-			'DURATION_TYPE' => CTasks::TIME_UNIT_TYPE_DAY,
-			'DURATION_TYPE_ALL' => CTasks::TIME_UNIT_TYPE_DAY,
+			'DURATION_TYPE' => Tasks\Internals\Task\TimeUnitType::DAY,
+			'DURATION_TYPE_ALL' => Tasks\Internals\Task\TimeUnitType::DAY,
 
 			'SE_PARAMETER' => [
-				array('NAME' => 'PROJECT_PLAN_FROM_SUBTASKS', 'VALUE' => 'Y')
+				['NAME' => 'PROJECT_PLAN_FROM_SUBTASKS', 'VALUE' => 'Y'],
 			],
 
-			Manager::ACT_KEY => $rights
-		);
+			Manager::ACT_KEY => $rights,
+		];
 
 		return array('DATA' => $data, 'CAN' => array('ACTION' => $rights));
 	}
@@ -2999,15 +2997,32 @@ class TasksTaskComponent extends TasksBaseComponent implements Errorable, Contro
 			$itemService = new Tasks\Scrum\Service\ItemService();
 			$epicService = new Tasks\Scrum\Service\EpicService();
 
-			$scrumItem = $itemService->getItemBySourceId($this->task->getId());
-			if ($scrumItem->getId())
+			if ($this->formData !== false)
 			{
-				$epic = $epicService->getEpic($scrumItem->getEpicId());
+				$epic = $epicService->getEpic($data['DATA']['EPIC']);
 				if ($epic->getId())
 				{
 					$this->arResult['DATA']['SCRUM']['EPIC'] = $epic->toArray();
 				}
 			}
+			else
+			{
+				$scrumItem = $itemService->getItemBySourceId($this->task->getId());
+				if ($scrumItem->getId())
+				{
+					$epic = $epicService->getEpic($scrumItem->getEpicId());
+					if ($epic->getId())
+					{
+						$this->arResult['DATA']['SCRUM']['EPIC'] = $epic->toArray();
+					}
+				}
+			}
+		}
+
+		$taskObject = new Tasks\Internals\TaskObject(['ID' => $this->task->getId()]);
+		if (Tasks\Replicator\Template\Replicators\RegularTaskReplicator::isEnabled())
+		{
+			$data['DATA']['REGULAR']['REGULAR_PARAMS'] = $taskObject->getRegularFields()?->getRegularParameters();
 		}
 
 		return $data;
@@ -3332,6 +3347,8 @@ class TasksTaskComponent extends TasksBaseComponent implements Errorable, Contro
 		$this->arResult['DATA']['TASK'] = $data['DATA'];
 		$this->arResult['CAN']['TASK'] = $data['CAN'];
 		$this->arResult['CAN_SHOW_MOBILE_QR_POPUP'] = $this->canShowMobileQrPopup($this->arResult['DATA']['TASK']);
+		$this->arResult['CAN_SHOW_AI_CHECKLIST_BUTTON'] = (new Integration\AI\Restriction\Text())->isChecklistAvailable();
+		$this->arResult['CAN_USE_AI_CHECKLIST_BUTTON'] = Integration\AI\Settings::isTextAvailable();
 
 		$this->arResult['COMPONENT_DATA']['IM_CHAT_ID'] = 0;
 		$this->arResult['COMPONENT_DATA']['IM_MESSAGE_ID'] = 0;
@@ -3439,6 +3456,12 @@ class TasksTaskComponent extends TasksBaseComponent implements Errorable, Contro
 				unset($checkListItems[$id]['ID']);
 			}
 			$data['SE_CHECKLIST'] = $checkListItems;
+
+			if (Tasks\Replicator\Template\Replicators\RegularTaskReplicator::isEnabled())
+			{
+				$regularParams = Tasks\Internals\Task\RegularParametersTable::getByTaskId($itemId);
+				$data['REGULAR']['REGULAR_PARAMS'] = $regularParams?->getRegularParameters();
+			}
 
 			$data = array_merge($data, $this->processDates($task));
 		}
@@ -4285,7 +4308,7 @@ class TasksTaskComponent extends TasksBaseComponent implements Errorable, Contro
 		{
 			$queryObject = \CTasks::getList(
 				[],
-				['ID' => $taskId, '=STATUS' => \CTasks::STATE_COMPLETED],
+				['ID' => $taskId, '=STATUS' => Status::COMPLETED],
 				['ID'],
 				['USER_ID' => User::getId()]
 			);
@@ -4320,8 +4343,9 @@ class TasksTaskComponent extends TasksBaseComponent implements Errorable, Contro
 	{
 		if (
 			isset($task['SCENARIO_NAME'])
-			&& $task['SCENARIO_NAME'] === Tasks\Internals\Task\ScenarioTable::SCENARIO_MOBILE
-			&& !(new Tasks\Provider\Mobile())->isMobileAppInstalled()
+			&& is_array($task['SCENARIO_NAME'])
+			&& in_array(Tasks\Internals\Task\ScenarioTable::SCENARIO_MOBILE, $task['SCENARIO_NAME'], true)
+			&& !(new UserOption\Mobile())->isMobileAppInstalled()
 		)
 		{
 			return true;

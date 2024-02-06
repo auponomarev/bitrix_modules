@@ -1,10 +1,7 @@
-/* eslint-disable bitrix-rules/no-pseudo-private */
-
 /**
  * @module im/messenger/controller/dialog/audio-player
  */
 jn.define('im/messenger/controller/dialog/audio-player', (require, exports, module) => {
-
 	const {
 		FileType,
 	} = require('im/messenger/const');
@@ -31,7 +28,7 @@ jn.define('im/messenger/controller/dialog/audio-player', (require, exports, modu
 			}
 
 			this.playingMessageId = messageId;
-			const playingMessage = this.store.getters['messagesModel/getMessageById'](this.playingMessageId);
+			const playingMessage = this.store.getters['messagesModel/getById'](this.playingMessageId);
 			if (!playingMessage || !playingMessage.files[0])
 			{
 				return;
@@ -43,7 +40,7 @@ jn.define('im/messenger/controller/dialog/audio-player', (require, exports, modu
 				return;
 			}
 
-			this.__setMessageIsPlaying(true, playingTime);
+			this.setMessageIsPlaying(true, playingTime);
 		}
 
 		playNext()
@@ -52,17 +49,15 @@ jn.define('im/messenger/controller/dialog/audio-player', (require, exports, modu
 
 			this.stop();
 
-			const nextMessageToPlay = this.__getNextMessageToPlay(previousMessageId);
+			const nextMessageToPlay = this.getNextMessageToPlay(previousMessageId);
 			if (!nextMessageToPlay)
 			{
 				return;
 			}
 
-			this.store.dispatch('messagesModel/update', {
+			this.store.dispatch('messagesModel/setPlayAudio', {
 				id: nextMessageToPlay.id,
-				fields: {
-					audioPlaying: true,
-				},
+				audioPlaying: true,
 			});
 
 			this.play(nextMessageToPlay.id);
@@ -75,30 +70,34 @@ jn.define('im/messenger/controller/dialog/audio-player', (require, exports, modu
 				return;
 			}
 
-			this.__setMessageIsPlaying(false, playingTime);
+			this.setMessageIsPlaying(false, playingTime);
 			this.playingMessageId = null;
 		}
 
-		__setMessageIsPlaying(isPlaying, playingTime)
+		/**
+		 * @private
+		 */
+		setMessageIsPlaying(isPlaying, playingTime)
 		{
-			const message = this.store.getters['messagesModel/getMessageById'](this.playingMessageId);
+			const message = this.store.getters['messagesModel/getById'](this.playingMessageId);
 			if (!message)
 			{
 				return;
 			}
 
-			this.store.dispatch('messagesModel/update', {
+			this.store.dispatch('messagesModel/setAudioState', {
 				id: this.playingMessageId,
-				fields: {
-					audioPlaying: isPlaying,
-					playingTime,
-				},
+				audioPlaying: isPlaying,
+				playingTime,
 			});
 		}
 
-		__getNextMessageToPlay(previousMessageId)
+		/**
+		 * @private
+		 */
+		getNextMessageToPlay(previousMessageId)
 		{
-			const previousMessage = this.store.getters['messagesModel/getMessageById'](previousMessageId);
+			const previousMessage = this.store.getters['messagesModel/getById'](previousMessageId);
 			if (!previousMessage)
 			{
 				return null;
@@ -106,12 +105,14 @@ jn.define('im/messenger/controller/dialog/audio-player', (require, exports, modu
 
 			const chatMessageList = this.store.getters['messagesModel/getByChatId'](previousMessage.chatId);
 
-			return chatMessageList.find(message => {
-				if (message.id <= previousMessage.id || !message.files[0]) {
+			return chatMessageList.find((message) => {
+				if (message.id <= previousMessage.id || !message.files[0])
+				{
 					return false;
 				}
 
 				const file = this.store.getters['filesModel/getById'](message.files[0]);
+
 				return file && file.type === FileType.audio;
 			});
 		}

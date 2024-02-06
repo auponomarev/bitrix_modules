@@ -7,19 +7,35 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 	const { TypeSort } = require('crm/entity-tab/sort');
 	const { TypePull } = require('crm/entity-tab/pull-manager');
 	const { ToolbarFactory } = require('crm/kanban/toolbar');
-	const { CategorySelectActions } = require('crm/category-list/actions');
-	const { CategoryListView } = require('crm/category-list-view');
-	const { CategorySvg } = require('crm/assets/category');
-	const { CategoryStorage } = require('crm/storage/category');
-	const { CategoryCountersStoreManager } = require('crm/state-storage');
-	const { Filter } = require('crm/entity-tab/filter');
-	const { PlanRestriction } = require('layout/ui/plan-restriction');
-	const { getSmartActivityMenuItem } = require('crm/entity-detail/component');
-	const { getActionChangeCrmMode } = require('crm/entity-actions');
-	const { get, isEqual } = require('utils/object');
+	const { getActionChangeCrmMode } = require('crm/entity-actions/change-crm-mode');
+	const { getSmartActivityMenuItem } = require('crm/entity-detail/component/smart-activity-menu-item');
+	const { get } = require('utils/object');
+	const { ListItemType, ListItemsFactory } = require('crm/simple-list/items');
+	const { Kanban } = require('layout/ui/kanban');
+	const { NotifyManager } = require('notify-manager');
 
-	const MAX_CATEGORY_CHANGE_ATTEMPTS = 5;
-	const CATEGORY_CHANGE_DELAY_TIME = 1000;
+	const store = require('statemanager/redux/store');
+	const {
+		fetchStageCounters,
+		counterIncremented,
+		counterDecremented,
+		selectById,
+	} = require('crm/statemanager/redux/slices/stage-counters');
+
+	const {
+		getCrmKanbanUniqId,
+		fetchCrmKanban: fetchCrmKanbanSettings,
+		selectStagesIdsBySemantics,
+	} = require('crm/statemanager/redux/slices/kanban-settings');
+
+	const { selectById: selectStageById } = require('crm/statemanager/redux/slices/stage-settings');
+
+	const PLUS_ONE_ACTION = 'plus';
+	const MINUS_ONE_ACTION = 'minus';
+	const UPDATE_ACTION = 'update';
+	const CREATE_ACTION = 'create';
+	const EXCLUDE_ACTION = 'excludeEntity';
+	const DELETE_ACTION = 'deleteEntity';
 
 	/**
 	 * @class KanbanTab
@@ -30,53 +46,41 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 		{
 			super(props);
 
-			const currentCategoryId = this.getCurrentCategoryId();
-
-			this.category = this.getCategoryFromCategoryStorage(currentCategoryId);
-			this.isEmptyAvailableCategories = false;
-			this.needReloadTab = !this.category;
-			this.categoryChangeAttempts = 0;
-			this.categoryChangeTimeoutId = null;
-
-			this.state = {
-				categoryId: currentCategoryId,
-				isLoading: !this.category,
-			};
-
-			this.onSelectedCategory = this.onSelectedCategoryHandler.bind(this);
-			this.onCategoryDelete = this.onCategoryDeleteHandler.bind(this);
-			this.onCategoryClose = this.onCategoryCloseHandler.bind(this);
 			this.setSmartActivityStatus = this.setSmartActivityStatus.bind(this);
-			this.onNotViewable = this.onNotViewableHandler.bind(this);
 			this.setCounterFilter = this.setCounterFilter.bind(this);
 			this.initCategoryCounters = this.initCategoryCounters.bind(this);
 			this.onBeforeReload = this.onBeforeReloadHandler.bind(this);
-			this.showCategorySelector = this.showCategorySelector.bind(this);
+			this.onItemMovedHandler = this.handleOnItemMoved.bind(this);
+			this.onItemDeletedHandler = this.handleOnItemDeleted.bind(this);
+			this.onItemUpdatedHandler = this.handleOnItemUpdated.bind(this);
+			this.onItemChangedCategoryHandler = this.handleOnItemChangedCategory.bind(this);
+			this.onItemDetailCardUpdateHandler = this.handleOnItemDetailCardUpdate.bind(this);
+			this.onItemDetailCardCreateHandler = this.handleOnItemDetailCardCreate.bind(this);
+			this.onItemDetailCardAccessDeniedHandler = this.handleOnItemDetailCardAccessDenied.bind(this);
+			this.onMoveItemError = this.handleInItemMoveError.bind(this);
+			this.getMenuButtonsHandler = this.getMenuButtons.bind(this);
 
 			this.toolbarFactory = new ToolbarFactory();
+			this.categoryPermissionsProbablyRevoked = false;
+
+			this.props.layout.on('onViewShown', () => {
+				if (this.categoryPermissionsProbablyRevoked)
+				{
+					this.categoryPermissionsProbablyRevoked = false;
+					this.onNotViewableHandler();
+				}
+			});
 		}
 
 		reload(params = {})
 		{
-			const viewComponent = this.getViewComponent();
-
-			if (!viewComponent)
+			if (this.changeCategoryIfViewNotFound())
 			{
-				console.error('view component not found');
-
-				const pathToCategory = CategoryStorage.getPathToCategory(this.props.entityTypeId, this.getCurrentCategoryId());
-				if (
-					!this.getCategoryFromCategoryStorage()
-					&& !CategoryStorage.isFetching(pathToCategory)
-				)
-				{
-					this.changeCategory(null);
-				}
-
 				return;
 			}
 
-			// @todo now support only deals
+			const viewComponent = this.getViewComponent();
+
 			if (viewComponent.setFilter)
 			{
 				viewComponent.setFilter(this.filter);
@@ -84,325 +88,72 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 
 			const force = BX.prop.getBoolean(params, 'force', false);
 
-			viewComponent.reload(viewComponent.getCurrentSlideName(), force, params);
+			viewComponent.reload(force, params);
 		}
 
 		initCategoryCounters(params = {})
 		{
-			CategoryCountersStoreManager.init(this.props.entityTypeId, this.getCurrentCategoryId(), params);
+			store.dispatch(fetchStageCounters({
+				entityTypeId: this.props.entityTypeId,
+				categoryId: this.getCurrentCategoryId(),
+				params,
+			}));
 		}
 
-		componentWillReceiveProps(nextProps)
+		initAfterCategoryChange(category, data)
 		{
-			super.componentWillReceiveProps(nextProps);
+			super.initAfterCategoryChange(category, data);
 
-			if (this.entityTypeName !== nextProps.entityTypeName)
-			{
-				this.setIsLoading().then(() => {
-					this.filter = new Filter();
-					this.needReloadTab = true;
-					this.entityTypeName = nextProps.entityTypeName;
+			const { categoryId = 0 } = data;
 
-					const categoryId = this.getCurrentCategoryId();
-					const categoryFromStorage = this.getCategoryFromCategoryStorage(categoryId);
-
-					this.setState(
-						{
-							isLoading: false,
-							searchButtonBackgroundColor: null,
-							categoryId,
-						},
-						() => this.initAfterCategoryChange(
-							categoryFromStorage,
-							{ categoryId },
-						),
-					);
-				});
-			}
+			store.dispatch(fetchCrmKanbanSettings({
+				categoryId,
+				entityTypeId: this.props.entityTypeId,
+			}));
 		}
 
 		componentDidMount()
 		{
-			super.componentDidMount();
-
-			CategoryStorage
-				.subscribeOnChange(() => this.applyCategoryStorageChanges())
-				.markReady()
-			;
-
-			BX.addCustomEvent('Crm.CategoryList::onSelectedCategory', this.onSelectedCategory);
-			BX.addCustomEvent('Crm.CategoryDetail::onDeleteCategory', this.onCategoryDelete);
-			BX.addCustomEvent('Crm.CategoryDetail::onClose', this.onCategoryClose);
 			BX.addCustomEvent('Crm.Activity.Todo::onChangeNotifications', this.setSmartActivityStatus);
+			BX.addCustomEvent('UI.SimpleList::onUpdateItem', this.onItemUpdatedHandler);
+			BX.addCustomEvent('UI.SimpleList::onDeleteItem', this.onItemDeletedHandler);
+			BX.addCustomEvent('UI.Kanban::onItemMoved', this.onItemMovedHandler);
+			BX.addCustomEvent('Crm.Item::onChangePipeline', this.onItemChangedCategoryHandler);
+			BX.addCustomEvent('DetailCard::onUpdate', this.onItemDetailCardUpdateHandler);
+			BX.addCustomEvent('DetailCard::onCreate', this.onItemDetailCardCreateHandler);
+			BX.addCustomEvent('DetailCard::onAccessDenied', this.onItemDetailCardAccessDeniedHandler);
 
-			if (!this.props.permissions.read)
-			{
-				const currentCategoryId = this.getCurrentCategoryId();
-				const category = this.getCategoryFromCategoryStorage(currentCategoryId);
-				this.changeCategory(category, true);
-			}
-		}
+			store.dispatch(fetchCrmKanbanSettings({
+				entityTypeId: this.props.entityTypeId,
+				categoryId: this.getCurrentCategoryId(),
+			}));
 
-		onSelectedCategoryHandler(category)
-		{
-			if (this.state.categoryId !== category.id)
-			{
-				this.changeCategory(category);
-			}
-		}
-
-		onCategoryDeleteHandler(categoryId)
-		{
-			if (this.state.categoryId === categoryId)
-			{
-				this.changeCategory(null);
-			}
-		}
-
-		onCategoryCloseHandler()
-		{
-			this.applyCategoryStorageChanges();
+			super.componentDidMount();
 		}
 
 		componentWillUnmount()
 		{
 			super.componentWillUnmount();
 
-			BX.removeCustomEvent('Crm.CategoryList::onSelectedCategory', this.onSelectedCategory);
-			BX.removeCustomEvent('Crm.CategoryDetail::onDeleteCategory', this.onCategoryDelete);
-			BX.removeCustomEvent('Crm.CategoryDetail::onClose', this.onCategoryClose);
 			BX.removeCustomEvent('Crm.Activity.Todo::onChangeNotifications', this.setSmartActivityStatus);
-		}
-
-		applyCategoryStorageChanges()
-		{
-			const newCategory = this.getCategoryFromCategoryStorage(this.state.categoryId);
-
-			if (this.category === null)
-			{
-				this.changeCategory(newCategory);
-				return;
-			}
-
-			if (!isEqual(this.category, newCategory))
-			{
-				if (this.isCategoryStagesCountChanged(newCategory))
-				{
-					this.reload();
-				}
-				else
-				{
-					this.category = newCategory;
-				}
-			}
-		}
-
-		/**
-		 * @param {Number|null} categoryId
-		 * @returns {Object|null}
-		 */
-		getCategoryFromCategoryStorage(categoryId = null)
-		{
-			if (categoryId === null)
-			{
-				categoryId = this.getCurrentCategoryId();
-			}
-
-			return CategoryStorage.getCategory(this.props.entityTypeId, categoryId);
-		}
-
-		changeCategory(category, showNotice = false)
-		{
-			if (this.categoryChangeTimeoutId)
-			{
-				clearTimeout(this.categoryChangeTimeoutId);
-			}
-
-			const desiredCategoryId = category ? category.id : null;
-
-			const promise = this.category ? new Promise((resolve) => {
-				this.setIsLoading().then(resolve);
-			}) : Promise.resolve();
-
-			promise
-				.then(() => this.trySetCurrentCategory(category))
-				.then((data) => this.tryUpdateToNewCategory(data, desiredCategoryId, showNotice));
-		}
-
-		trySetCurrentCategory(category)
-		{
-			return new Promise((resolve) => {
-				const entityType = this.getCurrentEntityType();
-				const categoryId = category ? category.id : -1;
-
-				if (entityType.needSaveCurrentCategoryId)
-				{
-					const { entityTypeId } = this.props;
-					BX.ajax.runAction('crmmobile.Category.set', {
-						data: {
-							entityTypeId,
-							categoryId,
-						},
-					}).then((response) => {
-						if (categoryId !== response.data.categoryId && categoryId >= 0)
-						{
-							const pathToList = CategoryStorage.getPathToCategoryList(entityTypeId);
-							CategoryStorage.clearTtlValue(pathToList);
-						}
-
-						resolve(response.data);
-					}).catch(({ errors }) => {
-						console.error(errors);
-					});
-				}
-				else
-				{
-					resolve({
-						categoryId,
-					});
-				}
-			});
-		}
-
-		tryUpdateToNewCategory(data, desiredCategoryId, showNotice)
-		{
-			const { categoryId } = data;
-
-			if (categoryId === null)
-			{
-				this.setState({
-					isEmptyAvailableCategories: true,
-					isLoading: false,
-				});
-				return;
-			}
-
-			const newState = {
-				isLoading: false,
-				searchButtonBackgroundColor: null,
-			};
-
-			if (categoryId === this.state.categoryId && this.category)
-			{
-				if (categoryId !== desiredCategoryId)
-				{
-					this.showChangeToAvailableCategoryNotice(this.category.name);
-				}
-				this.setState(newState, () => this.reload());
-				return;
-			}
-
-			const categoryFromStorage = this.getCategoryFromCategoryStorage(categoryId);
-
-			if (!categoryFromStorage)
-			{
-				this.state.categoryId = categoryId;
-				this.clearCurrentCategory();
-
-				console.error(`Category ${categoryId} not found in storage`);
-
-				if (this.categoryChangeAttempts++ < MAX_CATEGORY_CHANGE_ATTEMPTS)
-				{
-					const repeatTimeout = CATEGORY_CHANGE_DELAY_TIME * this.categoryChangeAttempts;
-
-					console.info(`Category change will be repeated after ${repeatTimeout / 1000} seconds. Attempt: ${this.categoryChangeAttempts}`);
-
-					this.categoryChangeTimeoutId = setTimeout(() => {
-						this.tryUpdateToNewCategory(data, desiredCategoryId, showNotice);
-					}, repeatTimeout);
-				}
-
-				return;
-			}
-
-			this.categoryChangeAttempts = 0;
-
-			showNotice = (showNotice || (categoryFromStorage && categoryFromStorage.id !== desiredCategoryId));
-
-			if (showNotice)
-			{
-				this.showChangeToAvailableCategoryNotice(categoryFromStorage.name);
-			}
-
-			this.filter = new Filter(this.getDefaultPresetId());
-
-			newState.searchButtonBackgroundColor = null;
-			newState.categoryId = categoryId;
-			this.setState(newState, () => this.initAfterCategoryChange(categoryFromStorage, data));
-		}
-
-		showChangeToAvailableCategoryNotice(categoryName)
-		{
-			const sectionDesc = BX.message('M_CRM_ENTITY_TAB_FORBIDDEN_READ_SECTION_DESC2');
-			Notify.showUniqueMessage(
-				sectionDesc.replace('#SECTION_NAME#', categoryName),
-				BX.message('M_CRM_ENTITY_TAB_FORBIDDEN_READ_SECTION2'),
-				{ time: 5 },
-			);
-		}
-
-		clearCurrentCategory()
-		{
-			this.category = null;
-		}
-
-		initAfterCategoryChange(category, data)
-		{
-			this.filter = new Filter(this.getDefaultPresetId());
-			this.category = category;
-			this.isEmpty = true;
-			this.floatingButtonMenu = null;
-			let needInitMenu = true;
-
-			this.updateEntityTypeData(data, (tabs) => {
-				this.entityTypes = tabs;
-				const params = {
-					menuButtons: this.getMenuButtons(),
-				};
-				this.needReloadTab = false;
-				needInitMenu = false;
-				this.reload(params);
-			});
-
-			if (needInitMenu)
-			{
-				this.getCurrentStatefulList().initMenu();
-			}
-
-			if (this.needReloadTab)
-			{
-				this.needReloadTab = false;
-				this.reload();
-			}
-		}
-
-		isCategoryStagesCountChanged(newCategory)
-		{
-			const currentCategory = this.category;
-
-			if (currentCategory.id !== newCategory.id)
-			{
-				return false;
-			}
-
-			return (
-				currentCategory.processStages.length !== newCategory.processStages.length
-				|| currentCategory.successStages.length !== newCategory.successStages.length
-				|| currentCategory.failedStages.length !== newCategory.failedStages.length
-			);
+			BX.removeCustomEvent('UI.SimpleList::onUpdateItem', this.onItemUpdatedHandler);
+			BX.removeCustomEvent('UI.SimpleList::onDeleteItem', this.onItemDeletedHandler);
+			BX.removeCustomEvent('UI.Kanban::onItemMoved', this.onItemMovedHandler);
+			BX.removeCustomEvent('Crm.Item::onChangePipeline', this.onItemChangedCategoryHandler);
+			BX.removeCustomEvent('DetailCard::onUpdate', this.onItemDetailCardUpdateHandler);
+			BX.removeCustomEvent('DetailCard::onCreate', this.onItemDetailCardCreateHandler);
+			BX.removeCustomEvent('DetailCard::onAccessDenied', this.onItemDetailCardAccessDeniedHandler);
 		}
 
 		render()
 		{
 			const { isLoading, isEmptyAvailableCategories } = this.state;
 
-			let content;
+			let content = null;
 
 			if (isEmptyAvailableCategories)
 			{
-				content = this.renderKanban({
-					forbidden: true,
-				});
+				content = this.renderForbiddenScreen();
 			}
 			else if (isLoading)
 			{
@@ -419,86 +170,100 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 			);
 		}
 
-		renderKanban(config = {})
+		renderForbiddenScreen()
 		{
-			return new UI.Kanban({
-				entityTypeName: this.entityTypeName,
-				entityTypeId: this.props.entityTypeId,
+			return View(
+				{
+					style: {
+						flexDirection: 'column',
+						justifyContent: 'center',
+						alignItems: 'center',
+						flex: 1,
+					},
+				},
+				Text({
+					text: BX.message('M_CRM_ENTITY_TAB_FORBIDDEN_FOR_ALL_CATEGORIES'),
+				}),
+			);
+		}
+
+		renderKanban()
+		{
+			const entityType = this.getCurrentEntityType();
+			const entityTypeId = this.props.entityTypeId;
+			const categoryId = this.getCurrentCategoryId();
+
+			return new Kanban({
+				id: this.getKanbanId(),
+				stagesProvider: () => {
+					const stages = selectStagesIdsBySemantics(
+						store.getState(),
+						getCrmKanbanUniqId(entityTypeId, categoryId),
+					);
+					const stageIds = [...stages.processStages, ...stages.successStages, ...stages.failedStages];
+
+					return stageIds.map((id) => selectStageById(store.getState(), id));
+				},
+				toolbar: {
+					enabled: this.toolbarFactory.has(this.entityTypeName),
+					componentClass: this.toolbarFactory.get(this.entityTypeName),
+					props: {
+						entityTypeName: this.entityTypeName,
+						entityTypeId: this.props.entityTypeId,
+						filterParams: this.getFilterParams(),
+						showSum: entityType ? entityType.isLinkWithProductsEnabled : false,
+					},
+				},
+				forcedShowSkeleton: false,
+				onMoveItemError: this.onMoveItemError,
 				actions: this.props.actions,
 				actionParams: this.prepareActionParams(),
 				filterParams: this.getFilterParams(),
 				layout: this.props.layout,
 				layoutMenuActions: this.getMenuActions(),
-				itemDetailOpenHandler: this.handleItemDetailOpen.bind(this),
 				itemCounterLongClickHandler: this.getCounterLongClickHandler(),
 				isShowFloatingButton: this.isShowFloatingButton(),
-				floatingButtonClickHandler: this.handleFloatingButtonClick.bind(this),
-				floatingButtonLongClickHandler: this.handleFloatingButtonLongClick.bind(this),
-				onDetailCardUpdateHandler: this.onDetailCardUpdate.bind(this),
-				onDetailCardCreateHandler: this.onDetailCardCreate.bind(this),
 				onNotViewableHandler: this.onNotViewable,
 				onPanListHandler: this.props.onPanList || null,
 				initCountersHandler: this.initCategoryCounters,
+				itemType: ListItemType.CRM_ENTITY,
+				itemFactory: ListItemsFactory,
 				itemActions: this.getItemActions(),
-				itemParams: this.props.itemParams,
+				itemParams: {
+					isClientEnabled: this.isClientEnabled(),
+					...this.props.itemParams,
+				},
+				onPrepareItemParams: (params) => ({
+					...params,
+					categoryId: this.getCurrentCategoryId(),
+				}),
 				pull: this.getPullConfig(),
 				layoutOptions: this.getLayoutOptions(),
 				itemLayoutOptions: this.getItemLayoutOptions(),
 				menuButtons: this.getMenuButtons(),
-				cacheName: this.getKanbanCacheName(),
-				getEmptyListComponent: this.getEmptyListComponent.bind(this),
-				onBeforeReload: this.onBeforeReload,
-				toolbarFactory: this.toolbarFactory,
-				config,
+				cacheName: this.getCacheName(),
+				getEmptyListComponent: this.getEmptyListComponent,
 				needInitMenu: this.props.needInitMenu,
-				ref: (ref) => {
-					if (ref)
-					{
-						this.viewComponent = ref;
-					}
-				},
-				getMenuButtons: this.getMenuButtons.bind(this),
+				onFloatingButtonClick: this.onFloatingButtonClickHandler,
+				onFloatingButtonLongClick: this.onFloatingButtonLongClickHandler,
+				itemDetailOpenHandler: this.itemDetailOpenHandler,
+				onDetailCardUpdateHandler: this.onDetailCardUpdateHandler,
+				onDetailCardCreateHandler: this.onDetailCardCreateHandler,
+				getMenuButtons: this.getMenuButtonsHandler,
+				ref: this.bindRef,
 				analyticsLabel: {
+					entityTypeId,
 					module: 'crm',
 					source: 'crm-entity-tab',
-					entityTypeId: this.props.entityTypeId,
 				},
 			});
 		}
 
-		onNotViewableHandler()
+		getKanbanId()
 		{
-			const category = this.getCategoryFromCategoryStorage();
-			this.changeCategory(category);
-		}
+			const categoryId = this.getCurrentCategoryId();
 
-		getKanbanCacheName()
-		{
-			const categoryId = (this.getCategoryId() || -1);
-			return `${this.props.cacheName}.${categoryId}`;
-		}
-
-		/**
-		 * @returns {Object}
-		 */
-		prepareActionParams()
-		{
-			const actionParams = super.prepareActionParams();
-			actionParams.loadItems.extra = (actionParams.loadItems.extra || {});
-
-			const categoryId = this.getCategoryId();
-			if (Number.isInteger(categoryId))
-			{
-				actionParams.loadItems.extra.filterParams = actionParams.loadItems.extra.filterParams || {};
-				actionParams.loadItems.extra.filterParams.CATEGORY_ID = categoryId;
-			}
-
-			const entityType = this.getCurrentEntityType();
-			const { presetId } = entityType.data;
-
-			this.filter.prepareActionParams(actionParams, presetId);
-
-			return actionParams;
+			return `KANBAN_${this.entityTypeName}_${categoryId}`;
 		}
 
 		/**
@@ -517,114 +282,6 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 			return params;
 		}
 
-		getMenuButtons()
-		{
-			const buttons = super.getMenuButtons();
-
-			if (this.getCurrentEntityType().isCategoriesEnabled)
-			{
-				buttons.push({
-					svg: {
-						content: CategorySvg.funnel(),
-					},
-					type: 'options',
-					badgeCode: 'kanban_categories_selector',
-					callback: this.showCategorySelector,
-				});
-			}
-
-			return buttons;
-		}
-
-		showCategorySelector()
-		{
-			const categoryId = this.getCategoryId();
-			const entityType = this.getCurrentEntityType();
-
-			if (categoryId === null || !entityType)
-			{
-				console.error('CategoryId or entityType is empty');
-				return;
-			}
-
-			this.openCategoryList(categoryId, entityType);
-		}
-
-		openCategoryList(categoryId, entityType)
-		{
-			void CategoryListView.open({
-				entityTypeId: entityType.id,
-				currentCategoryId: categoryId,
-				selectAction: CategorySelectActions.SelectCurrentCategory,
-
-				// @todo so far only deals are supported
-				needSaveCurrentCategoryId: entityType.needSaveCurrentCategoryId,
-			});
-		}
-
-		getAdditionalParamsForItem()
-		{
-			const viewComponent = this.getViewComponent();
-			return viewComponent ? viewComponent.getAdditionalParamsForItem() : {};
-		}
-
-		/**
-		 * @param {string} prefix
-		 * @returns {string}
-		 */
-		getPullCommand(prefix)
-		{
-			const { entityTypeName } = this.props;
-			const categoryId = this.getCategoryId();
-			return `${prefix}_${entityTypeName}_${categoryId}`;
-		}
-
-		/**
-		 * @returns {null|number}
-		 */
-		getCategoryId(entityTypeId)
-		{
-			if (!isNaN(entityTypeId) && entityTypeId !== this.props.entityTypeId)
-			{
-				return super.getCategoryId(entityTypeId);
-			}
-
-			if (Number.isInteger(this.state.categoryId))
-			{
-				return this.state.categoryId;
-			}
-
-			return this.getCurrentCategoryId();
-		}
-
-		/**
-		 * @returns {null|number}
-		 */
-		getCurrentCategoryId()
-		{
-			const currentEntityType = this.getCurrentEntityType();
-
-			if (!this.hasCurrentCategoryIdInEntityType(currentEntityType))
-			{
-				return null;
-			}
-
-			return Number(currentEntityType.data.currentCategoryId);
-		}
-
-		/**
-		 * @param {string|null} entityType
-		 * @returns {boolean}
-		 */
-		hasCurrentCategoryIdInEntityType(entityType)
-		{
-			return (
-				entityType
-				&& entityType.data
-				&& Number.isInteger(entityType.data.currentCategoryId)
-			);
-		}
-
 		deleteItem(itemId)
 		{
 			const params = {
@@ -639,6 +296,9 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 			this.getViewComponent().updateItemColumn(itemId, columnName);
 		}
 
+		/**
+		 * @return {StatefulList|null}
+		 */
 		getCurrentStatefulList()
 		{
 			return this.getViewComponent().getCurrentStatefulList();
@@ -663,87 +323,55 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 				return false;
 			}
 
+			if (params.eventName === TypePull.EventNameItemAdded)
+			{
+				const stageCode = get(params, 'item.data.columnId', '');
+
+				return this.isCurrentStage(stageCode) || this.isAllStagesDisplayed();
+			}
+
+			return this.hasItemInCurrentColumn(params.item.id);
+		}
+
+		isAllStagesDisplayed()
+		{
+			return this.getViewComponent().isAllStagesDisplayed();
+		}
+
+		hasColumnChangesInItem(item, oldItem)
+		{
 			const viewComponent = this.getViewComponent();
+			const nextStage = viewComponent.getStageByCode(item.data.columnId);
 
-			const isUpdatedItemInCurrentSlide = (params, slideName) => {
-				return (
-					params.eventName !== TypePull.EventNameItemAdded
-					&& viewComponent.getCurrentSlideName() === context.slideName
-					&& this.hasItemInCurrentColumn(params.item.id)
-				);
-			};
-
-			const columnId = get(params, 'item.data.columnId', '');
-
-			const isCurrentSlide = (
-				this.isCurrentSlideName(params.item.data.columnId, context.slideName)
-				|| isUpdatedItemInCurrentSlide(params, context.slideName)
+			return (
+				oldItem
+				&& oldItem.state.columnId
+				&& oldItem.state.columnId !== nextStage?.id
 			);
-			const isAllStagesSlide = (viewComponent.getCurrentSlideName() === viewComponent.getSlideName());
-
-			if (!isCurrentSlide && !isAllStagesSlide)
-			{
-				return false;
-			}
-
-			if (this.hasItemInCurrentColumn(params.item.id))
-			{
-				return true;
-			}
-
-			if (
-				params.eventName === TypePull.EventNameItemUpdated
-				&& (viewComponent.getSlideName(columnId) === context.slideName || isAllStagesSlide)
-			)
-			{
-				return true;
-			}
-
-			return (params.eventName === TypePull.EventNameItemAdded);
 		}
 
 		/**
-		 * @param {string} itemColumnId
-		 * @param {string} slideName
+		 * @param {string} stageCode
 		 * @returns {boolean}
 		 */
-		isCurrentSlideName(itemColumnId, slideName)
+		isCurrentStage(stageCode)
 		{
-			const currentSlideName = this.getViewComponent().getCurrentSlideName();
+			const activeStage = this.getViewComponent().getActiveStage();
 
-			return (
-				slideName === this.getViewComponent().getSlideName(itemColumnId)
-				&& slideName === currentSlideName
-			);
+			return activeStage && activeStage.statusId === stageCode;
 		}
 
 		getEmptyColumnScreenConfig(model)
 		{
-			const kanban = this.getViewComponent();
-			const slideName = kanban.getCurrentSlideName();
-			const columnStatusId = kanban.getColumnStatusIdFromSlideName(slideName);
-			const currentColumn = kanban.getColumnByName(columnStatusId);
-
 			return model.getEmptyColumnScreenConfig({
-				column: currentColumn,
+				column: this.getViewComponent().getActiveStage(),
 			});
-		}
-
-		isWrongPullContext(context = {})
-		{
-			return (this.getViewComponent().getCurrentSlideName() !== context.slideName);
-		}
-
-		scrollToTop()
-		{
-			const simpleList = this.getViewComponent().getCurrentStatefulList().getSimpleList();
-			this.scrollSimpleListToTop(simpleList);
 		}
 
 		getMenuActions()
 		{
 			const menuActions = [];
-			const { entityTypeId } = this.props;
+			const { permissions, entityTypeId } = this.props;
 			const entityType = this.getCurrentEntityType();
 			if (entityType && entityType.isLastActivityEnabled)
 			{
@@ -758,7 +386,7 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 
 			let topSeparatorInstalled = false;
 
-			if (entityType.isAvailableCrmMode && (entityTypeId === TypeId.Deal || entityTypeId === TypeId.Lead))
+			if (!permissions.crmMode && (entityTypeId === TypeId.Deal || entityTypeId === TypeId.Lead))
 			{
 				topSeparatorInstalled = true;
 				menuActions.push(this.getCrmModeAction());
@@ -776,20 +404,22 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 		getCrmModeAction()
 		{
 			const { restrictions } = this.props;
-			const { id, title, iconUrl, onAction } = getActionChangeCrmMode(restrictions.crmMode);
+			const { id, title, iconUrl, onAction } = getActionChangeCrmMode();
 
 			return {
 				id,
 				title,
 				iconUrl,
 				showTopSeparator: true,
-				onItemSelected: () => {
+				onItemSelected: async () => {
 					if (restrictions.crmMode)
 					{
-						onAction();
+						await onAction();
 					}
 					else
 					{
+						const { PlanRestriction } = await requireLazy('layout/ui/plan-restriction');
+
 						PlanRestriction.open({ title });
 					}
 				},
@@ -839,12 +469,9 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 			const itemConfig = super.getPullItemConfig(item);
 			if (itemConfig.showReloadListNotification)
 			{
-				const kanban = this.getViewComponent();
-				const currentSlideName = kanban.getCurrentSlideName();
-				if (
-					currentSlideName !== kanban.getSlideName()
-					&& currentSlideName !== kanban.getSlideName(item.data.columnId)
-				)
+				const activeStage = this.getViewComponent().getActiveStage();
+
+				if (activeStage && activeStage.statusId !== item.data.columnId)
 				{
 					itemConfig.showReloadListNotification = false;
 				}
@@ -853,39 +480,26 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 			return itemConfig;
 		}
 
-		getEmptyListComponent(params = null)
+		/**
+		 * @return {Object}
+		 */
+		getEmptyScreenProps()
 		{
 			if (this.isUnsuitableCurrentStage())
 			{
 				const model = this.getEntityTypeModel();
-				params = model.getUnsuitableStageScreenConfig();
-				return super.getEmptyListComponent(params);
+
+				return model.getUnsuitableStageScreenConfig();
 			}
 
-			if (this.filter.isActive())
-			{
-				return super.getEmptyListComponent();
-			}
-
-			const viewComponent = this.getViewComponent();
-
-			if (
-				this.getCurrentEntityType().isStagesEnabled
-				&& viewComponent.getSlideName() === viewComponent.getCurrentSlideName()
-			)
-			{
-				this.isEmpty = this.getCurrentStatefulList().getItems().size === 0;
-			}
-
-			return super.getEmptyListComponent();
+			return super.getEmptyScreenProps();
 		}
 
 		isUnsuitableCurrentStage()
 		{
 			const viewComponent = this.getViewComponent();
-			const stages = CategoryCountersStoreManager.getStages();
-			const stageId = viewComponent.getCurrentColumnId();
-			const currentStage = stages.find((stage) => stage.id === stageId);
+			const stageId = viewComponent.getActiveStageId();
+			const currentStage = selectById(store.getState(), stageId);
 
 			return (currentStage && currentStage.dropzone);
 		}
@@ -903,8 +517,231 @@ jn.define('crm/entity-tab/kanban', (require, exports, module) => {
 
 			return {
 				reload: false,
-				animate: !this.getCurrentStatefulList().getSimpleList().shouldShowReloadListNotification(),
+				animate: !this.getCurrentStatefulList().shouldShowReloadListNotification(),
 			};
+		}
+
+		handleOnItemUpdated(params)
+		{
+			const oldAmount = params.oldItem.data ? params.oldItem.data.price : 0;
+			const amount = params.item.data.price;
+
+			if (oldAmount === amount)
+			{
+				return;
+			}
+
+			const columnId = params.item.columnId;
+
+			this.modifyCountersByColumnId(PLUS_ONE_ACTION, columnId, amount, 0);
+		}
+
+		handleOnItemDeleted(params)
+		{
+			const oldAmount = params.oldItem.data ? params.oldItem.data.price : 0;
+			const oldColumnId = params.oldItem.data.columnId;
+
+			this.modifyCountersByColumnId(MINUS_ONE_ACTION, oldColumnId, oldAmount);
+		}
+
+		handleOnItemMoved(params)
+		{
+			if (params.kanbanId && params.kanbanId !== this.getKanbanId())
+			{
+				return;
+			}
+
+			const oldColumnId = params.oldItem.data.columnId;
+			const columnId = params.item.data.columnId;
+
+			if (oldColumnId === columnId)
+			{
+				return;
+			}
+
+			const amount = params.item.data.price;
+			this.modifyCountersByColumnId(PLUS_ONE_ACTION, columnId, amount);
+			this.modifyCountersByColumnId(MINUS_ONE_ACTION, oldColumnId, amount);
+
+			this.blinkItemListView(params.item.id);
+		}
+
+		handleOnItemChangedCategory(params)
+		{
+			const statefulList = this.getCurrentStatefulList();
+			if (!statefulList)
+			{
+				return;
+			}
+
+			const { ids = [] } = params;
+
+			ids.forEach((id) => {
+				const item = statefulList.getItem(id);
+				if (item)
+				{
+					this.modifyCountersByColumnId(MINUS_ONE_ACTION, item.data.columnId, item.data.price);
+				}
+			});
+		}
+
+		modifyCountersByColumnId(action, columnId, amount = 0, count = 1)
+		{
+			if (action !== PLUS_ONE_ACTION && action !== MINUS_ONE_ACTION)
+			{
+				throw new Error(`ModifyCounters action type ${action} is not known`);
+			}
+
+			const category = this.getCategoryFromCategoryStorage();
+			if (!category)
+			{
+				return;
+			}
+
+			const { processStages = [], successStages = [], failedStages = [] } = category;
+			const stages = [...processStages, ...successStages, ...failedStages];
+
+			const stage = stages.find((item) => item.statusId === columnId);
+			if (!stage)
+			{
+				return;
+			}
+
+			if (action === PLUS_ONE_ACTION)
+			{
+				store.dispatch(counterIncremented({
+					id: stage.id,
+					amount,
+					count,
+				}));
+			}
+			else
+			{
+				store.dispatch(counterDecremented({
+					id: stage.id,
+					amount,
+					count,
+				}));
+			}
+		}
+
+		handleOnItemDetailCardUpdate(uid, params)
+		{
+			this.animateItemAfterBackFromDetail(params.actionName || UPDATE_ACTION, params);
+		}
+
+		handleOnItemDetailCardCreate(uid, params)
+		{
+			this.animateItemAfterBackFromDetail(CREATE_ACTION, params);
+		}
+
+		animateItemAfterBackFromDetail(action, params)
+		{
+			const { entityTypeId } = this.props;
+			const owner = BX.prop.getObject(params, 'owner', {});
+
+			// todo remove all direct calls of stateful list. use viewComponent.publicMethods() instead
+			const statefulList = this.getCurrentStatefulList();
+
+			if (!statefulList)
+			{
+				return;
+			}
+
+			const isBackFromSlaveEntityType = (owner.id && statefulList.hasItem(owner.id));
+
+			if (entityTypeId === params.entityTypeId || isBackFromSlaveEntityType)
+			{
+				const data = this.onBeforeReloadHandler();
+				const id = isBackFromSlaveEntityType ? owner.id : params.entityId;
+				const activeStageId = this.getViewComponent().getActiveStageId();
+
+				if (
+					!data.reload
+					&& entityTypeId === params.entityTypeId
+					&& (
+						action === EXCLUDE_ACTION
+						|| action === DELETE_ACTION
+						|| (activeStageId && activeStageId !== params.entityModel.STAGE_ID)
+						|| this.itemCategoryIsChanged(params)
+					)
+				)
+				{
+					void statefulList.deleteItem(id);
+
+					return;
+				}
+
+				if (!data.reload && action === UPDATE_ACTION)
+				{
+					void statefulList.updateItems([id], BX.prop.getBoolean(data, 'animate', true), false, false);
+
+					return;
+				}
+
+				statefulList.addToAnimateIds(id);
+
+				this.reload({
+					force: true,
+					menuButtons: this.getMenuButtons(),
+				});
+			}
+		}
+
+		itemCategoryIsChanged(params)
+		{
+			const category = this.getCategoryFromCategoryStorage();
+
+			if (!category || !category.categoriesEnabled)
+			{
+				return false;
+			}
+
+			return params.categoryId !== category.id; // todo check this property
+		}
+
+		handleOnItemDetailCardAccessDenied(uid, params)
+		{
+			if (this.props.entityTypeId === params.entityTypeId)
+			{
+				this.categoryPermissionsProbablyRevoked = true;
+			}
+		}
+
+		/**
+		 * @param {KanbanBackendError[]} errors
+		 * @param {number} itemId
+		 * @param {KanbanStage} prevStage
+		 * @param {KanbanStage} nextStage
+		 * @param {Kanban} kanbanInstance
+		 */
+		handleInItemMoveError({ errors, itemId, prevStage, nextStage, kanbanInstance })
+		{
+			return new Promise((resolve) => {
+				void requireLazy('crm:required-fields')
+					.then(({ RequiredFields }) => {
+						if (RequiredFields && RequiredFields.hasRequiredFields(errors))
+						{
+							const columnId = nextStage.id;
+
+							RequiredFields.show({
+								errors,
+								params: {
+									entityId: itemId,
+									entityTypeId: this.props.entityTypeId,
+									uid: itemId,
+								},
+								onSave: () => kanbanInstance.moveItem(itemId, columnId).then(resolve),
+								onCancel: resolve,
+							});
+						}
+						else
+						{
+							return kanbanInstance.handleAjaxErrors(errors);
+						}
+					})
+					.catch(() => kanbanInstance.handleAjaxErrors(errors));
+			});
 		}
 	}
 

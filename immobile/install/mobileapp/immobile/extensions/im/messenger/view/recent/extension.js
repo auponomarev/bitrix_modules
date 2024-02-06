@@ -1,12 +1,10 @@
-/* eslint-disable bitrix-rules/no-pseudo-private */
-
 /**
  * @module im/messenger/view/recent
  */
 jn.define('im/messenger/view/recent', (require, exports, module) => {
-
 	const { Loc } = require('loc');
 	const { Runtime } = require('runtime');
+
 	const { View } = require('im/messenger/view/base');
 	const { EventType, FeatureFlag } = require('im/messenger/const');
 	const { MessengerParams } = require('im/messenger/lib/params');
@@ -23,8 +21,9 @@ jn.define('im/messenger/view/recent', (require, exports, module) => {
 				EventType.recent.loadNextPage,
 			]);
 
-			this._isLoaderShown = false;
+			this.loaderShown = false;
 			this.loadNextPageItemId = 'loadNextPage';
+			this.itemCollection = {};
 
 			this.subscribeEvents();
 			this.initTopMenu();
@@ -36,7 +35,7 @@ jn.define('im/messenger/view/recent', (require, exports, module) => {
 
 		get isLoaderShown()
 		{
-			return this._isLoaderShown;
+			return this.loaderShown;
 		}
 
 		subscribeEvents()
@@ -56,26 +55,23 @@ jn.define('im/messenger/view/recent', (require, exports, module) => {
 		initTopMenu()
 		{
 			const topMenuPopup = dialogs.createPopupMenu();
-
 			const topMenuButtons = [
 				{
 					id: 'readAll',
 					title: Loc.getMessage('IMMOBILE_RECENT_VIEW_READ_ALL'),
 					sectionCode: 'general',
-					iconName: 'read'
+					iconName: 'read',
 				},
 			];
 
 			if (FeatureFlag.isDevelopmentEnvironment)
 			{
-				topMenuButtons.push([
-					{
-						id: 'developer-menu',
-						title: 'Developer menu',
-						sectionCode: 'general',
-						iconName: 'start',
-					},
-				]);
+				topMenuButtons.push({
+					id: 'developer-menu',
+					title: 'Developer menu',
+					sectionCode: 'general',
+					iconName: 'start',
+				});
 			}
 
 			const topMenuButtonHandler = (event, item) => {
@@ -92,15 +88,7 @@ jn.define('im/messenger/view/recent', (require, exports, module) => {
 					&& item.id === 'developer-menu'
 				)
 				{
-					jn.import('im:messenger/lib/dev')
-						.then(()=>{
-							const { showDeveloperMenu } = require('im/messenger/lib/dev');
-							showDeveloperMenu();
-						})
-						.catch((error) => {
-							console.error(error)
-						})
-					;
+					showMessengerDeveloperMenu();
 				}
 			};
 
@@ -199,26 +187,42 @@ jn.define('im/messenger/view/recent', (require, exports, module) => {
 		addItems(items)
 		{
 			this.ui.addItems(items, true);
+			items.forEach((item) => {
+				this.itemCollection[item.id] = item;
+			});
 		}
 
 		updateItems(items)
 		{
 			this.ui.updateItems(items);
+			items.forEach((item) => {
+				this.itemCollection[item.element.id] = item.element;
+			});
 		}
 
 		updateItem(filter, fields)
 		{
 			this.ui.updateItem(filter, fields);
+			this.itemCollection[fields.id] = fields;
 		}
 
 		removeItem(itemFilter)
 		{
 			this.ui.removeItem(itemFilter);
+			if (itemFilter.id)
+			{
+				delete this.itemCollection[itemFilter.id];
+			}
 		}
 
 		findItem(filter, callback)
 		{
 			this.ui.findItem(filter, callback);
+		}
+
+		getItem(id)
+		{
+			return this.itemCollection[id];
 		}
 
 		stopRefreshing()
@@ -236,17 +240,17 @@ jn.define('im/messenger/view/recent', (require, exports, module) => {
 				params: {
 					disableTap: true,
 				},
-				sectionCode: 'general'
+				sectionCode: 'general',
 			};
 
 			this.addItems([loader]);
-			this._isLoaderShown = true;
+			this.loaderShown = true;
 		}
 
 		hideLoader()
 		{
-			this.removeItem({id: this.loadNextPageItemId});
-			this._isLoaderShown = false;
+			this.removeItem({ id: this.loadNextPageItemId });
+			this.loaderShown = false;
 		}
 
 		showWelcomeScreen()
@@ -256,10 +260,10 @@ jn.define('im/messenger/view/recent', (require, exports, module) => {
 			if (MessengerParams.get('INTRANET_INVITATION_CAN_INVITE', false))
 			{
 				options = {
-					'upperText': Loc.getMessage('IMMOBILE_RECENT_VIEW_EMPTY_TEXT_1'),
-					'lowerText': Loc.getMessage('IMMOBILE_RECENT_VIEW_EMPTY_TEXT_INVITE'),
-					'iconName': 'ws_employees',
-					'listener': () => IntranetInvite.openRegisterSlider({
+					upperText: Loc.getMessage('IMMOBILE_RECENT_VIEW_EMPTY_TEXT_1'),
+					lowerText: Loc.getMessage('IMMOBILE_RECENT_VIEW_EMPTY_TEXT_INVITE'),
+					iconName: 'ws_employees',
+					listener: () => IntranetInvite.openRegisterSlider({
 						originator: 'im.messenger',
 						registerUrl: MessengerParams.get('INTRANET_INVITATION_REGISTER_URL', ''),
 						rootStructureSectionId: MessengerParams.get('INTRANET_INVITATION_ROOT_STRUCTURE_SECTION_ID', 0),
@@ -272,16 +276,16 @@ jn.define('im/messenger/view/recent', (require, exports, module) => {
 			else
 			{
 				options = {
-					'upperText': Loc.getMessage('IMMOBILE_RECENT_VIEW_EMPTY_TEXT_1'),
-					'lowerText': Loc.getMessage('IMMOBILE_RECENT_VIEW_EMPTY_TEXT_CREATE'),
-					'iconName': 'ws_employees',
-					'listener': this.sendCreateChatEvent.bind(this),
+					upperText: Loc.getMessage('IMMOBILE_RECENT_VIEW_EMPTY_TEXT_1'),
+					lowerText: Loc.getMessage('IMMOBILE_RECENT_VIEW_EMPTY_TEXT_CREATE'),
+					iconName: 'ws_employees',
+					listener: this.sendCreateChatEvent.bind(this),
 				};
 			}
 
-			options['startChatButton'] = {
-				'text': Loc.getMessage('IMMOBILE_RECENT_VIEW_EMPTY_EMPTY_BUTTON'),
-				'iconName': 'ws_plus',
+			options.startChatButton = {
+				text: Loc.getMessage('IMMOBILE_RECENT_VIEW_EMPTY_EMPTY_BUTTON'),
+				iconName: 'ws_plus',
 			};
 
 			this.ui.welcomeScreen.show(options);
@@ -297,6 +301,19 @@ jn.define('im/messenger/view/recent', (require, exports, module) => {
 			this.emitCustomEvent(EventType.recent.createChat);
 		}
 	}
+
+	window.showMessengerDeveloperMenu = () => {
+		jn.import('im:messenger/lib/dev')
+			.then(() => {
+				const { showDeveloperMenu } = require('im/messenger/lib/dev');
+				showDeveloperMenu();
+			})
+			.catch((error) => {
+				// eslint-disable-next-line no-console
+				console.error(error);
+			})
+		;
+	};
 
 	module.exports = {
 		RecentView,

@@ -2,6 +2,7 @@
  * @module crm/timeline/item/base
  */
 jn.define('crm/timeline/item/base', (require, exports, module) => {
+	const AppTheme = require('apptheme');
 	const { MarketBanner } = require('crm/timeline/item/ui/market-banner');
 	const { TimelineItemHeader } = require('crm/timeline/item/ui/header');
 	const { TimelineItemIcon } = require('crm/timeline/item/ui/icon');
@@ -14,7 +15,10 @@ jn.define('crm/timeline/item/base', (require, exports, module) => {
 	const { get } = require('utils/object');
 	const { EventEmitter } = require('event-emitter');
 
+	const { Loc } = require('loc');
+
 	/**
+	 * @abstract
 	 * @class TimelineItemBase
 	 */
 	class TimelineItemBase extends LayoutComponent
@@ -96,13 +100,15 @@ jn.define('crm/timeline/item/base', (require, exports, module) => {
 		{
 			return View(
 				{
-					ref: (ref) => this.containerRef = ref,
+					ref: (ref) => {
+						this.containerRef = ref;
+					},
 					testId: `${this.model.type}_${this.model.id}`,
 					style: {
 						borderRadius: 12,
 						padding: 0,
 						marginBottom: 16,
-						borderColor: '#dfe0e3',
+						borderColor: AppTheme.colors.bgSeparatorPrimary,
 						borderWidth: this.model.hasLowPriority ? 1 : 0,
 					},
 				},
@@ -136,11 +142,14 @@ jn.define('crm/timeline/item/base', (require, exports, module) => {
 					}),
 					this.layoutSchema.header && new TimelineItemHeader({
 						...this.layoutSchema.header,
+						confirmationTexts: this.getActivityConfirmationParams(),
 						hasIcon: this.hasIcon,
 						opacity: this.model.hasLowPriority ? 0.6 : 1,
 						onAction: this.onAction.bind(this),
 						useFriendlyDate: this.model.isScheduled || this.model.isPinned,
 						isReadonly: this.model.isReadonly,
+						itemScopeEventBus: this.itemScopeEventBus,
+						activityType: this.model.props.type,
 					}),
 				),
 				this.layoutSchema.body && new TimelineItemBody({
@@ -163,6 +172,15 @@ jn.define('crm/timeline/item/base', (require, exports, module) => {
 					ref: (ref) => this.loadingOverlayRef = ref,
 				}),
 			);
+		}
+
+		getActivityConfirmationParams()
+		{
+			return {
+				title: Loc.getMessage('M_CRM_TIMELINE_ITEM_ACTIVITY_COMPLETE_CONF_TITLE'),
+				confirmButton: Loc.getMessage('M_CRM_TIMELINE_ITEM_ACTIVITY_COMPLETE_CONF_OK_TEXT'),
+				cancelButton: Loc.getMessage('M_CRM_TIMELINE_ITEM_ACTIVITY_COMPLETE_CONF_CANCEL_TEXT'),
+			};
 		}
 
 		// @todo article will be added later
@@ -215,6 +233,7 @@ jn.define('crm/timeline/item/base', (require, exports, module) => {
 			{
 				return false;
 			}
+
 			return Boolean(this.backgroundLayerRef);
 		}
 
@@ -294,3 +313,4 @@ jn.define('crm/timeline/item/base', (require, exports, module) => {
 
 	module.exports = { TimelineItemBase };
 });
+
