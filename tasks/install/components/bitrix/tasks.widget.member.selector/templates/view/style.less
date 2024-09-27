@@ -1,0 +1,142 @@
+@icon-set: url(/bitrix/js/tasks/css/images/media.png);
+
+.bg-image (@y: 0, @x: 0) {
+	background: @icon-set no-repeat @x @y;
+}
+
+.task-user-selector {
+	margin-bottom: 15px;
+}
+
+.task-detail-sidebar-info-title {
+	font-weight: bold;
+	line-height: 34px;
+}
+
+.task-detail-sidebar-info-title-line {
+	border-bottom: 1px solid #f0f1f2;
+}
+
+.task-user-selector.readonly .task-detail-sidebar-info-user,
+.task-user-selector.single .task-detail-sidebar-info-user{
+	padding-right: 12px;
+}
+.task-detail-sidebar-info-user-del {
+	position: absolute;
+	top: 2px;
+	right: -6px;
+	display: none;
+	cursor: pointer;
+}
+
+.bx-touch .task-detail-sidebar-info-user-del,
+.task-detail-sidebar-info-user:hover .task-detail-sidebar-info-user-del {
+	display: block;
+}
+
+.task-user-selector.single .task-detail-sidebar-info-user-del {
+	display: none;
+}
+
+.task-user-selector.readonly .task-user-selector-change,
+.task-user-selector.readonly .task-user-selector-add,
+.task-user-selector.readonly .task-detail-sidebar-info-user-del,
+
+.task-user-selector {
+	&.t-filled {
+		.task-user-selector-add {
+			display: none;
+		}
+	}
+	&.t-empty {
+		.task-user-selector-change {
+			display: none;
+		}
+	}
+}
+
+.task-detail-sidebar-info-user {
+	position: relative;
+	padding: 7px 20px 7px 12px;
+	background: #d5f1fc;
+	overflow: hidden;
+}
+
+.task-detail-sidebar-info-user-extranet,
+.task-detail-sidebar-info-user-mail {
+	background: #ffed8b;
+}
+
+.task-detail-sidebar-info-user-photo {
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	overflow: hidden;
+	float: left;
+	margin-right: 13px;
+	background: url(/bitrix/components/bitrix/main.post.list/templates/.default/images/sprite.png) no-repeat -51px 6px #535c6a;
+}
+
+.task-detail-sidebar-info-user-title {
+	overflow: hidden;
+	word-wrap: break-word;
+}
+
+.task-detail-sidebar-info-user-name[href="javascript:void(0);"] {
+	cursor: default;
+	color: gray;
+
+	&:hover {
+		text-decoration: none;
+		border-bottom: 0 none;
+	}
+}
+.task-detail-sidebar-info-user-photo[href="javascript:void(0);"] {
+	cursor: default;
+}
+
+.task-detail-sidebar-info-user-name {
+	font-size: 14px;
+	font-weight: bold;
+	line-height: 19px;
+}
+
+.task-detail-sidebar-info-user-extranet .task-detail-sidebar-info-user-name,
+.task-detail-sidebar-info-user-mail .task-detail-sidebar-info-user-name {
+	color: #bf7700;
+}
+
+.task-detail-sidebar-info-user-mail .task-detail-sidebar-info-user-name:before,
+.task-detail-sidebar-info-user-extranet .task-detail-sidebar-info-user-name:before {
+	content: '';
+	display: inline-block;
+	vertical-align: middle;
+	width: 13px;
+	height: 14px;
+	.bg-image(-351px);
+	margin-right: 5px;
+}
+
+.task-detail-sidebar-info-user-mail .task-detail-sidebar-info-user-name:before {
+	background-position: 0 -366px;
+}
+
+.task-detail-sidebar-info-user-name-link {
+	color: #0b66c3;
+	text-decoration: none;
+}
+
+.task-detail-sidebar-info-user-name-link:hover {
+	border-bottom: 1px solid;
+}
+
+.task-detail-sidebar-info-user-pos {
+	font-size: 13px;
+	color: #000;
+}
+
+.task-detail-sidebar-info-user-wrap.invisible {
+	height: 0;
+	opacity: 0;
+	overflow: hidden;
+}
