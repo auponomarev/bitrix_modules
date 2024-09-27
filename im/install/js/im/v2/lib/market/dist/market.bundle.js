@@ -2,7 +2,7 @@
 this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
-(function (exports,marketplace,ui_vue3_vuex,main_core,im_v2_application_core,im_v2_lib_logger,im_v2_const) {
+(function (exports,ui_vue3_vuex,main_core,im_v2_application_core,im_v2_lib_logger,im_v2_const) {
 	'use strict';
 
 	var _loadLink = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("loadLink");
@@ -181,10 +181,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      });
 	    }
 	  }
-	  static openSlider(placement, context) {
-	    main_core.Runtime.loadExtension('applayout').then(() => {
-	      BX.rest.AppLayout.openApplication(placement.loadConfiguration.ID, context, placement.loadConfiguration);
-	    });
+	  static async openSlider(placement, context) {
+	    await main_core.Runtime.loadExtension('applayout');
+	    BX.rest.AppLayout.openApplication(placement.loadConfiguration.ID, context, placement.loadConfiguration);
 	  }
 	  static openMarketplace() {
 	    const marketplaceImPlacementCode = 'IM_CHAT';
@@ -192,7 +191,10 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	}
 	function _init2(marketApps) {
-	  babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].dispatch('market/set', marketApps);
+	  if (!marketApps) {
+	    return;
+	  }
+	  void babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].dispatch('market/set', marketApps);
 	  babelHelpers.classPrivateFieldLooseBase(this, _marketService)[_marketService].setLoadLink(marketApps.links.load);
 	}
 	Object.defineProperty(MarketManager, _instance, {
@@ -202,5 +204,5 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 
 	exports.MarketManager = MarketManager;
 
-}((this.BX.Messenger.v2.Lib = this.BX.Messenger.v2.Lib || {}),BX,BX.Vue3.Vuex,BX,BX.Messenger.v2.Application,BX.Messenger.v2.Lib,BX.Messenger.v2.Const));
+}((this.BX.Messenger.v2.Lib = this.BX.Messenger.v2.Lib || {}),BX.Vue3.Vuex,BX,BX.Messenger.v2.Application,BX.Messenger.v2.Lib,BX.Messenger.v2.Const));
 //# sourceMappingURL=market.bundle.js.map

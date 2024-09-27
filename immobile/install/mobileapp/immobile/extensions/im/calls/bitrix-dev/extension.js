@@ -60,6 +60,7 @@
 
 			this.ready = false;
 			this.userId = env.userId;
+			this.userData = params.userData;
 
 			this.initiatorId = params.initiatorId || '';
 			this.users = BX.type.isArray(params.users) ? params.users.filter((userId) => userId != this.userId) : [];
@@ -245,6 +246,11 @@
 				onStreamRemoved: (e) => this.eventEmitter.emit(BX.Call.Event.onStreamRemoved, [e.userId]),
 				onStateChanged: this.__onPeerStateChanged.bind(this),
 				onInviteTimeout: this.__onPeerInviteTimeout.bind(this),
+				onInitialState: (e) => {
+					this.eventEmitter.emit(BX.Call.Event.onUserFloorRequest, [e.userId, e.floorRequest]);
+					this.eventEmitter.emit(BX.Call.Event.onUserMicrophoneState, [e.userId, e.microphoneState]);
+				},
+				onHandRaised: (e) => this.eventEmitter.emit(BX.Call.Event.onUserFloorRequest, [e.userId, e.isHandRaised]),
 			});
 		}
 
@@ -342,6 +348,13 @@
 			}
 		}
 
+		onCentralUserSwitch(userId) {
+			if (this.bitrixCallDev && this.bitrixCallDev.onCentralUserSwitch)
+			{
+				this.bitrixCallDev.onCentralUserSwitch(userId);
+			}
+		}
+
 		switchCamera()
 		{
 			if (!this.videoEnabled)
@@ -394,7 +407,7 @@
 
 		requestFloor(requestActive)
 		{
-			this.signaling.sendFloorRequest(requestActive);
+			this.bitrixCallDev.raiseHand(requestActive);
 		}
 
 		/**
@@ -604,9 +617,17 @@
 							JNBXCameraManager.setResolutionConstraints(960, 540); // force 16:9 aspect ratio
 						}
 
+						const callOptions = {
+							sendVideo: this.videoEnabled,
+							receiveVideo: true,
+							enableSimulcast: true,
+							userName: this.userData,
+							callBetaIosEnabled: callEngine.isCallBetaIosEnabled(),
+						};
+
 						this.bitrixCallDev = client.callConference(
 							`bx_conf_${this.id}`,
-							{ sendVideo: this.videoEnabled, receiveVideo: true, enableSimulcast: true },
+							callOptions,
 						);
 					}
 					catch (e)
@@ -634,10 +655,7 @@
 
 						this.bitrixCallDev.on(JNBXCall.Events.Failed, this.__onCallDisconnectedHandler);
 
-						if (this.muted)
-						{
-							this.bitrixCallDev.sendAudio = false;
-						}
+						this.bitrixCallDev.sendAudio = !this.muted;
 						this.signaling.sendMicrophoneState(!this.muted);
 						this.signaling.sendCameraState(this.videoEnabled);
 
@@ -871,6 +889,7 @@
 			{
 				// Call declined by the same user elsewhere
 				this.joinStatus = BX.Call.JoinStatus.None;
+				this.eventEmitter.emit(BX.Call.Event.onHangup);
 
 				return;
 			}
@@ -1654,12 +1673,15 @@
 				onInviteTimeout: BX.type.isFunction(params.onInviteTimeout) ? params.onInviteTimeout : BX.DoNothing,
 				onStreamReceived: BX.type.isFunction(params.onStreamReceived) ? params.onStreamReceived : BX.DoNothing,
 				onStreamRemoved: BX.type.isFunction(params.onStreamRemoved) ? params.onStreamRemoved : BX.DoNothing,
+				onInitialState: BX.type.isFunction(params.onInitialState) ? params.onInitialState : BX.DoNothing,
+				onHandRaised: BX.type.isFunction(params.onHandRaised) ? params.onHandRaised : BX.DoNothing,
 			};
 
 			// event handlers
 			this.__onEndpointRemoteMediaAddedHandler = this.__onEndpointRemoteMediaAdded.bind(this);
 			this.__onEndpointRemoteMediaRemovedHandler = this.__onEndpointRemoteMediaRemoved.bind(this);
 			this.__onEndpointRemovedHandler = this.__onEndpointRemoved.bind(this);
+			this.__onEndpointHandRaisedHandler = this.__onEndpointHandRaised.bind(this);
 
 			this.calculatedState = this.calculateState();
 		}
@@ -1756,6 +1778,14 @@
 
 			this.updateCalculatedState();
 			this.bindEndpointEventHandlers();
+			if (endpoint.initialState)
+			{
+				this.callbacks.onInitialState({
+					userId: this.userId,
+					microphoneState: endpoint.initialState.microphoneState,
+					floorRequest: endpoint.initialState.floorRequest,
+				});
+			}
 		}
 
 		allowIncomingVideo(isIncomingVideoAllowed)
@@ -1773,6 +1803,7 @@
 			this.endpoint.on(JNBXEndpoint.Events.VideoStreamAdded, this.__onEndpointRemoteMediaAddedHandler);
 			this.endpoint.on(JNBXEndpoint.Events.VideoStreamRemoved, this.__onEndpointRemoteMediaRemovedHandler);
 			this.endpoint.on(JNBXEndpoint.Events.Removed, this.__onEndpointRemovedHandler);
+			this.endpoint.on(JNBXEndpoint.Events.HandRaised, this.__onEndpointHandRaisedHandler);
 		}
 
 		removeEndpointEventHandlers()
@@ -1780,6 +1811,7 @@
 			this.endpoint.off(JNBXEndpoint.Events.VideoStreamAdded, this.__onEndpointRemoteMediaAddedHandler);
 			this.endpoint.off(JNBXEndpoint.Events.VideoStreamRemoved, this.__onEndpointRemoteMediaRemovedHandler);
 			this.endpoint.off(JNBXEndpoint.Events.Removed, this.__onEndpointRemovedHandler);
+			this.endpoint.off(JNBXEndpoint.Events.HandRaised, this.__onEndpointHandRaisedHandler);
 		}
 
 		calculateState()
@@ -1940,6 +1972,16 @@
 			this.updateCalculatedState();
 		}
 
+		__onEndpointHandRaised(e)
+		{
+			this.log('Endpoint hand raised');
+
+			this.callbacks.onHandRaised({
+				userId: this.userId,
+				isHandRaised: e.isHandRaised,
+			});
+		}
+
 		log()
 		{
 			this.call && this.call.log.apply(this.call, arguments);
@@ -1956,6 +1998,8 @@
 			this.callbacks.onStateChanged = BX.DoNothing;
 			this.callbacks.onStreamReceived = BX.DoNothing;
 			this.callbacks.onStreamRemoved = BX.DoNothing;
+			this.callbacks.onInitialState = BX.DoNothing;
+			this.callbacks.onHandRaised = BX.DoNothing;
 
 			clearTimeout(this.callingTimeout);
 			clearTimeout(this.connectionRestoreTimeout);

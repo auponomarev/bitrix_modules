@@ -3,16 +3,18 @@ import { EventEmitter } from 'main.core.events';
 
 import { Utils } from 'im.v2.lib.utils';
 import { EventType } from 'im.v2.const';
-import { Logger } from 'im.v2.lib.logger';
-import { SearchService } from 'im.v2.provider.service';
+import { Core } from 'im.v2.application.core';
 import { ScrollWithGradient } from 'im.v2.component.elements';
 
 import { MentionItem } from './mention-item';
 import { MentionEmptyState } from './mention-empty-state';
 import { MentionLoadingState } from './mention-loading-state';
 import { MentionContentFooter } from './mention-content-footer';
+import { MentionSearchService } from '../classes/mention-search-service';
 
 import '../css/mention-popup-content.css';
+
+import type { ImModelRecentItem, ImModelUser } from 'im.v2.model';
 
 // @vue/component
 export const MentionPopupContent = {
@@ -35,6 +37,8 @@ export const MentionPopupContent = {
 		return {
 			isLoading: false,
 			searchResult: [],
+			chatParticipants: [],
+			chatParticipantsLoaded: false,
 			currentServerQueries: 0,
 			needTopShadow: false,
 			needBottomShadow: true,
@@ -46,7 +50,41 @@ export const MentionPopupContent = {
 	{
 		itemsToShow(): string[]
 		{
-			return this.preparedQuery.length > 0 ? this.searchResult : this.recentChats;
+			if (this.preparedQuery.length === 0)
+			{
+				if (this.needToShowRecentUsersOnStartScreen)
+				{
+					return this.usersFromRecent;
+				}
+
+				return this.chatParticipants;
+			}
+
+			return this.searchResult;
+		},
+		needToShowRecentUsersOnStartScreen(): boolean
+		{
+			return this.chatParticipantsLoaded && this.chatParticipants.length <= 1;
+		},
+		usersFromRecent(): string[]
+		{
+			const recentUsers = [];
+
+			this.$store.getters['recent/getSortedCollection'].forEach((recentItem: ImModelRecentItem) => {
+				if (this.isChat(recentItem.dialogId))
+				{
+					return;
+				}
+				const user: ImModelUser = this.$store.getters['users/get'](recentItem.dialogId, true);
+				if (user.bot || user.id === Core.getUserId())
+				{
+					return;
+				}
+
+				recentUsers.push(user);
+			});
+
+			return recentUsers.map((user: ImModelUser) => user.id.toString());
 		},
 		preparedQuery(): string
 		{
@@ -61,20 +99,10 @@ export const MentionPopupContent = {
 
 			return this.searchResult.length === 0 && this.preparedQuery.length > 0;
 		},
-		recentChats(): string[]
-		{
-			return this.$store.getters['recent/getSortedCollection'].map((recentItem) => {
-				return recentItem.dialogId;
-			});
-		},
 	},
 	watch:
 	{
 		async isLoading()
-		{
-			await this.adjustPosition();
-		},
-		async recentChats()
 		{
 			await this.adjustPosition();
 		},
@@ -90,14 +118,15 @@ export const MentionPopupContent = {
 			}
 
 			this.selectedIndex = 0;
-			this.startSearch(newQuery);
+			void this.startSearch(newQuery);
 		},
 	},
 	created()
 	{
 		this.initSettings();
-		this.searchService = new SearchService({ findByParticipants: false });
+		this.searchService = new MentionSearchService();
 		this.searchOnServerDelayed = Runtime.debounce(this.searchOnServer, 400, this);
+		void this.loadChatParticipants();
 
 		Event.bind(window, 'keydown', this.onKeyDown);
 		EventEmitter.subscribe(EventType.mention.selectItem, this.onInsertItem);
@@ -115,46 +144,48 @@ export const MentionPopupContent = {
 			const defaultMinTokenSize = 3;
 			this.minTokenSize = settings.get('minSearchTokenSize', defaultMinTokenSize);
 		},
-		searchOnServer(query: string)
+		async loadChatParticipants()
+		{
+			this.isLoading = true;
+			this.chatParticipants = await this.searchService.loadChatParticipants(this.dialogId);
+			this.searchResult = this.chatParticipants;
+			this.isLoading = false;
+			this.chatParticipantsLoaded = true;
+		},
+		async searchOnServer(query: string)
 		{
 			this.currentServerQueries++;
 
-			this.searchService.searchOnServer(query).then((dialogIds: string[]) => {
-				if (query !== this.preparedQuery)
-				{
-					this.isLoading = false;
+			const dialogIds = await this.searchService.search(query);
+			if (query !== this.preparedQuery)
+			{
+				this.isLoading = false;
 
-					return;
-				}
+				return;
+			}
 
-				this.searchResult = this.searchService.sortByDate(dialogIds);
-			}).catch((error) => {
-				console.error(error);
-			}).finally(() => {
-				this.currentServerQueries--;
-				this.stopLoader();
-			});
+			this.searchResult = [...new Set([...this.searchResult, ...dialogIds])];
+			this.currentServerQueries--;
+			this.stopLoader();
 		},
-		startSearch(query: string)
+		async startSearch(query: string)
 		{
 			if (query.length > 0)
 			{
-				this.searchService.searchLocal(query).then((dialogIds: string[]) => {
-					if (query !== this.preparedQuery)
-					{
-						return;
-					}
+				const dialogIds = this.searchService.searchLocal(query);
+				if (query !== this.preparedQuery)
+				{
+					return;
+				}
 
-					this.searchResult = this.searchService.sortByDate(dialogIds);
-				}).catch((error) => {
-					Logger.error('Mention: searchLocalOnlyUsers', error);
-				});
+				const sortedLocalResult = this.searchService.sortByDate(dialogIds);
+				this.searchResult = this.appendResult(sortedLocalResult);
 			}
 
 			if (query.length >= this.minTokenSize)
 			{
 				this.isLoading = true;
-				this.searchOnServerDelayed(query);
+				await this.searchOnServerDelayed(query);
 			}
 
 			if (query.length === 0)
@@ -173,7 +204,7 @@ export const MentionPopupContent = {
 		},
 		cleanSearchResult()
 		{
-			this.searchResult = [];
+			this.searchResult = this.chatParticipants;
 		},
 		async adjustPosition()
 		{
@@ -260,6 +291,16 @@ export const MentionPopupContent = {
 		getDomElementById(id: number | string): ?HTMLElement
 		{
 			return this.$refs['mention-content'].querySelector(`[data-index="${id}"]`);
+		},
+		appendResult(newItems: string[]): string[]
+		{
+			const filtered = this.searchResult.filter((dialogId) => newItems.includes(dialogId));
+
+			return [...new Set([...filtered, ...newItems])];
+		},
+		isChat(dialogId: string): boolean
+		{
+			return dialogId.startsWith('chat');
 		},
 	},
 	template: `

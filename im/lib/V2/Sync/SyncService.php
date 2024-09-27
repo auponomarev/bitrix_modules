@@ -43,20 +43,29 @@ class SyncService
 		return $this->formatData($logCollection, $limit);
 	}
 
-	public function getChangesFromId(int $id, int $limit): array
+	public function getChangesFromId(?int $id, int $limit): array
 	{
 		if (!self::isEnable())
 		{
 			return [];
 		}
 
-		$logCollection = LogTable::query()
+		$query = LogTable::query()
 			->setSelect(['ID'])
 			->where('USER_ID', $this->getContext()->getUserId())
-			->where('ID', '>', $id)
 			->setLimit($limit)
-			->fetchCollection()
 		;
+
+		if ($id !== null)
+		{
+			$query->where('ID', '>', $id)->setOrder(['ID' => 'ASC']);
+		}
+		else
+		{
+			$query->setOrder(['DATE_CREATE' => 'DESC']);
+		}
+
+		$logCollection = $query->fetchCollection();
 		$logCollection->fill();
 		Logger::getInstance()->updateDateDelete($logCollection);
 
@@ -91,11 +100,28 @@ class SyncService
 
 		$data['hasMore'] = $logCollection->count() >= $limit;
 		$ids = $logCollection->getIdList();
+		$data['lastServerDate'] = $this->getLastServerDate($logCollection);
 		if (!empty($ids))
 		{
 			$data['lastId'] = max($ids);
 		}
 
 		return $data;
+	}
+
+	protected function getLastServerDate(EO_Log_Collection $logCollection): ?DateTime
+	{
+		$maxDateTime = null;
+		$maxTimestamp = 0;
+		foreach ($logCollection as $logItem)
+		{
+			if ($logItem->getDateCreate()->getTimestamp() > $maxTimestamp)
+			{
+				$maxTimestamp = $logItem->getDateCreate()->getTimestamp();
+				$maxDateTime = $logItem->getDateCreate();
+			}
+		}
+
+		return $maxDateTime;
 	}
 }

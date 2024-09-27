@@ -526,7 +526,11 @@ class Vote extends BaseObject implements \ArrayAccess
 						"QUESTIONS" => array());
 				if ($vote["IMAGE_ID"] > 0)
 					$images[$vote["IMAGE_ID"]] = &$vote["IMAGE"];
-				$question = array("ID" => null);
+				$question = [
+					'ID' => null,
+					'FIELD_TYPE' => \Bitrix\Vote\QuestionTypes::RADIO,
+					'COUNTER' => 0,
+				];
 				do
 				{
 					$answer = array();
@@ -1026,7 +1030,7 @@ class Vote extends BaseObject implements \ArrayAccess
 						"NAME" => $res["U_NAME"],
 						"LAST_NAME" => $res["U_LAST_NAME"],
 						"SECOND_NAME" => $res["U_SECOND_NAME"],
-						"LOGIN" => $res["U_LOGIN"],
+						"LOGIN" => $res["U_LOGIN"] ?? null,
 						"PERSONAL_PHOTO" => $res["U_PERSONAL_PHOTO"],
 					);
 				}
@@ -1065,9 +1069,9 @@ class Vote extends BaseObject implements \ArrayAccess
 	 * @param string $key The name if characteristic that you want to know.
 	 * @return mixed
 	 */
-	public function get($key)
+	public function get($key): mixed
 	{
-		return $this->vote[$key];
+		return $this->vote[$key] ?? null;
 	}
 
 	/**
@@ -1422,7 +1426,7 @@ HTML;
 		$this->errorCollection->clear();
 
 		/** @var \Bitrix\Main\Result $result */
-		if ($params["revote"] != true)
+		if (!isset($params["revote"]) || $params["revote"] != true)
 		{
 			$result = $this->canVote($user);
 		}
@@ -1510,7 +1514,7 @@ HTML;
 			$eventFields = array(
 				"VOTE_USER_ID"		=> \Bitrix\Vote\User::getCurrent()->setVotedUserId(true),
 				"DATE_VOTE"			=> (new DateTime()),
-				"STAT_SESSION_ID"	=> $_SESSION["SESS_SESSION_ID"],
+				"STAT_SESSION_ID"	=> $_SESSION["SESS_SESSION_ID"] ?? null,
 				"IP"				=> \Bitrix\Main\Context::getCurrent()->getServer()->get("REMOTE_ADDR"),
 				"VALID"				=> "Y",
 				"VISIBLE" 			=> ($this["ANONYMITY"] == \Bitrix\Vote\Vote\Anonymity::ANONYMOUSLY ? "N" : "Y") // can be replaced from $data array ["EXTRAS"]["HIDDEN"] = "Y"

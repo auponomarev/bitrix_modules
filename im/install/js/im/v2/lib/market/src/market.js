@@ -1,4 +1,3 @@
-import 'marketplace';
 import { Store } from 'ui.vue3.vuex';
 import { Runtime } from 'main.core';
 
@@ -69,23 +68,22 @@ export class MarketManager
 
 	unloadPlacement(placementId: string)
 	{
-		const appLayoutNew = Object.values(BX.rest.layoutList).filter(layout => {
+		const appLayoutNew = Object.values(BX.rest.layoutList).filter((layout) => {
 			return layout.params.placementId === placementId;
 		});
 
 		if (appLayoutNew.length > 0)
 		{
-			appLayoutNew.forEach(layout => {
+			appLayoutNew.forEach((layout) => {
 				layout.destroy();
 			});
 		}
 	}
 
-	static openSlider(placement: ImModelMarketApplication, context: Object)
+	static async openSlider(placement: ImModelMarketApplication, context: Object)
 	{
-		Runtime.loadExtension('applayout').then(() => {
-			BX.rest.AppLayout.openApplication(placement.loadConfiguration.ID, context, placement.loadConfiguration);
-		});
+		await Runtime.loadExtension('applayout');
+		BX.rest.AppLayout.openApplication(placement.loadConfiguration.ID, context, placement.loadConfiguration);
 	}
 
 	static openMarketplace()
@@ -97,7 +95,12 @@ export class MarketManager
 
 	#init(marketApps: MarketApps)
 	{
-		this.#store.dispatch('market/set', marketApps);
+		if (!marketApps)
+		{
+			return;
+		}
+
+		void this.#store.dispatch('market/set', marketApps);
 		this.#marketService.setLoadLink(marketApps.links.load);
 	}
 }

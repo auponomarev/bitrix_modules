@@ -6,6 +6,7 @@ use Bitrix\Im\Model\LinkReminderTable;
 use Bitrix\Im\Model\MessageUnreadTable;
 use Bitrix\Im\Model\RecentTable;
 use Bitrix\Im\V2\Chat\EntityLink;
+use Bitrix\Im\V2\Integration\AI\AIHelper;
 use Bitrix\Im\V2\Message\CounterService;
 use Bitrix\Im\V2\Entity\File\FileCollection;
 use Bitrix\Im\V2\Entity\File\FileItem;
@@ -15,6 +16,7 @@ use Bitrix\Im\V2\Settings\UserConfiguration;
 use Bitrix\Im\V2\Sync;
 use Bitrix\Imbot\Bot\CopilotChatBot;
 use Bitrix\Main\Application, Bitrix\Main\Localization\Loc;
+use Bitrix\Main\Config\Option;
 use Bitrix\Main\DB\SqlExpression;
 use Bitrix\Main\Loader;
 use Bitrix\Main\ORM\Fields\ExpressionField;
@@ -220,7 +222,10 @@ class Recent
 
 		$generalChatId = \CIMChat::GetGeneralChatId();
 
-		$viewCommonUsers = (bool)\CIMSettings::GetSetting(\CIMSettings::SETTINGS, 'viewCommonUsers');
+		$viewCommonUsers = Option::get('im', 'view_common_users', 'Y') === 'N'
+			? false
+			: (bool)\CIMSettings::GetSetting(\CIMSettings::SETTINGS, 'viewCommonUsers')
+		;
 
 		$onlyOpenlinesOption = $options['ONLY_OPENLINES'] ?? null;
 		$onlyCopilotOption = $options['ONLY_COPILOT'] ?? null;
@@ -230,6 +235,7 @@ class Recent
 		$withoutCommonUsers = !$viewCommonUsers || $onlyOpenlinesOption === 'Y';
 		$unreadOnly = isset($options['UNREAD_ONLY']) && $options['UNREAD_ONLY'] === 'Y';
 		$shortInfo = isset($options['SHORT_INFO']) && $options['SHORT_INFO'] === 'Y';
+		$parseText = $options['PARSE_TEXT'] ?? null;
 
 		$showOpenlines = (
 			\Bitrix\Main\Loader::includeModule('imopenlines')
@@ -350,6 +356,7 @@ class Recent
 				'WITHOUT_COMMON_USERS' => $withoutCommonUsers,
 				'GET_ORIGINAL_TEXT' => $options['GET_ORIGINAL_TEXT'] ?? null,
 				'SHORT_INFO' => $shortInfo,
+				'PARSE_TEXT' => $parseText,
 			]);
 			if (!$item)
 			{
@@ -358,6 +365,19 @@ class Recent
 
 			$result[$id] = $item;
 		}
+		if ($showOpenlines && !$onlyCopilotOption && Loader::includeModule('imopenlines'))
+		{
+			if (!isset($options['SKIP_UNDISTRIBUTED_OPENLINES']) || $options['SKIP_UNDISTRIBUTED_OPENLINES'] !== 'Y')
+			{
+				$recentOpenLines = \Bitrix\ImOpenLines\Recent::getRecent($userId, ['ONLY_IN_QUEUE' => true]);
+
+				if (is_array($recentOpenLines))
+				{
+					$result = array_merge($result, $recentOpenLines);
+				}
+			}
+		}
+
 		$result = array_values($result);
 
 		if ($options['JSON'])
@@ -515,7 +535,7 @@ class Recent
 				'\Bitrix\Im\Model\MessageParamTable',
 				[
 					"=ref.MESSAGE_ID" => "this.ITEM_MID",
-					"ref.PARAM_NAME" => new \Bitrix\Main\DB\SqlExpression("?s", "CODE")
+					"=ref.PARAM_NAME" => new \Bitrix\Main\DB\SqlExpression("?s", "CODE")
 				],
 				["join_type" => "LEFT"]
 			),
@@ -536,7 +556,7 @@ class Recent
 				'\Bitrix\Im\Model\MessageParamTable',
 				[
 					"=ref.MESSAGE_ID" => "this.ITEM_MID",
-					"ref.PARAM_NAME" => new \Bitrix\Main\DB\SqlExpression("?s", "ATTACH")
+					"=ref.PARAM_NAME" => new \Bitrix\Main\DB\SqlExpression("?s", "ATTACH")
 				],
 				["join_type" => "LEFT"]
 			),
@@ -545,7 +565,7 @@ class Recent
 				'\Bitrix\Im\Model\MessageParamTable',
 				[
 					"=ref.MESSAGE_ID" => "this.ITEM_MID",
-					"ref.PARAM_NAME" => new \Bitrix\Main\DB\SqlExpression("?s", "FILE_ID")
+					"=ref.PARAM_NAME" => new \Bitrix\Main\DB\SqlExpression("?s", "FILE_ID")
 				],
 				["join_type" => "LEFT"]
 			),
@@ -600,7 +620,7 @@ class Recent
 			$runtime[] = new \Bitrix\Main\Entity\ReferenceField(
 				'LINES',
 				'\Bitrix\ImOpenlines\Model\SessionTable',
-				[">this.ITEM_OLID" => new \Bitrix\Main\DB\SqlExpression("0"), "=ref.ID" => "this.ITEM_OLID"],
+				[">this.ITEM_OLID" => new \Bitrix\Main\DB\SqlExpression("?i", 0), "=ref.ID" => "this.ITEM_OLID"],
 				["join_type" => "LEFT"]
 			);
 		}
@@ -687,7 +707,12 @@ class Recent
 			$text = $row['MESSAGE_TEXT'] ?? '';
 
 			$getOriginalTextOption = $options['GET_ORIGINAL_TEXT'] ?? null;
-			if ($getOriginalTextOption === 'Y')
+			$parseText = $options['PARSE_TEXT'] ?? null;
+			if ($parseText === 'Y')
+			{
+				$text = Text::parse($text);
+			}
+			elseif ($getOriginalTextOption === 'Y')
 			{
 				$text = Text::populateUserBbCode($text);
 			}
@@ -715,7 +740,7 @@ class Recent
 		{
 			$row['MESSAGE_DATE'] ??= null;
 			$message = [
-				'ID' => 0,
+				'ID' => (int)($row['ITEM_MID'] ?? 0),
 				'TEXT' => "",
 				'FILE' => false,
 				'AUTHOR_ID' =>  0,
@@ -828,7 +853,8 @@ class Recent
 				'USER_COUNTER' => (int)$row['CHAT_USER_COUNT'],
 				'RESTRICTIONS' => $restrictions,
 				'ROLE' => self::getRole($row),
-				'ENTITY_LINK' => EntityLink::getInstance($row['CHAT_ENTITY_TYPE'] ?? '', $row['CHAT_ENTITY_ID'] ?? '', (int)$row['ITEM_CID'])->toArray(),
+				'ENTITY_LINK' => EntityLink::getInstance(\CIMChat::initChatByArray($row))->toArray(),
+				'AI_PROVIDER' => $chatType === 'copilot' ? AIHelper::getProviderName() : null,
 				'PERMISSIONS' => [
 					'MANAGE_USERS_ADD' => mb_strtolower($row['CHAT_MANAGE_USERS_ADD'] ?? ''),
 					'MANAGE_USERS_DELETE' => mb_strtolower($row['CHAT_MANAGE_USERS_DELETE'] ?? ''),
@@ -973,11 +999,7 @@ class Recent
 			return false;
 		}
 
-		$ormParams = [];
-		$ormParams['select'] = ["CNT" => new \Bitrix\Main\Entity\ExpressionField('CNT', 'COUNT(1)')];
-		$ormParams['filter'] = ['=USER_ID' => $userId, '=PINNED' => 'Y'];
-
-		$pinnedCount = \Bitrix\Im\Model\RecentTable::getRow($ormParams)['CNT'];
+		$pinnedCount = \Bitrix\Im\Model\RecentTable::getCount(['=USER_ID' => $userId, '=PINNED' => 'Y']);
 
 		self::$limitError = false;
 		if ($pin && (int)$pinnedCount >= self::PINNED_CHATS_LIMIT)
@@ -1399,11 +1421,15 @@ class Recent
 
 	public static function readAll(int $userId): void
 	{
-		\Bitrix\Main\Application::getConnection()->query(
-			"UPDATE b_im_recent R
-			SET R.UNREAD = 'N', R.MARKED_ID = 0
-			WHERE R.UNREAD = 'Y'
-			AND R.USER_ID = {$userId}"
+		\Bitrix\Im\Model\RecentTable::updateByFilter(
+			[
+				'=UNREAD' => 'Y',
+				'=USER_ID' => $userId,
+			],
+			[
+				'UNREAD' => 'N',
+				'MARKED_ID' => 0,
+			]
 		);
 	}
 
@@ -1762,6 +1788,7 @@ class Recent
 				{
 					/** @var FileItem $file */
 					$rows[$key]['MESSAGE_FILE'] = [
+						'ID' => $file->getId(),
 						'TYPE' => $file->getContentType(),
 						'NAME' => $file->getDiskFile()->getName(),
 					];

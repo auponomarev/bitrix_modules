@@ -1,7 +1,8 @@
+import { EventEmitter } from 'main.core.events';
 import { Store } from 'ui.vue3.vuex';
 
 import { Utils } from 'im.v2.lib.utils';
-import { RestMethod } from 'im.v2.const';
+import { RestMethod, EventType } from 'im.v2.const';
 import { Logger } from 'im.v2.lib.logger';
 import { runAction } from 'im.v2.lib.rest';
 import { Core } from 'im.v2.application.core';
@@ -19,7 +20,7 @@ export class DeleteService
 		this.#store = Core.getStore();
 	}
 
-	deleteMessage(messageId: number | string)
+	async deleteMessage(messageId: number | string)
 	{
 		Logger.warn('MessageService: deleteMessage', messageId);
 
@@ -30,18 +31,20 @@ export class DeleteService
 			return;
 		}
 
+		this.#sendDeleteEvent(messageId);
+
 		const message: ImModelMessage = this.#store.getters['messages/getById'](messageId);
 		if (message.viewedByOthers)
 		{
-			this.#shallowMessageDelete(message);
+			await this.#shallowMessageDelete(message);
 		}
 		else
 		{
-			this.#completeMessageDelete(message);
+			await this.#completeMessageDelete(message);
 		}
 	}
 
-	#shallowMessageDelete(message: ImModelMessage)
+	#shallowMessageDelete(message: ImModelMessage): Promise
 	{
 		this.#store.dispatch('messages/update', {
 			id: message.id,
@@ -54,56 +57,64 @@ export class DeleteService
 			},
 		});
 
-		const dialog: ImModelChat = this.#store.getters['chats/getByChatId'](this.#chatId);
-		if (message.id === dialog.lastMessageId)
-		{
-			this.#store.dispatch('recent/update', {
-				id: dialog.dialogId,
-				fields: {
-					message: { text: '' },
-				},
-			});
-		}
-
-		this.#deleteMessageOnServer(message.id);
+		return this.#deleteMessageOnServer(message.id);
 	}
 
-	#completeMessageDelete(message: ImModelMessage)
+	#completeMessageDelete(message: ImModelMessage): Promise
 	{
 		const dialog: ImModelChat = this.#store.getters['chats/getByChatId'](this.#chatId);
-		const previousMessage: ImModelMessage = this.#store.getters['messages/getPreviousMessage']({
-			messageId: message.id,
-			chatId: dialog.chatId,
-		});
 		if (message.id === dialog.lastMessageId)
 		{
-			this.#updateLastMessageInRecent(message.id, dialog.dialogId);
-
-			const newLastId = previousMessage ? previousMessage.id : 0;
-			this.#store.dispatch('chats/update', {
-				dialogId: dialog.dialogId,
-				fields: {
-					lastMessageId: newLastId,
-					lastId: newLastId,
-				},
-			});
-			this.#store.dispatch('chats/clearLastMessageViews', {
-				dialogId: dialog.dialogId,
-			});
+			const newLastId = this.#getPreviousMessageId(message.id);
+			this.#updateRecentForCompleteDelete(newLastId);
+			this.#updateChatForCompleteDelete(newLastId);
 		}
 
 		this.#store.dispatch('messages/delete', {
 			id: message.id,
 		});
 
-		this.#deleteMessageOnServer(message.id);
+		return this.#deleteMessageOnServer(message.id);
 	}
 
-	#deleteMessageOnServer(messageId: number)
+	#updateRecentForCompleteDelete(newLastId: number)
 	{
-		runAction(RestMethod.imV2ChatMessageDelete, {
+		const dialog: ImModelChat = this.#store.getters['chats/getByChatId'](this.#chatId);
+		if (!newLastId)
+		{
+			this.#store.dispatch('recent/delete', { id: dialog.dialogId });
+
+			return;
+		}
+
+		this.#store.dispatch('recent/update', {
+			id: dialog.dialogId,
+			fields: { messageId: newLastId },
+		});
+	}
+
+	#updateChatForCompleteDelete(newLastId)
+	{
+		const dialog: ImModelChat = this.#store.getters['chats/getByChatId'](this.#chatId);
+
+		this.#store.dispatch('chats/update', {
+			dialogId: dialog.dialogId,
+			fields: {
+				lastMessageId: newLastId,
+				lastId: newLastId,
+			},
+		});
+		this.#store.dispatch('chats/clearLastMessageViews', {
+			dialogId: dialog.dialogId,
+		});
+	}
+
+	#deleteMessageOnServer(messageId: number): Promise
+	{
+		return runAction(RestMethod.imV2ChatMessageDelete, {
 			data: { id: messageId },
 		}).catch((error) => {
+			// eslint-disable-next-line no-console
 			console.error('MessageService: deleteMessage error:', error);
 		});
 	}
@@ -112,9 +123,13 @@ export class DeleteService
 	{
 		const chat: ImModelChat = this.#store.getters['chats/getByChatId'](this.#chatId);
 		const recentItem: ImModelRecentItem = this.#store.getters['recent/get'](chat.dialogId);
-		if (recentItem.message.id === messageId)
+		if (recentItem.messageId === messageId)
 		{
-			this.#updateLastMessageInRecent(messageId, chat.dialogId);
+			const newLastId = this.#getPreviousMessageId(messageId);
+			this.#store.dispatch('recent/update', {
+				id: chat.dialogId,
+				fields: { messageId: newLastId },
+			});
 		}
 
 		this.#store.dispatch('messages/delete', {
@@ -122,24 +137,18 @@ export class DeleteService
 		});
 	}
 
-	#updateLastMessageInRecent(messageId: number | string, dialogId: string)
+	#getPreviousMessageId(messageId: number): number
 	{
 		const previousMessage: ImModelMessage = this.#store.getters['messages/getPreviousMessage']({
 			messageId,
 			chatId: this.#chatId,
 		});
-		let updatedMessage = { text: '' };
-		if (previousMessage)
-		{
-			updatedMessage = previousMessage;
-		}
 
-		this.#store.dispatch('recent/update', {
-			id: dialogId,
-			fields: {
-				message: updatedMessage,
-				dateUpdate: new Date(),
-			},
-		});
+		return previousMessage?.id ?? 0;
+	}
+
+	#sendDeleteEvent(messageId: number)
+	{
+		EventEmitter.emit(EventType.dialog.onMessageDeleted, { messageId });
 	}
 }

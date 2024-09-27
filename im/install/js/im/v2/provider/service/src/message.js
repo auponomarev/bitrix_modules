@@ -28,7 +28,7 @@ export class MessageService
 	#initServices(chatId: number)
 	{
 		this.#loadService = new LoadService(chatId);
-		this.#editService = new EditService(chatId);
+		this.#editService = new EditService();
 		this.#deleteService = new DeleteService(chatId);
 		this.#pinService = new PinService();
 		this.#markService = new MarkService(chatId);
@@ -130,7 +130,7 @@ export class MessageService
 	// endregion 'edit'
 
 	// region 'delete'
-	deleteMessage(messageId: number | string)
+	deleteMessage(messageId: number | string): Promise
 	{
 		this.#deleteService.deleteMessage(messageId);
 	}

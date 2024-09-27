@@ -2,7 +2,7 @@
 this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
-(function (exports,main_core_events,im_v2_lib_user,im_v2_lib_logger,im_v2_lib_utils,im_v2_const,main_core,ui_vue3_vuex,im_v2_application_core) {
+(function (exports,main_core_events,im_v2_lib_user,im_v2_lib_userStatus,im_v2_lib_logger,im_v2_lib_utils,im_v2_const,main_core,ui_vue3_vuex,im_v2_application_core) {
 	'use strict';
 
 	const isNumberOrString = target => {
@@ -352,6 +352,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          entityId: this.validateLayoutEntityId(name, entityId),
 	          contextId
 	        };
+	        if (previousLayout.name === newLayout.name && previousLayout.entityId === newLayout.entityId) {
+	          return;
+	        }
 	        store.commit('updateLayout', {
 	          layout: newLayout
 	        });
@@ -420,13 +423,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	};
 
 	const messageFieldsConfig = [{
-	  fieldName: 'temporaryId',
+	  fieldName: ['id', 'temporaryId'],
 	  targetFieldName: 'id',
-	  checkFunction: im_v2_lib_utils.Utils.text.isUuidV4
-	}, {
-	  fieldName: 'id',
-	  targetFieldName: 'id',
-	  checkFunction: main_core.Type.isNumber
+	  checkFunction: [main_core.Type.isNumber, im_v2_lib_utils.Utils.text.isTempMessage]
 	}, {
 	  fieldName: 'chatId',
 	  targetFieldName: 'chatId',
@@ -435,7 +434,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	}, {
 	  fieldName: 'date',
 	  targetFieldName: 'date',
-	  checkFunction: main_core.Type.isString,
+	  checkFunction: [main_core.Type.isString, main_core.Type.isDate],
 	  formatFunction: im_v2_lib_utils.Utils.date.cast
 	}, {
 	  fieldName: 'text',
@@ -477,8 +476,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	}, {
 	  fieldName: 'componentParams',
 	  targetFieldName: 'componentParams',
-	  checkFunction: main_core.Type.isPlainObject,
-	  formatFunction: convertObjectKeysToCamelCase
+	  checkFunction: main_core.Type.isPlainObject
 	}, {
 	  fieldName: ['files', 'fileId'],
 	  targetFieldName: 'files',
@@ -523,8 +521,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	}, {
 	  fieldName: 'forward',
 	  targetFieldName: 'forward',
-	  checkFunction: main_core.Type.isPlainObject,
-	  formatFunction: convertObjectKeysToCamelCase
+	  checkFunction: main_core.Type.isPlainObject
 	}];
 
 	class PinModel extends ui_vue3_vuex.BuilderModel {
@@ -1031,6 +1028,13 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          preparedMessages = [payload];
 	        }
 	        preparedMessages = preparedMessages.map(message => {
+	          const currentMessage = store.state.collection[message.id];
+	          if (currentMessage) {
+	            return {
+	              ...currentMessage,
+	              ...babelHelpers.classPrivateFieldLooseBase(this, _formatFields)[_formatFields](message)
+	            };
+	          }
 	          return {
 	            ...this.getElementState(),
 	            ...babelHelpers.classPrivateFieldLooseBase(this, _formatFields)[_formatFields](message)
@@ -1622,11 +1626,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  checkFunction: main_core.Type.isPlainObject
 	}];
 	const chatEntityFieldsConfig = [{
-	  fieldName: 'id',
-	  targetFieldName: 'id',
-	  checkFunction: isNumberOrString,
-	  formatFunction: convertToString
-	}, {
 	  fieldName: 'type',
 	  targetFieldName: 'type',
 	  checkFunction: main_core.Type.isString
@@ -2131,6 +2130,10 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  targetFieldName: 'birthday',
 	  checkFunction: main_core.Type.isString
 	}, {
+	  fieldName: 'isBirthday',
+	  targetFieldName: 'isBirthday',
+	  checkFunction: main_core.Type.isBoolean
+	}, {
 	  fieldName: 'isAdmin',
 	  targetFieldName: 'isAdmin',
 	  checkFunction: main_core.Type.isBoolean
@@ -2175,6 +2178,10 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  targetFieldName: 'absent',
 	  formatFunction: convertToDate
 	}, {
+	  fieldName: 'isAbsent',
+	  targetFieldName: 'isAbsent',
+	  checkFunction: main_core.Type.isBoolean
+	}, {
 	  fieldName: 'departments',
 	  targetFieldName: 'departments',
 	  checkFunction: main_core.Type.isArray,
@@ -2198,9 +2205,8 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  getState() {
 	    return {
 	      collection: {},
-	      onlineList: [],
-	      mobileOnlineList: [],
-	      absentList: []
+	      absentList: [],
+	      absentCheckInterval: null
 	    };
 	  }
 	  getElementState(params = {}) {
@@ -2226,8 +2232,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      idle: false,
 	      lastActivityDate: false,
 	      mobileLastDate: false,
-	      isOnline: false,
-	      isMobileOnline: false,
 	      birthday: false,
 	      isBirthday: false,
 	      absent: false,
@@ -2296,27 +2300,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          return false;
 	        }
 	        return user.isAbsent;
-	      },
-	      /** @function users/getStatus */
-	      getStatus: state => rawUserId => {
-	        const userId = Number.parseInt(rawUserId, 10);
-	        const user = state.collection[userId];
-	        if (userId <= 0 || !user) {
-	          return false;
-	        }
-	        if (!user.isOnline) {
-	          return '';
-	        }
-	        if (user.isMobileOnline) {
-	          return im_v2_const.UserStatus.mobileOnline;
-	        }
-	        if (user.idle) {
-	          // away by time
-	          return im_v2_const.UserStatus.idle;
-	        }
-
-	        // manually selected status (online, away, dnd, break)
-	        return user.status;
 	      },
 	      /** @function users/getLastOnline */
 	      getLastOnline: state => rawUserId => {
@@ -2428,9 +2411,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      add: (state, payload) => {
 	        // eslint-disable-next-line no-param-reassign
 	        state.collection[payload.id] = payload.fields;
-	        this.handleUserStatusFlags(state, payload.fields);
-	        this.startOnlineCheckInterval();
-	        this.startAbsentCheckInterval();
+	        im_v2_lib_userStatus.UserStatusManager.getInstance().onUserUpdate(payload.fields);
 	      },
 	      update: (state, payload) => {
 	        // eslint-disable-next-line no-param-reassign
@@ -2438,7 +2419,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          ...state.collection[payload.id],
 	          ...payload.fields
 	        };
-	        this.handleUserStatusFlags(state, payload.fields);
+	        im_v2_lib_userStatus.UserStatusManager.getInstance().onUserUpdate(payload.fields);
 	      },
 	      delete: (state, payload) => {
 	        // eslint-disable-next-line no-param-reassign
@@ -2457,45 +2438,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    }
 	    return preparedFields;
 	  }
-	  handleUserStatusFlags(state, fields) {
-	    const user = state.collection[fields.id];
-	    if (im_v2_lib_utils.Utils.user.isOnline(fields.lastActivityDate)) {
-	      user.isOnline = true;
-	      this.addToOnlineList(fields.id);
-	    }
-	    if (im_v2_lib_utils.Utils.user.isMobileOnline(fields.lastActivityDate, fields.mobileLastDate)) {
-	      user.isMobileOnline = true;
-	      this.addToMobileOnlineList(fields.id);
-	    }
-	    if (fields.birthday && im_v2_lib_utils.Utils.user.isBirthdayToday(fields.birthday)) {
-	      user.isBirthday = true;
-	      setTimeout(() => {
-	        user.isBirthday = false;
-	      }, im_v2_lib_utils.Utils.date.getTimeToNextMidnight());
-	    }
-	    if (fields.absent === false) {
-	      user.isAbsent = false;
-	      // eslint-disable-next-line no-param-reassign
-	      state.absentList = state.absentList.filter(element => {
-	        return element !== fields.id;
-	      });
-	    } else if (main_core.Type.isDate(fields.absent)) {
-	      user.isAbsent = true;
-	      this.addToAbsentList(fields.id);
-	    }
-	  }
-	  addToOnlineList(id) {
-	    const state = this.store.state.users;
-	    if (!state.onlineList.includes(id)) {
-	      state.onlineList.push(id);
-	    }
-	  }
-	  addToMobileOnlineList(id) {
-	    const state = this.store.state.users;
-	    if (!state.mobileOnlineList.includes(id)) {
-	      state.mobileOnlineList.push(id);
-	    }
-	  }
 	  addToAbsentList(id) {
 	    const state = this.store.state.users;
 	    if (!state.absentList.includes(id)) {
@@ -2503,13 +2445,13 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    }
 	  }
 	  startAbsentCheckInterval() {
-	    if (this.absentCheckInterval) {
+	    const state = this.store.state.users;
+	    if (state.absentCheckInterval) {
 	      return;
 	    }
 	    const TIME_TO_NEXT_DAY = 1000 * 60 * 60 * 24;
-	    this.absentCheckInterval = setTimeout(() => {
+	    state.absentCheckInterval = setTimeout(() => {
 	      setInterval(() => {
-	        const state = this.store.state.users;
 	        state.absentList.forEach(userId => {
 	          const user = state.collection[userId];
 	          if (!user) {
@@ -2526,39 +2468,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        });
 	      }, TIME_TO_NEXT_DAY);
 	    }, im_v2_lib_utils.Utils.date.getTimeToNextMidnight());
-	  }
-	  startOnlineCheckInterval() {
-	    if (this.onlineCheckInterval) {
-	      return;
-	    }
-	    const ONE_MINUTE = 60000;
-	    this.onlineCheckInterval = setInterval(() => {
-	      const state = this.store.state.users;
-	      state.onlineList.forEach(userId => {
-	        const user = state.collection[userId];
-	        if (!user) {
-	          return;
-	        }
-	        if (im_v2_lib_utils.Utils.user.isOnline(user.lastActivityDate)) {
-	          user.isOnline = true;
-	        } else {
-	          user.isOnline = false;
-	          state.onlineList = state.onlineList.filter(element => element !== userId);
-	        }
-	      });
-	      state.mobileOnlineList.forEach(userId => {
-	        const user = state.collection[userId];
-	        if (!user) {
-	          return;
-	        }
-	        if (im_v2_lib_utils.Utils.user.isMobileOnline(user.lastActivityDate, user.mobileLastDate)) {
-	          user.isMobileOnline = true;
-	        } else {
-	          user.isMobileOnline = false;
-	          state.mobileOnlineList = state.mobileOnlineList.filter(element => element !== userId);
-	        }
-	      });
-	    }, ONE_MINUTE);
 	  }
 	}
 
@@ -2842,6 +2751,74 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	}
 
+	const prepareDraft = draft => {
+	  if (!draft.text || draft.text === '') {
+	    return {
+	      text: '',
+	      date: null
+	    };
+	  }
+	  return {
+	    text: draft.text,
+	    date: new Date()
+	  };
+	};
+	const prepareInvitation = invited => {
+	  if (main_core.Type.isPlainObject(invited)) {
+	    return {
+	      isActive: true,
+	      originator: invited.originatorId,
+	      canResend: invited.canResend
+	    };
+	  }
+	  return {
+	    isActive: false,
+	    originator: 0,
+	    canResend: false
+	  };
+	};
+
+	const recentFieldsConfig = [{
+	  fieldName: ['id', 'dialogId'],
+	  targetFieldName: 'dialogId',
+	  checkFunction: isNumberOrString,
+	  formatFunction: convertToString
+	}, {
+	  fieldName: 'messageId',
+	  targetFieldName: 'messageId',
+	  checkFunction: isNumberOrString
+	}, {
+	  fieldName: 'draft',
+	  targetFieldName: 'draft',
+	  checkFunction: main_core.Type.isPlainObject,
+	  formatFunction: prepareDraft
+	}, {
+	  fieldName: 'invited',
+	  targetFieldName: 'invitation',
+	  checkFunction: [main_core.Type.isPlainObject, main_core.Type.isBoolean],
+	  formatFunction: prepareInvitation
+	}, {
+	  fieldName: 'unread',
+	  targetFieldName: 'unread',
+	  checkFunction: main_core.Type.isBoolean
+	}, {
+	  fieldName: 'pinned',
+	  targetFieldName: 'pinned',
+	  checkFunction: main_core.Type.isBoolean
+	}, {
+	  fieldName: 'liked',
+	  targetFieldName: 'liked',
+	  checkFunction: main_core.Type.isBoolean
+	}, {
+	  fieldName: ['defaultUserRecord', 'isFakeElement'],
+	  targetFieldName: 'isFakeElement',
+	  checkFunction: main_core.Type.isBoolean
+	}, {
+	  fieldName: 'isBirthdayPlaceholder',
+	  targetFieldName: 'isBirthdayPlaceholder',
+	  checkFunction: main_core.Type.isBoolean
+	}];
+
 	class CallsModel extends ui_vue3_vuex.BuilderModel {
 	  getState() {
 	    return {
@@ -2860,6 +2837,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    return {
 	      get: state => {
 	        return Object.values(state.collection);
+	      },
+	      getCallByDialog: state => dialogId => {
+	        return state.collection[dialogId];
 	      },
 	      hasActiveCall: state => dialogId => {
 	        if (main_core.Type.isUndefined(dialogId)) {
@@ -2958,86 +2938,40 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	}
 
-	/* eslint-disable no-param-reassign */
-	class RecentSearchModel extends ui_vue3_vuex.BuilderModel {
-	  getState() {
-	    return {
-	      collection: {}
-	    };
-	  }
-	  getElementState() {
-	    return {
-	      dialogId: '0',
-	      foundByUser: false
-	    };
-	  }
-	  getGetters() {
-	    return {
-	      /** @function recent/search/getDialogIds */
-	      getDialogIds: state => {
-	        return Object.values(state.collection).map(item => item.dialogId);
-	      },
-	      /** @function recent/search/get */
-	      get: state => rawDialogId => {
-	        let dialogId = rawDialogId;
-	        if (main_core.Type.isNumber(dialogId)) {
-	          dialogId = dialogId.toString();
-	        }
-	        if (state.collection[dialogId]) {
-	          return state.collection[dialogId];
-	        }
-	        return null;
-	      }
-	    };
-	  }
-	  getActions() {
-	    return {
-	      /** @function recent/search/set */
-	      set: (store, payload) => {
-	        payload.forEach(item => {
-	          const recentElement = this.validate(item);
-	          store.commit('set', {
-	            dialogId: recentElement.dialogId,
-	            foundByUser: recentElement.foundByUser
-	          });
-	        });
-	      },
-	      /** @function recent/search/clear */
-	      clear: (store, payload) => {
-	        store.commit('clear');
-	      }
-	    };
-	  }
-	  getMutations() {
-	    return {
-	      set: (state, payload) => {
-	        state.collection[payload.dialogId] = payload;
-	      },
-	      clear: state => {
-	        state.collection = {};
-	      }
-	    };
-	  }
-	  validate(fields, options) {
-	    const element = this.getElementState();
-	    if (main_core.Type.isStringFilled(fields.dialogId)) {
-	      element.dialogId = fields.dialogId;
-	    }
-	    if (main_core.Type.isBoolean(fields.byUser)) {
-	      element.foundByUser = fields.byUser;
-	    }
-	    return element;
-	  }
-	}
-
+	var _formatFields$1 = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("formatFields");
+	var _updateUnloadedRecentCounters = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("updateUnloadedRecentCounters");
+	var _updateUnloadedCopilotCounters = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("updateUnloadedCopilotCounters");
+	var _updateUnloadedCounters = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("updateUnloadedCounters");
+	var _getMessage = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("getMessage");
+	var _hasTodayMessage = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("hasTodayMessage");
 	class RecentModel extends ui_vue3_vuex.BuilderModel {
+	  constructor(...args) {
+	    super(...args);
+	    Object.defineProperty(this, _hasTodayMessage, {
+	      value: _hasTodayMessage2
+	    });
+	    Object.defineProperty(this, _getMessage, {
+	      value: _getMessage2
+	    });
+	    Object.defineProperty(this, _updateUnloadedCounters, {
+	      value: _updateUnloadedCounters2
+	    });
+	    Object.defineProperty(this, _updateUnloadedCopilotCounters, {
+	      value: _updateUnloadedCopilotCounters2
+	    });
+	    Object.defineProperty(this, _updateUnloadedRecentCounters, {
+	      value: _updateUnloadedRecentCounters2
+	    });
+	    Object.defineProperty(this, _formatFields$1, {
+	      value: _formatFields2$1
+	    });
+	  }
 	  getName() {
 	    return 'recent';
 	  }
 	  getNestedModules() {
 	    return {
-	      calls: CallsModel,
-	      search: RecentSearchModel
+	      calls: CallsModel
 	    };
 	  }
 	  getState() {
@@ -3051,18 +2985,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  getElementState() {
 	    return {
 	      dialogId: '0',
-	      message: {
-	        id: 0,
-	        senderId: 0,
-	        date: null,
-	        status: im_v2_const.MessageStatus.received,
-	        sending: false,
-	        text: '',
-	        params: {
-	          withFile: false,
-	          withAttach: false
-	        }
-	      },
+	      messageId: 0,
 	      draft: {
 	        text: '',
 	        date: null
@@ -3070,13 +2993,13 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      unread: false,
 	      pinned: false,
 	      liked: false,
-	      dateUpdate: null,
 	      invitation: {
 	        isActive: false,
 	        originator: 0,
 	        canResend: false
 	      },
-	      options: {}
+	      isFakeElement: false,
+	      isBirthdayPlaceholder: false
 	    };
 	  }
 
@@ -3113,24 +3036,28 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          return state.collection[dialogId];
 	        });
 	        const filteredCollection = recentCollectionAsArray.filter(item => {
-	          const isBirthdayPlaceholder = item.options.birthdayPlaceholder;
-	          const isInvitedUser = item.options.defaultUserRecord;
-	          return !isBirthdayPlaceholder && !isInvitedUser && item.message.id;
+	          return !item.isBirthdayPlaceholder && !item.isFakeElement && item.messageId;
 	        });
 	        return [...filteredCollection].sort((a, b) => {
-	          return b.message.date - a.message.date;
+	          const messageA = babelHelpers.classPrivateFieldLooseBase(this, _getMessage)[_getMessage](a.messageId);
+	          const messageB = babelHelpers.classPrivateFieldLooseBase(this, _getMessage)[_getMessage](b.messageId);
+	          return messageB.date - messageA.date;
 	        });
 	      },
 	      /** @function recent/get */
-	      get: state => rawDialogId => {
-	        let dialogId = rawDialogId;
-	        if (main_core.Type.isNumber(dialogId)) {
-	          dialogId = dialogId.toString();
+	      get: state => dialogId => {
+	        if (!state.collection[dialogId]) {
+	          return null;
 	        }
-	        if (state.collection[dialogId]) {
-	          return state.collection[dialogId];
+	        return state.collection[dialogId];
+	      },
+	      /** @function recent/getMessage */
+	      getMessage: state => dialogId => {
+	        const element = state.collection[dialogId];
+	        if (!element) {
+	          return null;
 	        }
-	        return null;
+	        return babelHelpers.classPrivateFieldLooseBase(this, _getMessage)[_getMessage](element.messageId);
 	      },
 	      /** @function recent/needsBirthdayPlaceholder */
 	      needsBirthdayPlaceholder: state => dialogId => {
@@ -3146,9 +3073,8 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        if (!hasBirthday) {
 	          return false;
 	        }
-	        const hasMessage = im_v2_lib_utils.Utils.text.isTempMessage(currentItem.message.id) || currentItem.message.id > 0;
-	        const hasTodayMessage = hasMessage && im_v2_lib_utils.Utils.date.isToday(currentItem.message.date);
 	        const showBirthday = this.store.getters['application/settings/get'](im_v2_const.Settings.recent.showBirthday);
+	        const hasTodayMessage = babelHelpers.classPrivateFieldLooseBase(this, _hasTodayMessage)[_hasTodayMessage](currentItem.messageId);
 	        return showBirthday && !hasTodayMessage && dialog.counter === 0;
 	      },
 	      /** @function recent/needsVacationPlaceholder */
@@ -3165,8 +3091,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        if (!hasVacation) {
 	          return false;
 	        }
-	        const hasMessage = im_v2_lib_utils.Utils.text.isTempMessage(currentItem.message.id) || currentItem.message.id > 0;
-	        const hasTodayMessage = hasMessage && im_v2_lib_utils.Utils.date.isToday(currentItem.message.date);
+	        const hasTodayMessage = babelHelpers.classPrivateFieldLooseBase(this, _hasTodayMessage)[_hasTodayMessage](currentItem.messageId);
 	        return !hasTodayMessage && dialog.counter === 0;
 	      },
 	      /** @function recent/getMessageDate */
@@ -3175,14 +3100,15 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        if (!currentItem) {
 	          return null;
 	        }
-	        if (main_core.Type.isDate(currentItem.draft.date) && currentItem.draft.date > currentItem.message.date) {
+	        const message = babelHelpers.classPrivateFieldLooseBase(this, _getMessage)[_getMessage](currentItem.messageId);
+	        if (main_core.Type.isDate(currentItem.draft.date) && currentItem.draft.date > message.date) {
 	          return currentItem.draft.date;
 	        }
 	        const needsBirthdayPlaceholder = this.store.getters['recent/needsBirthdayPlaceholder'](currentItem.dialogId);
 	        if (needsBirthdayPlaceholder) {
 	          return im_v2_lib_utils.Utils.date.getStartOfTheDay();
 	        }
-	        return currentItem.message.date;
+	        return message.date;
 	      }
 	    };
 	  }
@@ -3195,7 +3121,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      setRecent: async (store, payload) => {
 	        const itemIds = await im_v2_application_core.Core.getStore().dispatch('recent/store', payload);
 	        store.commit('setRecentCollection', itemIds);
-	        this.updateUnloadedRecentCounters(payload);
+	        babelHelpers.classPrivateFieldLooseBase(this, _updateUnloadedRecentCounters)[_updateUnloadedRecentCounters](payload);
 	      },
 	      /** @function recent/setUnread */
 	      setUnread: async (store, payload) => {
@@ -3206,7 +3132,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      setCopilot: async (store, payload) => {
 	        const itemIds = await this.store.dispatch('recent/store', payload);
 	        store.commit('setCopilotCollection', itemIds);
-	        this.updateUnloadedCopilotCounters(payload);
+	        babelHelpers.classPrivateFieldLooseBase(this, _updateUnloadedCopilotCounters)[_updateUnloadedCopilotCounters](payload);
 	      },
 	      /** @function recent/store */
 	      store: (store, payload) => {
@@ -3216,7 +3142,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        const itemsToUpdate = [];
 	        const itemsToAdd = [];
 	        payload.map(element => {
-	          return this.validate(element);
+	          return babelHelpers.classPrivateFieldLooseBase(this, _formatFields$1)[_formatFields$1](element);
 	        }).forEach(element => {
 	          const preparedElement = {
 	            ...element
@@ -3228,13 +3154,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	              fields: preparedElement
 	            });
 	          } else {
-	            const {
-	              message: defaultMessage
-	            } = this.getElementState();
-	            preparedElement.message = {
-	              ...defaultMessage,
-	              ...preparedElement.message
-	            };
 	            itemsToAdd.push({
 	              ...this.getElementState(),
 	              ...preparedElement
@@ -3261,7 +3180,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        }
 	        store.commit('update', {
 	          dialogId: existingItem.dialogId,
-	          fields: this.validate(fields)
+	          fields: babelHelpers.classPrivateFieldLooseBase(this, _formatFields$1)[_formatFields$1](fields)
 	        });
 	      },
 	      /** @function recent/unread */
@@ -3273,8 +3192,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        store.commit('update', {
 	          dialogId: existingItem.dialogId,
 	          fields: {
-	            unread: payload.action,
-	            dateUpdate: payload.dateUpdate
+	            unread: payload.action
 	          }
 	        });
 	      },
@@ -3287,8 +3205,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        store.commit('update', {
 	          dialogId: existingItem.dialogId,
 	          fields: {
-	            pinned: payload.action,
-	            dateUpdate: payload.dateUpdate
+	            pinned: payload.action
 	          }
 	        });
 	      },
@@ -3298,7 +3215,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        if (!existingItem) {
 	          return;
 	        }
-	        const isLastMessage = existingItem.message.id === Number.parseInt(payload.messageId, 10);
+	        const isLastMessage = existingItem.messageId === Number.parseInt(payload.messageId, 10);
 	        const isExactMessageLiked = !main_core.Type.isUndefined(payload.messageId) && payload.liked === true;
 	        if (isExactMessageLiked && !isLastMessage) {
 	          return;
@@ -3335,12 +3252,18 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          if (payload.text === '') {
 	            return;
 	          }
+	          const messageId = `${im_v2_const.FakeMessagePrefix}-${payload.id}`;
 	          const newItem = {
-	            dialogId: payload.id.toString()
+	            dialogId: payload.id.toString(),
+	            messageId
 	          };
 	          store.commit('add', {
 	            ...this.getElementState(),
 	            ...newItem
+	          });
+	          im_v2_application_core.Core.getStore().dispatch('messages/store', {
+	            id: messageId,
+	            date: new Date()
 	          });
 	          existingItem = store.state.collection[payload.id];
 	        }
@@ -3351,7 +3274,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          }
 	          store.commit(payload.addMethodName, [payload.id.toString()]);
 	        }
-	        const fields = this.validate({
+	        const fields = babelHelpers.classPrivateFieldLooseBase(this, _formatFields$1)[_formatFields$1]({
 	          draft: {
 	            text: payload.text.toString()
 	          }
@@ -3421,23 +3344,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          dialogId,
 	          fields
 	        }) => {
-	          var _fields$options;
-	          // if we already got chat - we should not update it with default user chat
-	          // (unless it's an accepted invitation)
+	          // if we already got chat - we should not update it with fake user chat
+	          // (unless it's an accepted invitation or fake user with real message)
 	          const elementIsInRecent = state.recentCollection.has(dialogId);
-	          const defaultUserElement = ((_fields$options = fields.options) == null ? void 0 : _fields$options.defaultUserRecord) && !fields.invitation;
-	          if (defaultUserElement && elementIsInRecent) {
+	          const isFakeElement = fields.isFakeElement && im_v2_lib_utils.Utils.text.isTempMessage(fields.messageId);
+	          if (elementIsInRecent && isFakeElement && !fields.invitation) {
 	            return;
 	          }
 	          const currentElement = state.collection[dialogId];
-	          fields.message = {
-	            ...currentElement.message,
-	            ...fields.message
-	          };
-	          fields.options = {
-	            ...currentElement.options,
-	            ...fields.options
-	          };
 	          state.collection[dialogId] = {
 	            ...currentElement,
 	            ...fields
@@ -3454,145 +3368,38 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      }
 	    };
 	  }
-	  validate(fields) {
-	    const result = {
-	      options: {}
-	    };
-	    if (main_core.Type.isNumber(fields.id)) {
-	      result.dialogId = fields.id.toString();
-	    }
-	    if (main_core.Type.isStringFilled(fields.id)) {
-	      result.dialogId = fields.id;
-	    }
-	    if (main_core.Type.isNumber(fields.dialogId)) {
-	      result.dialogId = fields.dialogId.toString();
-	    }
-	    if (main_core.Type.isStringFilled(fields.dialogId)) {
-	      result.dialogId = fields.dialogId;
-	    }
-	    if (main_core.Type.isPlainObject(fields.message)) {
-	      result.message = this.prepareMessage(fields);
-	    }
-	    if (main_core.Type.isPlainObject(fields.draft)) {
-	      result.draft = this.prepareDraft(fields);
-	    }
-	    if (main_core.Type.isBoolean(fields.unread)) {
-	      result.unread = fields.unread;
-	    }
-	    if (main_core.Type.isBoolean(fields.pinned)) {
-	      result.pinned = fields.pinned;
-	    }
-	    if (main_core.Type.isBoolean(fields.liked)) {
-	      result.liked = fields.liked;
-	    }
-	    if (main_core.Type.isStringFilled(fields.date_update) || main_core.Type.isStringFilled(fields.dateUpdate)) {
-	      const date = fields.date_update || fields.dateUpdate;
-	      result.dateUpdate = im_v2_lib_utils.Utils.date.cast(date);
-	    } else if (main_core.Type.isDate(fields.dateUpdate)) {
-	      result.dateUpdate = fields.dateUpdate;
-	    }
-	    if (main_core.Type.isPlainObject(fields.invited)) {
-	      result.invitation = {
-	        isActive: true,
-	        originator: fields.invited.originator_id,
-	        canResend: fields.invited.can_resend
-	      };
-	      result.options.defaultUserRecord = true;
-	    } else if (fields.invited === false) {
-	      result.invitation = {
-	        isActive: false,
-	        originator: 0,
-	        canResend: false
-	      };
-	      result.options.defaultUserRecord = true;
-	    }
-	    if (main_core.Type.isPlainObject(fields.options)) {
-	      if (!result.options) {
-	        result.options = {};
-	      }
-	      if (main_core.Type.isBoolean(fields.options.default_user_record)) {
-	        fields.options.defaultUserRecord = fields.options.default_user_record;
-	      }
-	      if (main_core.Type.isBoolean(fields.options.defaultUserRecord)) {
-	        result.options.defaultUserRecord = fields.options.defaultUserRecord;
-	      }
-	      if (main_core.Type.isBoolean(fields.options.birthdayPlaceholder)) {
-	        result.options.birthdayPlaceholder = fields.options.birthdayPlaceholder;
-	      }
-	    }
-	    return result;
+	}
+	function _formatFields2$1(rawFields) {
+	  const options = main_core.Type.isPlainObject(rawFields.options) ? rawFields.options : {};
+	  const fields = {
+	    ...rawFields,
+	    ...options
+	  };
+	  return formatFieldsWithConfig(fields, recentFieldsConfig);
+	}
+	function _updateUnloadedRecentCounters2(payload) {
+	  babelHelpers.classPrivateFieldLooseBase(this, _updateUnloadedCounters)[_updateUnloadedCounters](payload, 'counters/setUnloadedChatCounters');
+	}
+	function _updateUnloadedCopilotCounters2(payload) {
+	  babelHelpers.classPrivateFieldLooseBase(this, _updateUnloadedCounters)[_updateUnloadedCounters](payload, 'counters/setUnloadedCopilotCounters');
+	}
+	function _updateUnloadedCounters2(payload, updateMethod) {
+	  if (!Array.isArray(payload) && main_core.Type.isPlainObject(payload)) {
+	    payload = [payload];
 	  }
-	  prepareMessage(fields) {
-	    var _fields$message$param, _fields$message$param2, _fields$message$param3, _fields$message$param4, _fields$message$param5;
-	    const message = {};
-	    const params = {};
-	    if (main_core.Type.isNumber(fields.message.id) || main_core.Type.isStringFilled(fields.message.id) || im_v2_lib_utils.Utils.text.isUuidV4(fields.message.id)) {
-	      message.id = fields.message.id;
-	    }
-	    if (main_core.Type.isString(fields.message.text)) {
-	      message.text = fields.message.text;
-	    }
-	    if (main_core.Type.isStringFilled(fields.message.attach) || main_core.Type.isBoolean(fields.message.attach) || main_core.Type.isArray(fields.message.attach)) {
-	      params.withAttach = fields.message.attach;
-	    } else if (main_core.Type.isStringFilled((_fields$message$param = fields.message.params) == null ? void 0 : _fields$message$param.withAttach) || main_core.Type.isBoolean((_fields$message$param2 = fields.message.params) == null ? void 0 : _fields$message$param2.withAttach) || main_core.Type.isArray((_fields$message$param3 = fields.message.params) == null ? void 0 : _fields$message$param3.withAttach)) {
-	      params.withAttach = fields.message.params.withAttach;
-	    }
-	    if (main_core.Type.isBoolean(fields.message.file) || main_core.Type.isPlainObject(fields.message.file)) {
-	      params.withFile = fields.message.file;
-	    } else if (main_core.Type.isBoolean((_fields$message$param4 = fields.message.params) == null ? void 0 : _fields$message$param4.withFile) || main_core.Type.isPlainObject((_fields$message$param5 = fields.message.params) == null ? void 0 : _fields$message$param5.withFile)) {
-	      params.withFile = fields.message.params.withFile;
-	    }
-	    if (main_core.Type.isDate(fields.message.date) || main_core.Type.isString(fields.message.date)) {
-	      message.date = im_v2_lib_utils.Utils.date.cast(fields.message.date);
-	    }
-	    if (main_core.Type.isNumber(fields.message.author_id)) {
-	      message.senderId = fields.message.author_id;
-	    } else if (main_core.Type.isNumber(fields.message.authorId)) {
-	      message.senderId = fields.message.authorId;
-	    } else if (main_core.Type.isNumber(fields.message.senderId)) {
-	      message.senderId = fields.message.senderId;
-	    }
-	    if (main_core.Type.isStringFilled(fields.message.status)) {
-	      message.status = fields.message.status;
-	    }
-	    if (main_core.Type.isBoolean(fields.message.sending)) {
-	      message.sending = fields.message.sending;
-	    }
-	    if (Object.keys(params).length > 0) {
-	      message.params = params;
-	    }
-	    return message;
-	  }
-	  prepareDraft(fields) {
-	    const {
-	      draft
-	    } = this.getElementState();
-	    if (main_core.Type.isString(fields.draft.text)) {
-	      draft.text = fields.draft.text;
-	    }
-	    if (main_core.Type.isStringFilled(draft.text)) {
-	      draft.date = new Date();
-	    } else {
-	      draft.date = null;
-	    }
-	    return draft;
-	  }
-	  updateUnloadedRecentCounters(payload) {
-	    this.updateUnloadedCounters(payload, 'counters/setUnloadedChatCounters');
-	  }
-	  updateUnloadedCopilotCounters(payload) {
-	    this.updateUnloadedCounters(payload, 'counters/setUnloadedCopilotCounters');
-	  }
-	  updateUnloadedCounters(payload, updateMethod) {
-	    if (!Array.isArray(payload) && main_core.Type.isPlainObject(payload)) {
-	      payload = [payload];
-	    }
-	    const zeroedCountersForNewItems = {};
-	    payload.forEach(item => {
-	      zeroedCountersForNewItems[item.chat_id] = 0;
-	    });
-	    void im_v2_application_core.Core.getStore().dispatch(updateMethod, zeroedCountersForNewItems);
-	  }
+	  const zeroedCountersForNewItems = {};
+	  payload.forEach(item => {
+	    zeroedCountersForNewItems[item.chat_id] = 0;
+	  });
+	  void im_v2_application_core.Core.getStore().dispatch(updateMethod, zeroedCountersForNewItems);
+	}
+	function _getMessage2(messageId) {
+	  return im_v2_application_core.Core.getStore().getters['messages/getById'](messageId);
+	}
+	function _hasTodayMessage2(messageId) {
+	  const message = babelHelpers.classPrivateFieldLooseBase(this, _getMessage)[_getMessage](messageId);
+	  const hasMessage = im_v2_lib_utils.Utils.text.isUuidV4(message.id) || message.id > 0;
+	  return hasMessage && im_v2_lib_utils.Utils.date.isToday(message.date);
 	}
 
 	class NotificationsModel extends ui_vue3_vuex.BuilderModel {
@@ -3938,33 +3745,75 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	}
 
+	const sidebarLinksFieldsConfig = [{
+	  fieldName: 'id',
+	  targetFieldName: 'id',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'messageId',
+	  targetFieldName: 'messageId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'chatId',
+	  targetFieldName: 'chatId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'authorId',
+	  targetFieldName: 'authorId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'url',
+	  targetFieldName: 'source',
+	  checkFunction: main_core.Type.isPlainObject,
+	  formatFunction: target => {
+	    var _target$source;
+	    return (_target$source = target.source) != null ? _target$source : '';
+	  }
+	}, {
+	  fieldName: 'dateCreate',
+	  targetFieldName: 'date',
+	  checkFunction: main_core.Type.isString,
+	  formatFunction: im_v2_lib_utils.Utils.date.cast
+	}, {
+	  fieldName: 'url',
+	  targetFieldName: 'richData',
+	  checkFunction: main_core.Type.isPlainObject,
+	  formatFunction: target => {
+	    return formatFieldsWithConfig(target.richData, richDataFieldsConfig);
+	  }
+	}];
+	const richDataFieldsConfig = [{
+	  fieldName: 'id',
+	  targetFieldName: 'id',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'description',
+	  targetFieldName: 'description',
+	  checkFunction: main_core.Type.isString
+	}, {
+	  fieldName: 'link',
+	  targetFieldName: 'link',
+	  checkFunction: main_core.Type.isString
+	}, {
+	  fieldName: 'name',
+	  targetFieldName: 'name',
+	  checkFunction: main_core.Type.isString
+	}, {
+	  fieldName: 'previewUrl',
+	  targetFieldName: 'previewUrl',
+	  checkFunction: main_core.Type.isString
+	}, {
+	  fieldName: 'type',
+	  targetFieldName: 'type',
+	  checkFunction: main_core.Type.isString
+	}];
+
+	/* eslint-disable no-param-reassign */
 	class LinksModel extends ui_vue3_vuex.BuilderModel {
 	  getState() {
 	    return {
 	      collection: {},
 	      counters: {}
-	    };
-	  }
-	  getGetters() {
-	    return {
-	      get: state => chatId => {
-	        if (!state.collection[chatId]) {
-	          return [];
-	        }
-	        return [...state.collection[chatId].values()].sort((a, b) => b.id - a.id);
-	      },
-	      getSize: state => chatId => {
-	        if (!state.collection[chatId]) {
-	          return 0;
-	        }
-	        return state.collection[chatId].size;
-	      },
-	      getCounter: state => chatId => {
-	        if (!state.counters[chatId]) {
-	          return 0;
-	        }
-	        return state.counters[chatId];
-	      }
 	    };
 	  }
 	  getElementState() {
@@ -3985,29 +3834,71 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      }
 	    };
 	  }
+	  getChatState() {
+	    return {
+	      items: new Map(),
+	      hasNextPage: true
+	    };
+	  }
+	  getGetters() {
+	    return {
+	      /** @function sidebar/links/get */
+	      get: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return [];
+	        }
+	        return [...state.collection[chatId].items.values()].sort((a, b) => b.id - a.id);
+	      },
+	      /** @function sidebar/links/getSize */
+	      getSize: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return 0;
+	        }
+	        return state.collection[chatId].items.size;
+	      },
+	      /** @function sidebar/links/getCounter */
+	      getCounter: state => chatId => {
+	        if (!state.counters[chatId]) {
+	          return 0;
+	        }
+	        return state.counters[chatId];
+	      },
+	      /** @function sidebar/links/hasNextPage */
+	      hasNextPage: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return false;
+	        }
+	        return state.collection[chatId].hasNextPage;
+	      }
+	    };
+	  }
 	  getActions() {
 	    return {
+	      /** @function sidebar/links/setCounter */
 	      setCounter: (store, payload) => {
 	        if (!main_core.Type.isNumber(payload.counter) || !main_core.Type.isNumber(payload.chatId)) {
 	          return;
 	        }
 	        store.commit('setCounter', payload);
 	      },
+	      /** @function sidebar/links/set */
 	      set: (store, payload) => {
 	        const {
 	          chatId,
-	          links
+	          links,
+	          hasNextPage
 	        } = payload;
 	        if (!main_core.Type.isArrayFilled(links) || !main_core.Type.isNumber(chatId)) {
 	          return;
 	        }
-	        if (!store.state.collection[chatId]) {
-	          store.state.collection[chatId] = new Map();
-	        }
+	        store.commit('setHasNextPage', {
+	          chatId,
+	          hasNextPage
+	        });
 	        links.forEach(link => {
 	          const preparedLink = {
 	            ...this.getElementState(),
-	            ...this.validate(link)
+	            ...this.formatFields(link)
 	          };
 	          store.commit('add', {
 	            chatId,
@@ -4015,6 +3906,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          });
 	        });
 	      },
+	      /** @function sidebar/links/delete */
 	      delete: (store, payload) => {
 	        const {
 	          chatId,
@@ -4023,7 +3915,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        if (!main_core.Type.isNumber(id) || !main_core.Type.isNumber(chatId)) {
 	          return;
 	        }
-	        if (!store.state.collection[chatId] || !store.state.collection[chatId].has(id)) {
+	        if (!store.state.collection[chatId] || !store.state.collection[chatId].items.has(id)) {
 	          return;
 	        }
 	        store.commit('delete', {
@@ -4035,6 +3927,17 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	  getMutations() {
 	    return {
+	      setHasNextPage: (state, payload) => {
+	        const {
+	          chatId,
+	          hasNextPage
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].hasNextPage = hasNextPage;
+	      },
 	      setCounter: (state, payload) => {
 	        const {
 	          chatId,
@@ -4047,69 +3950,51 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          chatId,
 	          link
 	        } = payload;
-	        state.collection[chatId].set(link.id, link);
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].items.set(link.id, link);
 	      },
 	      delete: (state, payload) => {
 	        const {
 	          chatId,
 	          id
 	        } = payload;
-	        state.collection[chatId].delete(id);
+	        state.collection[chatId].items.delete(id);
 	        state.counters[chatId]--;
 	      }
 	    };
 	  }
-	  validate(fields) {
-	    const result = {
-	      richData: {}
-	    };
-	    if (main_core.Type.isNumber(fields.id)) {
-	      result.id = fields.id;
-	    }
-	    if (main_core.Type.isNumber(fields.messageId)) {
-	      result.messageId = fields.messageId;
-	    }
-	    if (main_core.Type.isNumber(fields.chatId)) {
-	      result.chatId = fields.chatId;
-	    }
-	    if (main_core.Type.isNumber(fields.authorId)) {
-	      result.authorId = fields.authorId;
-	    }
-	    if (main_core.Type.isString(fields.url.source)) {
-	      result.source = fields.url.source;
-	    }
-	    if (main_core.Type.isString(fields.dateCreate)) {
-	      result.date = im_v2_lib_utils.Utils.date.cast(fields.dateCreate);
-	    }
-	    if (main_core.Type.isPlainObject(fields.url.richData)) {
-	      result.richData = this.validateRichData(fields.url.richData);
-	    }
-	    return result;
-	  }
-	  validateRichData(richData) {
-	    const result = {};
-	    if (main_core.Type.isNumber(richData.id)) {
-	      result.id = richData.id;
-	    }
-	    if (main_core.Type.isString(richData.description)) {
-	      result.description = richData.description;
-	    }
-	    if (main_core.Type.isString(richData.link)) {
-	      result.link = richData.link;
-	    }
-	    if (main_core.Type.isString(richData.name)) {
-	      result.name = richData.name;
-	    }
-	    if (main_core.Type.isString(richData.previewUrl)) {
-	      result.previewUrl = richData.previewUrl;
-	    }
-	    if (main_core.Type.isString(richData.type)) {
-	      result.type = richData.type;
-	    }
-	    return result;
+	  formatFields(fields) {
+	    return formatFieldsWithConfig(fields, sidebarLinksFieldsConfig);
 	  }
 	}
 
+	const sidebarFavoritesFieldsConfig = [{
+	  fieldName: 'id',
+	  targetFieldName: 'id',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'messageId',
+	  targetFieldName: 'messageId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'chatId',
+	  targetFieldName: 'chatId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'authorId',
+	  targetFieldName: 'authorId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'dateCreate',
+	  targetFieldName: 'date',
+	  checkFunction: main_core.Type.isString,
+	  formatFunction: im_v2_lib_utils.Utils.date.cast
+	}];
+
+	/* eslint-disable no-param-reassign */
 	class FavoritesModel extends ui_vue3_vuex.BuilderModel {
 	  getState() {
 	    return {
@@ -4126,62 +4011,96 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      date: new Date()
 	    };
 	  }
+	  getChatState() {
+	    return {
+	      items: new Map(),
+	      hasNextPage: true,
+	      lastId: 0
+	    };
+	  }
 	  getGetters() {
 	    return {
+	      /** @function sidebar/favorites/get */
 	      get: state => chatId => {
 	        if (!state.collection[chatId]) {
 	          return [];
 	        }
-	        return [...state.collection[chatId].values()].sort((a, b) => b.id - a.id);
+	        return [...state.collection[chatId].items.values()].sort((a, b) => b.id - a.id);
 	      },
+	      /** @function sidebar/favorites/getSize */
 	      getSize: state => chatId => {
 	        if (!state.collection[chatId]) {
 	          return 0;
 	        }
-	        return state.collection[chatId].size;
+	        return state.collection[chatId].items.size;
 	      },
+	      /** @function sidebar/favorites/getCounter */
 	      getCounter: state => chatId => {
 	        if (state.counters[chatId]) {
 	          return state.counters[chatId];
 	        }
 	        return 0;
 	      },
+	      /** @function sidebar/favorites/isFavoriteMessage */
 	      isFavoriteMessage: state => (chatId, messageId) => {
 	        if (!state.collection[chatId]) {
 	          return false;
 	        }
-	        const chatFavorites = Object.fromEntries(state.collection[chatId]);
+	        const chatFavorites = Object.fromEntries(state.collection[chatId].items);
 	        const targetMessage = Object.values(chatFavorites).find(element => element.messageId === messageId);
-	        return !!targetMessage;
+	        return Boolean(targetMessage);
+	      },
+	      /** @function sidebar/favorites/hasNextPage */
+	      hasNextPage: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return false;
+	        }
+	        return state.collection[chatId].hasNextPage;
+	      },
+	      /** @function sidebar/favorites/getLastId */
+	      getLastId: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return false;
+	        }
+	        return state.collection[chatId].lastId;
 	      }
 	    };
 	  }
 	  getActions() {
 	    return {
+	      /** @function sidebar/favorites/setCounter */
 	      setCounter: (store, payload) => {
 	        if (!main_core.Type.isNumber(payload.counter) || !main_core.Type.isNumber(payload.chatId)) {
 	          return;
 	        }
 	        store.commit('setCounter', payload);
 	      },
+	      /** @function sidebar/favorites/set */
 	      set: (store, payload) => {
 	        if (main_core.Type.isNumber(payload.favorites)) {
 	          payload.favorites = [payload.favorites];
 	        }
 	        const {
 	          chatId,
-	          favorites
+	          favorites,
+	          hasNextPage,
+	          lastId
 	        } = payload;
 	        if (!main_core.Type.isArrayFilled(favorites) || !main_core.Type.isNumber(chatId)) {
 	          return;
 	        }
-	        if (!store.state.collection[chatId]) {
-	          store.state.collection[chatId] = new Map();
-	        }
+	        store.commit('setHasNextPage', {
+	          chatId,
+	          hasNextPage
+	        });
+	        store.commit('setLastId', {
+	          chatId,
+	          lastId
+	        });
 	        favorites.forEach(favorite => {
 	          const preparedFavoriteMessage = {
 	            ...this.getElementState(),
-	            ...this.validate(favorite)
+	            ...this.formatFields(favorite)
 	          };
 	          store.commit('add', {
 	            chatId,
@@ -4189,6 +4108,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          });
 	        });
 	      },
+	      /** @function sidebar/favorites/delete */
 	      delete: (store, payload) => {
 	        const {
 	          chatId,
@@ -4197,7 +4117,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        if (!main_core.Type.isNumber(id) || !main_core.Type.isNumber(chatId)) {
 	          return;
 	        }
-	        if (!store.state.collection[chatId] || !store.state.collection[chatId].has(id)) {
+	        if (!store.state.collection[chatId] || !store.state.collection[chatId].items.has(id)) {
 	          return;
 	        }
 	        store.commit('delete', {
@@ -4205,6 +4125,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          id
 	        });
 	      },
+	      /** @function sidebar/favorites/deleteByMessageId */
 	      deleteByMessageId: (store, payload) => {
 	        const {
 	          chatId,
@@ -4213,7 +4134,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        if (!store.state.collection[chatId]) {
 	          return;
 	        }
-	        const chatCollection = store.state.collection[chatId];
+	        const chatCollection = store.state.collection[chatId].items;
 	        let targetLinkId = null;
 	        for (const [linkId, linkObject] of chatCollection) {
 	          if (linkObject.messageId === messageId) {
@@ -4233,6 +4154,17 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	  getMutations() {
 	    return {
+	      setHasNextPage: (state, payload) => {
+	        const {
+	          chatId,
+	          hasNextPage
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].hasNextPage = hasNextPage;
+	      },
 	      setCounter: (state, payload) => {
 	        const {
 	          chatId,
@@ -4240,76 +4172,123 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        } = payload;
 	        state.counters[chatId] = counter;
 	      },
+	      setLastId: (state, payload) => {
+	        const {
+	          chatId,
+	          lastId
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].lastId = lastId;
+	      },
 	      add: (state, payload) => {
 	        const {
 	          chatId,
 	          favorite
 	        } = payload;
-	        state.collection[chatId].set(favorite.id, favorite);
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].items.set(favorite.id, favorite);
 	      },
 	      delete: (state, payload) => {
 	        const {
 	          chatId,
 	          id
 	        } = payload;
-	        state.collection[chatId].delete(id);
+	        state.collection[chatId].items.delete(id);
 	        state.counters[chatId]--;
 	      }
 	    };
 	  }
-	  validate(fields) {
-	    const result = {};
-	    if (main_core.Type.isNumber(fields.id)) {
-	      result.id = fields.id;
-	    }
-	    if (main_core.Type.isNumber(fields.messageId)) {
-	      result.messageId = fields.messageId;
-	    }
-	    if (main_core.Type.isNumber(fields.chatId)) {
-	      result.chatId = fields.chatId;
-	    }
-	    if (main_core.Type.isNumber(fields.authorId)) {
-	      result.authorId = fields.authorId;
-	    }
-	    if (main_core.Type.isString(fields.dateCreate)) {
-	      result.date = im_v2_lib_utils.Utils.date.cast(fields.dateCreate);
-	    }
-	    return result;
+	  formatFields(fields) {
+	    return formatFieldsWithConfig(fields, sidebarFavoritesFieldsConfig);
 	  }
 	}
 
+	/* eslint-disable no-param-reassign */
 	class MembersModel extends ui_vue3_vuex.BuilderModel {
 	  getState() {
 	    return {
 	      collection: {}
 	    };
 	  }
+	  getChatState() {
+	    return {
+	      users: new Set(),
+	      hasNextPage: true,
+	      lastId: 0,
+	      inited: false
+	    };
+	  }
 	  getGetters() {
 	    return {
+	      /** @function sidebar/members/get */
 	      get: state => chatId => {
 	        if (!state.collection[chatId]) {
 	          return [];
 	        }
-	        return [...state.collection[chatId]];
+	        return [...state.collection[chatId].users];
 	      },
+	      /** @function sidebar/members/getSize */
 	      getSize: state => chatId => {
 	        if (!state.collection[chatId]) {
 	          return 0;
 	        }
-	        return state.collection[chatId].size;
+	        return state.collection[chatId].users.size;
+	      },
+	      /** @function sidebar/members/hasNextPage */
+	      hasNextPage: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return false;
+	        }
+	        return state.collection[chatId].hasNextPage;
+	      },
+	      /** @function sidebar/members/getLastId */
+	      getLastId: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return false;
+	        }
+	        return state.collection[chatId].lastId;
+	      },
+	      /** @function sidebar/members/getInited */
+	      getInited: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return false;
+	        }
+	        return state.collection[chatId].inited;
 	      }
 	    };
 	  }
 	  getActions() {
 	    return {
+	      /** @function sidebar/members/set */
 	      set: (store, payload) => {
 	        const {
 	          chatId,
-	          users
+	          users,
+	          hasNextPage,
+	          lastId
 	        } = payload;
-	        if (!main_core.Type.isArray(users) || !main_core.Type.isNumber(chatId)) {
-	          return;
+	        if (!main_core.Type.isNil(hasNextPage)) {
+	          store.commit('setHasNextPage', {
+	            chatId,
+	            hasNextPage
+	          });
 	        }
+	        if (!main_core.Type.isNil(lastId)) {
+	          store.commit('setLastId', {
+	            chatId,
+	            lastId
+	          });
+	        }
+	        store.commit('setInited', {
+	          chatId,
+	          inited: true
+	        });
 	        if (users.length > 0) {
 	          store.commit('set', {
 	            chatId,
@@ -4317,6 +4296,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          });
 	        }
 	      },
+	      /** @function sidebar/members/delete */
 	      delete: (store, payload) => {
 	        const {
 	          chatId,
@@ -4338,25 +4318,131 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  getMutations() {
 	    return {
 	      set: (state, payload) => {
-	        if (!state.collection[payload.chatId]) {
-	          state.collection[payload.chatId] = new Set(payload.users);
-	        } else {
-	          payload.users.forEach(id => {
-	            state.collection[payload.chatId].add(id);
-	          });
+	        const {
+	          chatId,
+	          users
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
 	        }
+	        users.forEach(id => {
+	          state.collection[chatId].users.add(id);
+	        });
+	      },
+	      setHasNextPage: (state, payload) => {
+	        const {
+	          chatId,
+	          hasNextPage
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].hasNextPage = hasNextPage;
+	      },
+	      setLastId: (state, payload) => {
+	        const {
+	          chatId,
+	          lastId
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].lastId = lastId;
+	      },
+	      setInited: (state, payload) => {
+	        const {
+	          chatId,
+	          inited
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].inited = inited;
 	      },
 	      delete: (state, payload) => {
 	        const {
 	          chatId,
 	          userId
 	        } = payload;
-	        state.collection[chatId].delete(userId);
+	        state.collection[chatId].users.delete(userId);
 	      }
 	    };
 	  }
 	}
 
+	const sidebarTaskFieldsConfig = [{
+	  fieldName: 'id',
+	  targetFieldName: 'id',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'messageId',
+	  targetFieldName: 'messageId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'chatId',
+	  targetFieldName: 'chatId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'authorId',
+	  targetFieldName: 'authorId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'dateCreate',
+	  targetFieldName: 'date',
+	  checkFunction: main_core.Type.isString,
+	  formatFunction: im_v2_lib_utils.Utils.date.cast
+	}, {
+	  fieldName: 'task',
+	  targetFieldName: 'task',
+	  checkFunction: main_core.Type.isPlainObject,
+	  formatFunction: target => {
+	    return formatFieldsWithConfig(target, taskFieldsConfig);
+	  }
+	}];
+	const taskFieldsConfig = [{
+	  fieldName: 'id',
+	  targetFieldName: 'id',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'title',
+	  targetFieldName: 'title',
+	  checkFunction: main_core.Type.isString
+	}, {
+	  fieldName: 'creatorId',
+	  targetFieldName: 'creatorId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'responsibleId',
+	  targetFieldName: 'responsibleId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'statusTitle',
+	  targetFieldName: 'statusTitle',
+	  checkFunction: main_core.Type.isString
+	}, {
+	  fieldName: 'deadline',
+	  targetFieldName: 'deadline',
+	  checkFunction: main_core.Type.isString,
+	  formatFunction: im_v2_lib_utils.Utils.date.cast
+	}, {
+	  fieldName: 'state',
+	  targetFieldName: 'state',
+	  checkFunction: main_core.Type.isString
+	}, {
+	  fieldName: 'color',
+	  targetFieldName: 'color',
+	  checkFunction: main_core.Type.isString
+	}, {
+	  fieldName: 'source',
+	  targetFieldName: 'source',
+	  checkFunction: main_core.Type.isString
+	}];
+
+	/* eslint-disable no-param-reassign */
 	class TasksModel extends ui_vue3_vuex.BuilderModel {
 	  getState() {
 	    return {
@@ -4384,39 +4470,74 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      }
 	    };
 	  }
+	  getChatState() {
+	    return {
+	      items: new Map(),
+	      hasNextPage: true,
+	      lastId: 0
+	    };
+	  }
 	  getGetters() {
 	    return {
+	      /** @function sidebar/tasks/get */
 	      get: state => chatId => {
 	        if (!state.collection[chatId]) {
 	          return [];
 	        }
-	        return [...state.collection[chatId].values()].sort((a, b) => b.id - a.id);
+	        return [...state.collection[chatId].items.values()].sort((a, b) => b.id - a.id);
 	      },
+	      /** @function sidebar/tasks/hasNextPage */
 	      getSize: state => chatId => {
 	        if (!state.collection[chatId]) {
 	          return 0;
 	        }
-	        return state.collection[chatId].size;
+	        return state.collection[chatId].items.size;
+	      },
+	      /** @function sidebar/tasks/hasNextPage */
+	      hasNextPage: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return false;
+	        }
+	        return state.collection[chatId].hasNextPage;
+	      },
+	      /** @function sidebar/tasks/getLastId */
+	      getLastId: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return false;
+	        }
+	        return state.collection[chatId].lastId;
 	      }
 	    };
 	  }
 	  getActions() {
 	    return {
+	      /** @function sidebar/tasks/set */
 	      set: (store, payload) => {
 	        const {
 	          chatId,
-	          tasks
+	          tasks,
+	          hasNextPage,
+	          lastId
 	        } = payload;
 	        if (!main_core.Type.isArrayFilled(tasks) || !main_core.Type.isNumber(chatId)) {
 	          return;
 	        }
-	        if (!store.state.collection[chatId]) {
-	          store.state.collection[chatId] = new Map();
+	        if (!main_core.Type.isNil(hasNextPage)) {
+	          store.commit('setHasNextPage', {
+	            chatId,
+	            hasNextPage
+	          });
+	        }
+	        if (!main_core.Type.isNil(lastId)) {
+	          store.commit('setLastId', {
+	            chatId,
+	            lastId
+	          });
 	        }
 	        tasks.forEach(task => {
 	          const preparedTask = {
 	            ...this.getElementState(),
-	            ...this.validate(task)
+	            ...this.formatFields(task)
 	          };
 	          store.commit('add', {
 	            chatId,
@@ -4424,6 +4545,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          });
 	        });
 	      },
+	      /** @function sidebar/tasks/delete */
 	      delete: (store, payload) => {
 	        const {
 	          chatId,
@@ -4449,77 +4571,102 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          chatId,
 	          task
 	        } = payload;
-	        state.collection[chatId].set(task.id, task);
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].items.set(task.id, task);
 	      },
 	      delete: (state, payload) => {
 	        const {
 	          id,
 	          chatId
 	        } = payload;
-	        state.collection[chatId].delete(id);
+	        state.collection[chatId].items.delete(id);
+	      },
+	      setHasNextPage: (state, payload) => {
+	        const {
+	          chatId,
+	          hasNextPage
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].hasNextPage = hasNextPage;
+	      },
+	      setLastId: (state, payload) => {
+	        const {
+	          chatId,
+	          lastId
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].lastId = lastId;
 	      }
 	    };
 	  }
-	  validate(fields) {
-	    const result = {
-	      task: {}
-	    };
-	    if (main_core.Type.isNumber(fields.id)) {
-	      result.id = fields.id;
-	    }
-	    if (main_core.Type.isNumber(fields.messageId)) {
-	      result.messageId = fields.messageId;
-	    }
-	    if (main_core.Type.isNumber(fields.chatId)) {
-	      result.chatId = fields.chatId;
-	    }
-	    if (main_core.Type.isNumber(fields.authorId)) {
-	      result.authorId = fields.authorId;
-	    }
-	    if (main_core.Type.isString(fields.dateCreate)) {
-	      result.date = im_v2_lib_utils.Utils.date.cast(fields.dateCreate);
-	    }
-	    if (main_core.Type.isPlainObject(fields.task)) {
-	      result.task = this.validateTask(fields.task);
-	    }
-	    return result;
-	  }
-	  validateTask(task) {
-	    const result = {};
-	    if (main_core.Type.isNumber(task.id)) {
-	      result.id = task.id;
-	    }
-	    if (main_core.Type.isString(task.title)) {
-	      result.title = task.title;
-	    }
-	    if (main_core.Type.isNumber(task.creatorId)) {
-	      result.creatorId = task.creatorId;
-	    }
-	    if (main_core.Type.isNumber(task.responsibleId)) {
-	      result.responsibleId = task.responsibleId;
-	    }
-	    if (main_core.Type.isNumber(task.status)) {
-	      result.status = task.status;
-	    }
-	    if (main_core.Type.isString(task.statusTitle)) {
-	      result.statusTitle = task.statusTitle;
-	    }
-	    if (main_core.Type.isString(task.deadline)) {
-	      result.deadline = im_v2_lib_utils.Utils.date.cast(task.deadline);
-	    }
-	    if (main_core.Type.isString(task.state)) {
-	      result.state = task.state;
-	    }
-	    if (main_core.Type.isString(task.color)) {
-	      result.color = task.color;
-	    }
-	    if (main_core.Type.isString(task.source)) {
-	      result.source = task.source;
-	    }
-	    return result;
+	  formatFields(fields) {
+	    return formatFieldsWithConfig(fields, sidebarTaskFieldsConfig);
 	  }
 	}
 
+	const sidebarMeetingFieldsConfig = [{
+	  fieldName: 'id',
+	  targetFieldName: 'id',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'messageId',
+	  targetFieldName: 'messageId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'chatId',
+	  targetFieldName: 'chatId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'authorId',
+	  targetFieldName: 'authorId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'dateCreate',
+	  targetFieldName: 'date',
+	  checkFunction: main_core.Type.isString,
+	  formatFunction: im_v2_lib_utils.Utils.date.cast
+	}, {
+	  fieldName: 'calendar',
+	  targetFieldName: 'meeting',
+	  checkFunction: main_core.Type.isPlainObject,
+	  formatFunction: target => {
+	    return formatFieldsWithConfig(target, meetingFieldsConfig);
+	  }
+	}];
+	const meetingFieldsConfig = [{
+	  fieldName: 'id',
+	  targetFieldName: 'id',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'title',
+	  targetFieldName: 'title',
+	  checkFunction: main_core.Type.isString
+	}, {
+	  fieldName: 'dateFrom',
+	  targetFieldName: 'dateFrom',
+	  checkFunction: main_core.Type.isString,
+	  formatFunction: im_v2_lib_utils.Utils.date.cast
+	}, {
+	  fieldName: 'dateTo',
+	  targetFieldName: 'dateTo',
+	  checkFunction: main_core.Type.isString,
+	  formatFunction: im_v2_lib_utils.Utils.date.cast
+	}, {
+	  fieldName: 'source',
+	  targetFieldName: 'source',
+	  checkFunction: main_core.Type.isString
+	}];
+
+	/* eslint-disable no-param-reassign */
 	class MeetingsModel extends ui_vue3_vuex.BuilderModel {
 	  getState() {
 	    return {
@@ -4542,39 +4689,74 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      }
 	    };
 	  }
+	  getChatState() {
+	    return {
+	      items: new Map(),
+	      hasNextPage: true,
+	      lastId: 0
+	    };
+	  }
 	  getGetters() {
 	    return {
+	      /** @function sidebar/meetings/get */
 	      get: state => chatId => {
 	        if (!state.collection[chatId]) {
 	          return [];
 	        }
-	        return [...state.collection[chatId].values()].sort((a, b) => b.id - a.id);
+	        return [...state.collection[chatId].items.values()].sort((a, b) => b.id - a.id);
 	      },
+	      /** @function sidebar/meetings/getSize */
 	      getSize: state => chatId => {
 	        if (!state.collection[chatId]) {
 	          return 0;
 	        }
-	        return state.collection[chatId].size;
+	        return state.collection[chatId].items.size;
+	      },
+	      /** @function sidebar/meetings/hasNextPage */
+	      hasNextPage: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return false;
+	        }
+	        return state.collection[chatId].hasNextPage;
+	      },
+	      /** @function sidebar/meetings/getLastId */
+	      getLastId: state => chatId => {
+	        if (!state.collection[chatId]) {
+	          return false;
+	        }
+	        return state.collection[chatId].lastId;
 	      }
 	    };
 	  }
 	  getActions() {
 	    return {
+	      /** @function sidebar/meetings/set */
 	      set: (store, payload) => {
 	        const {
 	          chatId,
-	          meetings
+	          meetings,
+	          hasNextPage,
+	          lastId
 	        } = payload;
 	        if (!main_core.Type.isArrayFilled(meetings) || !main_core.Type.isNumber(chatId)) {
 	          return;
 	        }
-	        if (!store.state.collection[chatId]) {
-	          store.state.collection[chatId] = new Map();
+	        if (!main_core.Type.isNil(hasNextPage)) {
+	          store.commit('setHasNextPage', {
+	            chatId,
+	            hasNextPage
+	          });
+	        }
+	        if (!main_core.Type.isNil(lastId)) {
+	          store.commit('setLastId', {
+	            chatId,
+	            lastId
+	          });
 	        }
 	        meetings.forEach(meeting => {
 	          const preparedMeeting = {
 	            ...this.getElementState(),
-	            ...this.validate(meeting)
+	            ...this.formatFields(meeting)
 	          };
 	          store.commit('add', {
 	            chatId,
@@ -4582,6 +4764,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          });
 	        });
 	      },
+	      /** @function sidebar/meetings/delete */
 	      delete: (store, payload) => {
 	        const {
 	          chatId,
@@ -4607,62 +4790,76 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          chatId,
 	          meeting
 	        } = payload;
-	        state.collection[chatId].set(meeting.id, meeting);
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].items.set(meeting.id, meeting);
 	      },
 	      delete: (state, payload) => {
 	        const {
 	          id,
 	          chatId
 	        } = payload;
-	        state.collection[chatId].delete(id);
+	        state.collection[chatId].items.delete(id);
+	      },
+	      setHasNextPage: (state, payload) => {
+	        const {
+	          chatId,
+	          hasNextPage
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].hasNextPage = hasNextPage;
+	      },
+	      setLastId: (state, payload) => {
+	        const {
+	          chatId,
+	          lastId
+	        } = payload;
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId]);
+	        if (!hasCollection) {
+	          state.collection[chatId] = this.getChatState();
+	        }
+	        state.collection[chatId].lastId = lastId;
 	      }
 	    };
 	  }
-	  validate(fields) {
-	    const result = {
-	      meeting: {}
-	    };
-	    if (main_core.Type.isNumber(fields.id)) {
-	      result.id = fields.id;
-	    }
-	    if (main_core.Type.isNumber(fields.messageId)) {
-	      result.messageId = fields.messageId;
-	    }
-	    if (main_core.Type.isNumber(fields.chatId)) {
-	      result.chatId = fields.chatId;
-	    }
-	    if (main_core.Type.isNumber(fields.authorId)) {
-	      result.authorId = fields.authorId;
-	    }
-	    if (main_core.Type.isString(fields.dateCreate)) {
-	      result.date = im_v2_lib_utils.Utils.date.cast(fields.dateCreate);
-	    }
-	    if (main_core.Type.isPlainObject(fields.calendar)) {
-	      result.meeting = this.validateMeeting(fields.calendar);
-	    }
-	    return result;
-	  }
-	  validateMeeting(meeting) {
-	    const result = {};
-	    if (main_core.Type.isNumber(meeting.id)) {
-	      result.id = meeting.id;
-	    }
-	    if (main_core.Type.isString(meeting.title)) {
-	      result.title = meeting.title;
-	    }
-	    if (main_core.Type.isString(meeting.dateFrom)) {
-	      result.dateFrom = im_v2_lib_utils.Utils.date.cast(meeting.dateFrom);
-	    }
-	    if (main_core.Type.isString(meeting.dateTo)) {
-	      result.dateTo = im_v2_lib_utils.Utils.date.cast(meeting.dateTo);
-	    }
-	    if (main_core.Type.isString(meeting.source)) {
-	      result.source = meeting.source;
-	    }
-	    return result;
+	  formatFields(fields) {
+	    return formatFieldsWithConfig(fields, sidebarMeetingFieldsConfig);
 	  }
 	}
 
+	const sidebarFilesFieldsConfig = [{
+	  fieldName: 'id',
+	  targetFieldName: 'id',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'messageId',
+	  targetFieldName: 'messageId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'chatId',
+	  targetFieldName: 'chatId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: 'authorId',
+	  targetFieldName: 'authorId',
+	  checkFunction: main_core.Type.isNumber
+	}, {
+	  fieldName: ['dateCreate', 'date'],
+	  targetFieldName: 'date',
+	  checkFunction: main_core.Type.isString,
+	  formatFunction: im_v2_lib_utils.Utils.date.cast
+	}, {
+	  fieldName: ['fileId', 'id'],
+	  targetFieldName: 'fileId',
+	  checkFunction: main_core.Type.isNumber
+	}];
+
+	/* eslint-disable no-param-reassign */
 	class FilesModel$1 extends ui_vue3_vuex.BuilderModel {
 	  getState() {
 	    return {
@@ -4679,14 +4876,23 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      fileId: 0
 	    };
 	  }
+	  getChatState() {
+	    return {
+	      items: new Map(),
+	      hasNextPage: true,
+	      lastId: 0
+	    };
+	  }
 	  getGetters() {
 	    return {
+	      /** @function sidebar/files/get */
 	      get: state => (chatId, subType) => {
 	        if (!state.collection[chatId] || !state.collection[chatId][subType]) {
 	          return [];
 	        }
-	        return [...state.collection[chatId][subType].values()].sort((a, b) => b.id - a.id);
+	        return [...state.collection[chatId][subType].items.values()].sort((a, b) => b.id - a.id);
 	      },
+	      /** @function sidebar/files/getLatest */
 	      getLatest: (state, getters, rootState, rootGetters) => chatId => {
 	        if (!state.collection[chatId]) {
 	          return [];
@@ -4695,61 +4901,77 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        let audio = [];
 	        let documents = [];
 	        let other = [];
+	        let briefs = [];
 	        if (state.collection[chatId][im_v2_const.SidebarFileTypes.media]) {
-	          media = [...state.collection[chatId][im_v2_const.SidebarFileTypes.media].values()];
+	          media = [...state.collection[chatId][im_v2_const.SidebarFileTypes.media].items.values()];
 	        }
 	        if (state.collection[chatId][im_v2_const.SidebarFileTypes.audio]) {
-	          audio = [...state.collection[chatId][im_v2_const.SidebarFileTypes.audio].values()];
+	          audio = [...state.collection[chatId][im_v2_const.SidebarFileTypes.audio].items.values()];
 	        }
 	        if (state.collection[chatId][im_v2_const.SidebarFileTypes.document]) {
-	          documents = [...state.collection[chatId][im_v2_const.SidebarFileTypes.document].values()];
+	          documents = [...state.collection[chatId][im_v2_const.SidebarFileTypes.document].items.values()];
+	        }
+	        if (state.collection[chatId][im_v2_const.SidebarFileTypes.brief]) {
+	          briefs = [...state.collection[chatId][im_v2_const.SidebarFileTypes.brief].items.values()];
 	        }
 	        if (state.collection[chatId][im_v2_const.SidebarFileTypes.other]) {
-	          other = [...state.collection[chatId][im_v2_const.SidebarFileTypes.other].values()];
+	          other = [...state.collection[chatId][im_v2_const.SidebarFileTypes.other].items.values()];
 	        }
-	        const sortedFlatCollection = [media, audio, documents, other].flat().sort((a, b) => b.id - a.id);
+	        const sortedFlatCollection = [media, audio, documents, briefs, other].flat().sort((a, b) => b.id - a.id);
 	        return this.getTopThreeCompletedFiles(sortedFlatCollection, rootGetters);
 	      },
+	      /** @function sidebar/files/getLatestUnsorted */
 	      getLatestUnsorted: (state, getters, rootState, rootGetters) => chatId => {
 	        if (!state.collection[chatId]) {
 	          return [];
 	        }
 	        let unsorted = [];
 	        if (state.collection[chatId][im_v2_const.SidebarFileTypes.fileUnsorted]) {
-	          unsorted = [...state.collection[chatId][im_v2_const.SidebarFileTypes.fileUnsorted].values()];
+	          unsorted = [...state.collection[chatId][im_v2_const.SidebarFileTypes.fileUnsorted].items.values()];
 	        }
 	        const sortedCollection = unsorted.sort((a, b) => b.id - a.id);
 	        return this.getTopThreeCompletedFiles(sortedCollection, rootGetters);
 	      },
+	      /** @function sidebar/files/getSize */
 	      getSize: state => (chatId, subType) => {
 	        if (!state.collection[chatId] || !state.collection[chatId][subType]) {
 	          return 0;
 	        }
-	        return state.collection[chatId][subType].size;
+	        return state.collection[chatId][subType].items.size;
+	      },
+	      /** @function sidebar/files/hasNextPage */
+	      hasNextPage: state => (chatId, subType) => {
+	        if (!state.collection[chatId] || !state.collection[chatId][subType]) {
+	          return false;
+	        }
+	        return state.collection[chatId][subType].hasNextPage;
+	      },
+	      /** @function sidebar/files/getLastId */
+	      getLastId: state => (chatId, subType) => {
+	        if (!state.collection[chatId] || !state.collection[chatId][subType]) {
+	          return false;
+	        }
+	        return state.collection[chatId][subType].lastId;
 	      }
 	    };
 	  }
 	  getActions() {
 	    return {
+	      /** @function sidebar/files/set */
 	      set: (store, payload) => {
 	        const {
 	          chatId,
-	          files
+	          files,
+	          subType
 	        } = payload;
 	        if (!main_core.Type.isArrayFilled(files) || !main_core.Type.isNumber(chatId)) {
 	          return;
 	        }
-	        if (!store.state.collection[chatId]) {
-	          store.state.collection[chatId] = {};
-	        }
 	        files.forEach(file => {
 	          const preparedFile = {
 	            ...this.getElementState(),
-	            ...this.validate(file)
+	            ...this.formatFields(file)
 	          };
-	          const {
-	            subType
-	          } = file;
 	          store.commit('add', {
 	            chatId,
 	            subType,
@@ -4757,6 +4979,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          });
 	        });
 	      },
+	      /** @function sidebar/files/delete */
 	      delete: (store, payload) => {
 	        const {
 	          chatId,
@@ -4772,6 +4995,44 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          chatId,
 	          id
 	        });
+	      },
+	      /** @function sidebar/files/setHasNextPage */
+	      setHasNextPage: (store, payload) => {
+	        const {
+	          chatId,
+	          subType,
+	          hasNextPage
+	        } = payload;
+	        if (!main_core.Type.isNumber(chatId)) {
+	          return;
+	        }
+	        if (!store.state.collection[chatId]) {
+	          return;
+	        }
+	        store.commit('setHasNextPage', {
+	          chatId,
+	          subType,
+	          hasNextPage
+	        });
+	      },
+	      /** @function sidebar/files/setLastId */
+	      setLastId: (store, payload) => {
+	        const {
+	          chatId,
+	          subType,
+	          lastId
+	        } = payload;
+	        if (!main_core.Type.isNumber(chatId)) {
+	          return;
+	        }
+	        if (!store.state.collection[chatId]) {
+	          return;
+	        }
+	        store.commit('setLastId', {
+	          chatId,
+	          subType,
+	          lastId
+	        });
 	      }
 	    };
 	  }
@@ -4783,10 +5044,13 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          file,
 	          subType
 	        } = payload;
-	        if (!state.collection[chatId][subType]) {
-	          state.collection[chatId][subType] = new Map();
+	        if (!state.collection[chatId]) {
+	          state.collection[chatId] = {};
 	        }
-	        state.collection[chatId][subType].set(file.id, file);
+	        if (!state.collection[chatId][subType]) {
+	          state.collection[chatId][subType] = this.getChatState();
+	        }
+	        state.collection[chatId][subType].items.set(file.id, file);
 	      },
 	      delete: (state, payload) => {
 	        const {
@@ -4794,34 +5058,45 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          id
 	        } = payload;
 	        Object.values(im_v2_const.SidebarFileTypes).forEach(subType => {
-	          if (state.collection[chatId][subType] && state.collection[chatId][subType].has(id)) {
-	            state.collection[chatId][subType].delete(id);
+	          if (state.collection[chatId][subType] && state.collection[chatId][subType].items.has(id)) {
+	            state.collection[chatId][subType].items.delete(id);
 	          }
 	        });
+	      },
+	      setHasNextPage: (state, payload) => {
+	        const {
+	          chatId,
+	          subType,
+	          hasNextPage
+	        } = payload;
+	        if (!state.collection[chatId]) {
+	          state.collection[chatId] = {};
+	        }
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId][subType]);
+	        if (!hasCollection) {
+	          state.collection[chatId][subType] = this.getChatState();
+	        }
+	        state.collection[chatId][subType].hasNextPage = hasNextPage;
+	      },
+	      setLastId: (state, payload) => {
+	        const {
+	          chatId,
+	          subType,
+	          lastId
+	        } = payload;
+	        if (!state.collection[chatId]) {
+	          state.collection[chatId] = {};
+	        }
+	        const hasCollection = !main_core.Type.isNil(state.collection[chatId][subType]);
+	        if (!hasCollection) {
+	          state.collection[chatId][subType] = this.getChatState();
+	        }
+	        state.collection[chatId][subType].lastId = lastId;
 	      }
 	    };
 	  }
-	  validate(fields) {
-	    const result = {};
-	    if (main_core.Type.isNumber(fields.id)) {
-	      result.id = fields.id;
-	    }
-	    if (main_core.Type.isNumber(fields.messageId)) {
-	      result.messageId = fields.messageId;
-	    }
-	    if (main_core.Type.isNumber(fields.chatId)) {
-	      result.chatId = fields.chatId;
-	    }
-	    if (main_core.Type.isNumber(fields.authorId)) {
-	      result.authorId = fields.authorId;
-	    }
-	    if (main_core.Type.isString(fields.dateCreate)) {
-	      result.date = im_v2_lib_utils.Utils.date.cast(fields.dateCreate);
-	    } else if (main_core.Type.isString(fields.date)) {
-	      result.date = im_v2_lib_utils.Utils.date.cast(fields.date);
-	    }
-	    result.fileId = main_core.Type.isNumber(fields.fileId) ? fields.fileId : result.id;
-	    return result;
+	  formatFields(fields) {
+	    return formatFieldsWithConfig(fields, sidebarFilesFieldsConfig);
 	  }
 	  getTopThreeCompletedFiles(collection, rootGetters) {
 	    return collection.filter(sidebarFile => {
@@ -4831,6 +5106,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	}
 
+	/* eslint-disable no-param-reassign */
 	class SidebarModel extends ui_vue3_vuex.BuilderModel {
 	  getName() {
 	    return 'sidebar';
@@ -4883,8 +5159,8 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	  getMutations() {
 	    return {
-	      setInited: (state, payload) => {
-	        state.initedList.add(payload);
+	      setInited: (state, chatId) => {
+	        state.initedList.add(chatId);
 	      },
 	      setFilesMigrated: (state, payload) => {
 	        state.isFilesMigrated = payload;
@@ -5204,5 +5480,5 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	exports.MarketModel = MarketModel;
 	exports.CountersModel = CountersModel;
 
-}((this.BX.Messenger.v2.Model = this.BX.Messenger.v2.Model || {}),BX.Event,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Const,BX,BX.Vue3.Vuex,BX.Messenger.v2.Application));
+}((this.BX.Messenger.v2.Model = this.BX.Messenger.v2.Model || {}),BX.Event,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Const,BX,BX.Vue3.Vuex,BX.Messenger.v2.Application));
 //# sourceMappingURL=registry.bundle.js.map

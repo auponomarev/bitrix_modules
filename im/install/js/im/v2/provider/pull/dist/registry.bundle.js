@@ -3,7 +3,7 @@ this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
-(function (exports,main_core_events,im_v2_lib_uuid,im_v2_provider_service,im_public,im_v2_lib_writing,ui_vue3_vuex,im_v2_lib_counter,im_v2_lib_user,im_v2_lib_desktopApi,im_v2_const,im_v2_lib_notifier,im_v2_lib_desktop,im_v2_lib_call,im_v2_lib_localStorage,im_v2_lib_soundNotification,im_v2_lib_logger,main_core,im_v2_application_core) {
+(function (exports,main_core_events,im_v2_lib_uuid,im_v2_provider_service,im_public,im_v2_lib_writing,ui_vue3_vuex,im_v2_lib_counter,im_v2_lib_utils,im_v2_model,im_v2_lib_user,im_v2_lib_desktopApi,im_v2_const,im_v2_lib_notifier,im_v2_lib_desktop,im_v2_lib_call,im_v2_lib_localStorage,im_v2_lib_soundNotification,im_v2_lib_logger,main_core,im_v2_application_core) {
 	'use strict';
 
 	var _store = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("store");
@@ -165,6 +165,7 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	    if (lastMessageWasDeleted) {
 	      dialogUpdateFields.lastMessageId = params.newLastMessage.id;
 	      dialogUpdateFields.lastMessageViews = params.lastMessageViews;
+	      babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].dispatch('messages/store', params.newLastMessage);
 	    }
 	    babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].dispatch('chats/update', {
 	      dialogId: params.dialogId,
@@ -325,6 +326,7 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	  const chatIsOpened = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['application/isChatOpen'](params.dialogId);
 	  const unreadMessages = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['messages/getChatUnreadMessages'](params.chatId);
 	  if (!chatIsOpened && unreadMessages.length > im_v2_provider_service.MessageService.getMessageRequestLimit()) {
+	    babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].dispatch('messages/store', params.message);
 	    const messageService = new im_v2_provider_service.MessageService({
 	      chatId: params.chatId
 	    });
@@ -577,6 +579,8 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	  }
 	  handleUserInvite(params) {
 	    if (params.invited) {
+	      const userManager = new im_v2_lib_user.UserManager();
+	      userManager.setUsersToModel([params.user]);
 	      return;
 	    }
 	    babelHelpers.classPrivateFieldLooseBase(this, _store$2)[_store$2].dispatch('users/update', {
@@ -747,11 +751,13 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	  // endregion 'settings'
 	}
 
+	const AddMethodByChatType = {
+	  [im_v2_const.ChatType.copilot]: 'recent/setCopilot',
+	  default: 'recent/setRecent'
+	};
+
+	// noinspection JSUnusedGlobalSymbols
 	class RecentPullHandler {
-	  constructor() {
-	    this.store = im_v2_application_core.Core.getStore();
-	    this.userManager = new im_v2_lib_user.UserManager();
-	  }
 	  getModuleId() {
 	    return 'im';
 	  }
@@ -762,103 +768,30 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	    this.handleMessageAdd(params);
 	  }
 	  handleMessageAdd(params) {
-	    if (!this.checkChatType(params)) {
+	    if (params.lines) {
 	      return;
 	    }
-	    const currentUserId = im_v2_application_core.Core.getUserId();
-	    if (currentUserId && params.userInChat[params.chatId] && !params.userInChat[params.chatId].includes(currentUserId)) {
+	    const chatUsers = params.userInChat[params.chatId];
+	    if (chatUsers && !chatUsers.includes(im_v2_application_core.Core.getUserId())) {
 	      return;
-	    }
-	    let attach = false;
-	    if (main_core.Type.isArray(params.message.params['ATTACH'])) {
-	      attach = params.message.params['ATTACH'];
-	    }
-	    let file = false;
-	    if (main_core.Type.isArray(params.message.params['FILE_ID'])) {
-	      file = params.files[params.message.params['FILE_ID'][0]];
 	    }
 	    im_v2_lib_logger.Logger.warn('RecentPullHandler: handleMessageAdd', params);
 	    const newRecentItem = {
 	      id: params.dialogId,
-	      message: {
-	        id: params.message.id,
-	        text: params.message.text,
-	        date: params.message.date,
-	        senderId: params.message.senderId,
-	        sending: false,
-	        status: im_v2_const.MessageStatus.received,
-	        attach,
-	        file
-	      },
-	      dateUpdate: new Date()
+	      messageId: params.message.id
 	    };
-	    const recentItem = this.store.getters['recent/get'](params.dialogId);
+	    const recentItem = im_v2_application_core.Core.getStore().getters['recent/get'](params.dialogId);
 	    if (recentItem) {
-	      newRecentItem.options = {
-	        birthdayPlaceholder: false
-	      };
-	      this.store.dispatch('recent/like', {
-	        id: params.dialogId,
-	        liked: false
-	      });
+	      newRecentItem.isFakeElement = false;
+	      newRecentItem.isBirthdayPlaceholder = false;
+	      newRecentItem.liked = false;
 	    }
-	    const {
-	      senderId
-	    } = params.message;
-	    const usersModel = this.store.state.users;
-	    // if (usersModel?.botList[senderId] && usersModel.botList[senderId].type === 'human')
-	    // {
-	    // 	const { text } = params.message;
-	    // 	setTimeout(() => {
-	    // 		this.setRecentItem(newRecentItem);
-	    // 	}, this.getWaitTimeForHumanBot(text));
-	    //
-	    // 	return;
-	    // }
-
-	    this.setRecentItem(newRecentItem);
-	  }
-	  handleMessageUpdate(params, extra, command) {
-	    const recentItem = this.store.getters['recent/get'](params.dialogId);
-	    if (!recentItem || recentItem.message.id !== params.id) {
-	      return;
-	    }
-	    im_v2_lib_logger.Logger.warn('RecentPullHandler: handleMessageUpdate', params, command);
-	    let text = params.text;
-	    if (command === 'messageDelete') {
-	      text = main_core.Loc.getMessage('IM_PULL_RECENT_MESSAGE_DELETED');
-	    }
-	    this.store.dispatch('recent/update', {
-	      id: params.dialogId,
-	      fields: {
-	        message: {
-	          id: params.id,
-	          text,
-	          date: recentItem.message.date,
-	          status: recentItem.message.status,
-	          senderId: params.senderId,
-	          params: {
-	            withFile: false,
-	            withAttach: false
-	          }
-	        },
-	        dateUpdate: new Date()
-	      }
-	    });
-	  }
-	  handleMessageDelete(params, extra, command) {
-	    this.handleMessageUpdate(params, extra, command);
+	    this.setRecentItem(params, newRecentItem);
 	  }
 	  handleMessageDeleteComplete(params) {
 	    const lastMessageWasDeleted = Boolean(params.newLastMessage);
 	    if (lastMessageWasDeleted) {
-	      this.store.dispatch('recent/update', {
-	        id: params.dialogId,
-	        fields: {
-	          message: params.newLastMessage,
-	          dateUpdate: new Date()
-	        }
-	      });
+	      this.updateRecentForMessageDelete(params.dialogId, params.newLastMessage.id);
 	    }
 	    this.updateUnloadedChatCounter(params);
 	  }
@@ -888,151 +821,80 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	      muted: params.muted,
 	      unread: params.active
 	    });
-	    this.store.dispatch('recent/unread', {
+	    im_v2_application_core.Core.getStore().dispatch('recent/unread', {
 	      id: params.dialogId,
-	      action: params.active,
-	      dateUpdate: new Date()
+	      action: params.active
 	    });
 	  }
 	  /* endregion Counters handling */
 
-	  handleReadMessageOpponent(params) {
-	    im_v2_lib_logger.Logger.warn('RecentPullHandler: handleReadMessageOpponent', params);
-	    const recentItem = this.store.getters['recent/get'](params.dialogId);
-	    const lastReadMessage = Number.parseInt(params.lastId, 10);
-	    if (!recentItem || recentItem.message.id !== lastReadMessage) {
-	      return;
-	    }
-	    this.store.dispatch('recent/update', {
-	      id: params.dialogId,
-	      fields: {
-	        message: {
-	          ...recentItem.message,
-	          status: im_v2_const.MessageStatus.delivered
-	        }
-	      }
-	    });
-	  }
-	  handleReadMessageChatOpponent(params) {
-	    this.handleReadMessageOpponent(params);
-	  }
-	  handleUnreadMessageOpponent(params) {
-	    im_v2_lib_logger.Logger.warn('RecentPullHandler: handleUnreadMessageOpponent', params);
-	    const recentItem = this.store.getters['recent/get'](params.dialogId);
-	    if (!recentItem) {
-	      return;
-	    }
-	    this.store.dispatch('recent/update', {
-	      id: params.dialogId,
-	      fields: {
-	        message: {
-	          ...recentItem.message,
-	          status: im_v2_const.MessageStatus.received
-	        }
-	      }
-	    });
-	  }
-	  handleUnreadMessageChatOpponent(params) {
-	    im_v2_lib_logger.Logger.warn('RecentPullHandler: handleUnreadMessageChatOpponent', params);
-	    const recentItem = this.store.getters['recent/get'](params.dialogId);
-	    if (!recentItem) {
-	      return;
-	    }
-	    this.store.dispatch('recent/update', {
-	      id: params.dialogId,
-	      fields: {
-	        message: {
-	          ...recentItem.message,
-	          status: params.chatMessageStatus
-	        }
-	      }
-	    });
-	  }
 	  handleAddReaction(params) {
 	    im_v2_lib_logger.Logger.warn('RecentPullHandler: handleAddReaction', params);
-	    const recentItem = this.store.getters['recent/get'](params.dialogId);
+	    const recentItem = im_v2_application_core.Core.getStore().getters['recent/get'](params.dialogId);
 	    if (!recentItem) {
 	      return;
 	    }
-	    const chatIsOpened = this.store.getters['application/isChatOpen'](params.dialogId);
+	    const chatIsOpened = im_v2_application_core.Core.getStore().getters['application/isChatOpen'](params.dialogId);
 	    if (chatIsOpened) {
 	      return;
 	    }
+	    const message = im_v2_application_core.Core.getStore().getters['recent/getMessage'](params.dialogId);
 	    const isOwnLike = im_v2_application_core.Core.getUserId() === params.userId;
-	    const isOwnLastMessage = im_v2_application_core.Core.getUserId() === recentItem.message.senderId;
+	    const isOwnLastMessage = im_v2_application_core.Core.getUserId() === message.authorId;
 	    if (isOwnLike || !isOwnLastMessage) {
 	      return;
 	    }
-	    this.store.dispatch('recent/like', {
+	    im_v2_application_core.Core.getStore().dispatch('recent/like', {
 	      id: params.dialogId,
 	      messageId: params.actualReactions.reaction.messageId,
 	      liked: true
 	    });
 	  }
-	  handleDeleteReaction(params) {
-	    // Logger.warn('RecentPullHandler: handleDeleteReaction', params);
-	    // const recentItem = this.store.getters['recent/get'](params.dialogId);
-	    // if (!recentItem)
-	    // {
-	    // 	return false;
-	    // }
-	  }
 	  handleChatPin(params) {
 	    im_v2_lib_logger.Logger.warn('RecentPullHandler: handleChatPin', params);
-	    const recentItem = this.store.getters['recent/get'](params.dialogId);
+	    const recentItem = im_v2_application_core.Core.getStore().getters['recent/get'](params.dialogId);
 	    if (!recentItem) {
 	      return;
 	    }
-	    this.store.dispatch('recent/pin', {
+	    im_v2_application_core.Core.getStore().dispatch('recent/pin', {
 	      id: params.dialogId,
-	      action: params.active,
-	      dateUpdate: new Date()
+	      action: params.active
 	    });
 	  }
 	  handleChatHide(params) {
 	    im_v2_lib_logger.Logger.warn('RecentPullHandler: handleChatHide', params);
-	    const recentItem = this.store.getters['recent/get'](params.dialogId);
+	    const recentItem = im_v2_application_core.Core.getStore().getters['recent/get'](params.dialogId);
 	    if (!recentItem) {
 	      return;
 	    }
-	    this.store.dispatch('recent/delete', {
+	    im_v2_application_core.Core.getStore().dispatch('recent/delete', {
 	      id: params.dialogId
 	    });
 	  }
 	  handleChatUserLeave(params) {
 	    im_v2_lib_logger.Logger.warn('RecentPullHandler: handleChatUserLeave', params);
-	    const recentItem = this.store.getters['recent/get'](params.dialogId);
-	    if (!recentItem) {
+	    const recentItem = im_v2_application_core.Core.getStore().getters['recent/get'](params.dialogId);
+	    if (!recentItem || params.userId !== im_v2_application_core.Core.getUserId()) {
 	      return;
 	    }
-	    if (params.userId !== im_v2_application_core.Core.getUserId()) {
-	      return;
-	    }
-	    this.store.dispatch('recent/delete', {
+	    im_v2_application_core.Core.getStore().dispatch('recent/delete', {
 	      id: params.dialogId
 	    });
 	  }
 	  handleUserInvite(params) {
 	    var _params$invited;
 	    im_v2_lib_logger.Logger.warn('RecentPullHandler: handleUserInvite', params);
-	    this.store.dispatch('recent/setRecent', {
+	    const messageId = im_v2_lib_utils.Utils.text.getUuidV4();
+	    im_v2_application_core.Core.getStore().dispatch('messages/store', {
+	      id: messageId,
+	      date: params.date
+	    });
+	    im_v2_application_core.Core.getStore().dispatch('recent/setRecent', {
 	      id: params.user.id,
 	      invited: (_params$invited = params.invited) != null ? _params$invited : false,
-	      message: {
-	        date: params.date
-	      }
+	      isFakeElement: true,
+	      messageId
 	    });
-	    this.userManager.setUsersToModel([params.user]);
-	  }
-	  getWaitTimeForHumanBot(text) {
-	    const INITIAL_WAIT = 1000;
-	    const WAIT_PER_WORD = 300;
-	    const WAIT_LIMIT = 5000;
-	    let waitTime = text.split(' ').length * WAIT_PER_WORD + INITIAL_WAIT;
-	    if (waitTime > WAIT_LIMIT) {
-	      waitTime = WAIT_LIMIT;
-	    }
-	    return waitTime;
 	  }
 	  updateUnloadedChatCounter(params) {
 	    const {
@@ -1046,7 +908,7 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	    if (lines) {
 	      return;
 	    }
-	    const recentItem = this.store.getters['recent/get'](dialogId);
+	    const recentItem = im_v2_application_core.Core.getStore().getters['recent/get'](dialogId);
 	    if (recentItem) {
 	      return;
 	    }
@@ -1067,36 +929,29 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	    } else if (!unread) {
 	      newCounter = counter;
 	    }
-	    this.store.dispatch('counters/setUnloadedChatCounters', {
+	    im_v2_application_core.Core.getStore().dispatch('counters/setUnloadedChatCounters', {
 	      [chatId]: newCounter
 	    });
 	  }
-	  setRecentItem(newRecentItem) {
-	    this.store.dispatch('recent/setRecent', newRecentItem);
-	  }
-	  checkChatType(params) {
-	    var _params$chat$params$c;
-	    const CHAT_TYPES_TO_SKIP = new Set([im_v2_const.ChatType.copilot]);
-	    if (params.lines) {
-	      return false;
-	    }
+	  setRecentItem(params, newRecentItem) {
+	    var _params$chat$params$c, _AddMethodByChatType$;
 	    const newMessageChatType = (_params$chat$params$c = params.chat[params.chatId]) == null ? void 0 : _params$chat$params$c.type;
-	    // noinspection RedundantIfStatementJS
-	    if (CHAT_TYPES_TO_SKIP.has(newMessageChatType)) {
-	      return false;
+	    const addMethod = (_AddMethodByChatType$ = AddMethodByChatType[newMessageChatType]) != null ? _AddMethodByChatType$ : AddMethodByChatType.default;
+	    im_v2_application_core.Core.getStore().dispatch(addMethod, newRecentItem);
+	  }
+	  updateRecentForMessageDelete(dialogId, newLastMessageId) {
+	    if (!newLastMessageId) {
+	      im_v2_application_core.Core.getStore().dispatch('recent/delete', {
+	        id: dialogId
+	      });
+	      return;
 	    }
-	    return true;
-	  }
-	}
-
-	class CopilotRecentHandler extends RecentPullHandler {
-	  setRecentItem(newRecentItem) {
-	    this.store.dispatch('recent/setCopilot', newRecentItem);
-	  }
-	  checkChatType(params) {
-	    var _params$chat$params$c;
-	    const newMessageChatType = (_params$chat$params$c = params.chat[params.chatId]) == null ? void 0 : _params$chat$params$c.type;
-	    return newMessageChatType === im_v2_const.ChatType.copilot;
+	    im_v2_application_core.Core.getStore().dispatch('recent/update', {
+	      id: dialogId,
+	      fields: {
+	        messageId: newLastMessageId
+	      }
+	    });
 	  }
 	}
 
@@ -1166,39 +1021,36 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	  getModuleId() {
 	    return 'im';
 	  }
-	  getSubscriptionType() {
-	    return 'server';
-	  }
 
-	  //region members
+	  // region members
 	  handleChatUserAdd(params) {
-	    if (!this.isSidebarInited(params.chatId)) {
+	    if (this.getMembersCountFromStore(params.chatId) === 0) {
 	      return;
 	    }
-	    this.userManager.setUsersToModel(Object.values(params.users));
-	    this.store.dispatch('sidebar/members/set', {
+	    void this.userManager.setUsersToModel(Object.values(params.users));
+	    void this.store.dispatch('sidebar/members/set', {
 	      chatId: params.chatId,
 	      users: params.newUsers
 	    });
 	  }
 	  handleChatUserLeave(params) {
-	    if (!this.isSidebarInited(params.chatId)) {
+	    if (this.getMembersCountFromStore(params.chatId) === 0) {
 	      return;
 	    }
-	    this.store.dispatch('sidebar/members/delete', {
+	    void this.store.dispatch('sidebar/members/delete', {
 	      chatId: params.chatId,
 	      userId: params.userId
 	    });
 	  }
-	  //endregion
+	  // endregion
 
-	  //region task
+	  // region task
 	  handleTaskAdd(params) {
 	    if (!this.isSidebarInited(params.link.chatId)) {
 	      return;
 	    }
-	    this.userManager.setUsersToModel(params.users);
-	    this.store.dispatch('sidebar/tasks/set', {
+	    void this.userManager.setUsersToModel(params.users);
+	    void this.store.dispatch('sidebar/tasks/set', {
 	      chatId: params.link.chatId,
 	      tasks: [params.link]
 	    });
@@ -1210,20 +1062,20 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	    if (!this.isSidebarInited(params.chatId)) {
 	      return;
 	    }
-	    this.store.dispatch('sidebar/tasks/delete', {
+	    void this.store.dispatch('sidebar/tasks/delete', {
 	      chatId: params.chatId,
 	      id: params.linkId
 	    });
 	  }
-	  //endregion
+	  // endregion
 
-	  //region meetings
+	  // region meetings
 	  handleCalendarAdd(params) {
 	    if (!this.isSidebarInited(params.link.chatId)) {
 	      return;
 	    }
-	    this.userManager.setUsersToModel(params.users);
-	    this.store.dispatch('sidebar/meetings/set', {
+	    void this.userManager.setUsersToModel(params.users);
+	    void this.store.dispatch('sidebar/meetings/set', {
 	      chatId: params.link.chatId,
 	      meetings: [params.link]
 	    });
@@ -1235,25 +1087,25 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	    if (!this.isSidebarInited(params.chatId)) {
 	      return;
 	    }
-	    this.store.dispatch('sidebar/meetings/delete', {
+	    void this.store.dispatch('sidebar/meetings/delete', {
 	      chatId: params.chatId,
 	      id: params.linkId
 	    });
 	  }
-	  //endregion
+	  // endregion
 
-	  //region links
+	  // region links
 	  handleUrlAdd(params) {
 	    if (!this.isSidebarInited(params.link.chatId)) {
 	      return;
 	    }
-	    this.userManager.setUsersToModel(params.users);
-	    this.store.dispatch('sidebar/links/set', {
+	    void this.userManager.setUsersToModel(params.users);
+	    void this.store.dispatch('sidebar/links/set', {
 	      chatId: params.link.chatId,
 	      links: [params.link]
 	    });
 	    const counter = this.store.getters['sidebar/links/getCounter'](params.link.chatId);
-	    this.store.dispatch('sidebar/links/setCounter', {
+	    void this.store.dispatch('sidebar/links/setCounter', {
 	      chatId: params.link.chatId,
 	      counter: counter + 1
 	    });
@@ -1262,27 +1114,27 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	    if (!this.isSidebarInited(params.chatId)) {
 	      return;
 	    }
-	    this.store.dispatch('sidebar/links/delete', {
+	    void this.store.dispatch('sidebar/links/delete', {
 	      chatId: params.chatId,
 	      id: params.linkId
 	    });
 	  }
-	  //endregion
+	  // endregion
 
-	  //region favorite
+	  // region favorite
 	  handleMessageFavoriteAdd(params) {
 	    if (!this.isSidebarInited(params.link.chatId)) {
 	      return;
 	    }
-	    this.userManager.setUsersToModel(params.users);
-	    this.store.dispatch('files/set', params.files);
-	    this.store.dispatch('messages/store', [params.link.message]);
-	    this.store.dispatch('sidebar/favorites/set', {
+	    void this.userManager.setUsersToModel(params.users);
+	    void this.store.dispatch('files/set', params.files);
+	    void this.store.dispatch('messages/store', [params.link.message]);
+	    void this.store.dispatch('sidebar/favorites/set', {
 	      chatId: params.link.chatId,
 	      favorites: [params.link]
 	    });
 	    const counter = this.store.getters['sidebar/favorites/getCounter'](params.link.chatId);
-	    this.store.dispatch('sidebar/favorites/setCounter', {
+	    void this.store.dispatch('sidebar/favorites/setCounter', {
 	      chatId: params.link.chatId,
 	      counter: counter + 1
 	    });
@@ -1291,64 +1143,68 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 	    if (!this.isSidebarInited(params.chatId)) {
 	      return;
 	    }
-	    this.store.dispatch('sidebar/favorites/delete', {
+	    void this.store.dispatch('sidebar/favorites/delete', {
 	      chatId: params.chatId,
 	      id: params.linkId
 	    });
 	  }
-	  //endregion
+	  // endregion
 
-	  //region files
+	  // region files
 	  handleFileAdd(params) {
+	    var _params$link$subType;
 	    if (!this.isSidebarInited(params.link.chatId)) {
 	      return;
 	    }
-	    this.userManager.setUsersToModel(params.users);
-	    this.store.dispatch('files/set', params.files);
-	    if (!params.link.subType) {
-	      params.link.subType = im_v2_const.SidebarDetailBlock.fileUnsorted;
-	    }
-	    this.store.dispatch('sidebar/files/set', {
+	    void this.userManager.setUsersToModel(params.users);
+	    void this.store.dispatch('files/set', params.files);
+	    const subType = (_params$link$subType = params.link.subType) != null ? _params$link$subType : im_v2_const.SidebarDetailBlock.fileUnsorted;
+	    void this.store.dispatch('sidebar/files/set', {
 	      chatId: params.link.chatId,
-	      files: [params.link]
+	      files: [params.link],
+	      subType
 	    });
 	  }
 	  handleFileDelete(params) {
+	    var _params$linkId;
 	    const chatId = main_core.Type.isNumber(params.chatId) ? params.chatId : Number.parseInt(params.chatId, 10);
 	    if (!this.isSidebarInited(chatId)) {
 	      return;
 	    }
-	    const sidebarFileId = params.linkId ? params.linkId : params.fileId;
-	    this.store.dispatch('sidebar/files/delete', {
-	      chatId: chatId,
+	    const sidebarFileId = (_params$linkId = params.linkId) != null ? _params$linkId : params.fileId;
+	    void this.store.dispatch('sidebar/files/delete', {
+	      chatId,
 	      id: sidebarFileId
 	    });
 	  }
-	  //endregion
+	  // endregion
 
-	  //region files unsorted
-	  handleMessage(params) {
+	  // region files unsorted
+	  handleMessageChat(params) {
 	    // handle new files while migration is not finished.
 	    if (!this.isSidebarInited(params.chatId) || this.isFilesMigrated()) {
 	      return;
 	    }
-	    this.userManager.setUsersToModel(Object.values(params.users));
-	    this.store.dispatch('files/set', Object.values(params.files));
+	    void this.userManager.setUsersToModel(Object.values(params.users));
+	    void this.store.dispatch('files/set', Object.values(params.files));
 	    Object.values(params.files).forEach(file => {
-	      file.subType = im_v2_const.SidebarDetailBlock.fileUnsorted;
-	      this.store.dispatch('sidebar/files/set', {
+	      void this.store.dispatch('sidebar/files/set', {
 	        chatId: file.chatId,
-	        files: [file]
+	        files: [file],
+	        subType: im_v2_const.SidebarDetailBlock.fileUnsorted
 	      });
 	    });
 	  }
-	  //endregion
+	  // endregion
 
 	  isSidebarInited(chatId) {
 	    return this.store.getters['sidebar/isInited'](chatId);
 	  }
 	  isFilesMigrated() {
 	    return this.store.state.sidebar.isFilesMigrated;
+	  }
+	  getMembersCountFromStore(chatId) {
+	    return this.store.getters['sidebar/members/getSize'](chatId);
 	  }
 	}
 
@@ -1665,12 +1521,11 @@ this.BX.Messenger.v2.Provider = this.BX.Messenger.v2.Provider || {};
 
 	exports.BasePullHandler = BasePullHandler;
 	exports.RecentPullHandler = RecentPullHandler;
-	exports.CopilotRecentHandler = CopilotRecentHandler;
 	exports.NotificationPullHandler = NotificationPullHandler;
 	exports.SidebarPullHandler = SidebarPullHandler;
 	exports.NotifierPullHandler = NotifierPullHandler;
 	exports.LinesPullHandler = LinesPullHandler;
 	exports.OnlinePullHandler = OnlinePullHandler;
 
-}((this.BX.Messenger.v2.Provider.Pull = this.BX.Messenger.v2.Provider.Pull || {}),BX.Event,BX.Messenger.v2.Lib,BX.Messenger.v2.Provider.Service,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Vue3.Vuex,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Const,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX,BX.Messenger.v2.Application));
+}((this.BX.Messenger.v2.Provider.Pull = this.BX.Messenger.v2.Provider.Pull || {}),BX.Event,BX.Messenger.v2.Lib,BX.Messenger.v2.Provider.Service,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Vue3.Vuex,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Model,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Const,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX,BX.Messenger.v2.Application));
 //# sourceMappingURL=registry.bundle.js.map

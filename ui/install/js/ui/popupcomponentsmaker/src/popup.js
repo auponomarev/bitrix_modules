@@ -86,7 +86,7 @@ class PopupComponentsMaker
 				padding: this.padding,
 				animation: 'fading-slide',
 				content: this.getContentWrapper(),
-				cacheable: this.cacheable
+				cacheable: this.cacheable,
 			});
 
 			if (this.blurBlackground)
@@ -207,13 +207,22 @@ class PopupComponentsMaker
 		if (sectionNode)
 		{
 			sectionNode.appendChild(itemObj.getContainer());
-			item?.html?.then((node) => {
-				if (Type.isDomNode(node))
+			item?.html?.then((result) => {
+				if (Type.isDomNode(result))
 				{
 					itemObj.stopAwait();
-					itemObj.updateContent(node);
+					itemObj.updateContent(result);
 				}
-			})
+				else if (Type.isPlainObject(result) && Type.isDomNode(result.node))
+				{
+					if (Type.isPlainObject(result.options))
+					{
+						itemObj.setParams(result.options);
+					}
+					itemObj.stopAwait();
+					itemObj.updateContent(result.node);
+				}
+			});
 		}
 	}
 

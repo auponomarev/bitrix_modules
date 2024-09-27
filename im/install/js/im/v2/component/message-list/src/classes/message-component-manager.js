@@ -16,6 +16,9 @@ const serverComponentList = new Set([
 	MessageComponent.copilotMessage,
 	MessageComponent.supportVote,
 	MessageComponent.supportSessionNumber,
+	MessageComponent.zoomInvite,
+	MessageComponent.supervisorUpdateFeature,
+	MessageComponent.supervisorEnableFeature,
 ]);
 
 export class MessageComponentManager

@@ -15,7 +15,7 @@ type RunActionResult = {
 	errors: RunActionError[]
 };
 
-type RunActionError = {
+export type RunActionError = {
 	code: number | string,
 	customData: any,
 	message: string
@@ -81,7 +81,7 @@ export const callBatch = (query: BatchQuery): Promise<{[method: string]: any}> =
 				if (methodResult.error())
 				{
 					const { error: code, error_description: description } = methodResult.error().ex;
-					reject({ code, description });
+					reject({ method, code, description });
 					break;
 				}
 				data[method] = methodResult.data();

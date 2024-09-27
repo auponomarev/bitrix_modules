@@ -1,3 +1,4 @@
+import { Hardware } from 'im.call';
 import {Browser, Type, Runtime} from 'main.core';
 
 import {AbstractCall} from './abstract_call';
@@ -111,6 +112,7 @@ export class PlainCall extends AbstractCall
 		this.pingBackendInterval = setInterval(this.pingBackend.bind(this), backendPingPeriod);
 
 		this.reinviteTimeout = null;
+		this.userData = params.userData;
 
 		this._onUnloadHandler = this.#onUnload.bind(this);
 
@@ -152,7 +154,7 @@ export class PlainCall extends AbstractCall
 
 			onMediaReceived: (e) =>
 			{
-				console.log("onMediaReceived: ", e);
+				console.log("onMediaReceived:", e);
 				this.runCallback(CallEvent.onRemoteMediaReceived, e);
 			},
 			onMediaStopped: (e) =>
@@ -174,6 +176,10 @@ export class PlainCall extends AbstractCall
 			onReconnected: () =>
 			{
 				this.runCallback(CallEvent.onReconnected);
+			},
+			onUpdateLastUsedCameraId: () =>
+			{
+				this.runCallback(CallEvent.onUpdateLastUsedCameraId);
 			}
 		});
 	};
@@ -197,42 +203,39 @@ export class PlainCall extends AbstractCall
 		return this.ready;
 	};
 
-	setVideoEnabled(videoEnabled: boolean)
+	setVideoEnabled = (event) =>
 	{
-		videoEnabled = (videoEnabled === true);
-		if (this.videoEnabled == videoEnabled)
+		if (this.videoEnabled == event.data.isCameraOn)
 		{
 			return;
 		}
 
-		this.videoEnabled = videoEnabled;
+		this.videoEnabled = event.data.isCameraOn;
 		const hasVideoTracks = this.localStreams['main'] && this.localStreams['main'].getVideoTracks().length > 0;
+
 		if (this.ready && hasVideoTracks !== this.videoEnabled)
 		{
 			this.replaceLocalMediaStream().then(() =>
 			{
-				const hasVideoTracks = this.localStreams['main'] && this.localStreams['main'].getVideoTracks().length > 0;
-				if (this.videoEnabled && !hasVideoTracks)
-				{
-					this.videoEnabled = false;
-				}
 				this.signaling.sendCameraState(this.users, this.videoEnabled);
 			}).catch(() =>
 			{
-				// TODO!!
+				this.runCallback(CallEvent.onLocalMediaReceived, {
+					tag: 'main',
+					stream: this.localStreams['main'] || new MediaStream(),
+				});
 			});
 		}
 	};
 
-	setMuted(muted: boolean)
+	setMuted = (event) =>
 	{
-		muted = !!muted;
-		if (this.muted == muted)
+		if (this.muted == event.data.isMicrophoneMuted)
 		{
 			return;
 		}
 
-		this.muted = muted;
+		this.muted = event.data.isMicrophoneMuted;
 		if (this.localStreams["main"])
 		{
 			const audioTracks = this.localStreams["main"].getAudioTracks();
@@ -246,11 +249,6 @@ export class PlainCall extends AbstractCall
 		this.sendTalkingState();
 	};
 
-	isMuted()
-	{
-		return this.muted;
-	}
-
 	setCameraId(cameraId)
 	{
 		if (this.cameraId == cameraId)
@@ -259,8 +257,10 @@ export class PlainCall extends AbstractCall
 		}
 
 		this.cameraId = cameraId;
-		if (this.ready && this.videoEnabled)
+
+		if (this.ready && Hardware.isCameraOn)
 		{
+			this.runCallback('onUpdateLastUsedCameraId');
 			Runtime.debounce(this.replaceLocalMediaStream, 100, this)();
 		}
 	};
@@ -275,7 +275,7 @@ export class PlainCall extends AbstractCall
 		this.microphoneId = microphoneId;
 		if (this.ready)
 		{
-			Runtime.debounce(this.replaceLocalMediaStream, 100, this)();
+			Runtime.debounce(this.replaceLocalAudioStream, 100, this)();
 		}
 	};
 
@@ -341,11 +341,12 @@ export class PlainCall extends AbstractCall
 
 		this.getLocalMediaStream("main", true).then(() =>
 		{
+			this.subscribeHardwareChanges();
+
 			return this.signaling.inviteUsers({
 				userIds: users,
-				video: this.videoEnabled ? 'Y' : 'N'
+				video: Hardware.isCameraOn ? 'Y' : 'N'
 			});
-
 		}).then(() =>
 		{
 			this.state = CallState.Connected;
@@ -371,6 +372,7 @@ export class PlainCall extends AbstractCall
 		}).catch((e) =>
 		{
 			console.error(e);
+			this.unsubscribeHardwareChanges();
 			this.runCallback(CallEvent.onCallFailure, e);
 		});
 	};
@@ -404,10 +406,22 @@ export class PlainCall extends AbstractCall
 		this.signaling
 			.inviteUsers({
 				userIds: usersToRepeatInvite,
-				video: this.videoEnabled ? 'Y' : 'N',
-				isRepeated: 'Y',
+				video: Hardware.isCameraOn ? 'Y' : 'N',
+				repeated: 'Y',
 			})
 			.then(() => this.scheduleRepeatInvite());
+	};
+
+	subscribeHardwareChanges()
+	{
+		Hardware.subscribe(Hardware.Events.onChangeMicrophoneMuted, this.setMuted);
+		Hardware.subscribe(Hardware.Events.onChangeCameraOn, this.setVideoEnabled);
+	};
+
+	unsubscribeHardwareChanges()
+	{
+		Hardware.unsubscribe(Hardware.Events.onChangeMicrophoneMuted, this.setMuted);
+		Hardware.unsubscribe(Hardware.Events.onChangeCameraOn, this.setVideoEnabled);
 	};
 
 	getMediaConstraints(options = {})
@@ -446,8 +460,11 @@ export class PlainCall extends AbstractCall
 				video.deviceId = {exact: this.cameraId};
 			}
 
-			video.width = {ideal: 1280};
-			video.height = {ideal: 720};
+			if (hdVideo)
+			{
+				video.width = {ideal: 1280};
+				video.height = {ideal: 720};
+			}
 		}
 
 		return {audio: audio, video: video};
@@ -516,12 +533,9 @@ export class PlainCall extends AbstractCall
 		return new Promise((resolve, reject) =>
 		{
 			let constraintsArray = [];
-			if (this.videoEnabled)
+			if (Hardware.isCameraOn)
 			{
-				if (this.videoHd)
-				{
-					constraintsArray.push(this.getMediaConstraints({videoEnabled: true, hdVideo: true}));
-				}
+				constraintsArray.push(this.getMediaConstraints({videoEnabled: true, hdVideo: true}));
 				constraintsArray.push(this.getMediaConstraints({videoEnabled: true, hdVideo: false}));
 				if (fallbackToAudio)
 				{
@@ -537,14 +551,25 @@ export class PlainCall extends AbstractCall
 			{
 				this.log("Local media stream received");
 				this.localStreams[tag] = stream;
+                stream.getVideoTracks().forEach((track) =>
+                {
+                    track.addEventListener("ended", () => this.onLocalVideoTrackEnded())
+                });
+
+                stream.getAudioTracks().forEach((track) =>
+                {
+                    track.addEventListener("ended", () => this.onLocalAudioTrackEnded())
+                });
+
 				this.runCallback(CallEvent.onLocalMediaReceived, {
 					tag: tag,
 					stream: stream
 				});
+				this.setPublishingState(MediaStreamsKinds.Camera, true);
 				if (tag === 'main')
 				{
 					this.attachVoiceDetection();
-					if (this.muted)
+					if (Hardware.isMicrophoneMuted)
 					{
 						const audioTracks = stream.getAudioTracks();
 						if (audioTracks[0])
@@ -577,6 +602,86 @@ export class PlainCall extends AbstractCall
 			});
 		})
 	};
+
+	getLocalAudioStream(tag, fallbackToAudio)
+	{
+		if (!Type.isStringFilled(tag))
+		{
+			tag = 'main';
+		}
+		if (this.localStreams[tag] && this.localStreams[tag].getAudioTracks().length)
+		{
+			return Promise.resolve(this.localStreams[tag]);
+		}
+
+		this.log("Requesting access to audio devices");
+
+		return new Promise((resolve, reject) =>
+		{
+			let constraintsArray = [this.getMediaConstraints({videoEnabled: false})];
+
+			this.getUserMedia(constraintsArray).then((stream) =>
+			{
+				this.log("Local audio stream received");
+
+				this.localStreams[tag].addTrack(stream.getAudioTracks()[0]);
+				stream.getAudioTracks().forEach((track) =>
+				{
+					track.addEventListener("ended", () => this.onLocalAudioTrackEnded())
+				});
+
+				if (tag === 'main')
+				{
+					this.attachVoiceDetection();
+					if (this.muted)
+					{
+						const audioTracks = stream.getAudioTracks();
+						if (audioTracks[0])
+						{
+							audioTracks[0].enabled = false;
+						}
+					}
+				}
+				if (this.deviceList.length === 0)
+				{
+					navigator.mediaDevices.enumerateDevices().then((deviceList) =>
+					{
+						this.deviceList = deviceList;
+						this.runCallback(CallEvent.onDeviceListUpdated, {
+							deviceList: this.deviceList
+						})
+					});
+				}
+
+				resolve(this.localStreams[tag]);
+			}).catch((e) =>
+			{
+				this.log("Could not get local audio stream.", e);
+				this.log("Request constraints: .", constraintsArray);
+				this.runCallback("onLocalMediaError", {
+					tag: tag,
+					error: e
+				});
+				reject(e);
+			});
+		})
+	};
+
+	setPublishingState(deviceType, publishing)
+	{
+		if (deviceType === MediaStreamsKinds.Camera)
+		{
+			this.runCallback(CallEvent.onCameraPublishing, {
+				publishing
+			});
+		}
+		else if (deviceType === MediaStreamsKinds.Microphone)
+		{
+			this.runCallback(CallEvent.onMicrophonePublishing, {
+				publishing
+			});
+		}
+	}
 
 	startMediaCapture()
 	{
@@ -704,6 +809,62 @@ export class PlainCall extends AbstractCall
 		});
 	};
 
+    onLocalVideoTrackEnded()
+    {
+        if (!this.localStreams["main"])
+        {
+            return;
+        }
+
+        Util.stopMediaStreamVideoTracks(this.localStreams["main"])
+
+        this.runCallback(CallEvent.onLocalMediaReceived, {
+            tag: 'main',
+            stream: this.localStreams["main"]
+        });
+
+        if (!this.localStreams["main"].getAudioTracks().length)
+        {
+            this.localStreams["main"] = null;
+        }
+
+        for (let userId in this.peers)
+        {
+            if (this.peers[userId].calculatedState === UserState.Connected)
+            {
+                this.peers[userId].sendMedia();
+            }
+        }
+    }
+
+    onLocalAudioTrackEnded()
+    {
+        if (!this.localStreams["main"])
+        {
+            return;
+        }
+
+        Util.stopMediaStreamAudioTracks(this.localStreams["main"])
+
+        this.runCallback(CallEvent.onLocalMediaReceived, {
+            tag: 'main',
+            stream: this.localStreams["main"]
+        });
+
+		if (!this.localStreams["main"].getVideoTracks().length)
+		{
+            this.localStreams["main"] = null;
+        }
+
+        for (let userId in this.peers)
+        {
+            if (this.peers[userId].calculatedState === UserState.Connected)
+            {
+                this.peers[userId].sendMedia();
+            }
+        }
+    }
+
 	stopScreenSharing()
 	{
 		if (!this.localStreams["screen"])
@@ -746,7 +907,7 @@ export class PlainCall extends AbstractCall
 
 	sendTalkingState()
 	{
-		if (this.talking && !this.muted)
+		if (this.talking && !Hardware.isMicrophoneMuted)
 		{
 			this.runCallback(CallEvent.onUserVoiceStarted, {
 				userId: this.userId,
@@ -794,7 +955,8 @@ export class PlainCall extends AbstractCall
 		}*/
 
 		this.ready = true;
-		this.videoEnabled = (config.useVideo === true);
+		this.videoEnabled = Hardware.isCameraOn;
+		this.muted = Hardware.isMicrophoneMuted;
 		this.enableMicAutoParameters = (config.enableMicAutoParameters !== false);
 
 		if (config.localStream instanceof MediaStream)
@@ -807,6 +969,13 @@ export class PlainCall extends AbstractCall
 			this.getLocalMediaStream("main", true)
 				.then(() =>
 					{
+						if (!this.ready)
+						{
+							this.#beforeLeaveCall();
+							return;
+						}
+						this.subscribeHardwareChanges();
+
 						this.state = CallState.Connected;
 
 						this.runCallback(CallEvent.onJoin, {
@@ -910,6 +1079,7 @@ export class PlainCall extends AbstractCall
 
 	replaceLocalMediaStream(tag: string = "main")
 	{
+		this.setPublishingState(MediaStreamsKinds.Camera, true);
 		if (this.localStreams[tag])
 		{
 			Util.stopMediaStream(this.localStreams[tag]);
@@ -919,6 +1089,36 @@ export class PlainCall extends AbstractCall
 		return new Promise((resolve, reject) =>
 		{
 			this.getLocalMediaStream(tag).then(() =>
+			{
+				if (this.ready)
+				{
+					for (let userId in this.peers)
+					{
+						if (this.peers[userId].isReady())
+						{
+							this.peers[userId].replaceMediaStream(tag);
+						}
+					}
+				}
+				resolve();
+			}).catch((e) =>
+			{
+				console.error('Could not get access to hardware; don\'t really know what to do. error:', e);
+				reject(e);
+			});
+		})
+	};
+
+	replaceLocalAudioStream(tag: string = "main")
+	{
+		if (this.localStreams[tag])
+		{
+			Util.stopMediaStreamAudioTracks(this.localStreams[tag]);
+		}
+
+		return new Promise((resolve, reject) =>
+		{
+			this.getLocalAudioStream(tag).then(() =>
 			{
 				if (this.ready)
 				{
@@ -1255,7 +1455,7 @@ export class PlainCall extends AbstractCall
 			this.peers[senderId].setDeclined(true);
 		}
 
-		if (!this.isAnyoneParticipating())
+		if (!this.isAnyoneParticipating() && this.ready)
 		{
 			this.hangup();
 		}
@@ -1460,8 +1660,8 @@ export class PlainCall extends AbstractCall
 		}
 		else if (e.state == UserState.Connected)
 		{
-			this.signaling.sendMicrophoneState(e.userId, !this.muted);
-			this.signaling.sendCameraState(e.userId, this.videoEnabled);
+			this.signaling.sendMicrophoneState(e.userId, !Hardware.isMicrophoneMuted);
+			this.signaling.sendCameraState(e.userId, Hardware.isCameraOn);
 			this.wasConnected = true;
 		}
 	};
@@ -1480,18 +1680,28 @@ export class PlainCall extends AbstractCall
 
 	#onPeerRTCStatsReceived(e)
 	{
-		const reportsToShow = {};
+		const remoteReportsToShow = {};
+		const localReportsToShow = {};
 		e.stats.forEach((report) =>
 		{
-			if (report.type === 'inbound-rtp' && report.kind === 'video' && report.source)
+			if (report.type === 'inbound-rtp' && (report.kind === 'video' || report.kind === 'audio') && report.source)
 			{
-				reportsToShow[report.source] = report;
+				remoteReportsToShow[report.source] = report;
+			}
+			if (report.type === 'outbound-rtp' && (report.kind === 'video' || report.kind === 'audio') && report.source)
+			{
+				localReportsToShow[report.source] = report;
 			}
 		});
 
 		this.runCallback(CallEvent.onUserStatsReceived, {
 			userId: e.userId,
-			report: reportsToShow
+			report: remoteReportsToShow
+		});
+
+		this.runCallback(CallEvent.onUserStatsReceived, {
+			userId: this.userId,
+			report: localReportsToShow
 		});
 
 		this.runCallback(CallEvent.onRTCStatsReceived, e);
@@ -1501,7 +1711,7 @@ export class PlainCall extends AbstractCall
 	{
 		this.runCallback(CallEvent.onConnectionQualityChanged, {
 			userId: e.userId,
-			hasConnectionProblem: e.hasConnectionProblem
+			score: e.score,
 		});
 	}
 
@@ -1525,6 +1735,7 @@ export class PlainCall extends AbstractCall
 	#beforeLeaveCall()
 	{
 		// stop media streams
+		this.unsubscribeHardwareChanges();
 		for (let tag in this.localStreams)
 		{
 			if (this.localStreams[tag])
@@ -1551,6 +1762,7 @@ export class PlainCall extends AbstractCall
 
 	destroy()
 	{
+		this.ready = false;
 		const tempError = new Error();
 		tempError.name = "Call stack:";
 		this.log("Call destroy \n" + tempError.stack);
@@ -1843,6 +2055,7 @@ class Peer
 			onNetworkProblem: Type.isFunction(params.onNetworkProblem) ? params.onNetworkProblem : BX.DoNothing,
 			onReconnecting: Type.isFunction(params.onReconnecting) ? params.onReconnecting : BX.DoNothing,
 			onReconnected: Type.isFunction(params.onReconnected) ? params.onReconnected : BX.DoNothing,
+			onUpdateLastUsedCameraId: Type.isFunction(params.onUpdateLastUsedCameraId) ? params.onUpdateLastUsedCameraId : BX.DoNothing,
 		};
 
 		// intervals and timeouts
@@ -1921,7 +2134,7 @@ class Peer
 
 		// event handlers
 		this._onPeerConnectionIceCandidateHandler = this._onPeerConnectionIceCandidate.bind(this);
-		this._onPeerConnectionIceConnectionStateChangeHandler = this.#onPeerConnectionIceConnectionStateChange.bind(this);
+		this._onPeerConnectionConnectionStateChangeHandler = this.#onPeerConnectionConnectionStateChange.bind(this);
 		this._onPeerConnectionIceGatheringStateChangeHandler = this.#onPeerConnectionIceGatheringStateChange.bind(this);
 		this._onPeerConnectionSignalingStateChangeHandler = this.#onPeerConnectionSignalingStateChange.bind(this);
 		//this._onPeerConnectionNegotiationNeededHandler = this._onPeerConnectionNegotiationNeeded.bind(this);
@@ -1932,10 +2145,18 @@ class Peer
 
 		this._waitTurnCandidatesTimeout = null;
 
-		this.prevReport = {};
+		this.prevPercentPacketLostList = {
+			incomingPacketLost: [],
+			outgoingPacketLost: [],
+		};
+		this.reportsForIncomingTracks = {};
+		this.reportsForOutgoingTracks = {};
 		this.packetLostThreshold = 7;
 		this.videoBitrate = 1000000;
 		this.screenShareBitrate = 1500000;
+		this.maxConnectionScore = 5;
+		this.incomingConnectionScore = 0;
+		this.outgoingConnectionScore = 0;
 	};
 
 	_mediaGetter(trackVariable)
@@ -2009,7 +2230,7 @@ class Peer
 		let videoTrack;
 		let screenTrack;
 
-		if (this.call.localStreams["main"] && this.call.localStreams["main"].getAudioTracks().length > 0)
+		if (this.call.localStreams["main"] && this.call.localStreams["main"].getAudioTracks().length > 0 && this.call.localStreams["main"].getAudioTracks()[0]?.readyState === 'live')
 		{
 			audioTrack = this.call.localStreams["main"].getAudioTracks()[0];
 		}
@@ -2017,7 +2238,7 @@ class Peer
 		{
 			screenTrack = this.call.localStreams["screen"].getVideoTracks()[0];
 		}
-		if (this.call.localStreams["main"] && this.call.localStreams["main"].getVideoTracks().length > 0)
+		if (this.call.localStreams["main"] && this.call.localStreams["main"].getVideoTracks().length > 0 && this.call.localStreams["main"].getVideoTracks()[0]?.readyState === 'live')
 		{
 			videoTrack = this.call.localStreams["main"].getVideoTracks()[0];
 		}
@@ -2051,6 +2272,7 @@ class Peer
 		{
 			this.videoSender = this.peerConnection.addTrack(this.outgoingVideoTrack);
 		}
+
 		if (this.videoSender && !this.outgoingVideoTrack)
 		{
 			this.peerConnection.removeTrack(this.videoSender);
@@ -2387,19 +2609,20 @@ class Peer
 				const statsOutput = [];
 				const codecs = {};
 				const reportsWithoutCodecs = {};
-				const prevLargeDataLoss = !!this.prevReport[MediaStreamsKinds.Camera]?.largeDataLoss;
-				let newLargeDataLoss;
+				const remoteReports = {};
+				const reportsWithoutRemoteInfo = {};
+				let incomingDataLoss = 0;
+				let outgoingDataLoss = 0;
 
 				stats.forEach((report) => {
 					statsOutput.push(report);
 
-					const needCheckPacketLost = (report?.trackIdentifier
-						&& report?.kind === 'video'
+					const needCheckInputPacketLost = (report?.trackIdentifier
 						&& report?.type === 'inbound-rtp'
 						&& report.hasOwnProperty('packetsLost')
 						&& report.hasOwnProperty('packetsReceived'));
 
-					if (needCheckPacketLost)
+					if (needCheckInputPacketLost || report.type === 'outbound-rtp')
 					{
 						switch (this.trackList[report.mid])
 						{
@@ -2409,63 +2632,112 @@ class Peer
 							case 'screen':
 								report.source = MediaStreamsKinds.Screen;
 								break;
+							case 'audio':
+								report.source = MediaStreamsKinds.Microphone;
+								break;
 							default:
 								return;
 						}
+					}
 
-						this.prevReport[report.source] = this.prevReport[report.source] || {};
-						const {packetsLost, packetsReceived} = report;
-						const packetsReceivedDelta = packetsReceived - (this.prevReport[report.source].packetsReceived || 0);
-						const packetsLostDelta = packetsLost - (this.prevReport[report.source].packetsLost || 0);
-						const percentPacketLost = packetsReceivedDelta / 100 * packetsLostDelta;
-						this.prevReport[report.source].packetsLost = packetsLost;
-						this.prevReport[report.source].packetsReceived = packetsReceived;
+					if (needCheckInputPacketLost)
+					{
+						report.bitrate = Util.calcBitrate(report, this.reportsForIncomingTracks[report.source]);
+						const packetsLostData = Util.calcRemotePacketsLost(report, this.reportsForIncomingTracks[report.source]);
+						report.packetsLostExtended = Util.formatPacketsLostData(packetsLostData);
+						if (!Util.setCodecToReport(report, codecs, reportsWithoutCodecs))
+						{
+							Util.saveReportWithoutCodecs(report, reportsWithoutCodecs);
+						}
+
+						this.reportsForIncomingTracks[report.source] = report;
 
 						if (report.source === MediaStreamsKinds.Camera)
 						{
-							newLargeDataLoss = percentPacketLost > this.packetLostThreshold
-							this.prevReport[report.source].largeDataLoss = newLargeDataLoss;
-						}
-
-						const bytes = report.bytesReceived - (this.prevReport[report.source].bytesReceived || 0);
-						const time = report.timestamp - (this.prevReport[report.source].timestamp || 0);
-						const bitrate = 8 * bytes / (time / 1000);
-						report.bitrate = bitrate < 0 ? 0 : Math.trunc(bitrate);
-
-						this.prevReport[report.source].bytesReceived = report.bytesReceived;
-						this.prevReport[report.source].timestamp = report.timestamp;
-
-						if (codecs[report.codecId])
-						{
-							report.codecName = codecs[report.codecId];
-						}
-						else if (reportsWithoutCodecs[report.codecId])
-						{
-							reportsWithoutCodecs[report.codecId].push(report);
-						}
-						else
-						{
-							reportsWithoutCodecs[report.codecId] = [report];
+							incomingDataLoss = packetsLostData.currentPercentPacketLost;
 						}
 					}
-					else if (report.type === 'codec')
+
+					if (report.type === 'codec')
 					{
-						codecs[report.id] = report.mimeType;
-						if (reportsWithoutCodecs[report.id])
+						Util.processReportsWithoutCodecs(report, codecs, reportsWithoutCodecs);
+					}
+
+					if (report.type === 'remote-inbound-rtp')
+					{
+						const reportId = report.localId;
+						if (reportsWithoutRemoteInfo[reportId])
 						{
-							reportsWithoutCodecs[report.id].forEach(r => {
-								r.codecName = report.mimeType;
-							});
-							delete reportsWithoutCodecs[report.id];
+							const packetsLostData = Util.calcLocalPacketsLost(reportsWithoutRemoteInfo[reportId], this.reportsForOutgoingTracks[reportId], report);
+							reportsWithoutRemoteInfo[reportId].packetsLostData = packetsLostData;
+							reportsWithoutRemoteInfo[reportId].packetsLost = packetsLostData.totalPacketsLost;
+							reportsWithoutRemoteInfo[reportId].packetsLostExtended = Util.formatPacketsLostData(packetsLostData);
+							this.reportsForOutgoingTracks[reportId] = reportsWithoutRemoteInfo[reportId];
+							delete reportsWithoutRemoteInfo[reportId];
+
+							if (this.reportsForOutgoingTracks[reportId].source === MediaStreamsKinds.Camera)
+							{
+								outgoingDataLoss = report.packetsLost;
+							}
+							return;
+						}
+
+						remoteReports[reportId] = report;
+					}
+
+					if (report.type === 'outbound-rtp')
+					{
+						report.bitrate = Util.calcBitrate(report, this.reportsForOutgoingTracks[report.id], true);
+						report.userId = this.call.userId;
+
+						if (!Util.setCodecToReport(report, codecs, reportsWithoutCodecs))
+						{
+							Util.saveReportWithoutCodecs(report, reportsWithoutCodecs);
+						}
+						if (Util.setLocalPacketsLostOrSaveReport(report, remoteReports, reportsWithoutRemoteInfo))
+						{
+							this.reportsForOutgoingTracks[report.id] = report;
+							if (report.source === MediaStreamsKinds.Camera)
+							{
+								outgoingDataLoss = report.packetsLostData.currentPercentPacketLost;
+							}
 						}
 					}
 				});
 
-				if (newLargeDataLoss !== undefined && newLargeDataLoss !== prevLargeDataLoss)
+				if (this.prevPercentPacketLostList.incomingPacketLost.push(incomingDataLoss) > 10)
 				{
+					this.prevPercentPacketLostList.incomingPacketLost.shift();
+				}
+
+				const newIncomingConnectionDataLoss = this.prevPercentPacketLostList.incomingPacketLost.reduce(
+					(acc, number) => acc + number, 0
+				) / this.prevPercentPacketLostList.incomingPacketLost.length;
+				const newIncomingConnectionScore = this.calcNewConnectionScore(newIncomingConnectionDataLoss);
+				if (!this.incomingConnectionScore || this.incomingConnectionScore !== newIncomingConnectionScore)
+				{
+					this.incomingConnectionScore = newIncomingConnectionScore;
 					this.callbacks.onRTCQualityChanged({
 						userId: this.userId,
-						hasConnectionProblem: newLargeDataLoss
+						score: this.incomingConnectionScore
+					});
+				}
+
+				if (this.prevPercentPacketLostList.outgoingPacketLost.push(outgoingDataLoss) > 10)
+				{
+					this.prevPercentPacketLostList.outgoingPacketLost.shift();
+				}
+
+				const newOutgoingConnectionDataLoss = this.prevPercentPacketLostList.outgoingPacketLost.reduce(
+					(acc, number) => acc + number, 0
+				) / this.prevPercentPacketLostList.outgoingPacketLost.length;
+				const newOutgoingConnectionScore = this.calcNewConnectionScore(newOutgoingConnectionDataLoss);
+				if (!this.outgoingConnectionScore || this.outgoingConnectionScore !== newOutgoingConnectionScore)
+				{
+					this.outgoingConnectionScore = newOutgoingConnectionScore;
+					this.callbacks.onRTCQualityChanged({
+						userId: this.call.userId,
+						score: this.outgoingConnectionScore
 					});
 				}
 
@@ -2476,6 +2748,32 @@ class Peer
 			}.bind(this));
 		}.bind(this), 1000);
 	};
+
+	calcNewConnectionScore(dataLoss)
+	{
+		let connectionQuality;
+		if (dataLoss < 10)
+		{
+			connectionQuality = 4;
+		}
+
+		if (dataLoss > 10 && dataLoss <= 20)
+		{
+			connectionQuality = 3;
+		}
+
+		if (dataLoss > 20 && dataLoss <= 30)
+		{
+			connectionQuality = 2;
+		}
+
+		if (dataLoss > 30)
+		{
+			connectionQuality = 1;
+		}
+
+		return connectionQuality;
+	}
 
 	stopStatisticsGathering()
 	{
@@ -2535,7 +2833,7 @@ class Peer
 		this.peerConnectionId = id;
 
 		this.peerConnection.addEventListener("icecandidate", this._onPeerConnectionIceCandidateHandler);
-		this.peerConnection.addEventListener("iceconnectionstatechange", this._onPeerConnectionIceConnectionStateChangeHandler);
+		this.peerConnection.addEventListener("connectionstatechange", this._onPeerConnectionConnectionStateChangeHandler);
 		this.peerConnection.addEventListener("icegatheringstatechange", this._onPeerConnectionIceGatheringStateChangeHandler);
 		this.peerConnection.addEventListener("signalingstatechange", this._onPeerConnectionSignalingStateChangeHandler);
 		// this.peerConnection.addEventListener("negotiationneeded", this._onPeerConnectionNegotiationNeededHandler);
@@ -2563,7 +2861,7 @@ class Peer
 		this.stopStatisticsGathering();
 
 		this.peerConnection.removeEventListener("icecandidate", this._onPeerConnectionIceCandidateHandler);
-		this.peerConnection.removeEventListener("iceconnectionstatechange", this._onPeerConnectionIceConnectionStateChangeHandler);
+		this.peerConnection.removeEventListener("connectionstatechange", this._onPeerConnectionConnectionStateChangeHandler);
 		this.peerConnection.removeEventListener("icegatheringstatechange", this._onPeerConnectionIceGatheringStateChangeHandler);
 		this.peerConnection.removeEventListener("signalingstatechange", this._onPeerConnectionSignalingStateChangeHandler);
 		// this.peerConnection.removeEventListener("negotiationneeded", this._onPeerConnectionNegotiationNeededHandler);
@@ -2624,28 +2922,30 @@ class Peer
 		}
 	};
 
-	#onPeerConnectionIceConnectionStateChange()
+	#onPeerConnectionConnectionStateChange()
 	{
-		this.log("User " + this.userId + ": ICE connection state changed. New state: " + this.peerConnection.iceConnectionState);
+		this.log("User " + this.userId + ": peer connection state changed. New state: " + this.peerConnection.connectionState);
 
-		if (this.peerConnection.iceConnectionState === "connected" || this.peerConnection.iceConnectionState === "completed")
+		if (this.peerConnection.connectionState === "connected" || this.peerConnection.connectionState === "completed")
 		{
 			this.connectionAttempt = 0;
 			this.callbacks.onReconnected();
 			clearTimeout(this.reconnectAfterDisconnectTimeout);
 			this._updateTracksDebounced();
 		}
-		else if (this.peerConnection.iceConnectionState === "failed")
+		else if (this.peerConnection.connectionState === "failed")
 		{
-			this.log("ICE connection failed. Trying to restore connection immediately");
+			this.log("peer connection failed. Trying to restore connection immediately");
 			this.reconnect();
 		}
-		else if (this.peerConnection.iceConnectionState === "disconnected")
-		{
-			this.log("ICE connection lost. Waiting 5 seconds before trying to restore it");
-			clearTimeout(this.reconnectAfterDisconnectTimeout);
-			this.reconnectAfterDisconnectTimeout = setTimeout(() => this.reconnect(), 5000);
-		}
+		// else if (this.peerConnection.connectionState === "disconnected")
+		// {
+		// 	// we can ignore a 'disconnected' state because it can provoke frequent reconnects,
+		// 	// besides that, iceConnectionState can can be changed back to 'connected' state by itself
+		// 	this.log("peer connection lost. Waiting 5 seconds before trying to restore it");
+		// 	clearTimeout(this.reconnectAfterDisconnectTimeout);
+		// 	this.reconnectAfterDisconnectTimeout = setTimeout(() => this.reconnect(), 5000);
+		// }
 
 		this.updateCalculatedState();
 	};
@@ -2837,6 +3137,7 @@ class Peer
 	_onConnectionOfferReplyTimeout(connectionId)
 	{
 		this.log("did not receive connection answer for connection " + connectionId);
+		this.call.setPublishingState(MediaStreamsKinds.Camera, false);
 
 		this.reconnect();
 	};
@@ -3041,6 +3342,10 @@ class Peer
 				this.updateCalculatedState();
 				this.log(e);
 			})
+			.finally(() =>
+			{
+				this.call.setPublishingState(MediaStreamsKinds.Camera, false);
+			})
 		;
 	};
 
@@ -3126,6 +3431,16 @@ class Peer
 		clearTimeout(this.reconnectAfterDisconnectTimeout);
 
 		this.connectionAttempt++;
+
+
+		if (this.connectionAttempt > 3)
+		{
+			this.log("Error: Too many reconnection attempts, giving up");
+			this.failureReason = "Could not connect to user in time";
+			this.updateCalculatedState();
+			return;
+		}
+
 		this.callbacks.onReconnecting();
 
 		this.log("Trying to restore ICE connection. Attempt " + this.connectionAttempt);

@@ -2,7 +2,7 @@
 this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
-(function (exports,main_core_events,im_public,main_core) {
+(function (exports,im_v2_lib_desktopApi,main_core_events,im_public,main_core) {
 	'use strict';
 
 	const ParserSlashCommand = {
@@ -646,6 +646,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  pattern: '',
 	  loadSmilePatterns() {
 	    var _smileManager$smileLi, _smileManager$smileLi2;
+	    if (!getSmileManager()) {
+	      return;
+	    }
 	    const smileManager = getSmileManager().getInstance();
 	    const smiles = (_smileManager$smileLi = (_smileManager$smileLi2 = smileManager.smileList) == null ? void 0 : _smileManager$smileLi2.smiles) != null ? _smileManager$smileLi : [];
 	    if (smiles.length === 0) {
@@ -1248,7 +1251,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      replaces: notification.replaces,
 	      showIconIfEmptyText: false,
 	      showImageFromLink: false,
-	      urlTarget: '_self'
+	      urlTarget: im_v2_lib_desktopApi.DesktopApi.isDesktop() ? '_blank' : '_self'
 	    });
 	  },
 	  decodeText(text) {
@@ -1359,15 +1362,31 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    });
 	  },
 	  purifyRecent(recentMessage) {
+	    const settings = main_core.Extension.getSettings('im.v2.lib.parser');
+	    const v2 = settings.get('v2');
+	    if (!v2) {
+	      const {
+	        files,
+	        attach,
+	        text
+	      } = this.prepareLegacyConfigForRecent(recentMessage);
+	      return this.purify({
+	        text,
+	        attach,
+	        files,
+	        showPhraseMessageWasDeleted: recentMessage.message.id !== 0
+	      });
+	    }
 	    const {
 	      files,
-	      attach
+	      attach,
+	      text
 	    } = this.prepareConfigForRecent(recentMessage);
 	    return this.purify({
-	      text: recentMessage.message.text,
+	      text,
 	      attach,
 	      files,
-	      showPhraseMessageWasDeleted: recentMessage.message.id !== 0
+	      showPhraseMessageWasDeleted: recentMessage.messageId !== 0
 	    });
 	  },
 	  purifyText(text) {
@@ -1460,6 +1479,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      text
 	    } = message;
 	    text = ParserUrl.removeSimpleUrlTag(text);
+	    text = ParserMention.purify(text);
 	    return text.trim();
 	  },
 	  prepareCopy(message) {
@@ -1479,6 +1499,24 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    return files.join('\n').trim();
 	  },
 	  prepareConfigForRecent(recentMessage) {
+	    let files = getCore().store.getters['messages/getMessageFiles'](recentMessage.messageId);
+	    if (files.length === 0) {
+	      files = false;
+	    }
+	    const message = getCore().store.getters['recent/getMessage'](recentMessage.dialogId);
+	    let attach = false;
+	    if (main_core.Type.isBoolean(message == null ? void 0 : message.attach) || main_core.Type.isStringFilled(message == null ? void 0 : message.attach) || main_core.Type.isArray(message == null ? void 0 : message.attach)) {
+	      attach = message.attach;
+	    } else if (main_core.Type.isPlainObject(message == null ? void 0 : message.attach)) {
+	      attach = [message.attach];
+	    }
+	    return {
+	      files,
+	      attach,
+	      text: message.text
+	    };
+	  },
+	  prepareLegacyConfigForRecent(recentMessage) {
 	    let files = false;
 	    const fileField = recentMessage.message.params.withFile;
 	    if (main_core.Type.isBoolean(fileField)) {
@@ -1495,7 +1533,8 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    }
 	    return {
 	      files,
-	      attach
+	      attach,
+	      text: recentMessage.message.text
 	    };
 	  },
 	  executeClickEvent(event) {
@@ -1510,5 +1549,5 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 
 	exports.Parser = Parser;
 
-}((this.BX.Messenger.v2.Lib = this.BX.Messenger.v2.Lib || {}),BX.Event,BX.Messenger.v2.Lib,BX));
+}((this.BX.Messenger.v2.Lib = this.BX.Messenger.v2.Lib || {}),BX.Messenger.v2.Lib,BX.Event,BX.Messenger.v2.Lib,BX));
 //# sourceMappingURL=parser.bundle.js.map

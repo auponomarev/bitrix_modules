@@ -2,6 +2,7 @@ import { Extension } from 'main.core';
 import { BaseEvent } from 'main.core.events';
 
 import { Messenger } from 'im.public';
+import { Core } from 'im.v2.application.core';
 import { ChatActionType, LocalStorageKey, ChatType } from 'im.v2.const';
 import { CallManager } from 'im.v2.lib.call';
 import { PermissionManager } from 'im.v2.lib.permission';
@@ -126,7 +127,7 @@ export const CallButton = {
 		getLastCallChoice(): string
 		{
 			const result = LocalStorageManager.getInstance().get(LocalStorageKey.lastCallType, CallTypes.video.id);
-			if (result === CallTypes.beta.id && !this.isCallBetaAvailable())
+			if (result === CallTypes.beta.id && !this.isBitrixCallEnabled())
 			{
 				return CallTypes.video.id;
 			}
@@ -140,13 +141,13 @@ export const CallButton = {
 		},
 		shouldShowMenu(): boolean
 		{
-			return this.isActive || this.isCallBetaAvailable();
+			return this.isActive || this.isBitrixCallEnabled();
 		},
-		isCallBetaAvailable(): boolean
+		isBitrixCallEnabled(): boolean
 		{
 			// TODO remove this after release call beta
 			// const settings = Extension.getSettings('im.v2.component.content.chat');
-			// return settings.get('isCallBetaAvailable');
+			// return settings.get('isBitrixCallEnabled');
 
 			return false;
 		},

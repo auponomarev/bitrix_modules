@@ -21,10 +21,8 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  const handleAddCLick = () => {
 	    const selectedItems = dialog.getSelectedItems();
 	    const preparedItems = prepareUser(selectedItems);
-	    preparedItems.forEach(item => {
-	      params.onSelect({
-	        user: item
-	      });
+	    params.onSelect({
+	      users: preparedItems
 	    });
 	  };
 	  const handleCancelCLick = () => {
@@ -96,6 +94,8 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	var _checkChatCallSupport = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("checkChatCallSupport");
 	var _pushServerIsActive = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("pushServerIsActive");
 	var _getCurrentDialogId = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("getCurrentDialogId");
+	var _isUser = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("isUser");
+	var _prepareUserCall = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("prepareUserCall");
 	class CallManager {
 	  static getInstance() {
 	    if (!this.instance) {
@@ -107,6 +107,12 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    CallManager.getInstance();
 	  }
 	  constructor() {
+	    Object.defineProperty(this, _prepareUserCall, {
+	      value: _prepareUserCall2
+	    });
+	    Object.defineProperty(this, _isUser, {
+	      value: _isUser2
+	    });
 	    Object.defineProperty(this, _getCurrentDialogId, {
 	      value: _getCurrentDialogId2
 	    });
@@ -160,6 +166,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	  startCall(dialogId, withVideo = true) {
 	    im_v2_lib_logger.Logger.warn('CallManager: startCall', dialogId, withVideo);
+	    if (babelHelpers.classPrivateFieldLooseBase(this, _isUser)[_isUser](dialogId)) {
+	      babelHelpers.classPrivateFieldLooseBase(this, _prepareUserCall)[_prepareUserCall](dialogId);
+	    }
 	    babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].startCall(dialogId, withVideo);
 	  }
 	  joinCall(callId, withVideo = true) {
@@ -211,6 +220,12 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  }
 	  startTest() {
 	    babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].test();
+	  }
+	  toggleDebugFlag(debug) {
+	    if (!babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller]) {
+	      return;
+	    }
+	    babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].debug = debug;
 	  }
 	  chatCanBeCalled(dialogId) {
 	    const callSupported = babelHelpers.classPrivateFieldLooseBase(this, _checkCallSupport)[_checkCallSupport](dialogId);
@@ -311,9 +326,13 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  });
 	}
 	function _onCallDestroy2(event) {
-	  babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].dispatch('recent/calls/deleteActiveCall', {
-	    dialogId: event.call.associatedEntity.id
-	  });
+	  const dialogId = event.call.associatedEntity.id;
+	  const currentCall = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['recent/calls/getCallByDialog'](dialogId);
+	  if ((currentCall == null ? void 0 : currentCall.call.id) === event.call.id) {
+	    babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].dispatch('recent/calls/deleteActiveCall', {
+	      dialogId
+	    });
+	  }
 	}
 	function _onOpenChat2(event) {
 	  const callDialogId = this.getCurrentCallDialogId();
@@ -353,6 +372,23 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    return '';
 	  }
 	  return layout.entityId;
+	}
+	function _isUser2(dialogId) {
+	  const dialog = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['chats/get'](dialogId);
+	  return (dialog == null ? void 0 : dialog.type) === im_v2_const.ChatType.user;
+	}
+	function _prepareUserCall2(dialogId) {
+	  const currentUserId = im_v2_application_core.Core.getUserId();
+	  const currentUser = im_v2_application_core.Core.getStore().getters['users/get'](currentUserId);
+	  const currentCompanion = im_v2_application_core.Core.getStore().getters['users/get'](dialogId);
+	  babelHelpers.classPrivateFieldLooseBase(this, _controller)[_controller].prepareUserCall({
+	    dialogId,
+	    user: currentCompanion.id,
+	    userData: {
+	      [currentUserId]: currentUser,
+	      [currentCompanion.id]: currentCompanion
+	    }
+	  });
 	}
 	CallManager.viewContainerClass = 'bx-im-messenger__call_container';
 

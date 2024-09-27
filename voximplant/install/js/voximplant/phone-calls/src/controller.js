@@ -126,6 +126,9 @@ export class PhoneCallsController extends EventEmitter
 
 		this.hasSipPhone = options.deviceActive === true;
 
+		this.skippedCallsList = [];
+		this.skipIncomingCallTimer = null;
+
 		this.readDefaults();
 		this.restoreFoldedCallView();
 
@@ -268,21 +271,20 @@ export class PhoneCallsController extends EventEmitter
 			return false;
 		}
 
+		if (this.callView && !this.callView?.popup)
+		{
+			this.#onCallViewClose();
+		}
+
 		if (
 			BX.localStorage.get(lsKeys.callView)
+			&& this.callView?.popup
 			&& !Boolean(this._currentCall)
 			&& !this.isCallListMode()
 			&& !this.messengerFacade.hasActiveCall()
 		)
 		{
-			if (this.callView)
-			{
-				this.showCallViewBalloon();
-			}
-			else
-			{
-				this.showNotification(Loc.getMessage('VOXIMPLANT_WARN_CLOSE_CALL_VIEW_ANOTHER_TAB'));
-			}
+			this.showCallViewBalloon();
 		}
 
 		if (this.hasActiveCall() || this.isCallListMode() || this.messengerFacade.hasActiveCall())
@@ -294,7 +296,11 @@ export class PhoneCallsController extends EventEmitter
 			return false;
 		}
 
-		if (BX.localStorage.get(lsKeys.callInited) || BX.localStorage.get(lsKeys.externalCall))
+		if (
+			BX.localStorage.get(lsKeys.callInited)
+			|| BX.localStorage.get(lsKeys.externalCall)
+			|| this.skippedCallsList.includes(params.callId)
+		)
 		{
 			return false;
 		}
@@ -360,6 +366,7 @@ export class PhoneCallsController extends EventEmitter
 			return false;
 		}
 
+		this.clearSkipIncomingCallTimer();
 		this.messengerFacade.stopRepeatSound('ringtone');
 		this.messengerFacade.stopRepeatSound('dialtone');
 
@@ -372,6 +379,11 @@ export class PhoneCallsController extends EventEmitter
 
 	#onPullTimeout(params)
 	{
+		if (!this.skippedCallsList.includes(params.callId))
+		{
+			this.skippedCallsList.push(params.callId);
+		}
+
 		if (this.phoneTransferCallId === params.callId)
 		{
 			return this.errorInviteTransfer(params.failedCode, params.failedReason);
@@ -386,6 +398,7 @@ export class PhoneCallsController extends EventEmitter
 
 		var external = this.hasExternalCall;
 
+		this.clearSkipIncomingCallTimer();
 		this.messengerFacade.stopRepeatSound('ringtone');
 		this.messengerFacade.stopRepeatSound('dialtone');
 
@@ -508,6 +521,8 @@ export class PhoneCallsController extends EventEmitter
 
 	#onPullStart(params)
 	{
+		this.clearSkipIncomingCallTimer();
+
 		if (this.phoneTransferCallId === params.callId)
 		{
 			this.callView.setStatusText(Loc.getMessage('IM_M_CALL_ST_TRANSFER_CONNECTED'));
@@ -1772,6 +1787,7 @@ export class PhoneCallsController extends EventEmitter
 
 	phoneIncomingAnswer()
 	{
+		this.clearSkipIncomingCallTimer();
 		this.messengerFacade.stopRepeatSound('ringtone');
 		this.callSelfDisabled = true;
 		BX.rest.callMethod('voximplant.call.answer', {'CALL_ID': this.callId});
@@ -2083,6 +2099,7 @@ export class PhoneCallsController extends EventEmitter
 
 	#onCallViewClose()
 	{
+		this.clearSkipIncomingCallTimer();
 		this.messengerFacade.stopRepeatSound('ringtone');
 		this.messengerFacade.stopRepeatSound('dialtone');
 
@@ -2222,6 +2239,8 @@ export class PhoneCallsController extends EventEmitter
 			this.callView.setPortalCallData(params.portalCallData);
 			this.callView.setPortalCallUserId(params.portalCallUserId);
 		}
+
+		this.skipIncomingCallTimer = setTimeout(() => this.callView?._onSkipButtonClick(), 40000);
 	}
 
 	sendInviteTransfer()
@@ -2646,6 +2665,7 @@ export class PhoneCallsController extends EventEmitter
 
 		this.phoneCallFinish();
 
+		this.clearSkipIncomingCallTimer();
 		this.messengerFacade.stopRepeatSound('ringtone');
 		this.messengerFacade.stopRepeatSound('dialtone');
 
@@ -2729,6 +2749,15 @@ export class PhoneCallsController extends EventEmitter
 		{
 			this.openedCallViewBalloon.close();
 			this.openedCallViewBalloon = null;
+		}
+	}
+
+	clearSkipIncomingCallTimer()
+	{
+		if (this.skipIncomingCallTimer)
+		{
+			clearTimeout(this.skipIncomingCallTimer);
+			this.skipIncomingCallTimer = null;
 		}
 	}
 

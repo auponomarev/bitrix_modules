@@ -10,6 +10,7 @@ jn.define('im/messenger/lib/converter/recent', (require, exports, module) => {
 	const {
 		RecentItem,
 		ChatItem,
+		CopilotItem,
 		UserItem,
 		CallItem,
 		AnnouncementItem,
@@ -106,6 +107,11 @@ jn.define('im/messenger/lib/converter/recent', (require, exports, module) => {
 				return new Support24QuestionItem(modelItem);
 			}
 
+			if (dialog.type === DialogType.copilot)
+			{
+				return new CopilotItem(modelItem);
+			}
+
 			return new ChatItem(modelItem);
 		}
 
@@ -125,7 +131,7 @@ jn.define('im/messenger/lib/converter/recent', (require, exports, module) => {
 			}
 
 			// eslint-disable-next-line es/no-optional-chaining
-			if (modelItem?.invitation?.isActive === true && user.lastActivityDate !== false)
+			if (modelItem?.invitation?.isActive === true && user.lastActivityDate === false)
 			{
 				return new InvitedUserItem(modelItem);
 			}

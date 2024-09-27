@@ -11,11 +11,14 @@ export const MessageComponent = Object.freeze({
 	unsupported: 'UnsupportedMessage',
 	deleted: 'DeletedMessage',
 	callInvite: 'CallInviteMessage',
+	zoomInvite: 'ZoomInviteMessage',
 	chatCreation: 'ChatCreationMessage',
 	ownChatCreation: 'OwnChatCreationMessage',
 	copilotCreation: 'ChatCopilotCreationMessage',
 	copilotMessage: 'CopilotMessage',
 	conferenceCreation: 'ConferenceCreationMessage',
+	supervisorUpdateFeature: 'SupervisorUpdateFeatureMessage',
+	supervisorEnableFeature: 'SupervisorEnableFeatureMessage',
 	supportVote: 'SupportVoteMessage',
 	supportSessionNumber: 'SupportSessionNumberMessage',
 	system: 'SystemMessage',
@@ -41,3 +44,5 @@ export const OwnMessageStatus = Object.freeze({
 	viewed: 'viewed',
 	error: 'error',
 });
+
+export const FakeMessagePrefix = 'temp';

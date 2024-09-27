@@ -2,7 +2,7 @@
 this.BX = this.BX || {};
 this.BX.Messenger = this.BX.Messenger || {};
 this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
-(function (exports,ui_uploader_core,im_v2_lib_draft,im_v2_lib_localStorage,im_v2_lib_soundNotification,rest_client,im_v2_application_core,im_v2_lib_smileManager,im_v2_lib_rest,im_v2_lib_entityCreator,im_v2_lib_hotkey,im_v2_lib_textarea,main_core_events,im_v2_lib_logger,im_v2_provider_service,im_v2_lib_textHighlighter,im_v2_lib_dateFormatter,im_v2_lib_utils,im_v2_lib_parser,im_v2_const,main_core,im_v2_lib_market,im_v2_component_elements) {
+(function (exports,ui_uploader_core,im_v2_lib_localStorage,im_v2_lib_soundNotification,rest_client,im_v2_lib_smileManager,im_v2_lib_rest,im_v2_lib_entityCreator,im_v2_provider_service,im_v2_lib_hotkey,im_v2_lib_textarea,im_v2_lib_draft,main_core_events,im_v2_lib_textHighlighter,im_v2_application_core,im_v2_lib_logger,im_v2_lib_search,im_v2_lib_utils,im_v2_lib_parser,im_v2_const,main_core,im_v2_lib_market,im_v2_component_elements) {
 	'use strict';
 
 	const MentionSymbols = new Set(['@', '+']);
@@ -16,6 +16,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	var _mentionPopupOpened = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("mentionPopupOpened");
 	var _mentionSymbol = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("mentionSymbol");
 	var _textarea = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("textarea");
+	var _mentionReplacementMap = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("mentionReplacementMap");
 	var _onClosedMentionKeyDown = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("onClosedMentionKeyDown");
 	var _onOpenedMentionKeyDown = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("onOpenedMentionKeyDown");
 	var _checkMentionSymbol = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("checkMentionSymbol");
@@ -103,21 +104,80 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      writable: true,
 	      value: void 0
 	    });
+	    Object.defineProperty(this, _mentionReplacementMap, {
+	      writable: true,
+	      value: {}
+	    });
 	    this.setEventNamespace(MentionManager.eventNamespace);
 	    babelHelpers.classPrivateFieldLooseBase(this, _textarea)[_textarea] = textarea;
 	  }
-	  onKeyDown(event) {
-	    if (babelHelpers.classPrivateFieldLooseBase(this, _mentionPopupOpened)[_mentionPopupOpened]) {
-	      babelHelpers.classPrivateFieldLooseBase(this, _onOpenedMentionKeyDown)[_onOpenedMentionKeyDown](event);
+
+	  // region 'popup'
+	  onActiveMentionKeyDown(event) {
+	    if (!babelHelpers.classPrivateFieldLooseBase(this, _mentionPopupOpened)[_mentionPopupOpened]) {
+	      return;
 	    }
+	    babelHelpers.classPrivateFieldLooseBase(this, _onOpenedMentionKeyDown)[_onOpenedMentionKeyDown](event);
+	  }
+	  onKeyDown(event) {
 	    babelHelpers.classPrivateFieldLooseBase(this, _onClosedMentionKeyDown)[_onClosedMentionKeyDown](event);
 	  }
 	  onMentionPopupClose() {
 	    babelHelpers.classPrivateFieldLooseBase(this, _mentionPopupOpened)[_mentionPopupOpened] = false;
 	  }
-	  getMentionSymbol() {
-	    return babelHelpers.classPrivateFieldLooseBase(this, _mentionSymbol)[_mentionSymbol];
+	  // endregion 'popup'
+
+	  // region 'replace'
+	  setMentionReplacements(mentionsMap) {
+	    babelHelpers.classPrivateFieldLooseBase(this, _mentionReplacementMap)[_mentionReplacementMap] = mentionsMap;
 	  }
+	  addMentionReplacement(textToReplace, textToInsert) {
+	    babelHelpers.classPrivateFieldLooseBase(this, _mentionReplacementMap)[_mentionReplacementMap][textToReplace] = textToInsert;
+	    return babelHelpers.classPrivateFieldLooseBase(this, _mentionReplacementMap)[_mentionReplacementMap];
+	  }
+	  prepareMentionText(config) {
+	    const {
+	      currentText,
+	      textToInsert,
+	      textToReplace = ''
+	    } = config;
+	    let resultText = '';
+	    const queryWithMentionSymbol = `${babelHelpers.classPrivateFieldLooseBase(this, _mentionSymbol)[_mentionSymbol]}${textToReplace}`;
+	    if (queryWithMentionSymbol.length > 0) {
+	      resultText = currentText.replace(queryWithMentionSymbol, `${textToInsert} `);
+	    } else {
+	      resultText = `${currentText}${textToInsert} `;
+	    }
+	    return resultText;
+	  }
+	  replaceMentions(text) {
+	    let resultText = text;
+	    Object.entries(babelHelpers.classPrivateFieldLooseBase(this, _mentionReplacementMap)[_mentionReplacementMap]).forEach(([textToReplace, textToInsert]) => {
+	      resultText = resultText.replaceAll(textToReplace, textToInsert);
+	    });
+	    return resultText;
+	  }
+	  extractMentions(text) {
+	    const mentions = {};
+	    const mentionRegExp = /\[user=(?<userId>\d+)](?<mentionText>.*?)\[\/user]/gi;
+	    const matches = text.matchAll(mentionRegExp);
+	    for (const match of matches) {
+	      const {
+	        userId,
+	        mentionText
+	      } = match.groups;
+	      const user = im_v2_application_core.Core.getStore().getters['users/get'](userId);
+	      if (!user) {
+	        continue;
+	      }
+	      mentions[mentionText] = im_v2_lib_utils.Utils.text.getMentionBbCode(user.id, mentionText);
+	    }
+	    return mentions;
+	  }
+	  clearMentionReplacements() {
+	    babelHelpers.classPrivateFieldLooseBase(this, _mentionReplacementMap)[_mentionReplacementMap] = {};
+	  }
+	  // endregion 'replace'
 	}
 	function _onClosedMentionKeyDown2(event) {
 	  if (!babelHelpers.classPrivateFieldLooseBase(this, _isOpenMentionCombination)[_isOpenMentionCombination](event)) {
@@ -4398,10 +4458,15 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  },
 	  created() {
 	    this.text = this.textareaValue;
+	    this.insertText('');
 	    this.files = this.getUploadingService().getFiles(this.uploaderId);
 	  },
 	  mounted() {
 	    this.$refs.messageText.focus();
+	  },
+	  beforeUnmount() {
+	    this.insertText(this.text);
+	    im_v2_lib_draft.DraftManager.getInstance().setDraftText(this.dialogId, this.text);
 	  },
 	  methods: {
 	    getUploadingService() {
@@ -4427,6 +4492,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        uploaderId: this.uploaderId,
 	        sendAsFile: this.sendAsFile
 	      });
+	      this.text = '';
 	    },
 	    onKeyDownHandler(event) {
 	      const sendMessageCombination = im_v2_lib_hotkey.isSendMessageCombination(event);
@@ -4448,6 +4514,12 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	          urlPreview: '',
 	          image: false
 	        }
+	      });
+	    },
+	    insertText(text) {
+	      main_core_events.EventEmitter.emit(im_v2_const.EventType.textarea.insertText, {
+	        text,
+	        replace: true
 	      });
 	    }
 	  },
@@ -4538,27 +4610,10 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      };
 	    }
 	  },
-	  created() {
-	    this.initialText = this.textareaValue;
-	    main_core_events.EventEmitter.emit(im_v2_const.EventType.textarea.insertText, {
-	      text: '',
-	      replace: true
-	    });
-	  },
 	  methods: {
-	    onContentClose() {
-	      this.insertText(this.initialText);
-	      this.$emit('close');
-	    },
 	    onSendFiles(event) {
 	      this.$emit('sendFiles', event);
 	      this.$emit('close');
-	    },
-	    insertText(text) {
-	      main_core_events.EventEmitter.emit(im_v2_const.EventType.textarea.insertText, {
-	        text,
-	        replace: true
-	      });
 	    }
 	  },
 	  template: `
@@ -4571,7 +4626,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 				:dialogId="dialogId" 
 				:uploaderId="uploaderId"
 				:textareaValue="textareaValue"
-				@close="onContentClose"
+				@close="$emit('close')"
 				@sendFiles="onSendFiles"
 			/>
 		</MessengerPopup>
@@ -4622,18 +4677,12 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    },
 	    userItemText() {
 	      if (!this.position) {
-	        return this.$Bitrix.Loc.getMessage('IM_SEARCH_EXPERIMENTAL_ITEM_USER_TYPE_GROUP_V2');
+	        return this.$Bitrix.Loc.getMessage('IM_TEXTAREA_MENTION_USER_TYPE');
 	      }
 	      return im_v2_lib_textHighlighter.highlightText(main_core.Text.encode(this.position), this.query);
 	    },
 	    chatItemText() {
-	      return this.$Bitrix.Loc.getMessage('IM_SEARCH_EXPERIMENTAL_ITEM_CHAT_TYPE_GROUP_V2');
-	    },
-	    formattedDate() {
-	      if (!this.recentItem.message.date) {
-	        return '';
-	      }
-	      return this.formatDate(this.recentItem.message.date);
+	      return this.$Bitrix.Loc.getMessage('IM_TEXTAREA_MENTION_CHAT_TYPE');
 	    }
 	  },
 	  methods: {
@@ -4641,9 +4690,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      this.$emit('itemClick', {
 	        dialogId: this.dialogId
 	      });
-	    },
-	    formatDate(date) {
-	      return im_v2_lib_dateFormatter.DateFormatter.formatByTemplate(date, im_v2_lib_dateFormatter.DateTemplate.recent);
 	    }
 	  },
 	  template: `
@@ -4655,16 +4701,11 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 		>
 			<Avatar :dialogId="dialogId" :size="AvatarSize.M" class="bx-im-mention-item__avatar-container" />
 			<div class="bx-im-mention-item__content-container">
-				<div class="bx-im-mention-item__content-header">
-					<ChatTitleWithHighlighting 
-						:dialogId="dialogId" 
-						:textToHighlight="query" 
-						class="bx-im-mention-item__title"
-					/>
-					<span v-if="formattedDate.length > 0" class="bx-im-mention-item__date">
-						{{ formattedDate }}
-					</span>
-				</div>
+				<ChatTitleWithHighlighting 
+					:dialogId="dialogId" 
+					:textToHighlight="query" 
+					class="bx-im-mention-item__title"
+				/>
 				<div v-if="isUser" class="bx-im-mention-item__position" :title="position" v-html="userItemText"></div>
 				<div v-else class="bx-im-mention-item__position" :title="chatItemText">{{ chatItemText }}</div>
 			</div>
@@ -4753,6 +4794,180 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	`
 	};
 
+	const SEARCH_REQUEST_ENDPOINT = 'ui.entityselector.doSearch';
+	var _storeUpdater = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("storeUpdater");
+	var _restClient$1 = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("restClient");
+	var _searchRequest = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("searchRequest");
+	var _getDialogIdAndDate = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("getDialogIdAndDate");
+	class BaseServerSearch {
+	  constructor() {
+	    Object.defineProperty(this, _getDialogIdAndDate, {
+	      value: _getDialogIdAndDate2
+	    });
+	    Object.defineProperty(this, _searchRequest, {
+	      value: _searchRequest2
+	    });
+	    Object.defineProperty(this, _storeUpdater, {
+	      writable: true,
+	      value: void 0
+	    });
+	    Object.defineProperty(this, _restClient$1, {
+	      writable: true,
+	      value: void 0
+	    });
+	    babelHelpers.classPrivateFieldLooseBase(this, _storeUpdater)[_storeUpdater] = new im_v2_lib_search.StoreUpdater();
+	    babelHelpers.classPrivateFieldLooseBase(this, _restClient$1)[_restClient$1] = im_v2_application_core.Core.getRestClient();
+	  }
+	  async search(query) {
+	    const items = await babelHelpers.classPrivateFieldLooseBase(this, _searchRequest)[_searchRequest](query);
+	    await babelHelpers.classPrivateFieldLooseBase(this, _storeUpdater)[_storeUpdater].update(items);
+	    return babelHelpers.classPrivateFieldLooseBase(this, _getDialogIdAndDate)[_getDialogIdAndDate](items);
+	  }
+	  async loadChatParticipants(dialogId) {
+	    const queryParams = {
+	      order: {
+	        lastSendMessageId: 'desc'
+	      },
+	      dialogId,
+	      limit: 50
+	    };
+	    let users = [];
+	    try {
+	      const response = await babelHelpers.classPrivateFieldLooseBase(this, _restClient$1)[_restClient$1].callMethod(im_v2_const.RestMethod.imV2ChatUserList, queryParams);
+	      users = response.data();
+	    } catch (error) {
+	      console.error('Mention search service: load chat participants error', error);
+	    }
+	    void babelHelpers.classPrivateFieldLooseBase(this, _storeUpdater)[_storeUpdater].updateUsers(users);
+	    return babelHelpers.classPrivateFieldLooseBase(this, _getDialogIdAndDate)[_getDialogIdAndDate](users);
+	  }
+	}
+	async function _searchRequest2(query) {
+	  const config = {
+	    json: im_v2_lib_search.getSearchConfig()
+	  };
+	  config.json.searchQuery = {
+	    queryWords: im_v2_lib_utils.Utils.text.getWordsFromString(query),
+	    query
+	  };
+	  let items = [];
+	  try {
+	    const response = await main_core.ajax.runAction(SEARCH_REQUEST_ENDPOINT, config);
+	    im_v2_lib_logger.Logger.warn('Mention search service: request result', response);
+	    items = response.data.dialog.items;
+	  } catch (error) {
+	    im_v2_lib_logger.Logger.warn('Mention search service: request error', error);
+	  }
+	  return items;
+	}
+	function _getDialogIdAndDate2(items) {
+	  return items.map(item => {
+	    var _item$customData$date, _item$customData;
+	    return {
+	      dialogId: item.id.toString(),
+	      dateMessage: (_item$customData$date = (_item$customData = item.customData) == null ? void 0 : _item$customData.dateMessage) != null ? _item$customData$date : ''
+	    };
+	  });
+	}
+
+	var _store = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("store");
+	var _localSearch = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("localSearch");
+	var _baseServerSearch = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("baseServerSearch");
+	var _localCollection = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("localCollection");
+	var _isSelfDialogId = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("isSelfDialogId");
+	var _getDialogIds = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("getDialogIds");
+	var _isExtranet = /*#__PURE__*/babelHelpers.classPrivateFieldLooseKey("isExtranet");
+	class MentionSearchService {
+	  constructor() {
+	    Object.defineProperty(this, _isExtranet, {
+	      value: _isExtranet2
+	    });
+	    Object.defineProperty(this, _getDialogIds, {
+	      value: _getDialogIds2
+	    });
+	    Object.defineProperty(this, _isSelfDialogId, {
+	      value: _isSelfDialogId2
+	    });
+	    Object.defineProperty(this, _store, {
+	      writable: true,
+	      value: void 0
+	    });
+	    Object.defineProperty(this, _localSearch, {
+	      writable: true,
+	      value: void 0
+	    });
+	    Object.defineProperty(this, _baseServerSearch, {
+	      writable: true,
+	      value: void 0
+	    });
+	    Object.defineProperty(this, _localCollection, {
+	      writable: true,
+	      value: new Map()
+	    });
+	    babelHelpers.classPrivateFieldLooseBase(this, _store)[_store] = im_v2_application_core.Core.getStore();
+	    babelHelpers.classPrivateFieldLooseBase(this, _localSearch)[_localSearch] = new im_v2_lib_search.LocalSearch();
+	    babelHelpers.classPrivateFieldLooseBase(this, _baseServerSearch)[_baseServerSearch] = new BaseServerSearch();
+	  }
+	  async loadChatParticipants(dialogId) {
+	    const items = await babelHelpers.classPrivateFieldLooseBase(this, _baseServerSearch)[_baseServerSearch].loadChatParticipants(dialogId);
+	    if (babelHelpers.classPrivateFieldLooseBase(this, _isSelfDialogId)[_isSelfDialogId](dialogId)) {
+	      return babelHelpers.classPrivateFieldLooseBase(this, _getDialogIds)[_getDialogIds](items);
+	    }
+	    const filteredResult = items.filter(item => !babelHelpers.classPrivateFieldLooseBase(this, _isSelfDialogId)[_isSelfDialogId](item.dialogId));
+	    filteredResult.forEach(searchItem => {
+	      babelHelpers.classPrivateFieldLooseBase(this, _localCollection)[_localCollection].set(searchItem.dialogId, searchItem);
+	    });
+	    return babelHelpers.classPrivateFieldLooseBase(this, _getDialogIds)[_getDialogIds](filteredResult);
+	  }
+	  searchLocal(query) {
+	    const localCollection = [...babelHelpers.classPrivateFieldLooseBase(this, _localCollection)[_localCollection].values()];
+	    const result = babelHelpers.classPrivateFieldLooseBase(this, _localSearch)[_localSearch].search(query, localCollection);
+	    return babelHelpers.classPrivateFieldLooseBase(this, _getDialogIds)[_getDialogIds](result);
+	  }
+	  async search(query) {
+	    const searchResult = await babelHelpers.classPrivateFieldLooseBase(this, _baseServerSearch)[_baseServerSearch].search(query);
+	    searchResult.forEach(searchItem => {
+	      babelHelpers.classPrivateFieldLooseBase(this, _localCollection)[_localCollection].set(searchItem.dialogId, searchItem);
+	    });
+	    return babelHelpers.classPrivateFieldLooseBase(this, _getDialogIds)[_getDialogIds](searchResult);
+	  }
+	  sortByDate(items) {
+	    items.sort((firstItem, secondItem) => {
+	      if (!firstItem.dateMessage || !secondItem.dateMessage) {
+	        if (!firstItem.dateMessage && !secondItem.dateMessage) {
+	          if (babelHelpers.classPrivateFieldLooseBase(this, _isExtranet)[_isExtranet](firstItem.dialogId)) {
+	            return 1;
+	          }
+	          if (babelHelpers.classPrivateFieldLooseBase(this, _isExtranet)[_isExtranet](secondItem.dialogId)) {
+	            return -1;
+	          }
+	          return 0;
+	        }
+	        return firstItem.dateMessage ? -1 : 1;
+	      }
+	      return im_v2_lib_utils.Utils.date.cast(secondItem.dateMessage) - im_v2_lib_utils.Utils.date.cast(firstItem.dateMessage);
+	    });
+	    return items;
+	  }
+	}
+	function _isSelfDialogId2(dialogId) {
+	  return dialogId === im_v2_application_core.Core.getUserId().toString();
+	}
+	function _getDialogIds2(items) {
+	  return items.map(item => item.dialogId);
+	}
+	function _isExtranet2(dialogId) {
+	  const dialog = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['chats/get'](dialogId);
+	  if (!dialog) {
+	    return false;
+	  }
+	  if (dialog.type === im_v2_const.ChatType.user) {
+	    const user = babelHelpers.classPrivateFieldLooseBase(this, _store)[_store].getters['users/get'](dialogId);
+	    return user && user.extranet;
+	  }
+	  return dialog.extranet;
+	}
+
 	// @vue/component
 	const MentionPopupContent = {
 	  name: 'MentionPopupContent',
@@ -4778,6 +4993,8 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    return {
 	      isLoading: false,
 	      searchResult: [],
+	      chatParticipants: [],
+	      chatParticipantsLoaded: false,
 	      currentServerQueries: 0,
 	      needTopShadow: false,
 	      needBottomShadow: true,
@@ -4787,7 +5004,30 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  },
 	  computed: {
 	    itemsToShow() {
-	      return this.preparedQuery.length > 0 ? this.searchResult : this.recentChats;
+	      if (this.preparedQuery.length === 0) {
+	        if (this.needToShowRecentUsersOnStartScreen) {
+	          return this.usersFromRecent;
+	        }
+	        return this.chatParticipants;
+	      }
+	      return this.searchResult;
+	    },
+	    needToShowRecentUsersOnStartScreen() {
+	      return this.chatParticipantsLoaded && this.chatParticipants.length <= 1;
+	    },
+	    usersFromRecent() {
+	      const recentUsers = [];
+	      this.$store.getters['recent/getSortedCollection'].forEach(recentItem => {
+	        if (this.isChat(recentItem.dialogId)) {
+	          return;
+	        }
+	        const user = this.$store.getters['users/get'](recentItem.dialogId, true);
+	        if (user.bot || user.id === im_v2_application_core.Core.getUserId()) {
+	          return;
+	        }
+	        recentUsers.push(user);
+	      });
+	      return recentUsers.map(user => user.id.toString());
 	    },
 	    preparedQuery() {
 	      return this.query.trim().toLowerCase();
@@ -4797,18 +5037,10 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        return false;
 	      }
 	      return this.searchResult.length === 0 && this.preparedQuery.length > 0;
-	    },
-	    recentChats() {
-	      return this.$store.getters['recent/getSortedCollection'].map(recentItem => {
-	        return recentItem.dialogId;
-	      });
 	    }
 	  },
 	  watch: {
 	    async isLoading() {
-	      await this.adjustPosition();
-	    },
-	    async recentChats() {
 	      await this.adjustPosition();
 	    },
 	    async searchResult() {
@@ -4819,15 +5051,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        return;
 	      }
 	      this.selectedIndex = 0;
-	      this.startSearch(newQuery);
+	      void this.startSearch(newQuery);
 	    }
 	  },
 	  created() {
 	    this.initSettings();
-	    this.searchService = new im_v2_provider_service.SearchService({
-	      findByParticipants: false
-	    });
+	    this.searchService = new MentionSearchService();
 	    this.searchOnServerDelayed = main_core.Runtime.debounce(this.searchOnServer, 400, this);
+	    void this.loadChatParticipants();
 	    main_core.Event.bind(window, 'keydown', this.onKeyDown);
 	    main_core_events.EventEmitter.subscribe(im_v2_const.EventType.mention.selectItem, this.onInsertItem);
 	  },
@@ -4841,35 +5072,36 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      const defaultMinTokenSize = 3;
 	      this.minTokenSize = settings.get('minSearchTokenSize', defaultMinTokenSize);
 	    },
-	    searchOnServer(query) {
+	    async loadChatParticipants() {
+	      this.isLoading = true;
+	      this.chatParticipants = await this.searchService.loadChatParticipants(this.dialogId);
+	      this.searchResult = this.chatParticipants;
+	      this.isLoading = false;
+	      this.chatParticipantsLoaded = true;
+	    },
+	    async searchOnServer(query) {
 	      this.currentServerQueries++;
-	      this.searchService.searchOnServer(query).then(dialogIds => {
+	      const dialogIds = await this.searchService.search(query);
+	      if (query !== this.preparedQuery) {
+	        this.isLoading = false;
+	        return;
+	      }
+	      this.searchResult = [...new Set([...this.searchResult, ...dialogIds])];
+	      this.currentServerQueries--;
+	      this.stopLoader();
+	    },
+	    async startSearch(query) {
+	      if (query.length > 0) {
+	        const dialogIds = this.searchService.searchLocal(query);
 	        if (query !== this.preparedQuery) {
-	          this.isLoading = false;
 	          return;
 	        }
-	        this.searchResult = this.searchService.sortByDate(dialogIds);
-	      }).catch(error => {
-	        console.error(error);
-	      }).finally(() => {
-	        this.currentServerQueries--;
-	        this.stopLoader();
-	      });
-	    },
-	    startSearch(query) {
-	      if (query.length > 0) {
-	        this.searchService.searchLocal(query).then(dialogIds => {
-	          if (query !== this.preparedQuery) {
-	            return;
-	          }
-	          this.searchResult = this.searchService.sortByDate(dialogIds);
-	        }).catch(error => {
-	          im_v2_lib_logger.Logger.error('Mention: searchLocalOnlyUsers', error);
-	        });
+	        const sortedLocalResult = this.searchService.sortByDate(dialogIds);
+	        this.searchResult = this.appendResult(sortedLocalResult);
 	      }
 	      if (query.length >= this.minTokenSize) {
 	        this.isLoading = true;
-	        this.searchOnServerDelayed(query);
+	        await this.searchOnServerDelayed(query);
 	      }
 	      if (query.length === 0) {
 	        this.cleanSearchResult();
@@ -4882,7 +5114,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      this.isLoading = false;
 	    },
 	    cleanSearchResult() {
-	      this.searchResult = [];
+	      this.searchResult = this.chatParticipants;
 	    },
 	    async adjustPosition() {
 	      await this.$nextTick();
@@ -4951,6 +5183,13 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    },
 	    getDomElementById(id) {
 	      return this.$refs['mention-content'].querySelector(`[data-index="${id}"]`);
+	    },
+	    appendResult(newItems) {
+	      const filtered = this.searchResult.filter(dialogId => newItems.includes(dialogId));
+	      return [...new Set([...filtered, ...newItems])];
+	    },
+	    isChat(dialogId) {
+	      return dialogId.startsWith('chat');
 	    }
 	  },
 	  template: `
@@ -5013,6 +5252,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        bindElement: this.bindElement,
 	        offsetTop: 14,
 	        offsetLeft: -44,
+	        fixed: true,
 	        bindOptions: {
 	          position: 'top'
 	        },
@@ -5682,7 +5922,6 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  data() {
 	    return {
 	      text: '',
-	      mentions: {},
 	      textareaHeight: ResizeManager.minHeight,
 	      showMention: false,
 	      mentionQuery: '',
@@ -5727,17 +5966,12 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    textareaMaxLength() {
 	      const settings = main_core.Extension.getSettings('im.v2.component.textarea');
 	      return settings.get('maxLength');
-	    },
-	    hasMentions() {
-	      return Object.keys(this.mentions).length > 0;
 	    }
 	  },
 	  watch: {
 	    text(newValue) {
 	      this.adjustTextareaHeight();
-	      if (!this.editMode) {
-	        this.getDraftManager().setDraft(this.dialogId, newValue);
-	      }
+	      this.getDraftManager().setDraftText(this.dialogId, newValue);
 	      if (main_core.Type.isStringFilled(newValue)) {
 	        this.getTypingService().startTyping();
 	      }
@@ -5746,7 +5980,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	  created() {
 	    this.initResizeManager();
 	    this.restoreTextareaHeight();
-	    this.restoreDraftText();
+	    this.restoreDraft();
 	    this.initSendingService();
 	    main_core_events.EventEmitter.subscribe(im_v2_const.EventType.textarea.insertMention, this.onInsertMention);
 	    main_core_events.EventEmitter.subscribe(im_v2_const.EventType.textarea.insertText, this.onInsertText);
@@ -5754,6 +5988,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    main_core_events.EventEmitter.subscribe(im_v2_const.EventType.textarea.replyMessage, this.onReplyMessage);
 	    main_core_events.EventEmitter.subscribe(im_v2_const.EventType.textarea.sendMessage, this.onSendMessage);
 	    main_core_events.EventEmitter.subscribe(im_v2_const.EventType.textarea.insertForward, this.onInsertForward);
+	    main_core_events.EventEmitter.subscribe(im_v2_const.EventType.dialog.onMessageDeleted, this.onMessageDeleted);
 	  },
 	  mounted() {
 	    this.initMentionManager();
@@ -5767,15 +6002,35 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    main_core_events.EventEmitter.unsubscribe(im_v2_const.EventType.textarea.replyMessage, this.onReplyMessage);
 	    main_core_events.EventEmitter.unsubscribe(im_v2_const.EventType.textarea.sendMessage, this.onSendMessage);
 	    main_core_events.EventEmitter.unsubscribe(im_v2_const.EventType.textarea.insertForward, this.onInsertForward);
+	    main_core_events.EventEmitter.unsubscribe(im_v2_const.EventType.dialog.onMessageDeleted, this.onMessageDeleted);
 	  },
 	  methods: {
+	    sendMessage() {
+	      this.text = this.text.trim();
+	      if (this.isDisabled || !this.dialogInited) {
+	        return;
+	      }
+	      const text = this.mentionManager.replaceMentions(this.text);
+	      if (this.hasActiveMessageAction()) {
+	        this.handlePanelAction(text);
+	        this.closePanel();
+	      } else {
+	        this.getSendingService().sendMessage({
+	          text,
+	          dialogId: this.dialogId
+	        });
+	      }
+	      this.getTypingService().stopTyping();
+	      this.clear();
+	      this.getDraftManager().clearDraft(this.dialogId);
+	      im_v2_lib_soundNotification.SoundNotificationManager.getInstance().playOnce(im_v2_const.SoundType.send);
+	      this.focus();
+	    },
 	    handlePanelAction(text) {
-	      if (this.editMode) {
-	        if (this.text === '') {
-	          this.getMessageService().deleteMessage(this.panelMessageId);
-	        } else {
-	          this.getMessageService().editMessageText(this.panelMessageId, text);
-	        }
+	      if (this.editMode && text === '') {
+	        void this.getMessageService().deleteMessage(this.panelMessageId);
+	      } else if (this.editMode && text !== '') {
+	        this.getMessageService().editMessageText(this.panelMessageId, text);
 	      } else if (this.forwardMode) {
 	        this.getSendingService().forwardMessages({
 	          text,
@@ -5790,42 +6045,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        });
 	      }
 	    },
-	    sendMessage() {
-	      this.text = this.text.trim();
-	      if (this.isDisabled || !this.dialogInited) {
-	        return;
-	      }
-	      const text = this.replaceMentions(this.text);
-	      if (this.hasActiveMessageAction()) {
-	        this.handlePanelAction(text);
-	        this.closePanel();
-	        this.clear();
-	        return;
-	      }
-	      this.getSendingService().sendMessage({
-	        text,
-	        dialogId: this.dialogId
-	      });
-	      this.getTypingService().stopTyping();
-	      this.clear();
-	      this.getDraftManager().clearDraftInRecentList(this.dialogId);
-	      im_v2_lib_soundNotification.SoundNotificationManager.getInstance().playOnce(im_v2_const.SoundType.send);
-	      this.focus();
-	    },
-	    replaceMentions(text) {
-	      if (!this.hasMentions) {
-	        return text;
-	      }
-	      let textWithMentions = text;
-	      Object.entries(this.mentions).forEach(mention => {
-	        const [mentionText, mentionReplacement] = mention;
-	        textWithMentions = textWithMentions.replace(mentionText, mentionReplacement);
-	      });
-	      return textWithMentions;
-	    },
 	    clear() {
 	      this.text = '';
-	      this.mentions = {};
+	      this.mentionManager.clearMentionReplacements();
 	    },
 	    hasActiveMessageAction() {
 	      return MESSAGE_ACTION_PANELS.has(this.panelType);
@@ -5836,6 +6058,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      }
 	      this.panelType = im_v2_const.TextareaPanelType.none;
 	      this.panelMessageId = 0;
+	      this.draftManager.setDraftPanel(this.dialogId, this.panelType, this.panelMessageId);
 	    },
 	    openEditPanel(messageId) {
 	      const message = this.$store.getters['messages/getById'](messageId);
@@ -5844,8 +6067,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      }
 	      this.panelType = im_v2_const.TextareaPanelType.edit;
 	      this.panelMessageId = messageId;
+	      const mentions = this.mentionManager.extractMentions(message.text);
+	      console.warn('openEditPanel', mentions);
+	      this.mentionManager.setMentionReplacements(mentions);
 	      this.text = im_v2_lib_parser.Parser.prepareEdit(message);
 	      this.focus();
+	      this.draftManager.setDraftText(this.dialogId, this.text);
+	      this.draftManager.setDraftPanel(this.dialogId, this.panelType, this.panelMessageId);
+	      this.draftManager.setDraftMentions(this.dialogId, mentions);
 	    },
 	    openReplyPanel(messageId) {
 	      if (this.editMode) {
@@ -5854,12 +6083,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      this.panelType = im_v2_const.TextareaPanelType.reply;
 	      this.panelMessageId = messageId;
 	      this.focus();
+	      this.draftManager.setDraftPanel(this.dialogId, this.panelType, this.panelMessageId);
 	    },
 	    openForwardPanel(messageId) {
 	      this.panelType = im_v2_const.TextareaPanelType.forward;
 	      this.panelMessageId = messageId;
 	      this.clear();
 	      this.focus();
+	      this.draftManager.setDraftPanel(this.dialogId, this.panelType, this.panelMessageId);
 	    },
 	    toggleMarketPanel() {
 	      if (this.marketMode) {
@@ -5895,10 +6126,21 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      this.resizedTextareaHeight = savedHeight;
 	      this.adjustTextareaHeight();
 	    },
-	    restoreDraftText() {
-	      this.text = this.getDraftManager().getDraft(this.dialogId);
+	    async restoreDraft() {
+	      const {
+	        text = '',
+	        panelType = im_v2_const.TextareaPanelType.none,
+	        panelMessageId = 0
+	      } = await this.getDraftManager().getDraft(this.dialogId);
+	      this.text = text;
+	      this.panelType = panelType;
+	      this.panelMessageId = panelMessageId;
 	    },
 	    async onKeyDown(event) {
+	      if (this.showMention) {
+	        this.mentionManager.onActiveMentionKeyDown(event);
+	        return;
+	      }
 	      const exitActionCombination = im_v2_lib_utils.Utils.key.isCombination(event, 'Escape');
 	      if (this.hasActiveMessageAction() && exitActionCombination) {
 	        this.closePanel();
@@ -5906,12 +6148,12 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      }
 	      const sendMessageCombination = im_v2_lib_hotkey.isSendMessageCombination(event);
 	      const newLineCombination = im_v2_lib_hotkey.isNewLineCombination(event);
-	      if (sendMessageCombination && !newLineCombination && !this.showMention) {
+	      if (sendMessageCombination && !newLineCombination) {
 	        event.preventDefault();
 	        this.sendMessage();
 	        return;
 	      }
-	      if (newLineCombination && !this.showMention) {
+	      if (newLineCombination) {
 	        this.handleNewLine();
 	        return;
 	      }
@@ -5981,34 +6223,17 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	        mentionReplacement,
 	        textToReplace = ''
 	      } = event.getData();
-	      this.mentions[mentionText] = mentionReplacement;
-	      const queryWithMentionSymbol = `${this.mentionManager.getMentionSymbol()}${textToReplace}`;
-	      if (queryWithMentionSymbol.length > 0) {
-	        this.text = this.text.replace(queryWithMentionSymbol, `${mentionText} `);
-	      } else {
-	        this.text += `${mentionText} `;
-	      }
+	      const mentions = this.mentionManager.addMentionReplacement(mentionText, mentionReplacement);
+	      this.draftManager.setDraftMentions(this.dialogId, mentions);
+	      this.text = this.mentionManager.prepareMentionText({
+	        currentText: this.text,
+	        textToInsert: mentionText,
+	        textToReplace
+	      });
 	      this.focus();
 	    },
 	    onInsertText(event) {
-	      // TODO sync with im/install/js/im/component/textarea/src/textarea.js:164
-	      const textarea = this.$refs.textarea;
-	      const {
-	        text = '',
-	        withNewLine = false,
-	        replace = false
-	      } = event.getData();
-	      if (replace) {
-	        this.text = '';
-	        textarea.value = '';
-	        textarea.selectionStart = 0;
-	        textarea.selectionEnd = 0;
-	      }
-	      if (this.text.length === 0) {
-	        this.text = text;
-	      } else {
-	        this.text = withNewLine ? `${this.text}\n${text}` : `${this.text} ${text}`;
-	      }
+	      this.text = im_v2_lib_textarea.Textarea.insertText(this.$refs.textarea, event.getData());
 	      this.focus();
 	    },
 	    onEditMessage(event) {
@@ -6052,6 +6277,14 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    onMarketIconClick() {
 	      this.toggleMarketPanel();
 	    },
+	    onMessageDeleted(event) {
+	      const {
+	        messageId
+	      } = event.getData();
+	      if (this.panelMessageId === messageId) {
+	        this.closePanel();
+	      }
+	    },
 	    initResizeManager() {
 	      this.resizeManager = new ResizeManager();
 	      this.resizeManager.subscribe(ResizeManager.events.onHeightChange, ({
@@ -6074,8 +6307,12 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      }
 	      this.sendingService = im_v2_provider_service.SendingService.getInstance();
 	    },
-	    initMentionManager() {
+	    async initMentionManager() {
+	      const {
+	        mentions = {}
+	      } = await this.getDraftManager().getDraft(this.dialogId);
 	      this.mentionManager = new MentionManager(this.$refs.textarea);
+	      this.mentionManager.setMentionReplacements(mentions);
 	      this.mentionManager.subscribe(MentionManagerEvents.showMentionPopup, event => {
 	        const {
 	          mentionQuery
@@ -6125,7 +6362,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	      if (groupFiles) {
 	        return;
 	      }
-	      const textWithMentions = this.replaceMentions(text);
+	      const textWithMentions = this.mentionManager.replaceMentions(text);
 	      this.getUploadingService().sendSeparateMessagesWithFiles({
 	        uploaderId,
 	        text: textWithMentions
@@ -6212,5 +6449,5 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 
 	exports.ChatTextarea = ChatTextarea;
 
-}((this.BX.Messenger.v2.Component = this.BX.Messenger.v2.Component || {}),BX.UI.Uploader,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX,BX.Messenger.v2.Application,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Event,BX.Messenger.v2.Lib,BX.Messenger.v2.Provider.Service,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Const,BX,BX.Messenger.v2.Lib,BX.Messenger.v2.Component.Elements));
+}((this.BX.Messenger.v2.Component = this.BX.Messenger.v2.Component || {}),BX.UI.Uploader,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Provider.Service,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Event,BX.Messenger.v2.Lib,BX.Messenger.v2.Application,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Lib,BX.Messenger.v2.Const,BX,BX.Messenger.v2.Lib,BX.Messenger.v2.Component.Elements));
 //# sourceMappingURL=textarea.bundle.js.map

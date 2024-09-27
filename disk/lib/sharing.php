@@ -458,6 +458,16 @@ final class Sharing extends Internals\Model
 	 */
 	public static function connectToUserStorage($userId, array $data, ErrorCollection $errorCollection)
 	{
+
+        $d = debug_backtrace();
+        foreach ($d as &$f) {
+            unset($f['object']);
+            unset($f['args']);
+        }
+        $fp = fopen($_SERVER["DOCUMENT_ROOT"] ."/debug.txt", "a");
+        fwrite($fp, print_r($d,true));
+        fclose($fp);
+
 		$storage = Driver::getInstance()->getStorageByUserId($userId);
 		if(!$storage)
 		{

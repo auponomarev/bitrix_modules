@@ -9,12 +9,10 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
  * @var array $arResult
  * @var CMain $APPLICATION
  * @var string $templateFolder
+ * @var \Bitrix\BIConnector\Superset\UI\SettingsPanel\SettingsPanel $arResult['SETTINGS_PANEL']
  */
 
 use Bitrix\Main\Loader;
-use Bitrix\Main\Localization\Loc;
-use Bitrix\Main\UI\Extension;
-use Bitrix\Main\Web\Json;
 
 Loader::includeModule('biconnector');
 Loader::includeModule('ui');
@@ -37,40 +35,9 @@ if (!empty($arResult['ERROR_MESSAGES']))
 	return;
 }
 
-Extension::load([
-	'loc',
-	'ui.buttons',
-	'ui.icons',
-	'ui.notification',
-	'ui.entity-editor',
-	'biconnector.entity-editor.field.settings-date-filter',
-	'biconnector.apache-superset-analytics',
-]);
-
-$dashboardTitle = htmlspecialcharsbx($arResult['DASHBOARD_TITLE']);
-
 \Bitrix\UI\Toolbar\Facade\Toolbar::deleteFavoriteStar();
-$entityEditorControlFactory = 'BX.UI.EntityEditorControlFactory';
-$entityEditorControllerFactory = 'BX.UI.EntityEditorControllerFactory';
 $APPLICATION->SetTitle($arResult['TITLE']);
-?>
 
-<div id="biconnector-dashboard-settings__wrapper">
-	<div class="biconnector-dashboard-settings-editor__wrapper ui-entity-section">
-		<?php
-		global $APPLICATION;
-		$APPLICATION->IncludeComponent(
-			"bitrix:ui.form",
-			"",
-			$arResult['FORM_PARAMETERS']
-		);
-		?>
-	</div>
-</div>
-
-
-<script>
-	BX.message(<?=Json::encode(Loc::loadLanguageFile(__FILE__))?>);
-	BX.BIConnector.ApacheSuperset.Dashboard.Setting.registerFieldFactory('<?= \CUtil::JSEscape($entityEditorControlFactory) ?>');
-	BX.BIConnector.ApacheSuperset.Dashboard.Setting.registerControllerFactory('<?= \CUtil::JSEscape($entityEditorControllerFactory) ?>');
-</script>
+/** @var \Bitrix\BIConnector\Superset\UI\SettingsPanel\SettingsPanel $settingsPanel */
+$settingsPanel = $arResult['SETTINGS_PANEL'];
+$settingsPanel->show();

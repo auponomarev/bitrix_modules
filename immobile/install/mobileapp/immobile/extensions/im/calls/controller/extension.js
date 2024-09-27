@@ -11,6 +11,10 @@
 			this.callView = null;
 			this.callViewPromise = null;
 
+			this.startCallPromise = null;
+			this.localVideoPromise = null;
+			this.localVideoStream = null;
+
 			this._currentCall = null;
 			Object.defineProperty(this, 'currentCall', {
 				get: () => this._currentCall,
@@ -50,6 +54,7 @@
 			this.onCallJoinHandler = this.onCallJoin.bind(this);
 			this.onCallLeaveHandler = this.onCallLeave.bind(this);
 			this.onCallDestroyHandler = this.onCallDestroy.bind(this);
+			this.onCallHangupHandler = this.onCallHangup.bind(this);
 			this.onChildCallFirstStreamHandler = this.onChildCallFirstStream.bind(this);
 
 			this.onMicButtonClickHandler = this.onMicButtonClick.bind(this);
@@ -81,7 +86,6 @@
 		{
 			// init outgoing call (from chat)
 			BX.addCustomEvent('onCallInvite', this.onCallInvite.bind(this));
-
 			// new incoming call (from CallEngine)
 			BX.addCustomEvent('CallEvents::incomingCall', this.onIncomingCall.bind(this));
 
@@ -140,21 +144,47 @@
 
 		maybeShowLocalVideo(show)
 		{
-			return new Promise((resolve, reject) => {
+			if (this.localVideoPromise)
+			{
+				return this.localVideoPromise;
+			}
+
+			this.localVideoPromise = new Promise((resolve, reject) => {
 				if (!show)
 				{
 					return resolve();
 				}
 
-				if (!this.callView)
-				{
-					return;
-				}
 				MediaDevices.getUserMedia({ audio: true, video: true }).then((stream) => {
-					this.callView.setVideoStream(env.userId, stream, (MediaDevices.cameraDirection === 'front'));
+					this.localVideoStream = stream;
+					if (!this.startCallPromise)
+					{
+						this.stopLocalVideoStream(true);
+					}
+					else if (this.callView)
+					{
+						this.callView.setVideoStream(env.userId, this.localVideoStream, (MediaDevices.cameraDirection === 'front'));
+					}
 					resolve();
 				}).catch((err) => reject(err));
 			});
+
+			return this.localVideoPromise;
+		}
+
+		stopLocalVideoStream(destroy = false)
+		{
+			if (this.localVideoStream)
+			{
+				if (destroy)
+				{
+					MediaDevices.stopStreaming();
+					this.localVideoStream = null;
+					return;
+				}
+
+				MediaDevices.stopCapture();
+			}
 		}
 
 		startCall(dialogId, video, associatedDialogData = {})
@@ -184,7 +214,11 @@
 			{
 				provider = BX.Call.Provider.BitrixDev;
 
-				this.requestDeviceAccess(video).then(() => {
+				this.startCallPromise = this.requestDeviceAccess(video).then(() => {
+					// we have to start media stream retrieving
+					// so we can use it in the callView before we connect to the call
+					this.maybeShowLocalVideo(video);
+
 					return this.openCallView({
 						status: 'outgoing',
 						isGroupCall: isGroupChat,
@@ -193,14 +227,14 @@
 						associatedEntityAvatarColor: associatedDialogData.color,
 						cameraState: video,
 						chatCounter: this.chatCounter,
-					});
+					}, video);
 				}).then(() => {
 					BX.postComponentEvent('CallEvents::viewOpened', []);
 					BX.postWebEvent('CallEvents::viewOpened', {});
 					this.bindViewEvents();
 					media.audioPlayer().playSound('call_start');
 
-					return this.maybeShowLocalVideo(video && !isGroupChat);
+					return this.maybeShowLocalVideo(video);
 				}).then(() => {
 					return callEngine.createCall({
 							entityType: 'chat',
@@ -267,7 +301,11 @@
 				return;
 			}
 
-			this.requestDeviceAccess(video).then(() => {
+			this.startCallPromise = this.requestDeviceAccess(video).then(() => {
+				// we have to start media stream retrieving
+				// so we can use it in the callView before we connect to the call
+				this.maybeShowLocalVideo(video);
+
 				return this.openCallView({
 					status: 'outgoing',
 					isGroupCall: isGroupChat,
@@ -276,14 +314,14 @@
 					associatedEntityAvatarColor: associatedDialogData.color,
 					cameraState: video,
 					chatCounter: this.chatCounter,
-				});
+				}, video);
 			}).then(() => {
 				BX.postComponentEvent('CallEvents::viewOpened', []);
 				BX.postWebEvent('CallEvents::viewOpened', {});
 				this.bindViewEvents();
 				media.audioPlayer().playSound('call_start');
 
-				return this.maybeShowLocalVideo(video && !isGroupChat);
+				return this.maybeShowLocalVideo(video);
 			}).then(() => {
 				return callEngine.createCall({
 					entityType: 'chat',
@@ -416,12 +454,12 @@
 			if (!CallUtil.isDeviceSupported())
 			{
 				navigator.notification.alert(BX.message('MOBILE_CALL_UNSUPPORTED_VERSION'));
-
 				return;
 			}
 
 			const provider = e.provider;
 			const isDevCallEnabled = provider === BX.Call.Provider.Bitrix && callEngine.isBitrixCallServerEnabled();
+
 			if (!isDevCallEnabled && provider !== BX.Call.Provider.Plain && provider !== BX.Call.Provider.Voximplant)
 			{
 				return;
@@ -429,6 +467,7 @@
 
 			const newCall = callEngine.calls[e.callId];
 			this.callWithLegacyMobile = (e.isLegacyMobile === true);
+
 
 			if (newCall instanceof CallStub)
 			{
@@ -622,14 +661,18 @@
 
 		showIncomingCall(params)
 		{
-			return new Promise((resolve, reject) => {
-				if (typeof (params) !== 'object')
-				{
-					params = {};
-				}
-				params.video = params.video === true;
+			if (typeof (params) !== 'object')
+			{
+				params = {};
+			}
+			params.video = params.video === true;
 
-				this.openCallView({
+			this.startCallPromise = this.requestDeviceAccess(params.video).then(() => {
+				// we have to start media stream retrieving
+				// so we can use it in the callView before we connect to the call
+				this.maybeShowLocalVideo(params.video);
+
+				return this.openCallView({
 					status: params.viewStatus || 'incoming',
 					isGroupCall: 'id' in this.currentCall.associatedEntity && this.currentCall.associatedEntity.id.startsWith('chat'),
 					associatedEntityName: this.currentCall.associatedEntity.name,
@@ -638,46 +681,47 @@
 					isVideoCall: params.video,
 					cameraState: false,
 					chatCounter: this.chatCounter,
-				}).then(() => {
-					if (!this.currentCall)
-					{
-						return reject('ALREADY_FINISHED');
-					}
-					media.audioPlayer().playSound('call_incoming', 10);
-					callInterface.indicator().setMode('incoming');
-					this.bindViewEvents();
-					const userStates = this.currentCall.getUsers();
-					for (const userId in userStates)
-					{
-						this.callView.addUser(userId, userStates[userId]);
-					}
+				}, params.video);
+			}).then(() => {
+				return this.maybeShowLocalVideo(params.video);
+			}).then(() => {
+				if (!this.currentCall)
+				{
+					return Promise.reject(new Error('ALREADY_FINISHED'));
+				}
+				media.audioPlayer().playSound('call_incoming', 10);
+				callInterface.indicator().setMode('incoming');
+				this.bindViewEvents();
+				const userStates = this.currentCall.getUsers();
+				for (const userId in userStates)
+				{
+					this.callView.addUser(userId, userStates[userId]);
+				}
 
-					BX.rest.callMethod('im.call.getUsers', {
-						callId: this.currentCall.id,
-						AVATAR_HR: 'Y',
-					}).then((response) => {
-						if (this.callView)
-						{
-							this.callView.updateUserData(response.data());
-						}
-					});
-
-					if (params.video && this.currentCall && this.currentCall.getLocalMedia)
+				BX.rest.callMethod('im.call.getUsers', {
+					callId: this.currentCall.id,
+					AVATAR_HR: 'Y',
+				}).then((response) => {
+					if (this.callView)
 					{
-						this.requestDeviceAccess(true).then(() => {
-							this.currentCall.getLocalMedia();
-						}).catch((error) => {
-							CallUtil.error(error);
-							if (error instanceof DeviceAccessError)
-							{
-								CallUtil.showDeviceAccessConfirm(params.video, () => Application.openSettings());
-							}
-						});
+						this.callView.updateUserData(response.data());
 					}
-
-					resolve();
 				});
+
+				Promise.resolve();
+			}).catch((error) => {
+				CallUtil.error(error);
+				if (error instanceof DeviceAccessError)
+				{
+					CallUtil.showDeviceAccessConfirm(params.video, () => Application.openSettings());
+				}
+				else if (error.code && error.code == 'ALREADY_FINISHED')
+				{
+					return reject('ALREADY_FINISHED');
+				}
 			});
+
+			return this.startCallPromise;
 
 			// this.scheduleCancelNotification();
 			// window.BXIM.repeatSound('ringtone', 3500, true);
@@ -732,6 +776,10 @@
 				)
 				;
 			}
+		}
+
+		onCallHangup() {
+			this.clearEverything()
 		}
 
 		bindViewEvents()
@@ -797,6 +845,7 @@
 				.on(BX.Call.Event.onJoin, this.onCallJoinHandler)
 				.on(BX.Call.Event.onLeave, this.onCallLeaveHandler)
 				.on(BX.Call.Event.onDestroy, this.onCallDestroyHandler)
+				.on(BX.Call.Event.onHangup, this.onCallHangupHandler)
 			;
 		}
 
@@ -824,6 +873,7 @@
 				.off(BX.Call.Event.onJoin, this.onCallJoinHandler)
 				.off(BX.Call.Event.onLeave, this.onCallLeaveHandler)
 				.off(BX.Call.Event.onDestroy, this.onCallDestroyHandler)
+				.off(BX.Call.Event.onHangup, this.onCallHangupHandler)
 			;
 		}
 
@@ -884,7 +934,7 @@
 			});
 		}
 
-		openCallView(viewProps = {})
+		openCallView(viewProps = {}, showLocalVideo)
 		{
 			if (this.callViewPromise)
 			{
@@ -898,6 +948,11 @@
 						this.callView = new CallLayout(viewProps);
 						this.rootWidget.showComponent(this.callView);
 						this.callViewPromise = null;
+
+						if (showLocalVideo && this.localVideoStream)
+						{
+							this.callView.setVideoStream(env.userId, this.localVideoStream, (MediaDevices.cameraDirection === 'front'));
+						}
 
 						resolve();
 					})
@@ -1012,6 +1067,7 @@
 
 			if (
 				Application.getPlatform() === 'android'
+				&& BX.type.isFunction(this.currentCall.isReady)
 				&& !this.currentCall.isReady()
 				&& push.hasOwnProperty('id')
 				&& push.id.startsWith('IM_CALL_')
@@ -1045,7 +1101,7 @@
 				this.currentCall.log('onAppActive');
 				this.currentCall.setVideoPaused(false);
 
-				if (!this._hasHeadphones() && CallUtil.getSdkAudioManager().currentDevice == 'receiver')
+				if (Application.getPlatform() === 'android' && !this._hasHeadphones() && CallUtil.getSdkAudioManager().currentDevice == 'receiver')
 				{
 					CallUtil.warn('switching audio output to speaker on application activation');
 					this._selectSpeaker();
@@ -1084,7 +1140,7 @@
 
 		onAudioDeviceChanged(deviceName)
 		{
-			if (Application.isBackground())
+			if (Application.isBackground() || Application.getPlatform() === 'ios')
 			{
 				return;
 			}
@@ -1096,9 +1152,12 @@
 				return;
 			}
 
-			if (deviceName == 'receiver' && this.currentCall)
-			{
-				this._selectSpeaker();
+			if (this.currentCall) {
+				if (deviceName == 'receiver') {
+					this._selectSpeaker();
+				} else {
+					CallUtil.getSdkAudioManager().selectAudioDevice(deviceName);
+				}
 			}
 		}
 
@@ -1164,7 +1223,18 @@
 				return;
 			}
 			this.currentCall.switchCamera();
-			setTimeout(() => this.callView.setMirrorLocalVideo(this.currentCall.isFrontCameraUsed()), 1000);
+			if (Application.getPlatform() === 'android')
+			{
+				setTimeout(() => this.callView.setMirrorLocalVideo(this.currentCall.isFrontCameraUsed()), 1000);
+			}
+			else
+			{
+				this.callView.setHideLocalVideo(true);
+				setTimeout(() => {
+					this.callView.setMirrorLocalVideo(this.currentCall.isFrontCameraUsed());
+					this.callView.setHideLocalVideo(false);
+				}, 100);
+			}
 		}
 
 		onChatButtonClick()
@@ -1241,9 +1311,12 @@
 
 		onSetCentralUser(userId)
 		{
-			if (this.currentCall && this.currentCall.allowVideoFrom)
-			{
+			if (this.currentCall.allowVideoFrom) {
 				this.currentCall.allowVideoFrom([userId]);
+			}
+			if (this.currentCall.onCentralUserSwitch)
+			{
+				this.currentCall.onCentralUserSwitch(userId);
 			}
 		}
 
@@ -1353,6 +1426,11 @@
 			{
 				this.callView.setVideoStream(env.userId, localStream, this.currentCall.isFrontCameraUsed());
 			}
+
+			if (!(this.currentCall instanceof PlainCall))
+			{
+				this.stopLocalVideoStream();
+			}
 		}
 
 		onCallLocalMediaStopped()
@@ -1417,7 +1495,7 @@
 			if (e.local)
 			{
 				CallUtil.warn('joined local call');
-				if (!this._hasHeadphones() && CallUtil.getSdkAudioManager().currentDevice == 'receiver' && !Application.isBackground())
+				if (Application.getPlatform() === 'android' && !this._hasHeadphones() && CallUtil.getSdkAudioManager().currentDevice == 'receiver' && !Application.isBackground())
 				{
 					CallUtil.warn('no headphones');
 					this._selectSpeaker();
@@ -1541,6 +1619,7 @@
 				this.rootWidget = null;
 			}
 
+			this.stopLocalVideoStream(true);
 			this.callView = null;
 			callInterface.indicator().close();
 			this.callStartTime = null;
@@ -1553,6 +1632,9 @@
 			this.callWithLegacyMobile = false;
 			this.callVideoEnabled = false;
 			this.skipNextDeviceChangeEvent = false;
+
+			this.startCallPromise = null;
+			this.localVideoPromise = null;
 
 			BX.postComponentEvent('CallEvents::viewClosed', []);
 			BX.postWebEvent('CallEvents::viewClosed', {});

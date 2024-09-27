@@ -12,7 +12,6 @@ $MESS["INPUT_EITHERYN_Y"] = "Ja";
 $MESS["INPUT_ENUM"] = "Aufzählung";
 $MESS["INPUT_ENUM_EMPTY_OPTION"] = "Nicht ausgewählt";
 $MESS["INPUT_ENUM_MULTIELEMENT"] = "Als Elementliste anzeigen";
-$MESS["INPUT_ENUM_NOT_UNIQUE_CODES"] = "Jedes Element der Liste muss eine einmalige ID haben.";
 $MESS["INPUT_ENUM_OPTIONS_ERROR"] = "Varianten der Aufzählung sind nicht angegeben";
 $MESS["INPUT_ENUM_SIZE"] = "Anzahl sichtbarer Elemente";
 $MESS["INPUT_FILE"] = "Datei";

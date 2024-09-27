@@ -70,7 +70,7 @@ DROP TABLE IF EXISTS b_tasks_effective;
 
 DROP TABLE IF EXISTS b_tasks_search_index;
 
-DROP TABLE IF EXISTS b_tasks_sprint2;
+DROP TABLE IF EXISTS b_tasks_sprint;
 
 DROP TABLE IF EXISTS b_tasks_user_option;
 
@@ -129,3 +129,7 @@ DROP TABLE IF EXISTS b_tasks_viewed_group;
 DROP TABLE IF EXISTS b_tasks_scenario;
 
 DROP TABLE IF EXISTS b_tasks_template_scenario;
+
+DROP TABLE IF EXISTS b_tasks_regular_parameters;
+
+DROP TABLE IF EXISTS b_tasks_custom_sort;

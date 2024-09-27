@@ -325,7 +325,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    return uuid.search(uuidV4pattern) === 0;
 	  },
 	  isTempMessage(messageId) {
-	    return this.isUuidV4(messageId) || messageId.toString().startsWith('temp');
+	    return TextUtil.isUuidV4(messageId) || messageId.toString().startsWith(im_v2_const.FakeMessagePrefix);
 	  },
 	  checkUrl(url) {
 	    const allowList = ["http:", "https:", "ftp:", "file:", "tel:", "callto:", "mailto:", "skype:", "viber:"];
@@ -362,7 +362,7 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 	    return main_core.Text.decode(text);
 	  },
 	  getWordsFromString(string) {
-	    const clearedString = string.replaceAll('(', ' ').replaceAll(')', ' ').replaceAll('[', ' ').replaceAll(']', ' ').replaceAll('{', ' ').replaceAll('}', ' ').replaceAll('<', ' ').replaceAll('>', ' ').replaceAll('-', ' ').replaceAll('#', ' ').replaceAll('"', ' ').replaceAll('\'', ' ').replaceAll(/\s\s+/g, ' ');
+	    const clearedString = string.replaceAll('(', ' ').replaceAll(')', ' ').replaceAll('[', ' ').replaceAll(']', ' ').replaceAll('{', ' ').replaceAll('}', ' ').replaceAll('<', ' ').replaceAll('>', ' ').replaceAll('-', ' ').replaceAll('#', ' ').replaceAll('№', ' ').replaceAll('"', ' ').replaceAll('\'', ' ').replaceAll(/\s\s+/g, ' ');
 	    return clearedString.split(' ').filter(word => word !== '');
 	  },
 	  getMentionBbCode(dialogId, name) {
@@ -475,6 +475,9 @@ this.BX.Messenger.v2 = this.BX.Messenger.v2 || {};
 
 	const FileUtil = {
 	  getFileExtension(fileName) {
+	    if (!main_core.Type.isStringFilled(fileName)) {
+	      return '';
+	    }
 	    return fileName.split('.').splice(-1)[0];
 	  },
 	  getIconTypeByFilename(fileName) {
